@@ -3,16 +3,22 @@ import { delimiter, join } from "node:path";
 import { spawn } from "node:child_process";
 
 import type {
+  AccountIssueListInput,
+  AccountProfileInput,
+  AccountPullRequestListInput,
+  AccountRepositoryInput,
   ActionsInput,
   ContributorSummary,
   DiscussionListInput,
   DiscussionSummary,
   GhStatus,
+  GitHubAccountProfile,
   GitHubMutationInput,
   GitHubMutationResult,
   GitHubProvider,
   IssueListInput,
   IssueSummary,
+  LanguageStat,
   ProjectSummary,
   ProjectsInput,
   PullRequestListInput,
@@ -23,15 +29,71 @@ import type {
   RepoDetailInput,
   RepoEntry,
   RepoListInput,
+  RepositoryCounts,
   RepositoryDetail,
+  RepositoryRef,
   RepositorySummary,
   SearchInput,
+  ViewerRepositoryState,
   Viewer,
   WorkflowRunSummary
 } from "@shared/github";
 
 const githubApiVersion = "2026-03-10";
 const githubHost = "github.com";
+
+const repositorySummaryFragment = `
+  fragment RepositorySummaryFields on Repository {
+    id
+    name
+    nameWithOwner
+    description
+    visibility
+    isPrivate
+    isFork
+    stargazerCount
+    forkCount
+    updatedAt
+    pushedAt
+    defaultBranchRef { name }
+    owner { login avatarUrl }
+    watchers { totalCount }
+    issues(states: OPEN) { totalCount }
+    pullRequests(states: OPEN) { totalCount }
+    discussions { totalCount }
+    projectsV2 { totalCount }
+    releases { totalCount }
+    primaryLanguage { name color }
+  }
+`;
+
+const githubProfileFragment = `
+  ${repositorySummaryFragment}
+
+  fragment GitHubProfileFields on User {
+    id
+    login
+    name
+    avatarUrl
+    url
+    bio
+    company
+    location
+    websiteUrl
+    followers { totalCount }
+    following { totalCount }
+    repositories { totalCount }
+    starredRepositories { totalCount }
+    status { emoji message }
+    pinnedItems(first: $limit, types: REPOSITORY) {
+      nodes {
+        ... on Repository {
+          ...RepositorySummaryFields
+        }
+      }
+    }
+  }
+`;
 
 interface RunResult {
   stdout: string;
@@ -41,7 +103,10 @@ interface RunResult {
 export async function resolveGhPath(configuredPath?: string | null): Promise<string | null> {
   const candidates = [
     configuredPath,
-    ...((process.env.PATH ?? "").split(delimiter).filter(Boolean).map((directory) => join(directory, "gh"))),
+    ...(process.env.PATH ?? "")
+      .split(delimiter)
+      .filter(Boolean)
+      .map((directory) => join(directory, "gh")),
     "/opt/homebrew/bin/gh",
     "/usr/local/bin/gh",
     "/usr/bin/gh"
@@ -128,6 +193,50 @@ export class GhCliProvider implements GitHubProvider {
     };
   }
 
+  async getAccountProfile(input: AccountProfileInput = {}): Promise<GitHubAccountProfile> {
+    const limit = 6;
+
+    if (input.login) {
+      const data = await this.graphql<{
+        user: GitHubProfileNode | null;
+      }>(
+        `
+        query AccountProfile($login: String!, $limit: Int!) {
+          user(login: $login) {
+            ...GitHubProfileFields
+          }
+        }
+
+        ${githubProfileFragment}
+      `,
+        { login: input.login, limit }
+      );
+
+      if (!data.user) {
+        throw new Error(`GitHub user ${input.login} was not found.`);
+      }
+
+      return mapAccountProfile(data.user);
+    }
+
+    const data = await this.graphql<{
+      viewer: GitHubProfileNode;
+    }>(
+      `
+      query ViewerProfile($limit: Int!) {
+        viewer {
+          ...GitHubProfileFields
+        }
+      }
+
+      ${githubProfileFragment}
+    `,
+      { limit }
+    );
+
+    return mapAccountProfile(data.viewer);
+  }
+
   async listRepositories(input: RepoListInput = {}): Promise<RepositorySummary[]> {
     const limit = input.limit ?? 50;
     const data = await this.graphql<{
@@ -168,6 +277,10 @@ export class GhCliProvider implements GitHubProvider {
         owner { login avatarUrl }
         watchers { totalCount }
         issues(states: OPEN) { totalCount }
+        pullRequests(states: OPEN) { totalCount }
+        discussions { totalCount }
+        projectsV2 { totalCount }
+        releases { totalCount }
         primaryLanguage { name color }
       }
     `,
@@ -175,6 +288,124 @@ export class GhCliProvider implements GitHubProvider {
     );
 
     return data.viewer.repositories.nodes.map(mapRepositorySummary);
+  }
+
+  async listAccountRepositories(input: AccountRepositoryInput = {}): Promise<RepositorySummary[]> {
+    const limit = input.limit ?? 50;
+
+    if (input.login) {
+      const data = await this.graphql<{
+        user: {
+          repositories: {
+            nodes: GitHubRepositoryNode[];
+          };
+        } | null;
+      }>(
+        `
+        query AccountRepositories($login: String!, $limit: Int!) {
+          user(login: $login) {
+            repositories(first: $limit, orderBy: { field: UPDATED_AT, direction: DESC }) {
+              nodes {
+                ...RepositorySummaryFields
+              }
+            }
+          }
+        }
+
+        ${repositorySummaryFragment}
+      `,
+        { login: input.login, limit }
+      );
+
+      return data.user?.repositories.nodes.map(mapRepositorySummary) ?? [];
+    }
+
+    return this.listRepositories({ limit });
+  }
+
+  async listAccountIssues(input: AccountIssueListInput = {}): Promise<IssueSummary[]> {
+    const limit = input.limit ?? 30;
+    const login = input.login ?? (await this.getViewer()).login;
+    const state = input.state ?? "open";
+    const stateQualifier = state === "all" ? "" : ` is:${state}`;
+    const query = `is:issue${stateQualifier} involves:${login} archived:false sort:updated-desc`;
+    const data = await this.graphql<{
+      search: {
+        nodes: GitHubSearchIssueNode[];
+      };
+    }>(
+      `
+      query AccountIssues($searchQuery: String!, $limit: Int!) {
+        search(query: $searchQuery, type: ISSUE, first: $limit) {
+          nodes {
+            ... on Issue {
+              id
+              number
+              title
+              state
+              url
+              createdAt
+              updatedAt
+              author { login avatarUrl }
+              comments { totalCount }
+              labels(first: 8) {
+                nodes { id name color }
+              }
+              repository { nameWithOwner }
+            }
+          }
+        }
+      }
+    `,
+      { searchQuery: query, limit }
+    );
+
+    return data.search.nodes.filter(Boolean).map(mapGraphqlIssue);
+  }
+
+  async listAccountPullRequests(input: AccountPullRequestListInput = {}): Promise<PullRequestSummary[]> {
+    const limit = input.limit ?? 30;
+    const login = input.login ?? (await this.getViewer()).login;
+    const state = input.state ?? "open";
+    const stateQualifier = state === "all" ? "" : ` is:${state}`;
+    const query = `is:pr${stateQualifier} involves:${login} archived:false sort:updated-desc`;
+    const data = await this.graphql<{
+      search: {
+        nodes: GitHubSearchPullRequestNode[];
+      };
+    }>(
+      `
+      query AccountPullRequests($searchQuery: String!, $limit: Int!) {
+        search(query: $searchQuery, type: ISSUE, first: $limit) {
+          nodes {
+            ... on PullRequest {
+              id
+              number
+              title
+              state
+              isDraft
+              url
+              createdAt
+              updatedAt
+              author { login avatarUrl }
+              comments { totalCount }
+              reviewThreads { totalCount }
+              additions
+              deletions
+              changedFiles
+              mergeStateStatus
+              headRefName
+              baseRefName
+              repository { nameWithOwner }
+            }
+          }
+        }
+      }
+    `,
+      { searchQuery: query, limit }
+    );
+
+    return data.search.nodes.filter(Boolean).map(mapGraphqlPullRequest);
   }
 
   async getRepository(owner: string, repo: string): Promise<RepositoryDetail> {
@@ -188,6 +419,14 @@ export class GhCliProvider implements GitHubProvider {
         };
         branches: { totalCount: number };
         tags: { totalCount: number };
+        languages: GitHubLanguages;
+        parent: GitHubRepositoryRefNode | null;
+        source: GitHubRepositoryRefNode | null;
+        viewerHasStarred: boolean;
+        viewerSubscription: ViewerRepositoryState["subscription"];
+        viewerPermission: string | null;
+        isArchived: boolean;
+        isDisabled: boolean;
       };
     }>(
       `
@@ -200,6 +439,8 @@ export class GhCliProvider implements GitHubProvider {
           visibility
           isPrivate
           isFork
+          isArchived
+          isDisabled
           stargazerCount
           forkCount
           updatedAt
@@ -210,7 +451,37 @@ export class GhCliProvider implements GitHubProvider {
           owner { login avatarUrl }
           watchers { totalCount }
           issues(states: OPEN) { totalCount }
+          pullRequests(states: OPEN) { totalCount }
+          discussions { totalCount }
+          projectsV2 { totalCount }
+          releases { totalCount }
           primaryLanguage { name color }
+          languages(first: 8, orderBy: { field: SIZE, direction: DESC }) {
+            totalSize
+            edges {
+              size
+              node { name color }
+            }
+          }
+          parent {
+            id
+            name
+            nameWithOwner
+            url
+            defaultBranchRef { name }
+            owner { login }
+          }
+          source {
+            id
+            name
+            nameWithOwner
+            url
+            defaultBranchRef { name }
+            owner { login }
+          }
+          viewerHasStarred
+          viewerSubscription
+          viewerPermission
           licenseInfo { name spdxId }
           repositoryTopics(first: 16) {
             nodes { topic { name } }
@@ -235,7 +506,22 @@ export class GhCliProvider implements GitHubProvider {
       branchCount: data.repository.branches.totalCount,
       tagCount: data.repository.tags.totalCount,
       readmeMarkdown,
-      htmlUrl: data.repository.url
+      htmlUrl: data.repository.url,
+      languages: mapLanguages(data.repository.languages),
+      parent: mapRepositoryRef(data.repository.parent),
+      source: mapRepositoryRef(data.repository.source),
+      viewerState: {
+        hasStarred: data.repository.viewerHasStarred,
+        subscription: data.repository.viewerSubscription,
+        permission: data.repository.viewerPermission,
+        canAdminister: data.repository.viewerPermission === "ADMIN",
+        canSubscribe: true
+      },
+      permissions: {
+        viewerPermission: data.repository.viewerPermission,
+        isArchived: data.repository.isArchived,
+        isDisabled: data.repository.isDisabled
+      }
     };
   }
 
@@ -455,8 +741,8 @@ export class GhCliProvider implements GitHubProvider {
       };
     }>(
       `
-      query RepositorySearch($query: String!, $limit: Int!) {
-        search(query: $query, type: REPOSITORY, first: $limit) {
+      query RepositorySearch($searchQuery: String!, $limit: Int!) {
+        search(query: $searchQuery, type: REPOSITORY, first: $limit) {
           nodes {
             ... on Repository {
               id
@@ -474,13 +760,17 @@ export class GhCliProvider implements GitHubProvider {
               owner { login avatarUrl }
               watchers { totalCount }
               issues(states: OPEN) { totalCount }
+              pullRequests(states: OPEN) { totalCount }
+              discussions { totalCount }
+              projectsV2 { totalCount }
+              releases { totalCount }
               primaryLanguage { name color }
             }
           }
         }
       }
     `,
-      { query: input.query, limit }
+      { searchQuery: input.query, limit }
     );
 
     return data.search.nodes.filter(Boolean).map(mapRepositorySummary);
@@ -522,9 +812,17 @@ export class GhCliProvider implements GitHubProvider {
       case "unwatch":
         return this.rest("DELETE", `/repos/${owner}/${repo}/subscription`);
       case "fork":
-        return this.rest("POST", `/repos/${owner}/${repo}/forks`, pick(payload, ["organization", "name", "default_branch_only"]));
+        return this.rest(
+          "POST",
+          `/repos/${owner}/${repo}/forks`,
+          pick(payload, ["organization", "name", "default_branch_only"])
+        );
       case "createIssue":
-        return this.rest("POST", `/repos/${owner}/${repo}/issues`, pick(payload, ["title", "body", "labels", "assignees"]));
+        return this.rest(
+          "POST",
+          `/repos/${owner}/${repo}/issues`,
+          pick(payload, ["title", "body", "labels", "assignees"])
+        );
       case "editIssue":
         return this.rest(
           "PATCH",
@@ -536,15 +834,31 @@ export class GhCliProvider implements GitHubProvider {
       case "reopenIssue":
         return this.rest("PATCH", `/repos/${owner}/${repo}/issues/${issueNumber}`, { state: "open" });
       case "addComment":
-        return this.rest("POST", `/repos/${owner}/${repo}/issues/${issueNumber}/comments`, pick(payload, ["body"]));
+        return this.rest(
+          "POST",
+          `/repos/${owner}/${repo}/issues/${issueNumber}/comments`,
+          pick(payload, ["body"])
+        );
       case "editComment":
-        return this.rest("PATCH", `/repos/${owner}/${repo}/issues/comments/${commentId}`, pick(payload, ["body"]));
+        return this.rest(
+          "PATCH",
+          `/repos/${owner}/${repo}/issues/comments/${commentId}`,
+          pick(payload, ["body"])
+        );
       case "deleteComment":
         return this.rest("DELETE", `/repos/${owner}/${repo}/issues/comments/${commentId}`);
       case "addLabels":
-        return this.rest("POST", `/repos/${owner}/${repo}/issues/${issueNumber}/labels`, pick(payload, ["labels"]));
+        return this.rest(
+          "POST",
+          `/repos/${owner}/${repo}/issues/${issueNumber}/labels`,
+          pick(payload, ["labels"])
+        );
       case "setAssignees":
-        return this.rest("POST", `/repos/${owner}/${repo}/issues/${issueNumber}/assignees`, pick(payload, ["assignees"]));
+        return this.rest(
+          "POST",
+          `/repos/${owner}/${repo}/issues/${issueNumber}/assignees`,
+          pick(payload, ["assignees"])
+        );
       case "mergePullRequest":
         return this.rest(
           "PUT",
@@ -579,7 +893,15 @@ export class GhCliProvider implements GitHubProvider {
         return this.rest(
           "PATCH",
           `/repos/${owner}/${repo}/releases/${releaseId}`,
-          pick(payload, ["tag_name", "target_commitish", "name", "body", "draft", "prerelease", "make_latest"])
+          pick(payload, [
+            "tag_name",
+            "target_commitish",
+            "name",
+            "body",
+            "draft",
+            "prerelease",
+            "make_latest"
+          ])
         );
       case "deleteRelease":
         return this.rest("DELETE", `/repos/${owner}/${repo}/releases/${releaseId}`);
@@ -588,7 +910,10 @@ export class GhCliProvider implements GitHubProvider {
     }
   }
 
-  private async graphql<T>(query: string, variables: Record<string, string | number | boolean> = {}): Promise<T> {
+  private async graphql<T>(
+    query: string,
+    variables: Record<string, string | number | boolean> = {}
+  ): Promise<T> {
     const args = ["api", "graphql", "--hostname", githubHost, "-f", `query=${query}`];
     for (const [key, value] of Object.entries(variables)) {
       args.push("-F", `${key}=${value}`);
@@ -721,11 +1046,115 @@ function mapRepositorySummary(node: GitHubRepositoryNode): RepositorySummary {
     forkCount: node.forkCount,
     watcherCount: node.watchers.totalCount,
     openIssuesCount: node.issues.totalCount,
+    counts: mapRepositoryCounts(node),
     primaryLanguage: node.primaryLanguage,
     updatedAt: node.updatedAt,
     pushedAt: node.pushedAt,
     avatarUrl: node.owner.avatarUrl,
     defaultBranch: node.defaultBranchRef?.name ?? null
+  };
+}
+
+function mapRepositoryCounts(node: GitHubRepositoryNode): RepositoryCounts {
+  return {
+    openIssues: node.issues.totalCount,
+    openPullRequests: node.pullRequests.totalCount,
+    discussions: node.discussions.totalCount,
+    projects: node.projectsV2.totalCount,
+    releases: node.releases.totalCount,
+    forks: node.forkCount,
+    stars: node.stargazerCount,
+    watchers: node.watchers.totalCount
+  };
+}
+
+function mapAccountProfile(node: GitHubProfileNode): GitHubAccountProfile {
+  return {
+    id: node.id,
+    login: node.login,
+    name: node.name,
+    avatarUrl: node.avatarUrl,
+    htmlUrl: node.url,
+    bio: node.bio,
+    company: node.company,
+    location: node.location,
+    websiteUrl: node.websiteUrl,
+    followers: node.followers.totalCount,
+    following: node.following.totalCount,
+    repositoryCount: node.repositories.totalCount,
+    starredRepositoryCount: node.starredRepositories.totalCount,
+    status: node.status ? { emoji: node.status.emoji, message: node.status.message } : null,
+    pinnedRepositories: node.pinnedItems.nodes.filter(Boolean).map(mapRepositorySummary)
+  };
+}
+
+function mapRepositoryRef(node: GitHubRepositoryRefNode | null): RepositoryRef | null {
+  if (!node) {
+    return null;
+  }
+
+  return {
+    id: node.id,
+    owner: node.owner.login,
+    name: node.name,
+    nameWithOwner: node.nameWithOwner,
+    htmlUrl: node.url,
+    defaultBranch: node.defaultBranchRef?.name ?? null
+  };
+}
+
+function mapLanguages(languages: GitHubLanguages): LanguageStat[] {
+  const total = languages.totalSize;
+  return languages.edges.map((edge) => ({
+    name: edge.node.name,
+    color: edge.node.color,
+    size: edge.size,
+    percent: total > 0 ? (edge.size / total) * 100 : 0
+  }));
+}
+
+function mapGraphqlIssue(issue: GitHubSearchIssueNode): IssueSummary {
+  return {
+    id: issue.id,
+    number: issue.number,
+    title: issue.title,
+    state: issue.state,
+    authorLogin: issue.author?.login ?? null,
+    authorAvatarUrl: issue.author?.avatarUrl ?? null,
+    comments: issue.comments.totalCount,
+    labels: issue.labels.nodes.map((label) => ({
+      id: label.id,
+      name: label.name,
+      color: label.color
+    })),
+    createdAt: issue.createdAt,
+    updatedAt: issue.updatedAt,
+    htmlUrl: issue.url,
+    repositoryNameWithOwner: issue.repository.nameWithOwner
+  };
+}
+
+function mapGraphqlPullRequest(pr: GitHubSearchPullRequestNode): PullRequestSummary {
+  return {
+    id: pr.id,
+    number: pr.number,
+    title: pr.title,
+    state: pr.state,
+    isDraft: pr.isDraft,
+    authorLogin: pr.author?.login ?? null,
+    authorAvatarUrl: pr.author?.avatarUrl ?? null,
+    comments: pr.comments.totalCount,
+    reviewComments: pr.reviewThreads.totalCount,
+    additions: pr.additions,
+    deletions: pr.deletions,
+    changedFiles: pr.changedFiles,
+    mergeableState: pr.mergeStateStatus ?? null,
+    headRefName: pr.headRefName,
+    baseRefName: pr.baseRefName,
+    createdAt: pr.createdAt,
+    updatedAt: pr.updatedAt,
+    htmlUrl: pr.url,
+    repositoryNameWithOwner: pr.repository.nameWithOwner
   };
 }
 
@@ -795,10 +1224,126 @@ interface GitHubRepositoryNode {
   issues: {
     totalCount: number;
   };
+  pullRequests: {
+    totalCount: number;
+  };
+  discussions: {
+    totalCount: number;
+  };
+  projectsV2: {
+    totalCount: number;
+  };
+  releases: {
+    totalCount: number;
+  };
   primaryLanguage: {
     name: string;
     color: string | null;
   } | null;
+}
+
+interface GitHubRepositoryRefNode {
+  id: string;
+  name: string;
+  nameWithOwner: string;
+  url: string;
+  defaultBranchRef: { name: string } | null;
+  owner: {
+    login: string;
+  };
+}
+
+interface GitHubLanguages {
+  totalSize: number;
+  edges: Array<{
+    size: number;
+    node: {
+      name: string;
+      color: string | null;
+    };
+  }>;
+}
+
+interface GitHubProfileNode {
+  id: string;
+  login: string;
+  name: string | null;
+  avatarUrl: string | null;
+  url: string;
+  bio: string | null;
+  company: string | null;
+  location: string | null;
+  websiteUrl: string | null;
+  followers: {
+    totalCount: number;
+  };
+  following: {
+    totalCount: number;
+  };
+  repositories: {
+    totalCount: number;
+  };
+  starredRepositories: {
+    totalCount: number;
+  };
+  status: {
+    emoji: string | null;
+    message: string | null;
+  } | null;
+  pinnedItems: {
+    nodes: GitHubRepositoryNode[];
+  };
+}
+
+interface GitHubSearchIssueNode {
+  id: string;
+  number: number;
+  title: string;
+  state: string;
+  url: string;
+  createdAt: string;
+  updatedAt: string;
+  author: { login: string; avatarUrl: string | null } | null;
+  comments: {
+    totalCount: number;
+  };
+  labels: {
+    nodes: Array<{
+      id: string;
+      name: string;
+      color: string;
+    }>;
+  };
+  repository: {
+    nameWithOwner: string;
+  };
+}
+
+interface GitHubSearchPullRequestNode {
+  id: string;
+  number: number;
+  title: string;
+  state: string;
+  isDraft: boolean;
+  url: string;
+  createdAt: string;
+  updatedAt: string;
+  author: { login: string; avatarUrl: string | null } | null;
+  comments: {
+    totalCount: number;
+  };
+  reviewThreads: {
+    totalCount: number;
+  };
+  additions: number;
+  deletions: number;
+  changedFiles: number;
+  mergeStateStatus: string | null;
+  headRefName: string;
+  baseRefName: string;
+  repository: {
+    nameWithOwner: string;
+  };
 }
 
 interface GitHubContentItem {

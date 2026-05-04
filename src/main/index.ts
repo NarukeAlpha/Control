@@ -5,6 +5,10 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 import type {
+  AccountIssueListInput,
+  AccountProfileInput,
+  AccountPullRequestListInput,
+  AccountRepositoryInput,
   ActionsInput,
   DiscussionListInput,
   GitHubMutationInput,
@@ -38,7 +42,7 @@ function createWindow(): void {
     trafficLightPosition: { x: 24, y: 22 },
     backgroundMaterial: process.platform === "win32" ? "mica" : undefined,
     transparent: process.platform === "darwin",
-    backgroundColor: "#dceafb00",
+    backgroundColor: process.platform === "darwin" ? "#00000000" : "#eef6ff",
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
       sandbox: true,
@@ -79,13 +83,18 @@ function applyLiquidGlass(window: BrowserWindowType | null): void {
 
   try {
     liquidGlassViewId = liquidGlass.addView(window.getNativeWindowHandle(), {
+      // tintColor uses #RRGGBBAA byte order (verified in
+      // electron-liquid-glass/src/glass_effect.mm). Keep alpha at zero, but
+      // use the module's opaque backing so Control is an app surface instead
+      // of a full-window lens over whatever sits behind it.
       cornerRadius: 30,
-      tintColor: "#DDEEFF30",
-      opaque: false
+      tintColor: "#FFFFFF00",
+      opaque: true
     });
 
     if (liquidGlassViewId >= 0) {
-      liquidGlass.unstable_setVariant(liquidGlassViewId, liquidGlass.GlassMaterialVariant.control);
+      // Avoid private material variants by default. Some variants shift hard
+      // cyan/yellow between active and inactive window states on macOS 26.
       liquidGlass.unstable_setScrim(liquidGlassViewId, 0);
       liquidGlass.unstable_setSubdued(liquidGlassViewId, 0);
     }
@@ -106,11 +115,25 @@ function registerIpc(store: LocalStore, github: GitHubProviderManager): void {
   });
 
   ipcMain.handle(ipcChannels.githubViewer, () => github.getViewer());
+  ipcMain.handle(ipcChannels.githubAccountProfile, (_event, input: AccountProfileInput = {}) =>
+    github.getAccountProfile(input)
+  );
   ipcMain.handle(ipcChannels.githubRepositories, (_event, input = {}) => github.listRepositories(input));
+  ipcMain.handle(ipcChannels.githubAccountRepositories, (_event, input: AccountRepositoryInput = {}) =>
+    github.listAccountRepositories(input)
+  );
+  ipcMain.handle(ipcChannels.githubAccountIssues, (_event, input: AccountIssueListInput = {}) =>
+    github.listAccountIssues(input)
+  );
+  ipcMain.handle(ipcChannels.githubAccountPullRequests, (_event, input: AccountPullRequestListInput = {}) =>
+    github.listAccountPullRequests(input)
+  );
   ipcMain.handle(ipcChannels.githubRepository, (_event, input: RepoDetailInput) =>
     github.getRepository(input.owner, input.repo)
   );
-  ipcMain.handle(ipcChannels.githubContents, (_event, input: RepoContentsInput) => github.listContents(input));
+  ipcMain.handle(ipcChannels.githubContents, (_event, input: RepoContentsInput) =>
+    github.listContents(input)
+  );
   ipcMain.handle(ipcChannels.githubIssues, (_event, input: IssueListInput) => github.listIssues(input));
   ipcMain.handle(ipcChannels.githubPullRequests, (_event, input: PullRequestListInput) =>
     github.listPullRequests(input)
@@ -128,7 +151,7 @@ function registerIpc(store: LocalStore, github: GitHubProviderManager): void {
   ipcMain.handle(ipcChannels.githubMutate, (_event, input: GitHubMutationInput) => github.mutate(input));
 }
 
-app.commandLine.appendSwitch("enable-features", "Vibrancy,PlatformHEVCDecoderSupport");
+app.commandLine.appendSwitch("enable-features", "PlatformHEVCDecoderSupport");
 nativeTheme.themeSource = "light";
 
 void bootstrap();

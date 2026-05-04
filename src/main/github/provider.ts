@@ -1,8 +1,13 @@
 import type {
+  AccountIssueListInput,
+  AccountProfileInput,
+  AccountPullRequestListInput,
+  AccountRepositoryInput,
   ActionsInput,
   ContributorSummary,
   DiscussionListInput,
   DiscussionSummary,
+  GitHubAccountProfile,
   GitHubMutationInput,
   GitHubMutationResult,
   GitHubProvider,
@@ -37,8 +42,33 @@ export class GitHubProviderManager implements GitHubProvider {
     return viewer;
   }
 
+  async getAccountProfile(input: AccountProfileInput = {}): Promise<GitHubAccountProfile> {
+    const profile = await this.withCache(`account-profile:${input.login ?? "viewer"}`, 60_000, () =>
+      this.provider().getAccountProfile(input)
+    );
+    this.store.saveAccount("github", profile.login, profile);
+    return profile;
+  }
+
   async listRepositories(input: RepoListInput): Promise<RepositorySummary[]> {
-    return this.withCache(`repositories:${input.limit ?? 50}`, 60_000, () => this.provider().listRepositories(input));
+    return this.withCache(`repositories:${input.limit ?? 50}`, 60_000, () =>
+      this.provider().listRepositories(input)
+    );
+  }
+
+  async listAccountRepositories(input: AccountRepositoryInput = {}): Promise<RepositorySummary[]> {
+    const key = `account-repositories:${input.login ?? "viewer"}:${input.limit ?? 50}`;
+    return this.withCache(key, 60_000, () => this.provider().listAccountRepositories(input));
+  }
+
+  async listAccountIssues(input: AccountIssueListInput = {}): Promise<IssueSummary[]> {
+    const key = `account-issues:${input.login ?? "viewer"}:${input.state ?? "open"}:${input.limit ?? 30}`;
+    return this.withCache(key, 30_000, () => this.provider().listAccountIssues(input));
+  }
+
+  async listAccountPullRequests(input: AccountPullRequestListInput = {}): Promise<PullRequestSummary[]> {
+    const key = `account-pulls:${input.login ?? "viewer"}:${input.state ?? "open"}:${input.limit ?? 30}`;
+    return this.withCache(key, 30_000, () => this.provider().listAccountPullRequests(input));
   }
 
   async getRepository(owner: string, repo: string): Promise<RepositoryDetail> {
@@ -137,14 +167,29 @@ export class GitHubProviderManager implements GitHubProvider {
 }
 
 class GitHubAppProvider implements GitHubProvider {
-  constructor(private readonly clientId: string | null) {
-  }
+  constructor(private readonly clientId: string | null) {}
 
   async getViewer(): Promise<Viewer> {
     return this.unavailable();
   }
 
+  async getAccountProfile(): Promise<GitHubAccountProfile> {
+    return this.unavailable();
+  }
+
   async listRepositories(): Promise<RepositorySummary[]> {
+    return this.unavailable();
+  }
+
+  async listAccountRepositories(): Promise<RepositorySummary[]> {
+    return this.unavailable();
+  }
+
+  async listAccountIssues(): Promise<IssueSummary[]> {
+    return this.unavailable();
+  }
+
+  async listAccountPullRequests(): Promise<PullRequestSummary[]> {
     return this.unavailable();
   }
 
@@ -207,7 +252,9 @@ class GitHubAppProvider implements GitHubProvider {
 
   private async unavailable<T>(): Promise<T> {
     await this.assertConfigured();
-    throw new Error("GitHub App OAuth execution is not enabled in V1 yet. Switch Settings back to GitHub CLI.");
+    throw new Error(
+      "GitHub App OAuth execution is not enabled in V1 yet. Switch Settings back to GitHub CLI."
+    );
   }
 }
 

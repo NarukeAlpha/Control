@@ -2,6 +2,7 @@ import type {
   AppState,
   ContributorSummary,
   DiscussionSummary,
+  GitHubAccountProfile,
   IssueSummary,
   ProjectSummary,
   PullRequestSummary,
@@ -15,6 +16,37 @@ import type {
 import type { ControlApi } from "@shared/ipc";
 
 const avatar = "https://avatars.githubusercontent.com/u/10639145?v=4";
+
+function repositoryCounts({
+  issues,
+  pulls,
+  discussions,
+  projects,
+  releases,
+  forks,
+  stars,
+  watchers
+}: {
+  issues: number;
+  pulls: number;
+  discussions: number;
+  projects: number;
+  releases: number;
+  forks: number;
+  stars: number;
+  watchers: number;
+}) {
+  return {
+    openIssues: issues,
+    openPullRequests: pulls,
+    discussions,
+    projects,
+    releases,
+    forks,
+    stars,
+    watchers
+  };
+}
 
 export const mockViewer: Viewer = {
   login: "ashleyrico",
@@ -37,6 +69,16 @@ export const mockRepositories: RepositorySummary[] = [
     forkCount: 3500,
     watcherCount: 1200,
     openIssuesCount: 1200,
+    counts: repositoryCounts({
+      issues: 1200,
+      pulls: 5,
+      discussions: 42,
+      projects: 3,
+      releases: 98,
+      forks: 3500,
+      stars: 23300,
+      watchers: 1200
+    }),
     primaryLanguage: { name: "C++", color: "#f34b7d" },
     updatedAt: new Date(Date.now() - 7_200_000).toISOString(),
     pushedAt: new Date(Date.now() - 7_200_000).toISOString(),
@@ -56,6 +98,16 @@ export const mockRepositories: RepositorySummary[] = [
     forkCount: 950,
     watcherCount: 730,
     openIssuesCount: 42,
+    counts: repositoryCounts({
+      issues: 42,
+      pulls: 9,
+      discussions: 12,
+      projects: 2,
+      releases: 20,
+      forks: 950,
+      stars: 11100,
+      watchers: 730
+    }),
     primaryLanguage: { name: "Shell", color: "#89e051" },
     updatedAt: new Date(Date.now() - 86_400_000).toISOString(),
     pushedAt: new Date(Date.now() - 86_400_000).toISOString(),
@@ -75,6 +127,16 @@ export const mockRepositories: RepositorySummary[] = [
     forkCount: 84,
     watcherCount: 39,
     openIssuesCount: 12,
+    counts: repositoryCounts({
+      issues: 12,
+      pulls: 4,
+      discussions: 3,
+      projects: 1,
+      releases: 2,
+      forks: 84,
+      stars: 782,
+      watchers: 39
+    }),
     primaryLanguage: { name: "Swift", color: "#f05138" },
     updatedAt: new Date(Date.now() - 172_800_000).toISOString(),
     pushedAt: new Date(Date.now() - 172_800_000).toISOString(),
@@ -93,7 +155,46 @@ export const mockRepository: RepositoryDetail = {
   tagCount: 98,
   readmeMarkdown:
     "# Welcome to Swift\n\nSwift is a powerful and intuitive programming language for iOS, macOS, watchOS, tvOS, and beyond.",
-  htmlUrl: "https://github.com/apple/swift"
+  htmlUrl: "https://github.com/apple/swift",
+  languages: [
+    { name: "C++", color: "#f34b7d", size: 6400000, percent: 42 },
+    { name: "Swift", color: "#f05138", size: 4100000, percent: 27 },
+    { name: "C", color: "#555555", size: 2600000, percent: 17 },
+    { name: "Python", color: "#3572A5", size: 1300000, percent: 9 },
+    { name: "Shell", color: "#89e051", size: 760000, percent: 5 }
+  ],
+  parent: null,
+  source: null,
+  viewerState: {
+    hasStarred: false,
+    subscription: "UNSUBSCRIBED",
+    permission: "READ",
+    canAdminister: false,
+    canSubscribe: true
+  },
+  permissions: {
+    viewerPermission: "READ",
+    isArchived: false,
+    isDisabled: false
+  }
+};
+
+export const mockAccountProfile: GitHubAccountProfile = {
+  id: "U_ashleyrico",
+  login: mockViewer.login,
+  name: mockViewer.name,
+  avatarUrl: mockViewer.avatarUrl,
+  htmlUrl: mockViewer.htmlUrl ?? "https://github.com/ashleyrico",
+  bio: "Developer building GitHub workflows locally.",
+  company: "Control",
+  location: "San Juan, PR",
+  websiteUrl: "https://github.com",
+  followers: 187,
+  following: 42,
+  repositoryCount: mockRepositories.length,
+  starredRepositoryCount: 233,
+  status: null,
+  pinnedRepositories: mockRepositories.slice(0, 2)
 };
 
 export const mockContents: RepoEntry[] = [
@@ -121,14 +222,13 @@ export const mockContents: RepoEntry[] = [
 export const mockIssues: IssueSummary[] = Array.from({ length: 18 }, (_, index) => ({
   id: index + 1,
   number: 1200 - index,
-  title: index % 3 === 0 ? "Improve Sendable diagnostics for global actors" : "Compiler crash in async closure",
+  title:
+    index % 3 === 0 ? "Improve Sendable diagnostics for global actors" : "Compiler crash in async closure",
   state: index % 5 === 0 ? "closed" : "open",
   authorLogin: index % 2 === 0 ? "slightbug" : "swift-ci",
   authorAvatarUrl: avatar,
   comments: 2 + index,
-  labels: [
-    { id: `kind-${index}`, name: index % 2 === 0 ? "compiler" : "concurrency", color: "0969da" }
-  ],
+  labels: [{ id: `kind-${index}`, name: index % 2 === 0 ? "compiler" : "concurrency", color: "0969da" }],
   createdAt: new Date(Date.now() - index * 86_400_000).toISOString(),
   updatedAt: new Date(Date.now() - index * 3_600_000).toISOString(),
   htmlUrl: `https://github.com/apple/swift/issues/${1200 - index}`
@@ -242,7 +342,11 @@ export const mockControlApi: ControlApi = {
   openExternal: async () => undefined,
   github: {
     getViewer: async () => mockViewer,
+    getAccountProfile: async () => mockAccountProfile,
     listRepositories: async () => mockRepositories,
+    listAccountRepositories: async () => mockRepositories,
+    listAccountIssues: async () => mockIssues,
+    listAccountPullRequests: async () => mockPullRequests,
     getRepository: async () => mockRepository,
     listContents: async () => mockContents,
     listIssues: async () => mockIssues,
@@ -263,4 +367,3 @@ export const mockControlApi: ControlApi = {
     })
   }
 };
-

@@ -5,6 +5,12 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { App } from "./App";
 import "./styles.css";
 
+// On non-macOS platforms (where the native liquid-glass view is not attached),
+// fall back to a CSS-painted glass background so the UI still reads as glass.
+if (!/Mac/i.test(navigator.platform)) {
+  document.body.classList.add("no-liquid-glass");
+}
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -25,4 +31,3 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     </QueryClientProvider>
   </React.StrictMode>
 );
-

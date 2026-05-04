@@ -1,10 +1,15 @@
 import type {
+  AccountIssueListInput,
+  AccountProfileInput,
+  AccountPullRequestListInput,
+  AccountRepositoryInput,
   ActionsInput,
   AppState,
   ContributorSummary,
   ControlSettings,
   DiscussionListInput,
   DiscussionSummary,
+  GitHubAccountProfile,
   GitHubMutationInput,
   GitHubMutationResult,
   IssueListInput,
@@ -33,7 +38,11 @@ export interface ControlApi {
   openExternal(url: string): Promise<void>;
   github: {
     getViewer(): Promise<Viewer>;
+    getAccountProfile(input?: AccountProfileInput): Promise<GitHubAccountProfile>;
     listRepositories(input?: RepoListInput): Promise<RepositorySummary[]>;
+    listAccountRepositories(input?: AccountRepositoryInput): Promise<RepositorySummary[]>;
+    listAccountIssues(input?: AccountIssueListInput): Promise<IssueSummary[]>;
+    listAccountPullRequests(input?: AccountPullRequestListInput): Promise<PullRequestSummary[]>;
     getRepository(input: RepoDetailInput): Promise<RepositoryDetail>;
     listContents(input: RepoContentsInput): Promise<RepoEntry[]>;
     listIssues(input: IssueListInput): Promise<IssueSummary[]>;
@@ -54,7 +63,11 @@ export const ipcChannels = {
   updateSettings: "control:update-settings",
   openExternal: "control:open-external",
   githubViewer: "github:viewer",
+  githubAccountProfile: "github:account-profile",
   githubRepositories: "github:repositories",
+  githubAccountRepositories: "github:account-repositories",
+  githubAccountIssues: "github:account-issues",
+  githubAccountPullRequests: "github:account-pull-requests",
   githubRepository: "github:repository",
   githubContents: "github:contents",
   githubIssues: "github:issues",
@@ -73,4 +86,3 @@ declare global {
     control?: ControlApi;
   }
 }
-

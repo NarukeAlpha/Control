@@ -2,26 +2,64 @@ import { create } from "zustand";
 
 export type RepositoryTab = "code" | "issues" | "pulls" | "actions" | "projects" | "security" | "insights";
 
+export type CollectionRoute = "discussions" | "projects" | "models" | "codespaces" | "packages" | "stars";
+
+export type AppRoute =
+  | { kind: "home" }
+  | { kind: "globalIssues" }
+  | { kind: "globalPulls" }
+  | { kind: "mailbox" }
+  | { kind: "collection"; collection: CollectionRoute }
+  | { kind: "repository"; nameWithOwner: string; tab: RepositoryTab };
+
 interface UiState {
-  activeView: string;
-  repositoryTab: RepositoryTab;
+  route: AppRoute;
   selectedRepository: string | null;
   settingsOpen: boolean;
-  setActiveView(view: string): void;
+  navigate(route: AppRoute): void;
+  goHome(): void;
+  goToGlobalIssues(): void;
+  goToGlobalPulls(): void;
+  goToMailbox(): void;
+  goToCollection(collection: CollectionRoute): void;
+  goToRepository(nameWithOwner: string, tab?: RepositoryTab): void;
   setRepositoryTab(tab: RepositoryTab): void;
   setSelectedRepository(nameWithOwner: string): void;
   setSettingsOpen(open: boolean): void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
-  activeView: "Home",
-  repositoryTab: "code",
+  route: { kind: "home" },
   selectedRepository: "apple/swift",
   settingsOpen: false,
-  setActiveView: (activeView) => set({ activeView }),
-  setRepositoryTab: (repositoryTab) => set({ repositoryTab, activeView: "Repository" }),
+  navigate: (route) =>
+    set((state) => ({
+      route,
+      selectedRepository: route.kind === "repository" ? route.nameWithOwner : state.selectedRepository
+    })),
+  goHome: () => set({ route: { kind: "home" } }),
+  goToGlobalIssues: () => set({ route: { kind: "globalIssues" } }),
+  goToGlobalPulls: () => set({ route: { kind: "globalPulls" } }),
+  goToMailbox: () => set({ route: { kind: "mailbox" } }),
+  goToCollection: (collection) => set({ route: { kind: "collection", collection } }),
+  goToRepository: (nameWithOwner, tab = "code") =>
+    set({ selectedRepository: nameWithOwner, route: { kind: "repository", nameWithOwner, tab } }),
+  setRepositoryTab: (tab) =>
+    set((state) => {
+      const nameWithOwner =
+        state.route.kind === "repository"
+          ? state.route.nameWithOwner
+          : (state.selectedRepository ?? "apple/swift");
+
+      return {
+        selectedRepository: nameWithOwner,
+        route: { kind: "repository", nameWithOwner, tab }
+      };
+    }),
   setSelectedRepository: (selectedRepository) =>
-    set({ selectedRepository, activeView: "Repository", repositoryTab: "code" }),
+    set({
+      selectedRepository,
+      route: { kind: "repository", nameWithOwner: selectedRepository, tab: "code" }
+    }),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen })
 }));
-

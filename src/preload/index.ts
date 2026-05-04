@@ -6,11 +6,16 @@ import { ipcChannels, type ControlApi } from "@shared/ipc";
 const controlApi: ControlApi = {
   getAppState: () => ipcRenderer.invoke(ipcChannels.appState),
   getSettings: () => ipcRenderer.invoke(ipcChannels.getSettings),
-  updateSettings: (settings: Partial<ControlSettings>) => ipcRenderer.invoke(ipcChannels.updateSettings, settings),
+  updateSettings: (settings: Partial<ControlSettings>) =>
+    ipcRenderer.invoke(ipcChannels.updateSettings, settings),
   openExternal: (url: string) => ipcRenderer.invoke(ipcChannels.openExternal, url),
   github: {
     getViewer: () => ipcRenderer.invoke(ipcChannels.githubViewer),
+    getAccountProfile: (input = {}) => ipcRenderer.invoke(ipcChannels.githubAccountProfile, input),
     listRepositories: (input = {}) => ipcRenderer.invoke(ipcChannels.githubRepositories, input),
+    listAccountRepositories: (input = {}) => ipcRenderer.invoke(ipcChannels.githubAccountRepositories, input),
+    listAccountIssues: (input = {}) => ipcRenderer.invoke(ipcChannels.githubAccountIssues, input),
+    listAccountPullRequests: (input = {}) => ipcRenderer.invoke(ipcChannels.githubAccountPullRequests, input),
     getRepository: (input) => ipcRenderer.invoke(ipcChannels.githubRepository, input),
     listContents: (input) => ipcRenderer.invoke(ipcChannels.githubContents, input),
     listIssues: (input) => ipcRenderer.invoke(ipcChannels.githubIssues, input),

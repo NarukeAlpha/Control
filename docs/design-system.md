@@ -11,11 +11,21 @@ Control targets a glass shell inspired by the provided GitHub concept and Apple 
 
 ## Glass Rules
 
-- Use native Electron/macOS vibrancy at the window level.
-- Use CSS `backdrop-filter` only on shell surfaces.
+- On macOS, use `electron-liquid-glass` as the native window material. The renderer root, body, and app shell must stay transparent so the native glass remains visible.
+- Use a neutral native tint. Avoid colored native tints because active and inactive macOS window states can shift the surface toward cyan, yellow, or wallpaper-derived casts.
+- Use CSS `backdrop-filter` only on renderer panels that sit above the native shell, and keep those panels low-alpha and neutral.
 - Avoid backdrop blur on every table row.
 - Keep borders subtle and white-tinted to preserve the Music.app style.
 - Provide a settings toggle for reduced or solid glass.
+- Non-macOS fallback glass belongs behind a platform-scoped class only. It should not affect the macOS renderer path.
+
+## macOS Visual Verification
+
+- Verify focused and unfocused states on macOS before accepting Liquid Glass changes.
+- Check the window over neutral, blue, and yellow wallpapers to catch material tint regressions.
+- Confirm the titlebar drag region remains transparent except for controls marked as non-draggable.
+- Confirm the traffic light area, provider button, search field, and action buttons do not overlap at desktop widths.
+- Screenshots should include the repository page, account Home, global Issues, global Pull Requests, and mailbox routes once those routes are implemented.
 
 ## Layout Rules
 
@@ -43,4 +53,3 @@ The palette uses cool glass neutrals with restrained blue and green accents. Avo
 - Use `@tanstack/react-virtual` for repository and file lists.
 - Debounce or query-gate search.
 - Keep API work in the main process.
-

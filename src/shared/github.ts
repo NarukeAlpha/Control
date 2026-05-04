@@ -26,6 +26,62 @@ export interface Viewer {
   htmlUrl: string | null;
 }
 
+export interface RepositoryRef {
+  id: string;
+  owner: string;
+  name: string;
+  nameWithOwner: string;
+  htmlUrl: string;
+  defaultBranch: string | null;
+}
+
+export interface RepositoryCounts {
+  openIssues: number;
+  openPullRequests: number;
+  discussions: number;
+  projects: number;
+  releases: number;
+  forks: number;
+  stars: number;
+  watchers: number;
+}
+
+export interface LanguageStat {
+  name: string;
+  color: string | null;
+  size: number;
+  percent: number;
+}
+
+export interface ViewerRepositoryState {
+  hasStarred: boolean;
+  subscription: "IGNORED" | "SUBSCRIBED" | "UNSUBSCRIBED" | null;
+  permission: string | null;
+  canAdminister: boolean;
+  canSubscribe: boolean;
+}
+
+export interface GitHubAccountProfile {
+  id: string;
+  login: string;
+  name: string | null;
+  avatarUrl: string | null;
+  htmlUrl: string;
+  bio: string | null;
+  company: string | null;
+  location: string | null;
+  websiteUrl: string | null;
+  followers: number;
+  following: number;
+  repositoryCount: number;
+  starredRepositoryCount: number;
+  status: {
+    emoji: string | null;
+    message: string | null;
+  } | null;
+  pinnedRepositories: RepositorySummary[];
+}
+
 export interface AppState {
   platform: NodeJS.Platform;
   isMac: boolean;
@@ -52,6 +108,7 @@ export interface RepositorySummary {
   forkCount: number;
   watcherCount: number;
   openIssuesCount: number;
+  counts: RepositoryCounts;
   primaryLanguage: PrimaryLanguage | null;
   updatedAt: string | null;
   pushedAt: string | null;
@@ -68,9 +125,39 @@ export interface RepositoryDetail extends RepositorySummary {
   tagCount: number;
   readmeMarkdown: string | null;
   htmlUrl: string;
+  languages: LanguageStat[];
+  parent: RepositoryRef | null;
+  source: RepositoryRef | null;
+  viewerState: ViewerRepositoryState;
+  permissions: {
+    viewerPermission: string | null;
+    isArchived: boolean;
+    isDisabled: boolean;
+  };
 }
 
 export interface RepoListInput {
+  limit?: number;
+}
+
+export interface AccountProfileInput {
+  login?: string | null;
+}
+
+export interface AccountRepositoryInput {
+  login?: string | null;
+  limit?: number;
+}
+
+export interface AccountIssueListInput {
+  login?: string | null;
+  state?: "open" | "closed" | "all";
+  limit?: number;
+}
+
+export interface AccountPullRequestListInput {
+  login?: string | null;
+  state?: "open" | "closed" | "all";
   limit?: number;
 }
 
@@ -116,6 +203,7 @@ export interface IssueSummary {
   createdAt: string;
   updatedAt: string;
   htmlUrl: string;
+  repositoryNameWithOwner?: string | null;
 }
 
 export interface IssueListInput extends RepoDetailInput {
@@ -141,6 +229,7 @@ export interface PullRequestSummary {
   createdAt: string;
   updatedAt: string;
   htmlUrl: string;
+  repositoryNameWithOwner?: string | null;
 }
 
 export interface PullRequestListInput extends RepoDetailInput {
@@ -260,7 +349,11 @@ export interface GitHubMutationResult {
 
 export interface GitHubProvider {
   getViewer(): Promise<Viewer>;
+  getAccountProfile(input?: AccountProfileInput): Promise<GitHubAccountProfile>;
   listRepositories(input: RepoListInput): Promise<RepositorySummary[]>;
+  listAccountRepositories(input: AccountRepositoryInput): Promise<RepositorySummary[]>;
+  listAccountIssues(input: AccountIssueListInput): Promise<IssueSummary[]>;
+  listAccountPullRequests(input: AccountPullRequestListInput): Promise<PullRequestSummary[]>;
   getRepository(owner: string, repo: string): Promise<RepositoryDetail>;
   listContents(input: RepoContentsInput): Promise<RepoEntry[]>;
   listIssues(input: IssueListInput): Promise<IssueSummary[]>;
@@ -275,4 +368,3 @@ export interface GitHubProvider {
     input: TInput
   ): Promise<TResult>;
 }
-

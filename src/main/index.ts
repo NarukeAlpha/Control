@@ -18,6 +18,7 @@ import type {
   ReleasesInput,
   RepoContentsInput,
   RepoDetailInput,
+  RepoFileContentInput,
   SearchInput
 } from "@shared/github";
 import { ipcChannels } from "@shared/ipc";
@@ -133,6 +134,9 @@ function registerIpc(store: LocalStore, github: GitHubProviderManager): void {
   );
   ipcMain.handle(ipcChannels.githubContents, (_event, input: RepoContentsInput) =>
     github.listContents(input)
+  );
+  ipcMain.handle(ipcChannels.githubFileContent, (_event, input: RepoFileContentInput) =>
+    github.getFileContent(input)
   );
   ipcMain.handle(ipcChannels.githubIssues, (_event, input: IssueListInput) => github.listIssues(input));
   ipcMain.handle(ipcChannels.githubPullRequests, (_event, input: PullRequestListInput) =>

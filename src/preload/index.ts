@@ -18,6 +18,7 @@ const controlApi: ControlApi = {
     listAccountPullRequests: (input = {}) => ipcRenderer.invoke(ipcChannels.githubAccountPullRequests, input),
     getRepository: (input) => ipcRenderer.invoke(ipcChannels.githubRepository, input),
     listContents: (input) => ipcRenderer.invoke(ipcChannels.githubContents, input),
+    getFileContent: (input) => ipcRenderer.invoke(ipcChannels.githubFileContent, input),
     listIssues: (input) => ipcRenderer.invoke(ipcChannels.githubIssues, input),
     listPullRequests: (input) => ipcRenderer.invoke(ipcChannels.githubPullRequests, input),
     listDiscussions: (input) => ipcRenderer.invoke(ipcChannels.githubDiscussions, input),

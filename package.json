@@ -16,6 +16,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "test:e2e:profile": "playwright test --project=testing-profile",
+    "test:e2e:headed": "playwright test --project=testing-profile --headed",
     "format": "prettier --write ."
   },
   "dependencies": {

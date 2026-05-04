@@ -173,6 +173,10 @@ export interface RepoContentsInput {
   ref?: string | null;
 }
 
+export interface RepoFileContentInput extends RepoContentsInput {
+  path: string;
+}
+
 export interface RepoEntry {
   name: string;
   path: string;
@@ -183,6 +187,14 @@ export interface RepoEntry {
   downloadUrl: string | null;
   lastCommitMessage: string | null;
   lastCommitDate: string | null;
+}
+
+export interface RepoFileContent {
+  path: string;
+  name: string;
+  ref: string | null;
+  content: string;
+  htmlUrl: string;
 }
 
 export interface LabelSummary {
@@ -323,11 +335,13 @@ export type GitHubAction =
   | "addLabels"
   | "setAssignees"
   | "mergePullRequest"
+  | "createPullRequest"
   | "closePullRequest"
   | "reopenPullRequest"
   | "approvePullRequest"
   | "requestChanges"
   | "rerunWorkflow"
+  | "dispatchWorkflow"
   | "cancelWorkflow"
   | "createRelease"
   | "editRelease"
@@ -356,6 +370,7 @@ export interface GitHubProvider {
   listAccountPullRequests(input: AccountPullRequestListInput): Promise<PullRequestSummary[]>;
   getRepository(owner: string, repo: string): Promise<RepositoryDetail>;
   listContents(input: RepoContentsInput): Promise<RepoEntry[]>;
+  getFileContent(input: RepoFileContentInput): Promise<RepoFileContent>;
   listIssues(input: IssueListInput): Promise<IssueSummary[]>;
   listPullRequests(input: PullRequestListInput): Promise<PullRequestSummary[]>;
   listDiscussions(input: DiscussionListInput): Promise<DiscussionSummary[]>;

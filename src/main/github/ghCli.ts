@@ -28,6 +28,8 @@ import type {
   RepoContentsInput,
   RepoDetailInput,
   RepoEntry,
+  RepoFileContent,
+  RepoFileContentInput,
   RepoListInput,
   RepositoryCounts,
   RepositoryDetail,
@@ -275,12 +277,6 @@ export class GhCliProvider implements GitHubProvider {
         pushedAt
         defaultBranchRef { name }
         owner { login avatarUrl }
-        watchers { totalCount }
-        issues(states: OPEN) { totalCount }
-        pullRequests(states: OPEN) { totalCount }
-        discussions { totalCount }
-        projectsV2 { totalCount }
-        releases { totalCount }
         primaryLanguage { name color }
       }
     `,
@@ -409,6 +405,7 @@ export class GhCliProvider implements GitHubProvider {
   }
 
   async getRepository(owner: string, repo: string): Promise<RepositoryDetail> {
+    const readmeMarkdown = this.getReadme(owner, repo).catch(() => null);
     const data = await this.graphql<{
       repository: GitHubRepositoryNode & {
         url: string;
@@ -421,7 +418,6 @@ export class GhCliProvider implements GitHubProvider {
         tags: { totalCount: number };
         languages: GitHubLanguages;
         parent: GitHubRepositoryRefNode | null;
-        source: GitHubRepositoryRefNode | null;
         viewerHasStarred: boolean;
         viewerSubscription: ViewerRepositoryState["subscription"];
         viewerPermission: string | null;
@@ -471,14 +467,6 @@ export class GhCliProvider implements GitHubProvider {
             defaultBranchRef { name }
             owner { login }
           }
-          source {
-            id
-            name
-            nameWithOwner
-            url
-            defaultBranchRef { name }
-            owner { login }
-          }
           viewerHasStarred
           viewerSubscription
           viewerPermission
@@ -494,7 +482,6 @@ export class GhCliProvider implements GitHubProvider {
       { owner, repo }
     );
 
-    const readmeMarkdown = await this.getReadme(owner, repo).catch(() => null);
     const summary = mapRepositorySummary(data.repository);
 
     return {
@@ -505,11 +492,11 @@ export class GhCliProvider implements GitHubProvider {
       topics: data.repository.repositoryTopics.nodes.map((node) => node.topic.name),
       branchCount: data.repository.branches.totalCount,
       tagCount: data.repository.tags.totalCount,
-      readmeMarkdown,
+      readmeMarkdown: await readmeMarkdown,
       htmlUrl: data.repository.url,
       languages: mapLanguages(data.repository.languages),
       parent: mapRepositoryRef(data.repository.parent),
-      source: mapRepositoryRef(data.repository.source),
+      source: null,
       viewerState: {
         hasStarred: data.repository.viewerHasStarred,
         subscription: data.repository.viewerSubscription,
@@ -552,6 +539,25 @@ export class GhCliProvider implements GitHubProvider {
         }
         return a.name.localeCompare(b.name);
       });
+  }
+
+  async getFileContent(input: RepoFileContentInput): Promise<RepoFileContent> {
+    const encodedPath = encodePath(input.path);
+    const ref = input.ref ? `?ref=${encodeURIComponent(input.ref)}` : "";
+    const content = await this.restText(
+      "GET",
+      `/repos/${input.owner}/${input.repo}/contents/${encodedPath}${ref}`,
+      { accept: "application/vnd.github.raw" }
+    );
+
+    const branch = encodeURIComponent(input.ref ?? "HEAD");
+    return {
+      path: input.path,
+      name: input.path.split("/").pop() ?? input.path,
+      ref: input.ref ?? null,
+      content,
+      htmlUrl: `https://github.com/${input.owner}/${input.repo}/blob/${branch}/${encodedPath}`
+    };
   }
 
   async listIssues(input: IssueListInput): Promise<IssueSummary[]> {
@@ -758,12 +764,6 @@ export class GhCliProvider implements GitHubProvider {
               pushedAt
               defaultBranchRef { name }
               owner { login avatarUrl }
-              watchers { totalCount }
-              issues(states: OPEN) { totalCount }
-              pullRequests(states: OPEN) { totalCount }
-              discussions { totalCount }
-              projectsV2 { totalCount }
-              releases { totalCount }
               primaryLanguage { name color }
             }
           }
@@ -1044,8 +1044,8 @@ function mapRepositorySummary(node: GitHubRepositoryNode): RepositorySummary {
     isFork: node.isFork,
     stargazerCount: node.stargazerCount,
     forkCount: node.forkCount,
-    watcherCount: node.watchers.totalCount,
-    openIssuesCount: node.issues.totalCount,
+    watcherCount: node.watchers?.totalCount ?? 0,
+    openIssuesCount: node.issues?.totalCount ?? 0,
     counts: mapRepositoryCounts(node),
     primaryLanguage: node.primaryLanguage,
     updatedAt: node.updatedAt,
@@ -1057,14 +1057,14 @@ function mapRepositorySummary(node: GitHubRepositoryNode): RepositorySummary {
 
 function mapRepositoryCounts(node: GitHubRepositoryNode): RepositoryCounts {
   return {
-    openIssues: node.issues.totalCount,
-    openPullRequests: node.pullRequests.totalCount,
-    discussions: node.discussions.totalCount,
-    projects: node.projectsV2.totalCount,
-    releases: node.releases.totalCount,
+    openIssues: node.issues?.totalCount ?? 0,
+    openPullRequests: node.pullRequests?.totalCount ?? 0,
+    discussions: node.discussions?.totalCount ?? 0,
+    projects: node.projectsV2?.totalCount ?? 0,
+    releases: node.releases?.totalCount ?? 0,
     forks: node.forkCount,
     stars: node.stargazerCount,
-    watchers: node.watchers.totalCount
+    watchers: node.watchers?.totalCount ?? 0
   };
 }
 
@@ -1218,22 +1218,22 @@ interface GitHubRepositoryNode {
     login: string;
     avatarUrl: string | null;
   };
-  watchers: {
+  watchers?: {
     totalCount: number;
   };
-  issues: {
+  issues?: {
     totalCount: number;
   };
-  pullRequests: {
+  pullRequests?: {
     totalCount: number;
   };
-  discussions: {
+  discussions?: {
     totalCount: number;
   };
-  projectsV2: {
+  projectsV2?: {
     totalCount: number;
   };
-  releases: {
+  releases?: {
     totalCount: number;
   };
   primaryLanguage: {

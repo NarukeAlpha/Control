@@ -1,5 +1,7 @@
 import {
   Bell,
+  Bot,
+  Building2,
   BookOpen,
   CheckCircle2,
   ChevronDown,
@@ -7,22 +9,21 @@ import {
   Code2,
   ExternalLink,
   Eye,
+  File as FileIcon,
   Folder,
+  Gauge,
   GitBranch,
   GitFork,
   GitPullRequest,
   Home,
   Inbox,
-  Layers3,
   Lock,
-  MessageSquare,
   MoreHorizontal,
-  Package,
   PlayCircle,
   Plus,
   Search,
+  Settings,
   ShieldCheck,
-  Sparkles,
   Star,
   Tag,
   Workflow,
@@ -55,25 +56,20 @@ import { useUiStore, type AppRoute, type RepositoryTab } from "./stores/uiStore"
 import { firstMarkdownHeading, formatCompactNumber, formatRelativeDate } from "./utils/format";
 
 const navigation = [
-  { label: "Home", icon: Home },
-  { label: "Issues", icon: CircleDot, count: 12 },
-  { label: "Pull requests", icon: GitPullRequest, count: 5 },
-  { label: "Discussions", icon: MessageSquare },
-  { label: "Projects", icon: Layers3 },
-  { label: "Models", icon: Sparkles },
-  { label: "Codespaces", icon: Code2 },
-  { label: "Packages", icon: Package },
-  { label: "Stars", icon: Star }
-];
+  { key: "home", label: "Home", icon: Home },
+  { key: "repositories", label: "Repositories", icon: Code2 },
+  { key: "organizations", label: "Organizations", icon: Building2 },
+  { key: "mailbox", label: "Mailbox", icon: Inbox }
+] as const;
 
 const repoTabs: Array<{ key: RepositoryTab; label: string; icon: typeof Code2 }> = [
   { key: "code", label: "Code", icon: Code2 },
   { key: "issues", label: "Issues", icon: CircleDot },
   { key: "pulls", label: "Pull requests", icon: GitPullRequest },
+  { key: "agents", label: "Agents", icon: Bot },
   { key: "actions", label: "Actions", icon: PlayCircle },
-  { key: "projects", label: "Projects", icon: Layers3 },
-  { key: "security", label: "Security", icon: ShieldCheck },
-  { key: "insights", label: "Insights", icon: Workflow }
+  { key: "wiki", label: "Wiki", icon: BookOpen },
+  { key: "securityQuality", label: "Security and Quality", icon: Gauge }
 ];
 
 type RepositoryCountKey =
@@ -148,6 +144,16 @@ function firstNumber(...values: unknown[]): number | undefined {
 
 function repositoryPath(repository: RepositoryDetail, path = ""): string {
   return `${repository.htmlUrl}${path}`;
+}
+
+function encodeRepositoryPath(path: string): string {
+  return path.split("/").map(encodeURIComponent).join("/");
+}
+
+function repositoryEntryPath(repository: RepositoryDetail, entry: RepoEntry): string {
+  const ref = encodeURIComponent(repository.defaultBranch ?? "HEAD");
+  const entryKind = entry.type === "dir" ? "tree" : "blob";
+  return repositoryPath(repository, `/${entryKind}/${ref}/${encodeRepositoryPath(entry.path)}`);
 }
 
 function getRepositoryCounts(
@@ -254,6 +260,154 @@ function getForkMetadata(repository: RepositoryDetail): {
     sourceLabel: getRepositoryRefLabel(source),
     sourceUrl: getRepositoryRefUrl(source)
   };
+}
+
+function displayRepositoryName(repository: RepositorySummary | RepositoryDetail, viewerLogin?: string | null): string {
+  if (viewerLogin && repository.owner.toLowerCase() === viewerLogin.toLowerCase()) {
+    return titleCaseRepositoryName(repository.name);
+  }
+
+  return repository.nameWithOwner;
+}
+
+function titleCaseRepositoryName(name: string): string {
+  return name
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((part) => (part.length > 0 ? `${part.slice(0, 1).toUpperCase()}${part.slice(1)}` : part))
+    .join(" ");
+}
+
+function repositoryActivityDate(repository: RepositorySummary): string | null {
+  return repository.pushedAt ?? repository.updatedAt;
+}
+
+function sortRepositoriesByActivity(repositories: RepositorySummary[]): RepositorySummary[] {
+  return [...repositories].sort((a, b) => {
+    const aTime = new Date(repositoryActivityDate(a) ?? 0).getTime();
+    const bTime = new Date(repositoryActivityDate(b) ?? 0).getTime();
+    return bTime - aTime;
+  });
+}
+
+const vscodeIconsVersion = "v12.17.0";
+const vscodeIconsBaseUrl = `https://cdn.jsdelivr.net/gh/vscode-icons/vscode-icons@${vscodeIconsVersion}/icons`;
+
+const folderIconNames: Record<string, string> = {
+  ".github": "folder_type_github.svg",
+  ".vscode": "folder_type_vscode.svg",
+  docs: "folder_type_docs.svg",
+  documentation: "folder_type_docs.svg",
+  src: "folder_type_src.svg",
+  source: "folder_type_src.svg",
+  test: "folder_type_test.svg",
+  tests: "folder_type_test.svg",
+  lib: "folder_type_library.svg",
+  packages: "folder_type_package.svg",
+  scripts: "folder_type_tools.svg",
+  assets: "folder_type_asset.svg"
+};
+
+const fileNameIconNames: Record<string, string> = {
+  "package.json": "file_type_node.svg",
+  "package-lock.json": "file_type_npm.svg",
+  "pnpm-lock.yaml": "file_type_pnpm.svg",
+  "yarn.lock": "file_type_yarn.svg",
+  "bun.lockb": "file_type_bun.svg",
+  "tsconfig.json": "file_type_tsconfig.svg",
+  "vite.config.ts": "file_type_vite.svg",
+  "vite.config.js": "file_type_vite.svg",
+  "vitest.config.ts": "file_type_vitest.svg",
+  "eslint.config.mjs": "file_type_eslint.svg",
+  ".eslintrc": "file_type_eslint.svg",
+  ".prettierrc": "file_type_prettier.svg",
+  "prettier.config.cjs": "file_type_prettier.svg",
+  "readme.md": "file_type_markdown.svg",
+  "license": "file_type_license.svg",
+  "license.txt": "file_type_license.svg",
+  "cmakelists.txt": "file_type_cmake.svg",
+  ".gitignore": "file_type_git.svg",
+  dockerfile: "file_type_docker.svg"
+};
+
+const extensionIconNames: Record<string, string> = {
+  ts: "file_type_typescript.svg",
+  tsx: "file_type_reactts.svg",
+  js: "file_type_js.svg",
+  jsx: "file_type_reactjs.svg",
+  mjs: "file_type_js.svg",
+  cjs: "file_type_js.svg",
+  json: "file_type_json.svg",
+  css: "file_type_css.svg",
+  scss: "file_type_scss.svg",
+  html: "file_type_html.svg",
+  md: "file_type_markdown.svg",
+  yml: "file_type_yaml.svg",
+  yaml: "file_type_yaml.svg",
+  toml: "file_type_toml.svg",
+  xml: "file_type_xml.svg",
+  sh: "file_type_shell.svg",
+  zsh: "file_type_shell.svg",
+  py: "file_type_python.svg",
+  rb: "file_type_ruby.svg",
+  go: "file_type_go.svg",
+  rs: "file_type_rust.svg",
+  swift: "file_type_swift.svg",
+  c: "file_type_c.svg",
+  h: "file_type_c.svg",
+  cpp: "file_type_cpp.svg",
+  hpp: "file_type_cpp.svg",
+  java: "file_type_java.svg",
+  kt: "file_type_kotlin.svg",
+  php: "file_type_php.svg",
+  png: "file_type_image.svg",
+  jpg: "file_type_image.svg",
+  jpeg: "file_type_image.svg",
+  gif: "file_type_image.svg",
+  svg: "file_type_svg.svg",
+  pdf: "file_type_pdf.svg",
+  zip: "file_type_zip.svg"
+};
+
+function iconUrlForEntry(entry: RepoEntry): string {
+  if (entry.type === "dir") {
+    const folderIcon = folderIconNames[entry.name.toLowerCase()] ?? "default_folder.svg";
+    return `${vscodeIconsBaseUrl}/${folderIcon}`;
+  }
+
+  const lowerName = entry.name.toLowerCase();
+  const fileNameIcon = fileNameIconNames[lowerName];
+  if (fileNameIcon) {
+    return `${vscodeIconsBaseUrl}/${fileNameIcon}`;
+  }
+
+  const extension = lowerName.includes(".") ? lowerName.split(".").pop() : null;
+  return `${vscodeIconsBaseUrl}/${extension ? (extensionIconNames[extension] ?? "default_file.svg") : "default_file.svg"}`;
+}
+
+function EntryIcon({ entry }: { entry: RepoEntry }): JSX.Element {
+  const iconUrl = useMemo(() => iconUrlForEntry(entry), [entry]);
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const [loadedUrl, setLoadedUrl] = useState<string | null>(null);
+  const failed = failedUrl === iconUrl;
+  const loaded = loadedUrl === iconUrl;
+
+  return (
+    <span className="file-icon-wrap">
+      {(!loaded || failed) && (entry.type === "dir" ? <Folder size={18} /> : <FileIcon size={17} />)}
+      {!failed && (
+        <img
+          className={`file-type-icon ${loaded ? "loaded" : ""}`}
+          src={iconUrl}
+          alt=""
+          aria-hidden="true"
+          loading="lazy"
+          onLoad={() => setLoadedUrl(iconUrl)}
+          onError={() => setFailedUrl(iconUrl)}
+        />
+      )}
+    </span>
+  );
 }
 
 function normalizeLanguageStats(repository: RepositoryDetail): LanguageStat[] {
@@ -363,14 +517,12 @@ function languageTotalLabel(languages: LanguageStat[]): string | null {
 
 function routeTitle(route: AppRoute): string {
   switch (route.kind) {
-    case "globalIssues":
-      return "Issues";
-    case "globalPulls":
-      return "Pull requests";
     case "mailbox":
       return "Mailbox";
-    case "collection":
-      return route.collection[0].toUpperCase() + route.collection.slice(1);
+    case "repositories":
+      return "Repositories";
+    case "organizations":
+      return "Organizations";
     case "repository":
       return route.nameWithOwner;
     case "home":
@@ -384,11 +536,7 @@ export function App(): JSX.Element {
   const queryClient = useQueryClient();
   const route = useUiStore((state) => state.route);
   const selectedRepository = useUiStore((state) => state.selectedRepository);
-  const setSelectedRepository = useUiStore((state) => state.setSelectedRepository);
   const goToRepository = useUiStore((state) => state.goToRepository);
-  const goToGlobalIssues = useUiStore((state) => state.goToGlobalIssues);
-  const goToGlobalPulls = useUiStore((state) => state.goToGlobalPulls);
-  const goToMailbox = useUiStore((state) => state.goToMailbox);
   const settingsOpen = useUiStore((state) => state.settingsOpen);
   const setSettingsOpen = useUiStore((state) => state.setSettingsOpen);
 
@@ -409,73 +557,84 @@ export function App(): JSX.Element {
 
   const accountIssues = useQuery({
     queryKey: ["account-issues"],
-    queryFn: () => api.github.listAccountIssues({ state: "open", limit: 30 })
+    queryFn: () => api.github.listAccountIssues({ state: "open", limit: 30 }),
+    enabled: route.kind === "home" || route.kind === "mailbox"
   });
 
   const accountPulls = useQuery({
     queryKey: ["account-pulls"],
-    queryFn: () => api.github.listAccountPullRequests({ state: "open", limit: 30 })
+    queryFn: () => api.github.listAccountPullRequests({ state: "open", limit: 30 }),
+    enabled: route.kind === "home" || route.kind === "mailbox"
   });
 
   const isRepositoryRoute = route.kind === "repository";
+  const activeRepositoryTab = isRepositoryRoute ? route.tab : "code";
   const effectiveRepository =
     (isRepositoryRoute ? route.nameWithOwner : selectedRepository) ??
     repositories.data?.[0]?.nameWithOwner ??
     "apple/swift";
   const [owner = "apple", repo = "swift"] = effectiveRepository.split("/");
+  const hasRepositoryParts = Boolean(owner && repo);
 
   const repository = useQuery({
     queryKey: ["repository", owner, repo],
     queryFn: () => api.github.getRepository({ owner, repo }),
-    enabled: isRepositoryRoute && Boolean(owner && repo)
+    enabled: isRepositoryRoute && hasRepositoryParts,
+    staleTime: 120_000
   });
 
   const contents = useQuery({
     queryKey: ["contents", owner, repo, repository.data?.defaultBranch],
     queryFn: () => api.github.listContents({ owner, repo, ref: repository.data?.defaultBranch ?? undefined }),
-    enabled: isRepositoryRoute && Boolean(owner && repo)
+    enabled: isRepositoryRoute && activeRepositoryTab === "code" && hasRepositoryParts && repository.isSuccess,
+    staleTime: 120_000
   });
 
   const issues = useQuery({
     queryKey: ["issues", owner, repo],
     queryFn: () => api.github.listIssues({ owner, repo, state: "open" }),
-    enabled: isRepositoryRoute && Boolean(owner && repo)
+    enabled: isRepositoryRoute && activeRepositoryTab === "issues" && hasRepositoryParts,
+    staleTime: 60_000
   });
 
   const pulls = useQuery({
     queryKey: ["pulls", owner, repo],
     queryFn: () => api.github.listPullRequests({ owner, repo, state: "open" }),
-    enabled: isRepositoryRoute && Boolean(owner && repo)
+    enabled: isRepositoryRoute && activeRepositoryTab === "pulls" && hasRepositoryParts,
+    staleTime: 60_000
   });
 
   const discussions = useQuery({
     queryKey: ["discussions", owner, repo],
     queryFn: () => api.github.listDiscussions({ owner, repo, limit: 30 }),
-    enabled: isRepositoryRoute && Boolean(owner && repo)
+    enabled: false
   });
 
   const actions = useQuery({
     queryKey: ["actions", owner, repo],
     queryFn: () => api.github.listActions({ owner, repo, limit: 20 }),
-    enabled: isRepositoryRoute && Boolean(owner && repo)
+    enabled: isRepositoryRoute && activeRepositoryTab === "actions" && hasRepositoryParts,
+    staleTime: 60_000
   });
 
   const projects = useQuery({
     queryKey: ["projects", owner, repo],
     queryFn: () => api.github.listProjects({ owner, repo, limit: 20 }),
-    enabled: isRepositoryRoute && Boolean(owner && repo)
+    enabled: false
   });
 
   const releases = useQuery({
     queryKey: ["releases", owner, repo],
     queryFn: () => api.github.listReleases({ owner, repo, limit: 20 }),
-    enabled: isRepositoryRoute && Boolean(owner && repo)
+    enabled: isRepositoryRoute && hasRepositoryParts && repository.isSuccess,
+    staleTime: 120_000
   });
 
   const contributors = useQuery({
     queryKey: ["contributors", owner, repo],
     queryFn: () => api.github.listContributors({ owner, repo }),
-    enabled: isRepositoryRoute && Boolean(owner && repo)
+    enabled: isRepositoryRoute && hasRepositoryParts && repository.isSuccess,
+    staleTime: 120_000
   });
 
   const mutation = useMutation({
@@ -493,25 +652,23 @@ export function App(): JSX.Element {
     <div className={shellClass}>
       <Sidebar
         appState={appState.data}
+        profile={accountProfile.data}
         repositories={repositories.data ?? []}
         selectedRepository={effectiveRepository}
         route={route}
-        onSelectRepository={setSelectedRepository}
+        onSelectRepository={goToRepository}
         onOpenSettings={() => setSettingsOpen(true)}
       />
 
       <TopBar
         viewer={appState.data?.viewer ?? null}
         selectedRepository={selectedRepository}
-        onGoIssues={goToGlobalIssues}
-        onGoPulls={goToGlobalPulls}
-        onGoMailbox={goToMailbox}
         onGoRepository={() => goToRepository(effectiveRepository)}
         onOpenExternal={(url) => void api.openExternal(url)}
         onOpenSettings={() => setSettingsOpen(true)}
       />
 
-      <section className="workspace">
+      <section className={isRepositoryRoute ? "workspace" : "workspace workspace-wide"}>
         {!appState.data?.gh.authenticated && <SetupPanel appState={appState.data} />}
 
         <main className="content-scroll">
@@ -531,13 +688,23 @@ export function App(): JSX.Element {
             <RepositoryPage
               repository={repository.data}
               contents={contents.data ?? []}
+              contentsLoading={contents.isLoading || contents.isFetching}
               issues={issues.data ?? []}
+              issuesLoading={issues.isLoading || issues.isFetching}
               pulls={pulls.data ?? []}
+              pullsLoading={pulls.isLoading || pulls.isFetching}
               discussions={discussions.data ?? []}
               actions={actions.data ?? []}
+              actionsLoading={actions.isLoading || actions.isFetching}
               projects={projects.data ?? []}
               loading={repository.isLoading}
-              error={repository.error ?? contents.error ?? issues.error ?? pulls.error}
+              error={
+                repository.error ??
+                (activeRepositoryTab === "code" ? contents.error : null) ??
+                (activeRepositoryTab === "issues" ? issues.error : null) ??
+                (activeRepositoryTab === "pulls" ? pulls.error : null) ??
+                (activeRepositoryTab === "actions" ? actions.error : null)
+              }
               onOpenExternal={(url) => void api.openExternal(url)}
               onMutate={(action, dangerous, payload = {}) => {
                 if (dangerous && !window.confirm(`Run ${action} on ${owner}/${repo}?`)) {
@@ -551,23 +718,26 @@ export function App(): JSX.Element {
           {route.kind !== "home" && route.kind !== "repository" && (
             <CollectionView
               title={routeTitle(route)}
+              routeKind={route.kind}
               issues={accountIssues.data ?? []}
               pulls={accountPulls.data ?? []}
-              discussions={[]}
-              projects={[]}
               repositories={repositories.data ?? []}
+              viewerLogin={appState.data?.viewer?.login ?? accountProfile.data?.login ?? null}
               onOpenExternal={(url) => void api.openExternal(url)}
+              onOpenRepository={goToRepository}
             />
           )}
         </main>
       </section>
 
-      <RightRail
-        repository={isRepositoryRoute ? repository.data : undefined}
-        releases={releases.data ?? []}
-        contributors={contributors.data ?? []}
-        onOpenExternal={(url) => void api.openExternal(url)}
-      />
+      {isRepositoryRoute && (
+        <RightRail
+          repository={repository.data}
+          releases={releases.data ?? []}
+          contributors={contributors.data ?? []}
+          onOpenExternal={(url) => void api.openExternal(url)}
+        />
+      )}
 
       {settingsOpen && (
         <SettingsPanel
@@ -588,17 +758,21 @@ function isNavigationActive(route: AppRoute, label: string): boolean {
   if (label === "Home") {
     return route.kind === "home";
   }
-  if (label === "Issues") {
-    return route.kind === "globalIssues";
+  if (label === "Repositories") {
+    return route.kind === "repositories";
   }
-  if (label === "Pull requests") {
-    return route.kind === "globalPulls";
+  if (label === "Organizations") {
+    return route.kind === "organizations";
   }
-  return route.kind === "collection" && route.collection === label.toLowerCase().replace(" ", "");
+  if (label === "Mailbox") {
+    return route.kind === "mailbox";
+  }
+  return false;
 }
 
 function Sidebar({
   appState,
+  profile,
   repositories,
   selectedRepository,
   route,
@@ -606,6 +780,7 @@ function Sidebar({
   onOpenSettings
 }: {
   appState?: AppState;
+  profile?: GitHubAccountProfile;
   repositories: RepositorySummary[];
   selectedRepository: string;
   route: AppRoute;
@@ -613,12 +788,16 @@ function Sidebar({
   onOpenSettings(): void;
 }): JSX.Element {
   const goHome = useUiStore((state) => state.goHome);
-  const goToGlobalIssues = useUiStore((state) => state.goToGlobalIssues);
-  const goToGlobalPulls = useUiStore((state) => state.goToGlobalPulls);
-  const goToCollection = useUiStore((state) => state.goToCollection);
+  const goToRepositories = useUiStore((state) => state.goToRepositories);
+  const goToOrganizations = useUiStore((state) => state.goToOrganizations);
+  const goToMailbox = useUiStore((state) => state.goToMailbox);
   const parentRef = useRef<HTMLDivElement | null>(null);
+  const viewerLogin = appState?.viewer?.login ?? profile?.login ?? null;
+  const pinnedRepositories = profile?.pinnedRepositories?.length
+    ? profile.pinnedRepositories
+    : repositories.slice(0, 6);
   const virtualizer = useVirtualizer({
-    count: repositories.length,
+    count: pinnedRepositories.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => 45,
     overscan: 8
@@ -626,12 +805,6 @@ function Sidebar({
 
   return (
     <aside className="sidebar">
-      <div className="brand-row">
-        <div className="traffic-spacer" />
-        <div className="brand-mark">GH</div>
-        <strong>GitHub</strong>
-      </div>
-
       <nav className="nav-list">
         {navigation.map((item) => {
           const Icon = item.icon;
@@ -641,27 +814,24 @@ function Sidebar({
               key={item.label}
               type="button"
               onClick={() => {
-                if (item.label === "Home") {
+                if (item.key === "home") {
                   goHome();
                   return;
                 }
-                if (item.label === "Issues") {
-                  goToGlobalIssues();
+                if (item.key === "repositories") {
+                  goToRepositories();
                   return;
                 }
-                if (item.label === "Pull requests") {
-                  goToGlobalPulls();
+                if (item.key === "organizations") {
+                  goToOrganizations();
                   return;
                 }
-                goToCollection(
-                  item.label.toLowerCase().replace(" ", "") as Parameters<typeof goToCollection>[0]
-                );
+                goToMailbox();
               }}
               title={item.label}
             >
               <Icon size={18} />
               <span>{item.label}</span>
-              {item.count && <span className="count-pill">{item.count}</span>}
             </button>
           );
         })}
@@ -669,7 +839,7 @@ function Sidebar({
 
       <section className="repo-section">
         <div className="section-title-row">
-          <span>Your repositories</span>
+          <span>Pinned repositories</span>
           <div className="icon-cluster">
             <button className="icon-button" type="button" title="Search repositories">
               <Search size={15} />
@@ -683,7 +853,7 @@ function Sidebar({
         <div className="repo-list" ref={parentRef}>
           <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
             {virtualizer.getVirtualItems().map((virtualRow) => {
-              const repository = repositories[virtualRow.index];
+              const repository = pinnedRepositories[virtualRow.index];
               return (
                 <button
                   className={`repo-item ${selectedRepository === repository.nameWithOwner ? "selected" : ""}`}
@@ -695,7 +865,7 @@ function Sidebar({
                   onClick={() => onSelectRepository(repository.nameWithOwner)}
                 >
                   <span className="repo-avatar">{repository.owner.slice(0, 1).toUpperCase()}</span>
-                  <span>{repository.nameWithOwner}</span>
+                  <span>{displayRepositoryName(repository, viewerLogin)}</span>
                   {repository.isPrivate && <Lock size={13} />}
                 </button>
               );
@@ -703,7 +873,7 @@ function Sidebar({
           </div>
         </div>
 
-        <button className="show-more" type="button">
+        <button className="show-more" type="button" onClick={goToRepositories}>
           Show more
         </button>
       </section>
@@ -727,18 +897,12 @@ function Sidebar({
 function TopBar({
   viewer,
   selectedRepository,
-  onGoIssues,
-  onGoPulls,
-  onGoMailbox,
   onGoRepository,
   onOpenExternal,
   onOpenSettings
 }: {
   viewer: AppState["viewer"];
   selectedRepository: string | null;
-  onGoIssues(): void;
-  onGoPulls(): void;
-  onGoMailbox(): void;
   onGoRepository(): void;
   onOpenExternal(url: string): void;
   onOpenSettings(): void;
@@ -811,39 +975,23 @@ function TopBar({
         <button
           className="icon-button glass"
           type="button"
-          title="Issues"
-          aria-label="Issues"
-          onClick={onGoIssues}
-        >
-          <CircleDot size={18} />
-        </button>
-        <button
-          className="icon-button glass"
-          type="button"
-          title="Pull requests"
-          aria-label="Pull requests"
-          onClick={onGoPulls}
-        >
-          <GitPullRequest size={18} />
-        </button>
-        <button
-          className="titlebar-action-button"
-          type="button"
-          title={selectedRepository ? `Open ${selectedRepository}` : "Repository"}
-          onClick={onGoRepository}
-        >
-          <Code2 size={16} />
-          <span>{selectedRepository?.split("/")[1] ?? "Repo"}</span>
-        </button>
-        <button
-          className="icon-button glass"
-          type="button"
-          title="Mailbox"
-          aria-label="Mailbox"
-          onClick={onGoMailbox}
+          title="Notifications"
+          aria-label="Notifications"
+          onClick={() => onOpenExternal("https://github.com/notifications")}
         >
           <Bell size={18} />
         </button>
+        {selectedRepository && (
+          <button
+            className="titlebar-action-button"
+            type="button"
+            title={`Open ${selectedRepository}`}
+            onClick={onGoRepository}
+          >
+            <Code2 size={16} />
+            <span>{selectedRepository.split("/")[1] ?? "Repo"}</span>
+          </button>
+        )}
         <button className="avatar-button" type="button" onClick={onOpenSettings} title="Account settings">
           {viewer?.avatarUrl ? <img src={viewer.avatarUrl} alt="" /> : <span>C</span>}
         </button>
@@ -880,9 +1028,13 @@ function HomeDashboard({
 }): JSX.Element {
   const login = profile?.login ?? appState?.viewer?.login ?? "github";
   const displayName = profile?.name ?? appState?.viewer?.name ?? login;
-  const pinnedRepositories = profile?.pinnedRepositories?.length
-    ? profile.pinnedRepositories
-    : repositories.slice(0, 6);
+  const latestRepositories = sortRepositoriesByActivity(repositories).slice(0, 6);
+  const workItems = [
+    ...issues.slice(0, 5).map((issue) => ({ ...issue, kind: "issue" as const })),
+    ...pulls.slice(0, 5).map((pull) => ({ ...pull, kind: "pull" as const }))
+  ]
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    .slice(0, 8);
 
   return (
     <section className="home-dashboard">
@@ -910,27 +1062,27 @@ function HomeDashboard({
       <section className="home-metrics">
         <Metric label="Repositories" value={profile?.repositoryCount ?? repositories.length} />
         <Metric label="Starred" value={profile?.starredRepositoryCount ?? 0} />
-        <Metric label="Followers" value={profile?.followers ?? 0} />
-        <Metric label="Following" value={profile?.following ?? 0} />
+        <Metric label="Open issues" value={issues.length} />
+        <Metric label="Open PRs" value={pulls.length} />
       </section>
 
       <section className="home-grid">
         <article className="home-panel">
           <header>
-            <h2>Pinned repositories</h2>
+            <h2>Latest repository activity</h2>
           </header>
           <div className="home-repo-grid">
-            {pinnedRepositories.map((repository) => (
+            {latestRepositories.map((repository) => (
               <button
                 key={repository.id}
                 type="button"
                 onClick={() => onOpenRepository(repository.nameWithOwner)}
               >
-                <strong>{repository.nameWithOwner}</strong>
+                <strong>{displayRepositoryName(repository, login)}</strong>
                 <small>{repository.description ?? "Repository"}</small>
                 <span>
-                  {repository.primaryLanguage?.name ?? "Code"} ·{" "}
-                  {formatCompactNumber(repository.counts.openIssues)} issues
+                  {repository.primaryLanguage?.name ?? "Code"} · updated{" "}
+                  {formatRelativeDate(repositoryActivityDate(repository))}
                 </span>
               </button>
             ))}
@@ -939,21 +1091,22 @@ function HomeDashboard({
 
         <article className="home-panel">
           <header>
-            <h2>Inbox</h2>
+            <h2>Your work</h2>
           </header>
           <div className="table-panel compact-table">
-            {[...issues.slice(0, 4), ...pulls.slice(0, 4)].slice(0, 6).map((item) => (
+            {workItems.map((item) => (
               <button
                 key={`${item.repositoryNameWithOwner ?? "item"}-${item.number}`}
                 className="issue-row"
                 type="button"
                 onClick={() => onOpenExternal(item.htmlUrl)}
               >
-                {"isDraft" in item ? <GitPullRequest size={17} /> : <CircleDot size={17} />}
+                {item.kind === "pull" ? <GitPullRequest size={17} /> : <CircleDot size={17} />}
                 <div>
                   <strong>{item.title}</strong>
                   <small>
-                    {item.repositoryNameWithOwner ?? "GitHub"} #{item.number}
+                    {item.repositoryNameWithOwner ?? "GitHub"} #{item.number} · updated{" "}
+                    {formatRelativeDate(item.updatedAt)}
                   </small>
                 </div>
               </button>
@@ -971,10 +1124,14 @@ function HomeDashboard({
 function RepositoryPage({
   repository,
   contents,
+  contentsLoading,
   issues,
+  issuesLoading,
   pulls,
+  pullsLoading,
   discussions,
   actions,
+  actionsLoading,
   projects,
   loading,
   error,
@@ -983,10 +1140,14 @@ function RepositoryPage({
 }: {
   repository?: RepositoryDetail;
   contents: RepoEntry[];
+  contentsLoading: boolean;
   issues: IssueSummary[];
+  issuesLoading: boolean;
   pulls: PullRequestSummary[];
+  pullsLoading: boolean;
   discussions: DiscussionSummary[];
   actions: WorkflowRunSummary[];
+  actionsLoading: boolean;
   projects: ProjectSummary[];
   loading: boolean;
   error: Error | null;
@@ -1017,14 +1178,16 @@ function RepositoryPage({
   const watchAction: GitHubAction = viewerState.isWatching ? "unwatch" : "watch";
   const tabCounts: Partial<Record<RepositoryTab, number>> = {
     issues: counts.issues,
-    pulls: counts.pulls,
-    projects: counts.projects
+    pulls: counts.pulls
   };
 
   return (
     <article className="repo-page">
       <section className="repo-hero">
-        <div className="repo-icon">{repo.owner.slice(0, 1).toUpperCase()}</div>
+        <div className="repo-icon">
+          <span>{repo.owner.slice(0, 1).toUpperCase()}</span>
+          {repo.avatarUrl && <img src={repo.avatarUrl} alt="" onError={(event) => event.currentTarget.remove()} />}
+        </div>
         <div className="repo-title-block">
           <div className="repo-title-line">
             <h1>
@@ -1103,6 +1266,13 @@ function RepositoryPage({
           <button type="button" onClick={() => onOpenExternal(repo.htmlUrl)} title="Open on GitHub">
             <ExternalLink size={16} /> Open
           </button>
+          <button
+            type="button"
+            onClick={() => onOpenExternal(repositoryPath(repo, "/settings"))}
+            title="Repository settings"
+          >
+            <Settings size={16} /> Settings
+          </button>
         </div>
       </section>
 
@@ -1126,26 +1296,44 @@ function RepositoryPage({
         })}
       </nav>
 
-      {tab === "code" && <CodeTab repository={repo} contents={contents} onOpenExternal={onOpenExternal} />}
+      {tab === "code" && (
+        <CodeTab
+          repository={repo}
+          contents={contents}
+          contentsLoading={contentsLoading}
+          onOpenExternal={onOpenExternal}
+        />
+      )}
       {tab === "issues" && (
-        <IssuesTab repository={repo} issues={issues} onMutate={onMutate} onOpenExternal={onOpenExternal} />
+        <IssuesTab
+          repository={repo}
+          issues={issues}
+          loading={issuesLoading}
+          onMutate={onMutate}
+          onOpenExternal={onOpenExternal}
+        />
       )}
       {tab === "pulls" && (
         <PullRequestsTab
           repository={repo}
           pulls={pulls}
+          loading={pullsLoading}
           onMutate={onMutate}
           onOpenExternal={onOpenExternal}
         />
       )}
       {tab === "actions" && (
-        <ActionsTab repository={repo} actions={actions} onMutate={onMutate} onOpenExternal={onOpenExternal} />
+        <ActionsTab
+          repository={repo}
+          actions={actions}
+          loading={actionsLoading}
+          onMutate={onMutate}
+          onOpenExternal={onOpenExternal}
+        />
       )}
-      {tab === "projects" && (
-        <ProjectsTab repository={repo} projects={projects} onOpenExternal={onOpenExternal} />
-      )}
-      {tab === "security" && <SecurityTab repository={repo} onOpenExternal={onOpenExternal} />}
-      {tab === "insights" && <InsightsTab counts={counts} discussions={discussions} />}
+      {tab === "agents" && <AgentsTab repository={repo} onOpenExternal={onOpenExternal} />}
+      {tab === "wiki" && <WikiTab repository={repo} onOpenExternal={onOpenExternal} />}
+      {tab === "securityQuality" && <SecurityQualityTab repository={repo} onOpenExternal={onOpenExternal} />}
     </article>
   );
 }
@@ -1153,19 +1341,25 @@ function RepositoryPage({
 function CodeTab({
   repository,
   contents,
+  contentsLoading,
   onOpenExternal
 }: {
   repository: RepositoryDetail;
   contents: RepoEntry[];
+  contentsLoading: boolean;
   onOpenExternal(url: string): void;
 }): JSX.Element {
   const parentRef = useRef<HTMLDivElement | null>(null);
+  const repositoryUpdatedAt = repositoryActivityDate(repository);
   const virtualizer = useVirtualizer({
     count: contents.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => 36,
     overscan: 8
   });
+  const virtualRows = virtualizer.getVirtualItems();
+  const visibleFileRows =
+    virtualRows.length > 0 ? virtualRows : contents.map((_, index) => ({ index, start: index * 36 }));
 
   return (
     <section className="code-layout">
@@ -1201,35 +1395,39 @@ function CodeTab({
 
       <div className="file-table">
         <div className="commit-row">
-          <span className="mini-avatar">S</span>
-          <strong>slightbug</strong>
-          <span>Add Sendable support for @MainActor types</span>
+          <span className="mini-avatar">{repository.owner.slice(0, 1).toUpperCase()}</span>
+          <strong>{repository.owner}</strong>
+          <span>{repository.description ?? `${repository.name} repository`}</span>
           <CheckCircle2 size={16} />
-          <small>7f3a2c1</small>
-          <small>2h ago</small>
-          <small>1,562 commits</small>
+          <small>{repository.defaultBranch ?? "HEAD"}</small>
+          <small>{formatRelativeDate(repositoryUpdatedAt)}</small>
+          <small>updated</small>
         </div>
         <div className="virtual-file-list" ref={parentRef}>
-          <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
-            {virtualizer.getVirtualItems().map((virtualRow) => {
-              const item = contents[virtualRow.index];
-              return (
-                <button
-                  className="file-row"
-                  key={item.sha}
-                  type="button"
-                  style={{ transform: `translateY(${virtualRow.start}px)` }}
-                  onClick={() => item.htmlUrl && onOpenExternal(item.htmlUrl)}
-                  title={item.htmlUrl ? `Open ${item.path} on GitHub` : item.path}
-                >
-                  {item.type === "dir" ? <Folder size={18} /> : <BookOpen size={17} />}
-                  <strong>{item.name}</strong>
-                  <span>{item.lastCommitMessage ?? "Updated from GitHub"}</span>
-                  <time>{formatRelativeDate(item.lastCommitDate)}</time>
-                </button>
-              );
-            })}
-          </div>
+          {contentsLoading && contents.length === 0 ? (
+            <div className="empty-state">Loading files...</div>
+          ) : (
+            <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
+              {visibleFileRows.map((virtualRow) => {
+                const item = contents[virtualRow.index];
+                return (
+                  <button
+                    className="file-row"
+                    key={item.sha}
+                    type="button"
+                    style={{ transform: `translateY(${virtualRow.start}px)` }}
+                    onClick={() => onOpenExternal(repositoryEntryPath(repository, item))}
+                    title={`Open ${item.path} on GitHub`}
+                  >
+                    <EntryIcon entry={item} />
+                    <strong>{item.name}</strong>
+                    <span>{item.lastCommitMessage ?? (item.type === "dir" ? "Open folder" : "Open file")}</span>
+                    <time>{formatRelativeDate(item.lastCommitDate ?? repositoryUpdatedAt)}</time>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
@@ -1248,7 +1446,6 @@ function CodeTab({
                 ?.trim() ?? "README content is available from GitHub."}
             </p>
           </div>
-          <div className="readme-mark">S</div>
         </div>
       </section>
     </section>
@@ -1258,11 +1455,13 @@ function CodeTab({
 function IssuesTab({
   repository,
   issues,
+  loading,
   onOpenExternal,
   onMutate
 }: {
   repository: RepositoryDetail;
   issues: IssueSummary[];
+  loading: boolean;
   onOpenExternal(url: string): void;
   onMutate(action: GitHubAction, dangerous: boolean, payload?: Record<string, unknown>): void;
 }): JSX.Element {
@@ -1273,6 +1472,7 @@ function IssuesTab({
           <Plus size={16} /> New issue
         </button>
       </div>
+      {loading && issues.length === 0 && <div className="empty-state">Loading issues...</div>}
       {issues.map((issue) => (
         <div className="issue-row" key={issue.id}>
           <CircleDot size={17} />
@@ -1302,11 +1502,13 @@ function IssuesTab({
 function PullRequestsTab({
   repository,
   pulls,
+  loading,
   onOpenExternal,
   onMutate
 }: {
   repository: RepositoryDetail;
   pulls: PullRequestSummary[];
+  loading: boolean;
   onOpenExternal(url: string): void;
   onMutate(action: GitHubAction, dangerous: boolean, payload?: Record<string, unknown>): void;
 }): JSX.Element {
@@ -1317,6 +1519,7 @@ function PullRequestsTab({
           <Plus size={16} /> New pull request
         </button>
       </div>
+      {loading && pulls.length === 0 && <div className="empty-state">Loading pull requests...</div>}
       {pulls.map((pull) => (
         <div className="issue-row" key={pull.id}>
           <GitPullRequest size={17} />
@@ -1347,11 +1550,13 @@ function PullRequestsTab({
 function ActionsTab({
   repository,
   actions,
+  loading,
   onOpenExternal,
   onMutate
 }: {
   repository: RepositoryDetail;
   actions: WorkflowRunSummary[];
+  loading: boolean;
   onOpenExternal(url: string): void;
   onMutate(action: GitHubAction, dangerous: boolean, payload?: Record<string, unknown>): void;
 }): JSX.Element {
@@ -1362,6 +1567,7 @@ function ActionsTab({
           <Workflow size={16} /> Workflows
         </button>
       </div>
+      {loading && actions.length === 0 && <div className="empty-state">Loading workflow runs...</div>}
       {actions.map((run) => (
         <div className="issue-row" key={run.id}>
           <Workflow size={17} />
@@ -1386,80 +1592,119 @@ function ActionsTab({
   );
 }
 
-function ProjectsTab({
-  repository,
-  projects,
-  onOpenExternal
-}: {
-  repository: RepositoryDetail;
-  projects: ProjectSummary[];
-  onOpenExternal(url: string): void;
-}): JSX.Element {
-  return (
-    <section className="tile-grid">
-      {projects.map((project) => (
-        <button
-          className="project-tile"
-          key={project.id}
-          type="button"
-          onClick={() =>
-            project.htmlUrl
-              ? onOpenExternal(project.htmlUrl)
-              : onOpenExternal(repositoryPath(repository, "/projects"))
-          }
-        >
-          <Layers3 size={20} />
-          <strong>{project.title}</strong>
-          <small>{project.closed ? "Closed" : "Open"} project</small>
-        </button>
-      ))}
-      {projects.length === 0 && (
-        <div className="empty-state">No projects are available for this repository.</div>
-      )}
-    </section>
-  );
-}
-
-function SecurityTab({
+function AgentsTab({
   repository,
   onOpenExternal
 }: {
   repository: RepositoryDetail;
   onOpenExternal(url: string): void;
 }): JSX.Element {
+  const agentLinks = [
+    {
+      title: "Agent issues",
+      description: "Open repository work labeled for agents.",
+      icon: Bot,
+      path: "/issues?q=is%3Aissue%20is%3Aopen%20label%3Aagent"
+    },
+    {
+      title: "Automation runs",
+      description: "Review workflow runs agents can act on.",
+      icon: Workflow,
+      path: "/actions"
+    },
+    {
+      title: "Pull request queue",
+      description: "Open pull requests that may need review or fixes.",
+      icon: GitPullRequest,
+      path: "/pulls"
+    }
+  ];
+
   return (
     <section className="tile-grid">
-      {["Security policy", "Code scanning", "Dependabot", "Secret scanning"].map((item) => (
-        <button
-          className="project-tile"
-          key={item}
-          type="button"
-          onClick={() => onOpenExternal(repositoryPath(repository, "/security"))}
-        >
-          <ShieldCheck size={20} />
-          <strong>{item}</strong>
-          <small>{repository.nameWithOwner}</small>
-        </button>
-      ))}
+      {agentLinks.map((item) => {
+        const Icon = item.icon;
+        return (
+          <button
+            className="project-tile"
+            key={item.title}
+            type="button"
+            onClick={() => onOpenExternal(repositoryPath(repository, item.path))}
+          >
+            <Icon size={20} />
+            <strong>{item.title}</strong>
+            <small>{item.description}</small>
+          </button>
+        );
+      })}
     </section>
   );
 }
 
-function InsightsTab({
-  counts,
-  discussions
+function WikiTab({
+  repository,
+  onOpenExternal
 }: {
-  counts: ReturnType<typeof getRepositoryCounts>;
-  discussions: DiscussionSummary[];
+  repository: RepositoryDetail;
+  onOpenExternal(url: string): void;
 }): JSX.Element {
   return (
-    <section className="insight-grid">
-      <Metric label="Stars" value={counts.stars} />
-      <Metric label="Forks" value={counts.forks} />
-      <Metric label="Open issues" value={counts.issues} />
-      <Metric label="Pull requests" value={counts.pulls} />
-      <Metric label="Discussions" value={counts.discussions || discussions.length} />
-      <Metric label="Watchers" value={counts.watchers} />
+    <section className="tile-grid">
+      <button
+        className="project-tile"
+        type="button"
+        onClick={() => onOpenExternal(repositoryPath(repository, "/wiki"))}
+      >
+        <BookOpen size={20} />
+        <strong>Repository wiki</strong>
+        <small>Open the GitHub wiki for {repository.nameWithOwner}.</small>
+      </button>
+      <button
+        className="project-tile"
+        type="button"
+        onClick={() => onOpenExternal(repositoryPath(repository, "/wiki/_new"))}
+      >
+        <Plus size={20} />
+        <strong>New wiki page</strong>
+        <small>Create or edit long-form repository documentation on GitHub.</small>
+      </button>
+    </section>
+  );
+}
+
+function SecurityQualityTab({
+  repository,
+  onOpenExternal
+}: {
+  repository: RepositoryDetail;
+  onOpenExternal(url: string): void;
+}): JSX.Element {
+  const qualityLinks = [
+    { title: "Security policy", path: "/security/policy", icon: ShieldCheck },
+    { title: "Code scanning", path: "/security/code-scanning", icon: Gauge },
+    { title: "Dependabot", path: "/security/dependabot", icon: CheckCircle2 },
+    { title: "Secret scanning", path: "/security/secret-scanning", icon: ShieldCheck },
+    { title: "Community standards", path: "/community", icon: BookOpen },
+    { title: "Pulse", path: "/pulse", icon: Workflow }
+  ];
+
+  return (
+    <section className="tile-grid">
+      {qualityLinks.map((item) => {
+        const Icon = item.icon;
+        return (
+          <button
+            className="project-tile"
+            key={item.title}
+            type="button"
+            onClick={() => onOpenExternal(repositoryPath(repository, item.path))}
+          >
+            <Icon size={20} />
+            <strong>{item.title}</strong>
+            <small>{repository.nameWithOwner}</small>
+          </button>
+        );
+      })}
     </section>
   );
 }
@@ -1475,87 +1720,133 @@ function Metric({ label, value }: { label: string; value: number }): JSX.Element
 
 function CollectionView({
   title,
+  routeKind,
   issues,
   pulls,
-  discussions,
-  projects,
   repositories,
-  onOpenExternal
+  viewerLogin,
+  onOpenExternal,
+  onOpenRepository
 }: {
   title: string;
+  routeKind: "mailbox" | "repositories" | "organizations";
   issues: IssueSummary[];
   pulls: PullRequestSummary[];
-  discussions: DiscussionSummary[];
-  projects: ProjectSummary[];
   repositories: RepositorySummary[];
+  viewerLogin: string | null;
   onOpenExternal(url: string): void;
+  onOpenRepository(nameWithOwner: string): void;
 }): JSX.Element {
-  const rows =
-    title === "Issues"
-      ? issues.map((issue) => ({
-          key: `i-${issue.id}`,
-          title: issue.title,
-          meta: `${issue.repositoryNameWithOwner ?? "GitHub"} #${issue.number}`,
-          url: issue.htmlUrl
-        }))
-      : title === "Pull requests"
-        ? pulls.map((pull) => ({
-            key: `p-${pull.id}`,
-            title: pull.title,
-            meta: `${pull.repositoryNameWithOwner ?? "GitHub"} #${pull.number}`,
-            url: pull.htmlUrl
-          }))
-        : title === "Mailbox"
-          ? [...issues, ...pulls].slice(0, 30).map((item) => ({
-              key: `m-${item.id}`,
-              title: item.title,
-              meta: `${item.repositoryNameWithOwner ?? "GitHub"} #${item.number}`,
-              url: item.htmlUrl
-            }))
-          : title === "Discussions"
-            ? discussions.map((discussion) => ({
-                key: `d-${discussion.id}`,
-                title: discussion.title,
-                meta: discussion.category ?? "Discussion",
-                url: discussion.htmlUrl
-              }))
-            : title === "Projects"
-              ? projects.map((project) => ({
-                  key: `pr-${project.id}`,
-                  title: project.title,
-                  meta: "Project",
-                  url: project.htmlUrl ?? null
-                }))
-              : repositories.map((repository) => ({
-                  key: repository.id,
-                  title: repository.nameWithOwner,
-                  meta: repository.description ?? "Repository",
-                  url: `https://github.com/${repository.nameWithOwner}`
-                }));
+  const workRows = [
+    ...issues.map((issue) => ({ ...issue, kind: "issue" as const })),
+    ...pulls.map((pull) => ({ ...pull, kind: "pull" as const }))
+  ].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+
+  const organizations = Object.values(
+    repositories.reduce<Record<string, { owner: string; count: number; latest: string | null }>>(
+      (acc, repository) => {
+        if (viewerLogin && repository.owner.toLowerCase() === viewerLogin.toLowerCase()) {
+          return acc;
+        }
+
+        const current = acc[repository.owner] ?? { owner: repository.owner, count: 0, latest: null };
+        const latest = repositoryActivityDate(repository);
+        acc[repository.owner] = {
+          owner: repository.owner,
+          count: current.count + 1,
+          latest:
+            latest && (!current.latest || new Date(latest).getTime() > new Date(current.latest).getTime())
+              ? latest
+              : current.latest
+        };
+        return acc;
+      },
+      {}
+    )
+  ).sort((a, b) => new Date(b.latest ?? 0).getTime() - new Date(a.latest ?? 0).getTime());
+
+  const actionLabel =
+    routeKind === "repositories" ? "New repository" : routeKind === "organizations" ? "New org" : "Notifications";
+  const actionUrl =
+    routeKind === "repositories"
+      ? "https://github.com/new"
+      : routeKind === "organizations"
+        ? "https://github.com/account/organizations/new"
+        : "https://github.com/notifications";
 
   return (
     <section className="collection-view">
       <header>
         <h2>{title}</h2>
-        <button type="button">
-          <Plus size={16} /> New
+        <button type="button" onClick={() => onOpenExternal(actionUrl)}>
+          <Plus size={16} /> {actionLabel}
         </button>
       </header>
       <div className="table-panel">
-        {rows.map((row) => (
-          <button
-            className="issue-row"
-            key={row.key}
-            type="button"
-            onClick={() => row.url && onOpenExternal(row.url)}
-          >
-            <Inbox size={17} />
-            <div>
-              <strong>{row.title}</strong>
-              <small>{row.meta}</small>
-            </div>
-          </button>
-        ))}
+        {routeKind === "mailbox" &&
+          workRows.map((row) => (
+            <button
+              className="issue-row"
+              key={`${row.kind}-${row.id}`}
+              type="button"
+              onClick={() => onOpenExternal(row.htmlUrl)}
+            >
+              {row.kind === "pull" ? <GitPullRequest size={17} /> : <CircleDot size={17} />}
+              <div>
+                <strong>{row.title}</strong>
+                <small>
+                  {row.repositoryNameWithOwner ?? "GitHub"} #{row.number} · updated{" "}
+                  {formatRelativeDate(row.updatedAt)}
+                </small>
+              </div>
+            </button>
+          ))}
+        {routeKind === "repositories" &&
+          sortRepositoriesByActivity(repositories).map((repository) => (
+            <button
+              className="issue-row repository-row"
+              key={repository.id}
+              type="button"
+              onClick={() => onOpenRepository(repository.nameWithOwner)}
+            >
+              <span className="repo-avatar">{repository.owner.slice(0, 1).toUpperCase()}</span>
+              <div>
+                <strong>{displayRepositoryName(repository, viewerLogin)}</strong>
+                <small>
+                  {repository.description ?? "Repository"} · updated{" "}
+                  {formatRelativeDate(repositoryActivityDate(repository))}
+                </small>
+              </div>
+              <span className="state-chip">{repository.visibility.toLowerCase()}</span>
+            </button>
+          ))}
+        {routeKind === "organizations" &&
+          organizations.map((organization) => (
+            <button
+              className="issue-row repository-row"
+              key={organization.owner}
+              type="button"
+              onClick={() => onOpenExternal(`https://github.com/${organization.owner}`)}
+            >
+              <Building2 size={17} />
+              <div>
+                <strong>{organization.owner}</strong>
+                <small>
+                  {formatCompactNumber(organization.count)} repositories · updated{" "}
+                  {formatRelativeDate(organization.latest)}
+                </small>
+              </div>
+            </button>
+          ))}
+        {routeKind === "mailbox" && workRows.length === 0 && (
+          <div className="empty-state">No open issues or pull requests assigned to you.</div>
+        )}
+        {routeKind === "repositories" && repositories.length === 0 && (
+          <div className="empty-state">No repositories loaded from GitHub.</div>
+        )}
+        {routeKind === "organizations" && organizations.length === 0 && (
+          <div className="empty-state">No organization repositories loaded.</div>
+        )}
       </div>
     </section>
   );

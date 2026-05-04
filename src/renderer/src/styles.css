@@ -17,10 +17,10 @@
   --ink: #111827;
   --muted: #64748b;
   --line: rgba(63, 83, 113, 0.14);
-  --glass: rgba(255, 255, 255, 0.36);
-  --glass-strong: rgba(255, 255, 255, 0.58);
+  --glass: rgba(245, 247, 250, 0.42);
+  --glass-strong: rgba(248, 250, 252, 0.64);
   --glass-border: rgba(255, 255, 255, 0.62);
-  --shadow: 0 24px 60px rgba(35, 74, 122, 0.16);
+  --shadow: 0 24px 60px rgba(31, 41, 55, 0.12);
   --blue: #0969da;
   --green: #1a7f37;
 }
@@ -48,9 +48,9 @@ body,
 
 body.no-liquid-glass {
   background:
-    radial-gradient(circle at 14% 18%, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0) 32%),
-    radial-gradient(circle at 92% 88%, rgba(70, 150, 240, 0.55), rgba(70, 150, 240, 0) 45%),
-    linear-gradient(135deg, #d8e9fb 0%, #e8f1fd 38%, #cfe2f8 62%, #8fb8e8 100%);
+    radial-gradient(circle at 16% 14%, rgba(255, 255, 255, 0.76), rgba(255, 255, 255, 0) 32%),
+    radial-gradient(circle at 92% 88%, rgba(148, 163, 184, 0.32), rgba(148, 163, 184, 0) 45%),
+    linear-gradient(135deg, #eef0f3 0%, #e7eaee 42%, #d7dde5 100%);
 }
 
 button,
@@ -68,7 +68,7 @@ button {
 .app-shell {
   display: grid;
   grid-template-columns: 264px minmax(620px, 1fr) 296px;
-  grid-template-rows: 50px minmax(0, 1fr);
+  grid-template-rows: 52px minmax(0, 1fr);
   gap: 12px;
   height: 100vh;
   margin: 0;
@@ -80,7 +80,7 @@ button {
 
 body:not(.no-liquid-glass) .app-shell {
   border: 1px solid rgba(255, 255, 255, 0.28);
-  background: rgba(248, 250, 252, 0.18);
+  background: rgba(229, 231, 235, 0.26);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
 }
 
@@ -90,8 +90,8 @@ body.no-liquid-glass .app-shell {
   margin: 16px;
   border: 1px solid rgba(255, 255, 255, 0.76);
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.1)), rgba(230, 242, 255, 0.18);
-  box-shadow: 0 34px 90px rgba(27, 86, 160, 0.28);
+    linear-gradient(135deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.08)), rgba(226, 232, 240, 0.34);
+  box-shadow: 0 34px 90px rgba(31, 41, 55, 0.2);
   -webkit-backdrop-filter: blur(34px) saturate(1.35);
   backdrop-filter: blur(34px) saturate(1.35);
 }
@@ -103,7 +103,7 @@ body.no-liquid-glass .app-shell {
 }
 
 body.no-liquid-glass .solid-shell {
-  background: #eef6ff;
+  background: #eef0f3;
 }
 
 .sidebar,
@@ -124,7 +124,7 @@ body:not(.no-liquid-glass) .rail-panel,
 body:not(.no-liquid-glass) .settings-panel,
 body:not(.no-liquid-glass) .setup-panel {
   border-color: rgba(255, 255, 255, 0.5);
-  background: rgba(255, 255, 255, 0.44);
+  background: rgba(248, 250, 252, 0.52);
   box-shadow: 0 22px 52px rgba(15, 23, 42, 0.08);
   -webkit-backdrop-filter: blur(20px) saturate(1.08);
   backdrop-filter: blur(20px) saturate(1.08);
@@ -132,7 +132,7 @@ body:not(.no-liquid-glass) .setup-panel {
 
 .sidebar {
   grid-column: 1;
-  grid-row: 1 / 3;
+  grid-row: 2;
   z-index: 2;
   display: flex;
   min-width: 0;
@@ -170,7 +170,7 @@ body:not(.no-liquid-glass) .setup-panel {
 .nav-list {
   display: grid;
   gap: 4px;
-  margin-top: 26px;
+  margin-top: 0;
 }
 
 .nav-item,
@@ -391,28 +391,31 @@ body:not(.no-liquid-glass) .setup-panel {
   overflow: hidden;
 }
 
+.workspace-wide {
+  grid-column: 2 / 4;
+}
+
 .topbar {
   grid-column: 1 / 4;
   grid-row: 1;
   position: relative;
   z-index: 3;
-  display: flex;
-  min-height: 50px;
+  display: grid;
+  grid-template-columns: minmax(210px, 1fr) minmax(300px, 470px) minmax(250px, 1fr);
+  min-height: 52px;
   align-items: center;
-  justify-content: center;
   gap: 16px;
   border-radius: 18px;
-  padding: 6px 14px 6px 120px;
+  padding: 6px 14px 6px 92px;
   -webkit-app-region: drag;
 }
 
 .titlebar-left,
 .titlebar-platform-group {
-  position: absolute;
-  left: 84px;
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  justify-self: start;
   -webkit-app-region: no-drag;
 }
 
@@ -438,7 +441,8 @@ body:not(.no-liquid-glass) .setup-panel {
   display: grid;
   grid-template-columns: 22px minmax(180px, 1fr) auto;
   align-items: center;
-  width: min(470px, 52vw);
+  width: 100%;
+  justify-self: center;
   height: 36px;
   border: 1px solid rgba(255, 255, 255, 0.52);
   border-radius: 16px;
@@ -503,11 +507,10 @@ body:not(.no-liquid-glass) .setup-panel {
 }
 
 .top-actions {
-  position: absolute;
-  right: 14px;
   display: flex;
   align-items: center;
   gap: 10px;
+  justify-self: end;
   -webkit-app-region: no-drag;
 }
 
@@ -601,6 +604,7 @@ body:not(.no-liquid-glass) .setup-panel {
 
 .home-panel {
   display: grid;
+  align-content: start;
   gap: 12px;
   border: 1px solid var(--line);
   border-radius: 18px;
@@ -615,11 +619,14 @@ body:not(.no-liquid-glass) .setup-panel {
 .home-repo-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  align-content: start;
   gap: 10px;
 }
 
 .home-repo-grid button {
   display: grid;
+  min-height: 118px;
+  align-content: start;
   justify-items: start;
   text-align: left;
 }
@@ -647,13 +654,14 @@ body:not(.no-liquid-glass) .setup-panel {
 
 .repo-hero {
   display: grid;
-  grid-template-columns: 66px minmax(0, 1fr) auto;
+  grid-template-columns: 66px minmax(0, 1fr);
   gap: 20px;
   align-items: start;
   padding: 10px 8px 6px;
 }
 
 .repo-icon {
+  position: relative;
   display: grid;
   width: 64px;
   height: 64px;
@@ -664,6 +672,20 @@ body:not(.no-liquid-glass) .setup-panel {
   color: #0f172a;
   font-size: 28px;
   font-weight: 900;
+}
+
+.repo-icon span {
+  display: grid;
+  place-items: center;
+}
+
+.repo-icon img {
+  position: absolute;
+  inset: 10px;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  object-fit: cover;
 }
 
 .repo-title-block {
@@ -745,7 +767,10 @@ p {
 
 .repo-action-row {
   display: flex;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
   gap: 10px;
+  justify-content: flex-end;
 }
 
 .repo-action-row button,
@@ -900,7 +925,7 @@ p {
   position: absolute;
   right: 0;
   left: 0;
-  grid-template-columns: 22px 190px minmax(0, 1fr) 78px;
+  grid-template-columns: 22px 190px minmax(0, 1fr) 92px;
   min-height: 36px;
   height: 36px;
   width: 100%;
@@ -908,8 +933,35 @@ p {
   text-align: left;
 }
 
-.file-row svg:first-child {
+.file-row svg:first-child,
+.file-icon-wrap svg {
   color: #218bff;
+}
+
+.file-icon-wrap {
+  position: relative;
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+}
+
+.file-type-icon {
+  position: absolute;
+  inset: 0;
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  opacity: 0;
+}
+
+.file-type-icon.loaded {
+  opacity: 1;
+}
+
+.file-row time {
+  color: var(--muted);
+  text-align: right;
 }
 
 .readme-panel header {
@@ -924,9 +976,7 @@ p {
 
 .readme-content {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 170px;
   align-items: center;
-  gap: 28px;
   min-height: 178px;
   padding: 30px 34px;
 }
@@ -941,21 +991,6 @@ p {
   max-width: 540px;
   color: #44576f;
   line-height: 1.55;
-}
-
-.readme-mark {
-  display: grid;
-  width: 132px;
-  height: 132px;
-  place-items: center;
-  justify-self: center;
-  border: 12px solid rgba(255, 255, 255, 0.64);
-  border-radius: 32px;
-  background: linear-gradient(135deg, #ffcc55, #ff5f3f 55%, #f83464);
-  color: #fff;
-  font-size: 72px;
-  font-weight: 900;
-  box-shadow: 0 18px 42px rgba(236, 72, 58, 0.22);
 }
 
 .table-panel {
@@ -975,6 +1010,10 @@ p {
   width: 100%;
   background: transparent;
   text-align: left;
+}
+
+.repository-row {
+  grid-template-columns: 24px minmax(0, 1fr) auto;
 }
 
 .issue-row > div:first-of-type {
@@ -1230,7 +1269,7 @@ p {
 @media (max-width: 1180px) {
   .app-shell {
     grid-template-columns: 252px minmax(0, 1fr);
-    grid-template-rows: 50px minmax(0, 1fr);
+    grid-template-rows: 52px minmax(0, 1fr);
   }
 
   body.no-liquid-glass .app-shell {
@@ -1244,6 +1283,8 @@ p {
 
   .topbar {
     grid-column: 1 / 3;
+    grid-template-columns: minmax(160px, 0.7fr) minmax(240px, 1fr) auto;
+    padding-left: 88px;
   }
 
   .repo-hero {

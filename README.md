@@ -18,7 +18,10 @@ npm run typecheck
 npm run lint
 npm run test
 npm run test:e2e
+npm run test:e2e:profile
 ```
+
+The Playwright E2E project is `testing-profile`. It runs with a fixed desktop viewport, light color scheme, `en-US` locale, `America/Puerto_Rico` timezone, and the storage seed at `tests/e2e/state/testing-profile.json`.
 
 ## Scope
 

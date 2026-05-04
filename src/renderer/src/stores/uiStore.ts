@@ -1,15 +1,12 @@
 import { create } from "zustand";
 
-export type RepositoryTab = "code" | "issues" | "pulls" | "actions" | "projects" | "security" | "insights";
-
-export type CollectionRoute = "discussions" | "projects" | "models" | "codespaces" | "packages" | "stars";
+export type RepositoryTab = "code" | "issues" | "pulls" | "agents" | "actions" | "wiki" | "securityQuality";
 
 export type AppRoute =
   | { kind: "home" }
-  | { kind: "globalIssues" }
-  | { kind: "globalPulls" }
   | { kind: "mailbox" }
-  | { kind: "collection"; collection: CollectionRoute }
+  | { kind: "repositories" }
+  | { kind: "organizations" }
   | { kind: "repository"; nameWithOwner: string; tab: RepositoryTab };
 
 interface UiState {
@@ -18,10 +15,9 @@ interface UiState {
   settingsOpen: boolean;
   navigate(route: AppRoute): void;
   goHome(): void;
-  goToGlobalIssues(): void;
-  goToGlobalPulls(): void;
   goToMailbox(): void;
-  goToCollection(collection: CollectionRoute): void;
+  goToRepositories(): void;
+  goToOrganizations(): void;
   goToRepository(nameWithOwner: string, tab?: RepositoryTab): void;
   setRepositoryTab(tab: RepositoryTab): void;
   setSelectedRepository(nameWithOwner: string): void;
@@ -38,10 +34,9 @@ export const useUiStore = create<UiState>((set) => ({
       selectedRepository: route.kind === "repository" ? route.nameWithOwner : state.selectedRepository
     })),
   goHome: () => set({ route: { kind: "home" } }),
-  goToGlobalIssues: () => set({ route: { kind: "globalIssues" } }),
-  goToGlobalPulls: () => set({ route: { kind: "globalPulls" } }),
   goToMailbox: () => set({ route: { kind: "mailbox" } }),
-  goToCollection: (collection) => set({ route: { kind: "collection", collection } }),
+  goToRepositories: () => set({ route: { kind: "repositories" } }),
+  goToOrganizations: () => set({ route: { kind: "organizations" } }),
   goToRepository: (nameWithOwner, tab = "code") =>
     set({ selectedRepository: nameWithOwner, route: { kind: "repository", nameWithOwner, tab } }),
   setRepositoryTab: (tab) =>

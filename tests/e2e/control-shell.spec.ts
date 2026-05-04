@@ -22,28 +22,47 @@ test("exposes current titlebar controls without overlapping the shell", async ({
   await expect(page.getByLabel("Search or jump to")).toBeVisible();
   await expect(page.locator(".topbar").getByRole("button", { name: /GitHub/i })).toBeVisible();
   await expect(page.locator(".topbar").getByTitle("Create")).toBeVisible();
-  await expect(page.locator(".topbar").getByTitle("Issues")).toBeVisible();
-  await expect(page.locator(".topbar").getByTitle("Pull requests")).toBeVisible();
-  await expect(page.locator(".topbar").getByTitle("Mailbox")).toBeVisible();
+  await expect(page.locator(".topbar").getByTitle("Notifications")).toBeVisible();
   await expect(page.locator(".topbar").getByTitle("Account settings")).toBeVisible();
 });
 
-test("navigates global Issues and Pull Requests from the app shell", async ({ page }) => {
+test("navigates app shell surfaces from the sidebar", async ({ page }) => {
   await page.goto("/");
 
   await page
     .locator(".nav-list")
-    .getByRole("button", { name: /^Issues/ })
+    .getByRole("button", { name: /^Repositories/ })
     .click();
-  await expect(page.getByRole("heading", { name: "Issues" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Repositories" })).toBeVisible();
   await expect(page.locator(".collection-view .issue-row").first()).toBeVisible();
 
   await page
     .locator(".nav-list")
-    .getByRole("button", { name: /^Pull requests/ })
+    .getByRole("button", { name: /^Mailbox/ })
     .click();
-  await expect(page.getByRole("heading", { name: "Pull requests" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Mailbox" })).toBeVisible();
   await expect(page.locator(".collection-view .issue-row").first()).toBeVisible();
+});
+
+test("opens repositories from sidebar, home activity, and repositories list", async ({ page }) => {
+  await page.goto("/");
+
+  await page.locator(".repo-section .repo-item").first().click();
+  await expect(page.getByRole("heading", { name: /apple \/ swift/i })).toBeVisible();
+
+  await page.getByRole("button", { name: /^Home$/ }).click();
+  await expect(page.getByRole("heading", { name: "Latest repository activity" })).toBeVisible();
+  await page
+    .locator(".home-panel")
+    .filter({ has: page.getByRole("heading", { name: "Latest repository activity" }) })
+    .getByRole("button", { name: /apple\/swift/i })
+    .click();
+  await expect(page.getByRole("heading", { name: /apple \/ swift/i })).toBeVisible();
+
+  await page.getByRole("button", { name: /^Repositories$/ }).click();
+  await expect(page.getByRole("heading", { name: "Repositories" })).toBeVisible();
+  await page.locator(".collection-view .repository-row").first().click();
+  await expect(page.getByRole("heading", { name: /apple \/ swift/i })).toBeVisible();
 });
 
 test("navigates repository tabs from the repository route", async ({ page }) => {
@@ -70,6 +89,24 @@ test("navigates repository tabs from the repository route", async ({ page }) => 
     .getByRole("button", { name: /^Actions/ })
     .click();
   await expect(page.locator(".table-panel .issue-row").first()).toBeVisible();
+
+  await page
+    .locator(".repo-tabs")
+    .getByRole("button", { name: /^Agents/ })
+    .click();
+  await expect(page.getByRole("button", { name: /Agent issues/i })).toBeVisible();
+
+  await page
+    .locator(".repo-tabs")
+    .getByRole("button", { name: /^Wiki/ })
+    .click();
+  await expect(page.getByRole("button", { name: /Repository wiki/i })).toBeVisible();
+
+  await page
+    .locator(".repo-tabs")
+    .getByRole("button", { name: /^Security and Quality/ })
+    .click();
+  await expect(page.getByRole("button", { name: /Code scanning/i })).toBeVisible();
 });
 
 test("repository page renders a language panel", async ({ page }) => {

@@ -22,6 +22,8 @@ import type {
   RepoContentsInput,
   RepoDetailInput,
   RepoEntry,
+  RepoFileContent,
+  RepoFileContentInput,
   RepoListInput,
   RepositoryDetail,
   RepositorySummary,
@@ -82,6 +84,11 @@ export class GitHubProviderManager implements GitHubProvider {
   async listContents(input: RepoContentsInput): Promise<RepoEntry[]> {
     const key = `contents:${input.owner}/${input.repo}:${input.ref ?? "default"}:${input.path ?? ""}`;
     return this.withCache(key, 30_000, () => this.provider().listContents(input));
+  }
+
+  async getFileContent(input: RepoFileContentInput): Promise<RepoFileContent> {
+    const key = `file-content:${input.owner}/${input.repo}:${input.ref ?? "default"}:${input.path}`;
+    return this.withCache(key, 120_000, () => this.provider().getFileContent(input));
   }
 
   async listIssues(input: IssueListInput): Promise<IssueSummary[]> {
@@ -198,6 +205,10 @@ class GitHubAppProvider implements GitHubProvider {
   }
 
   async listContents(): Promise<RepoEntry[]> {
+    return this.unavailable();
+  }
+
+  async getFileContent(): Promise<RepoFileContent> {
     return this.unavailable();
   }
 

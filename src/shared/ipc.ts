@@ -23,6 +23,8 @@ import type {
   RepoContentsInput,
   RepoDetailInput,
   RepoEntry,
+  RepoFileContent,
+  RepoFileContentInput,
   RepoListInput,
   RepositoryDetail,
   RepositorySummary,
@@ -45,6 +47,7 @@ export interface ControlApi {
     listAccountPullRequests(input?: AccountPullRequestListInput): Promise<PullRequestSummary[]>;
     getRepository(input: RepoDetailInput): Promise<RepositoryDetail>;
     listContents(input: RepoContentsInput): Promise<RepoEntry[]>;
+    getFileContent(input: RepoFileContentInput): Promise<RepoFileContent>;
     listIssues(input: IssueListInput): Promise<IssueSummary[]>;
     listPullRequests(input: PullRequestListInput): Promise<PullRequestSummary[]>;
     listDiscussions(input: DiscussionListInput): Promise<DiscussionSummary[]>;
@@ -70,6 +73,7 @@ export const ipcChannels = {
   githubAccountPullRequests: "github:account-pull-requests",
   githubRepository: "github:repository",
   githubContents: "github:contents",
+  githubFileContent: "github:file-content",
   githubIssues: "github:issues",
   githubPullRequests: "github:pull-requests",
   githubDiscussions: "github:discussions",

@@ -348,9 +348,53 @@ export const mockControlApi: ControlApi = {
     listAccountIssues: async () => mockIssues,
     listAccountPullRequests: async () => mockPullRequests,
     getRepository: async () => mockRepository,
+    getReadme: async () => mockRepository.readmeMarkdown,
     listContents: async () => mockContents,
+    getFileContent: async (input) => ({
+      path: input.path,
+      name: input.path.split("/").pop() ?? input.path,
+      ref: input.ref ?? mockRepository.defaultBranch,
+      content: `# ${input.path}\n\nMock file content from Control.`,
+      htmlUrl: `https://github.com/apple/swift/blob/main/${input.path}`
+    }),
     listIssues: async () => mockIssues,
+    getIssueDetail: async (input) => {
+      const issue = mockIssues.find((item) => item.number === input.issueNumber) ?? mockIssues[0];
+      return {
+        ...issue,
+        body: "This issue reproduces in the current repository view and includes enough context for in-app triage.",
+        commentsList: [
+          {
+            id: `${issue.id}-comment-1`,
+            authorLogin: "swift-ci",
+            authorAvatarUrl: avatar,
+            body: "I can reproduce this locally. The next step is narrowing the failing file.",
+            createdAt: issue.createdAt,
+            updatedAt: issue.updatedAt,
+            htmlUrl: `${issue.htmlUrl}#issuecomment-1`
+          }
+        ]
+      };
+    },
     listPullRequests: async () => mockPullRequests,
+    getPullRequestDetail: async (input) => {
+      const pull = mockPullRequests.find((item) => item.number === input.pullNumber) ?? mockPullRequests[0];
+      return {
+        ...pull,
+        body: "This pull request updates the repository surface and keeps the change small enough to review in Control.",
+        commentsList: [
+          {
+            id: `${pull.id}-comment-1`,
+            authorLogin: "applebot",
+            authorAvatarUrl: avatar,
+            body: "CI is running. Review the changed files and merge status before landing.",
+            createdAt: pull.createdAt,
+            updatedAt: pull.updatedAt,
+            htmlUrl: `${pull.htmlUrl}#issuecomment-1`
+          }
+        ]
+      };
+    },
     listDiscussions: async () => mockDiscussions,
     listActions: async () => mockActions,
     listProjects: async () => mockProjects,

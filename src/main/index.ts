@@ -12,8 +12,10 @@ import type {
   ActionsInput,
   DiscussionListInput,
   GitHubMutationInput,
+  IssueDetailInput,
   IssueListInput,
   ProjectsInput,
+  PullRequestDetailInput,
   PullRequestListInput,
   ReleasesInput,
   RepoContentsInput,
@@ -132,6 +134,7 @@ function registerIpc(store: LocalStore, github: GitHubProviderManager): void {
   ipcMain.handle(ipcChannels.githubRepository, (_event, input: RepoDetailInput) =>
     github.getRepository(input.owner, input.repo)
   );
+  ipcMain.handle(ipcChannels.githubReadme, (_event, input: RepoDetailInput) => github.getReadme(input));
   ipcMain.handle(ipcChannels.githubContents, (_event, input: RepoContentsInput) =>
     github.listContents(input)
   );
@@ -139,8 +142,14 @@ function registerIpc(store: LocalStore, github: GitHubProviderManager): void {
     github.getFileContent(input)
   );
   ipcMain.handle(ipcChannels.githubIssues, (_event, input: IssueListInput) => github.listIssues(input));
+  ipcMain.handle(ipcChannels.githubIssueDetail, (_event, input: IssueDetailInput) =>
+    github.getIssueDetail(input)
+  );
   ipcMain.handle(ipcChannels.githubPullRequests, (_event, input: PullRequestListInput) =>
     github.listPullRequests(input)
+  );
+  ipcMain.handle(ipcChannels.githubPullRequestDetail, (_event, input: PullRequestDetailInput) =>
+    github.getPullRequestDetail(input)
   );
   ipcMain.handle(ipcChannels.githubDiscussions, (_event, input: DiscussionListInput) =>
     github.listDiscussions(input)

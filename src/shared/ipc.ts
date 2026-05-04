@@ -12,10 +12,14 @@ import type {
   GitHubAccountProfile,
   GitHubMutationInput,
   GitHubMutationResult,
+  IssueDetail,
+  IssueDetailInput,
   IssueListInput,
   IssueSummary,
   ProjectSummary,
   ProjectsInput,
+  PullRequestDetail,
+  PullRequestDetailInput,
   PullRequestListInput,
   PullRequestSummary,
   ReleaseSummary,
@@ -46,10 +50,13 @@ export interface ControlApi {
     listAccountIssues(input?: AccountIssueListInput): Promise<IssueSummary[]>;
     listAccountPullRequests(input?: AccountPullRequestListInput): Promise<PullRequestSummary[]>;
     getRepository(input: RepoDetailInput): Promise<RepositoryDetail>;
+    getReadme(input: RepoDetailInput): Promise<string | null>;
     listContents(input: RepoContentsInput): Promise<RepoEntry[]>;
     getFileContent(input: RepoFileContentInput): Promise<RepoFileContent>;
     listIssues(input: IssueListInput): Promise<IssueSummary[]>;
+    getIssueDetail(input: IssueDetailInput): Promise<IssueDetail>;
     listPullRequests(input: PullRequestListInput): Promise<PullRequestSummary[]>;
+    getPullRequestDetail(input: PullRequestDetailInput): Promise<PullRequestDetail>;
     listDiscussions(input: DiscussionListInput): Promise<DiscussionSummary[]>;
     listActions(input: ActionsInput): Promise<WorkflowRunSummary[]>;
     listProjects(input: ProjectsInput): Promise<ProjectSummary[]>;
@@ -72,10 +79,13 @@ export const ipcChannels = {
   githubAccountIssues: "github:account-issues",
   githubAccountPullRequests: "github:account-pull-requests",
   githubRepository: "github:repository",
+  githubReadme: "github:readme",
   githubContents: "github:contents",
   githubFileContent: "github:file-content",
   githubIssues: "github:issues",
+  githubIssueDetail: "github:issue-detail",
   githubPullRequests: "github:pull-requests",
+  githubPullRequestDetail: "github:pull-request-detail",
   githubDiscussions: "github:discussions",
   githubActions: "github:actions",
   githubProjects: "github:projects",

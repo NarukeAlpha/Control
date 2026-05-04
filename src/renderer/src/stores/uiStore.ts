@@ -7,7 +7,14 @@ export type AppRoute =
   | { kind: "mailbox" }
   | { kind: "repositories" }
   | { kind: "organizations" }
-  | { kind: "repository"; nameWithOwner: string; tab: RepositoryTab };
+  | { kind: "repository"; nameWithOwner: string; tab: RepositoryTab }
+  | {
+      kind: "codeBrowser";
+      nameWithOwner: string;
+      path: string;
+      entryType: "file" | "dir";
+      ref: string | null;
+    };
 
 interface UiState {
   route: AppRoute;
@@ -19,6 +26,7 @@ interface UiState {
   goToRepositories(): void;
   goToOrganizations(): void;
   goToRepository(nameWithOwner: string, tab?: RepositoryTab): void;
+  openCodeBrowser(nameWithOwner: string, path: string, entryType: "file" | "dir", ref?: string | null): void;
   setRepositoryTab(tab: RepositoryTab): void;
   setSelectedRepository(nameWithOwner: string): void;
   setSettingsOpen(open: boolean): void;
@@ -39,6 +47,11 @@ export const useUiStore = create<UiState>((set) => ({
   goToOrganizations: () => set({ route: { kind: "organizations" } }),
   goToRepository: (nameWithOwner, tab = "code") =>
     set({ selectedRepository: nameWithOwner, route: { kind: "repository", nameWithOwner, tab } }),
+  openCodeBrowser: (nameWithOwner, path, entryType, ref = null) =>
+    set({
+      selectedRepository: nameWithOwner,
+      route: { kind: "codeBrowser", nameWithOwner, path, entryType, ref }
+    }),
   setRepositoryTab: (tab) =>
     set((state) => {
       const nameWithOwner =

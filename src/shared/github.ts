@@ -222,6 +222,25 @@ export interface IssueListInput extends RepoDetailInput {
   state?: "open" | "closed" | "all";
 }
 
+export interface IssueDetailInput extends RepoDetailInput {
+  issueNumber: number;
+}
+
+export interface TimelineCommentSummary {
+  id: number | string;
+  authorLogin: string | null;
+  authorAvatarUrl: string | null;
+  body: string | null;
+  createdAt: string;
+  updatedAt: string;
+  htmlUrl: string;
+}
+
+export interface IssueDetail extends IssueSummary {
+  body: string | null;
+  commentsList: TimelineCommentSummary[];
+}
+
 export interface PullRequestSummary {
   id: number | string;
   number: number;
@@ -246,6 +265,15 @@ export interface PullRequestSummary {
 
 export interface PullRequestListInput extends RepoDetailInput {
   state?: "open" | "closed" | "all";
+}
+
+export interface PullRequestDetailInput extends RepoDetailInput {
+  pullNumber: number;
+}
+
+export interface PullRequestDetail extends PullRequestSummary {
+  body: string | null;
+  commentsList: TimelineCommentSummary[];
 }
 
 export interface DiscussionSummary {
@@ -369,10 +397,13 @@ export interface GitHubProvider {
   listAccountIssues(input: AccountIssueListInput): Promise<IssueSummary[]>;
   listAccountPullRequests(input: AccountPullRequestListInput): Promise<PullRequestSummary[]>;
   getRepository(owner: string, repo: string): Promise<RepositoryDetail>;
+  getReadme(input: RepoDetailInput): Promise<string | null>;
   listContents(input: RepoContentsInput): Promise<RepoEntry[]>;
   getFileContent(input: RepoFileContentInput): Promise<RepoFileContent>;
   listIssues(input: IssueListInput): Promise<IssueSummary[]>;
+  getIssueDetail(input: IssueDetailInput): Promise<IssueDetail>;
   listPullRequests(input: PullRequestListInput): Promise<PullRequestSummary[]>;
+  getPullRequestDetail(input: PullRequestDetailInput): Promise<PullRequestDetail>;
   listDiscussions(input: DiscussionListInput): Promise<DiscussionSummary[]>;
   listActions(input: ActionsInput): Promise<WorkflowRunSummary[]>;
   listProjects(input: ProjectsInput): Promise<ProjectSummary[]>;

@@ -42,13 +42,17 @@ import type {
   GitHubAccountProfile,
   GitHubAction,
   GlassMode,
+  IssueDetail,
   IssueSummary,
   ProjectSummary,
+  PullRequestDetail,
   PullRequestSummary,
   ReleaseSummary,
   RepoEntry,
+  RepoFileContent,
   RepositoryDetail,
   RepositorySummary,
+  TimelineCommentSummary,
   WorkflowRunSummary
 } from "@shared/github";
 import { getControlApi } from "./api/controlApi";
@@ -150,10 +154,24 @@ function encodeRepositoryPath(path: string): string {
   return path.split("/").map(encodeURIComponent).join("/");
 }
 
-function repositoryEntryPath(repository: RepositoryDetail, entry: RepoEntry): string {
-  const ref = encodeURIComponent(repository.defaultBranch ?? "HEAD");
-  const entryKind = entry.type === "dir" ? "tree" : "blob";
-  return repositoryPath(repository, `/${entryKind}/${ref}/${encodeRepositoryPath(entry.path)}`);
+function repositoryPathForEntryType(
+  repository: RepositoryDetail,
+  path: string,
+  entryType: "file" | "dir",
+  ref = repository.defaultBranch ?? "HEAD"
+): string {
+  return repositoryPath(repository, `/${entryType === "dir" ? "tree" : "blob"}/${encodeURIComponent(ref)}/${encodeRepositoryPath(path)}`);
+}
+
+function parentDirectory(path: string): string {
+  const parts = path.split("/").filter(Boolean);
+  parts.pop();
+  return parts.join("/");
+}
+
+function pathSegments(path: string): Array<{ label: string; path: string }> {
+  const parts = path.split("/").filter(Boolean);
+  return parts.map((label, index) => ({ label, path: parts.slice(0, index + 1).join("/") }));
 }
 
 function getRepositoryCounts(
@@ -525,6 +543,8 @@ function routeTitle(route: AppRoute): string {
       return "Organizations";
     case "repository":
       return route.nameWithOwner;
+    case "codeBrowser":
+      return `${route.nameWithOwner}/${route.path}`;
     case "home":
     default:
       return "Home";
@@ -537,6 +557,7 @@ export function App(): JSX.Element {
   const route = useUiStore((state) => state.route);
   const selectedRepository = useUiStore((state) => state.selectedRepository);
   const goToRepository = useUiStore((state) => state.goToRepository);
+  const openCodeBrowser = useUiStore((state) => state.openCodeBrowser);
   const settingsOpen = useUiStore((state) => state.settingsOpen);
   const setSettingsOpen = useUiStore((state) => state.setSettingsOpen);
 
@@ -568,25 +589,63 @@ export function App(): JSX.Element {
   });
 
   const isRepositoryRoute = route.kind === "repository";
+  const isCodeBrowserRoute = route.kind === "codeBrowser";
+  const isRepositoryContext = isRepositoryRoute || isCodeBrowserRoute;
   const activeRepositoryTab = isRepositoryRoute ? route.tab : "code";
   const effectiveRepository =
-    (isRepositoryRoute ? route.nameWithOwner : selectedRepository) ??
+    (isRepositoryContext ? route.nameWithOwner : selectedRepository) ??
     repositories.data?.[0]?.nameWithOwner ??
     "apple/swift";
   const [owner = "apple", repo = "swift"] = effectiveRepository.split("/");
   const hasRepositoryParts = Boolean(owner && repo);
+  const codeBrowserPath = isCodeBrowserRoute ? route.path : "";
+  const codeBrowserEntryType = isCodeBrowserRoute ? route.entryType : "dir";
+  const codeBrowserRef = isCodeBrowserRoute ? route.ref : null;
 
   const repository = useQuery({
     queryKey: ["repository", owner, repo],
     queryFn: () => api.github.getRepository({ owner, repo }),
-    enabled: isRepositoryRoute && hasRepositoryParts,
+    enabled: isRepositoryContext && hasRepositoryParts,
     staleTime: 120_000
   });
 
   const contents = useQuery({
-    queryKey: ["contents", owner, repo, repository.data?.defaultBranch],
-    queryFn: () => api.github.listContents({ owner, repo, ref: repository.data?.defaultBranch ?? undefined }),
-    enabled: isRepositoryRoute && activeRepositoryTab === "code" && hasRepositoryParts && repository.isSuccess,
+    queryKey: ["contents", owner, repo, codeBrowserRef ?? "default", codeBrowserPath, codeBrowserEntryType],
+    queryFn: () =>
+      api.github.listContents({
+        owner,
+        repo,
+        path: isCodeBrowserRoute && codeBrowserEntryType === "dir" ? codeBrowserPath : undefined,
+        ref: codeBrowserRef ?? undefined
+      }),
+    enabled:
+      hasRepositoryParts &&
+      ((isRepositoryRoute && activeRepositoryTab === "code") ||
+        (isCodeBrowserRoute && codeBrowserEntryType === "dir")),
+    staleTime: 120_000
+  });
+
+  const readme = useQuery({
+    queryKey: ["readme", owner, repo],
+    queryFn: () => api.github.getReadme({ owner, repo }),
+    enabled: isRepositoryRoute && activeRepositoryTab === "code" && hasRepositoryParts,
+    staleTime: 120_000
+  });
+
+  const fileContent = useQuery({
+    queryKey: ["file-content", owner, repo, codeBrowserRef ?? "default", codeBrowserPath],
+    queryFn: () =>
+      api.github.getFileContent({
+        owner,
+        repo,
+        path: codeBrowserPath,
+        ref: codeBrowserRef ?? undefined
+      }),
+    enabled:
+      isCodeBrowserRoute &&
+      codeBrowserEntryType === "file" &&
+      hasRepositoryParts &&
+      Boolean(codeBrowserPath),
     staleTime: 120_000
   });
 
@@ -642,7 +701,10 @@ export function App(): JSX.Element {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["repository", owner, repo] });
       await queryClient.invalidateQueries({ queryKey: ["issues", owner, repo] });
+      await queryClient.invalidateQueries({ queryKey: ["issue-detail", owner, repo] });
       await queryClient.invalidateQueries({ queryKey: ["pulls", owner, repo] });
+      await queryClient.invalidateQueries({ queryKey: ["pull-detail", owner, repo] });
+      await queryClient.invalidateQueries({ queryKey: ["actions", owner, repo] });
     }
   });
 
@@ -689,6 +751,8 @@ export function App(): JSX.Element {
               repository={repository.data}
               contents={contents.data ?? []}
               contentsLoading={contents.isLoading || contents.isFetching}
+              readmeMarkdown={readme.data ?? repository.data?.readmeMarkdown ?? null}
+              readmeLoading={readme.isLoading || readme.isFetching}
               issues={issues.data ?? []}
               issuesLoading={issues.isLoading || issues.isFetching}
               pulls={pulls.data ?? []}
@@ -705,6 +769,9 @@ export function App(): JSX.Element {
                 (activeRepositoryTab === "pulls" ? pulls.error : null) ??
                 (activeRepositoryTab === "actions" ? actions.error : null)
               }
+              onOpenCodeBrowser={(entry) =>
+                openCodeBrowser(effectiveRepository, entry.path, entry.type === "dir" ? "dir" : "file", repository.data?.defaultBranch ?? null)
+              }
               onOpenExternal={(url) => void api.openExternal(url)}
               onMutate={(action, dangerous, payload = {}) => {
                 if (dangerous && !window.confirm(`Run ${action} on ${owner}/${repo}?`)) {
@@ -715,7 +782,24 @@ export function App(): JSX.Element {
             />
           )}
 
-          {route.kind !== "home" && route.kind !== "repository" && (
+          {route.kind === "codeBrowser" && (
+            <CodeBrowserPage
+              repository={repository.data}
+              route={route}
+              contents={contents.data ?? []}
+              contentsLoading={contents.isLoading || contents.isFetching}
+              fileContent={fileContent.data}
+              fileLoading={fileContent.isLoading || fileContent.isFetching}
+              error={repository.error ?? contents.error ?? fileContent.error}
+              onBackToRepository={() => goToRepository(effectiveRepository, "code")}
+              onOpenCodeBrowser={(path, entryType) =>
+                openCodeBrowser(effectiveRepository, path, entryType, repository.data?.defaultBranch ?? null)
+              }
+              onOpenExternal={(url) => void api.openExternal(url)}
+            />
+          )}
+
+          {route.kind !== "home" && route.kind !== "repository" && route.kind !== "codeBrowser" && (
             <CollectionView
               title={routeTitle(route)}
               routeKind={route.kind}
@@ -1125,6 +1209,8 @@ function RepositoryPage({
   repository,
   contents,
   contentsLoading,
+  readmeMarkdown,
+  readmeLoading,
   issues,
   issuesLoading,
   pulls,
@@ -1135,12 +1221,15 @@ function RepositoryPage({
   projects,
   loading,
   error,
+  onOpenCodeBrowser,
   onOpenExternal,
   onMutate
 }: {
   repository?: RepositoryDetail;
   contents: RepoEntry[];
   contentsLoading: boolean;
+  readmeMarkdown: string | null;
+  readmeLoading: boolean;
   issues: IssueSummary[];
   issuesLoading: boolean;
   pulls: PullRequestSummary[];
@@ -1151,6 +1240,7 @@ function RepositoryPage({
   projects: ProjectSummary[];
   loading: boolean;
   error: Error | null;
+  onOpenCodeBrowser(entry: RepoEntry): void;
   onOpenExternal(url: string): void;
   onMutate(action: GitHubAction, dangerous: boolean, payload?: Record<string, unknown>): void;
 }): JSX.Element {
@@ -1224,23 +1314,6 @@ function RepositoryPage({
               </span>
             </div>
           )}
-          <div className="stat-strip">
-            <span>
-              <Star size={15} /> {formatCompactNumber(counts.stars)}
-            </span>
-            <span>
-              <GitFork size={15} /> {formatCompactNumber(counts.forks)}
-            </span>
-            <span>
-              <Eye size={15} /> {formatCompactNumber(counts.watchers)}
-            </span>
-            {repo.licenseName && (
-              <span>
-                <ShieldCheck size={15} /> {repo.licenseName}
-              </span>
-            )}
-            {viewerState.permission && <span className="viewer-permission">{viewerState.permission}</span>}
-          </div>
         </div>
         <div className="repo-action-row">
           <button
@@ -1301,6 +1374,9 @@ function RepositoryPage({
           repository={repo}
           contents={contents}
           contentsLoading={contentsLoading}
+          readmeMarkdown={readmeMarkdown}
+          readmeLoading={readmeLoading}
+          onOpenCodeBrowser={onOpenCodeBrowser}
           onOpenExternal={onOpenExternal}
         />
       )}
@@ -1342,11 +1418,17 @@ function CodeTab({
   repository,
   contents,
   contentsLoading,
+  readmeMarkdown,
+  readmeLoading,
+  onOpenCodeBrowser,
   onOpenExternal
 }: {
   repository: RepositoryDetail;
   contents: RepoEntry[];
   contentsLoading: boolean;
+  readmeMarkdown: string | null;
+  readmeLoading: boolean;
+  onOpenCodeBrowser(entry: RepoEntry): void;
   onOpenExternal(url: string): void;
 }): JSX.Element {
   const parentRef = useRef<HTMLDivElement | null>(null);
@@ -1416,8 +1498,8 @@ function CodeTab({
                     key={item.sha}
                     type="button"
                     style={{ transform: `translateY(${virtualRow.start}px)` }}
-                    onClick={() => onOpenExternal(repositoryEntryPath(repository, item))}
-                    title={`Open ${item.path} on GitHub`}
+                    onClick={() => onOpenCodeBrowser(item)}
+                    title={`Browse ${item.path}`}
                   >
                     <EntryIcon entry={item} />
                     <strong>{item.name}</strong>
@@ -1438,9 +1520,9 @@ function CodeTab({
         </header>
         <div className="readme-content">
           <div>
-            <h2>{firstMarkdownHeading(repository.readmeMarkdown)}</h2>
+            <h2>{readmeLoading && !readmeMarkdown ? "Loading README..." : firstMarkdownHeading(readmeMarkdown)}</h2>
             <p>
-              {repository.readmeMarkdown
+              {readmeMarkdown
                 ?.split("\n")
                 .find((line) => line.trim() && !line.startsWith("#"))
                 ?.trim() ?? "README content is available from GitHub."}
@@ -1449,6 +1531,203 @@ function CodeTab({
         </div>
       </section>
     </section>
+  );
+}
+
+function CodeBrowserPage({
+  repository,
+  route,
+  contents,
+  contentsLoading,
+  fileContent,
+  fileLoading,
+  error,
+  onBackToRepository,
+  onOpenCodeBrowser,
+  onOpenExternal
+}: {
+  repository?: RepositoryDetail;
+  route: Extract<AppRoute, { kind: "codeBrowser" }>;
+  contents: RepoEntry[];
+  contentsLoading: boolean;
+  fileContent?: RepoFileContent;
+  fileLoading: boolean;
+  error: Error | null;
+  onBackToRepository(): void;
+  onOpenCodeBrowser(path: string, entryType: "file" | "dir"): void;
+  onOpenExternal(url: string): void;
+}): JSX.Element {
+  if (!repository) {
+    return <div className="loading-state">Loading code browser...</div>;
+  }
+
+  const isFile = route.entryType === "file";
+  const browserPath = route.path || repository.name;
+  const browserUrl = repositoryPathForEntryType(repository, route.path, route.entryType, route.ref ?? repository.defaultBranch ?? "HEAD");
+  const segments = pathSegments(route.path);
+
+  return (
+    <article className="code-browser-page">
+      <header className="code-browser-header">
+        <button type="button" onClick={onBackToRepository}>
+          <Code2 size={16} /> Repository
+        </button>
+        <div>
+          <h1>{browserPath}</h1>
+          <nav className="path-crumbs" aria-label="File path">
+            <button type="button" onClick={onBackToRepository}>
+              {repository.name}
+            </button>
+            {segments.map((segment, index) => {
+              const isLast = index === segments.length - 1;
+              const segmentType = isLast ? route.entryType : "dir";
+              return (
+                <button
+                  key={segment.path}
+                  type="button"
+                  disabled={isLast}
+                  onClick={() => onOpenCodeBrowser(segment.path, segmentType)}
+                >
+                  {segment.label}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+        <button type="button" onClick={() => onOpenExternal(browserUrl)}>
+          <ExternalLink size={16} /> GitHub
+        </button>
+      </header>
+
+      {error && <div className="error-state">{error.message}</div>}
+
+      {isFile ? (
+        <section className="code-viewer">
+          <div className="code-viewer-toolbar">
+            <span>{fileContent?.name ?? route.path.split("/").pop() ?? route.path}</span>
+            <small>{repository.defaultBranch ?? "HEAD"}</small>
+          </div>
+          {fileLoading ? (
+            <div className="empty-state">Loading file...</div>
+          ) : (
+            <pre>
+              <code>{fileContent?.content ?? ""}</code>
+            </pre>
+          )}
+        </section>
+      ) : (
+        <section className="file-table code-browser-table">
+          <div className="commit-row">
+            <span className="mini-avatar">{repository.owner.slice(0, 1).toUpperCase()}</span>
+            <strong>{repository.owner}</strong>
+            <span>{route.path || repository.defaultBranch || "Repository root"}</span>
+            <CheckCircle2 size={16} />
+            <small>{repository.defaultBranch ?? "HEAD"}</small>
+            <small>{formatRelativeDate(repositoryActivityDate(repository))}</small>
+            <small>updated</small>
+          </div>
+          {contentsLoading && contents.length === 0 ? (
+            <div className="empty-state">Loading folder...</div>
+          ) : (
+            <div className="code-browser-list">
+              {route.path && (
+                <button type="button" className="file-row static-file-row" onClick={() => onOpenCodeBrowser(parentDirectory(route.path), "dir")}>
+                  <Folder size={17} />
+                  <strong>..</strong>
+                  <span>Parent directory</span>
+                  <time />
+                </button>
+              )}
+              {contents.map((item) => (
+                <button
+                  className="file-row static-file-row"
+                  key={item.sha}
+                  type="button"
+                  onClick={() => onOpenCodeBrowser(item.path, item.type === "dir" ? "dir" : "file")}
+                  title={`Browse ${item.path}`}
+                >
+                  <EntryIcon entry={item} />
+                  <strong>{item.name}</strong>
+                  <span>{item.lastCommitMessage ?? (item.type === "dir" ? "Open folder" : "Open file")}</span>
+                  <time>{formatRelativeDate(item.lastCommitDate ?? repositoryActivityDate(repository))}</time>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+    </article>
+  );
+}
+
+function TimelineThread({
+  title,
+  authorLogin,
+  authorAvatarUrl,
+  createdAt,
+  body,
+  comments,
+  loading,
+  emptyBody
+}: {
+  title: string;
+  authorLogin: string | null;
+  authorAvatarUrl: string | null;
+  createdAt: string;
+  body: string | null | undefined;
+  comments: TimelineCommentSummary[];
+  loading: boolean;
+  emptyBody: string;
+}): JSX.Element {
+  return (
+    <div className="timeline-thread" aria-label={title}>
+      <TimelineComment
+        authorLogin={authorLogin}
+        authorAvatarUrl={authorAvatarUrl}
+        createdAt={createdAt}
+        body={body?.trim() || emptyBody}
+      />
+      {loading ? (
+        <div className="empty-state">Loading discussion...</div>
+      ) : (
+        comments.map((comment) => (
+          <TimelineComment
+            key={comment.id}
+            authorLogin={comment.authorLogin}
+            authorAvatarUrl={comment.authorAvatarUrl}
+            createdAt={comment.createdAt}
+            body={comment.body?.trim() || "No comment body."}
+          />
+        ))
+      )}
+    </div>
+  );
+}
+
+function TimelineComment({
+  authorLogin,
+  authorAvatarUrl,
+  createdAt,
+  body
+}: {
+  authorLogin: string | null;
+  authorAvatarUrl: string | null;
+  createdAt: string;
+  body: string;
+}): JSX.Element {
+  return (
+    <article className="timeline-comment">
+      <div className="timeline-avatar">
+        {authorAvatarUrl ? <img src={authorAvatarUrl} alt="" /> : <span>{authorLogin?.slice(0, 1).toUpperCase() ?? "?"}</span>}
+      </div>
+      <div className="timeline-card">
+        <header className="timeline-card-header">
+          <strong>{authorLogin ?? "unknown"}</strong>
+          <span>commented {formatRelativeDate(createdAt)}</span>
+        </header>
+        <div className="markdown-body-lite">{body}</div>
+      </div>
+    </article>
   );
 }
 
@@ -1465,40 +1744,155 @@ function IssuesTab({
   onOpenExternal(url: string): void;
   onMutate(action: GitHubAction, dangerous: boolean, payload?: Record<string, unknown>): void;
 }): JSX.Element {
+  const [selectedIssueNumber, setSelectedIssueNumber] = useState<number | null>(issues[0]?.number ?? null);
+  const [creating, setCreating] = useState(false);
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [commentBody, setCommentBody] = useState("");
+  const selectedIssue = issues.find((issue) => issue.number === selectedIssueNumber) ?? issues[0] ?? null;
+  const api = useMemo(() => getControlApi(), []);
+  const issueDetail = useQuery<IssueDetail>({
+    queryKey: ["issue-detail", repository.owner, repository.name, selectedIssue?.number],
+    queryFn: () =>
+      api.github.getIssueDetail({
+        owner: repository.owner,
+        repo: repository.name,
+        issueNumber: selectedIssue?.number ?? 0
+      }),
+    enabled: !creating && Boolean(selectedIssue)
+  });
+  const detail = issueDetail.data;
+
   return (
-    <section className="table-panel">
+    <section className="table-panel github-surface">
       <div className="table-action-row">
-        <button type="button" onClick={() => onOpenExternal(repositoryPath(repository, "/issues/new"))}>
+        <button type="button" onClick={() => setCreating(true)}>
           <Plus size={16} /> New issue
         </button>
       </div>
-      {loading && issues.length === 0 && <div className="empty-state">Loading issues...</div>}
-      {issues.map((issue) => (
-        <div className="issue-row" key={issue.id}>
-          <CircleDot size={17} />
-          <div>
-            <strong>{issue.title}</strong>
-            <small>
-              #{issue.number} opened by {issue.authorLogin ?? "unknown"} · {issue.comments} comments
-            </small>
-          </div>
-          <div className="label-stack">
-            {issue.labels.slice(0, 2).map((label) => (
-              <span key={label.id}>{label.name}</span>
-            ))}
-          </div>
-          <button type="button" onClick={() => onMutate("closeIssue", true, { issueNumber: issue.number })}>
-            Close
-          </button>
-          <button type="button" onClick={() => onOpenExternal(issue.htmlUrl)}>
-            Open
-          </button>
+      <div className="github-split">
+        <div className="thread-list">
+          {loading && issues.length === 0 && <div className="empty-state">Loading issues...</div>}
+          {issues.map((issue) => (
+            <button
+              className={`issue-row ${selectedIssue?.number === issue.number && !creating ? "active" : ""}`}
+              key={issue.id}
+              type="button"
+              onClick={() => {
+                setCreating(false);
+                setSelectedIssueNumber(issue.number);
+              }}
+            >
+              <CircleDot size={17} />
+              <div>
+                <strong>{issue.title}</strong>
+                <small>
+                  #{issue.number} opened by {issue.authorLogin ?? "unknown"} · {issue.comments} comments
+                </small>
+              </div>
+              <div className="label-stack">
+                {issue.labels.slice(0, 2).map((label) => (
+                  <span key={label.id}>{label.name}</span>
+                ))}
+              </div>
+            </button>
+          ))}
         </div>
-      ))}
+
+        <div className="thread-detail">
+          {creating ? (
+            <form
+              className="compose-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (!title.trim()) {
+                  return;
+                }
+                onMutate("createIssue", false, { title: title.trim(), body: body.trim() });
+                setTitle("");
+                setBody("");
+                setCreating(false);
+              }}
+            >
+              <h2>Open a new issue</h2>
+              <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Issue title" />
+              <textarea value={body} onChange={(event) => setBody(event.target.value)} placeholder="Describe the problem" />
+              <div>
+                <button className="dark-action" type="submit">
+                  <Plus size={16} /> Create issue
+                </button>
+                <button type="button" onClick={() => setCreating(false)}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          ) : selectedIssue ? (
+            <>
+              <header className="thread-header">
+                <h2>{selectedIssue.title}</h2>
+                <small>
+                  #{selectedIssue.number} opened by {selectedIssue.authorLogin ?? "unknown"} ·{" "}
+                  {formatRelativeDate(selectedIssue.createdAt)}
+                </small>
+                {selectedIssue.labels.length > 0 && (
+                  <div className="label-stack label-row">
+                    {selectedIssue.labels.map((label) => (
+                      <span key={label.id}>{label.name}</span>
+                    ))}
+                  </div>
+                )}
+              </header>
+              {issueDetail.error && <div className="error-state">{issueDetail.error.message}</div>}
+              <TimelineThread
+                title={`Issue ${selectedIssue.number} discussion`}
+                authorLogin={detail?.authorLogin ?? selectedIssue.authorLogin}
+                authorAvatarUrl={detail?.authorAvatarUrl ?? selectedIssue.authorAvatarUrl}
+                createdAt={detail?.createdAt ?? selectedIssue.createdAt}
+                body={detail?.body}
+                comments={detail?.commentsList ?? []}
+                loading={issueDetail.isLoading || issueDetail.isFetching}
+                emptyBody="No description provided."
+              />
+              <form
+                className="comment-composer"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (!commentBody.trim()) {
+                    return;
+                  }
+                  onMutate("addComment", false, { issueNumber: selectedIssue.number, body: commentBody.trim() });
+                  setCommentBody("");
+                }}
+              >
+                <textarea
+                  value={commentBody}
+                  onChange={(event) => setCommentBody(event.target.value)}
+                  placeholder="Leave a comment"
+                />
+                <button className="dark-action" type="submit">
+                  Comment
+                </button>
+              </form>
+              <div className="thread-actions">
+                <button type="button" onClick={() => onOpenExternal(selectedIssue.htmlUrl)}>
+                  <ExternalLink size={16} /> Open on GitHub
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onMutate("closeIssue", true, { issueNumber: selectedIssue.number })}
+                >
+                  Close issue
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="empty-state">No issues found.</div>
+          )}
+        </div>
+      </div>
     </section>
   );
 }
-
 function PullRequestsTab({
   repository,
   pulls,
@@ -1512,37 +1906,161 @@ function PullRequestsTab({
   onOpenExternal(url: string): void;
   onMutate(action: GitHubAction, dangerous: boolean, payload?: Record<string, unknown>): void;
 }): JSX.Element {
+  const [selectedPullNumber, setSelectedPullNumber] = useState<number | null>(pulls[0]?.number ?? null);
+  const [creating, setCreating] = useState(false);
+  const [title, setTitle] = useState("");
+  const [head, setHead] = useState("");
+  const [body, setBody] = useState("");
+  const [commentBody, setCommentBody] = useState("");
+  const selectedPull = pulls.find((pull) => pull.number === selectedPullNumber) ?? pulls[0] ?? null;
+  const api = useMemo(() => getControlApi(), []);
+  const pullDetail = useQuery<PullRequestDetail>({
+    queryKey: ["pull-detail", repository.owner, repository.name, selectedPull?.number],
+    queryFn: () =>
+      api.github.getPullRequestDetail({
+        owner: repository.owner,
+        repo: repository.name,
+        pullNumber: selectedPull?.number ?? 0
+      }),
+    enabled: !creating && Boolean(selectedPull)
+  });
+  const detail = pullDetail.data;
+
   return (
-    <section className="table-panel">
+    <section className="table-panel github-surface">
       <div className="table-action-row">
-        <button type="button" onClick={() => onOpenExternal(repositoryPath(repository, "/pulls"))}>
+        <button type="button" onClick={() => setCreating(true)}>
           <Plus size={16} /> New pull request
         </button>
       </div>
-      {loading && pulls.length === 0 && <div className="empty-state">Loading pull requests...</div>}
-      {pulls.map((pull) => (
-        <div className="issue-row" key={pull.id}>
-          <GitPullRequest size={17} />
-          <div>
-            <strong>{pull.title}</strong>
-            <small>
-              #{pull.number} {pull.headRefName} → {pull.baseRefName} · {pull.changedFiles} files
-            </small>
-          </div>
-          <span className={`state-chip ${pull.mergeableState === "clean" ? "success" : ""}`}>
-            {pull.isDraft ? "draft" : (pull.mergeableState ?? pull.state)}
-          </span>
-          <button
-            type="button"
-            onClick={() => onMutate("mergePullRequest", true, { pullNumber: pull.number })}
-          >
-            Merge
-          </button>
-          <button type="button" onClick={() => onOpenExternal(pull.htmlUrl)}>
-            Open
-          </button>
+      <div className="github-split">
+        <div className="thread-list">
+          {loading && pulls.length === 0 && <div className="empty-state">Loading pull requests...</div>}
+          {pulls.map((pull) => (
+            <button
+              className={`issue-row ${selectedPull?.number === pull.number && !creating ? "active" : ""}`}
+              key={pull.id}
+              type="button"
+              onClick={() => {
+                setCreating(false);
+                setSelectedPullNumber(pull.number);
+              }}
+            >
+              <GitPullRequest size={17} />
+              <div>
+                <strong>{pull.title}</strong>
+                <small>
+                  #{pull.number} {pull.headRefName} -&gt; {pull.baseRefName} · {pull.changedFiles} files
+                </small>
+              </div>
+              <span className={`state-chip ${pull.mergeableState === "clean" ? "success" : ""}`}>
+                {pull.isDraft ? "draft" : (pull.mergeableState ?? pull.state)}
+              </span>
+            </button>
+          ))}
         </div>
-      ))}
+
+        <div className="thread-detail">
+          {creating ? (
+            <form
+              className="compose-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (!title.trim() || !head.trim()) {
+                  return;
+                }
+                onMutate("createPullRequest", false, {
+                  title: title.trim(),
+                  head: head.trim(),
+                  base: repository.defaultBranch ?? "main",
+                  body: body.trim()
+                });
+                setTitle("");
+                setHead("");
+                setBody("");
+                setCreating(false);
+              }}
+            >
+              <h2>Open a pull request</h2>
+              <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Pull request title" />
+              <input value={head} onChange={(event) => setHead(event.target.value)} placeholder="compare branch" />
+              <textarea value={body} onChange={(event) => setBody(event.target.value)} placeholder="Describe the changes" />
+              <small>
+                Base branch: <strong>{repository.defaultBranch ?? "main"}</strong>
+              </small>
+              <div>
+                <button className="dark-action" type="submit">
+                  <GitPullRequest size={16} /> Create pull request
+                </button>
+                <button type="button" onClick={() => setCreating(false)}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          ) : selectedPull ? (
+            <>
+              <header className="thread-header">
+                <h2>{selectedPull.title}</h2>
+                <small>
+                  #{selectedPull.number} by {selectedPull.authorLogin ?? "unknown"} · {selectedPull.headRefName} -&gt;{" "}
+                  {selectedPull.baseRefName}
+                </small>
+              </header>
+              <div className="diff-summary">
+                <span>{selectedPull.changedFiles} files changed</span>
+                <span className="additions">+{formatCompactNumber(selectedPull.additions)}</span>
+                <span className="deletions">-{formatCompactNumber(selectedPull.deletions)}</span>
+                <span>{selectedPull.reviewComments} review comments</span>
+              </div>
+              {pullDetail.error && <div className="error-state">{pullDetail.error.message}</div>}
+              <TimelineThread
+                title={`Pull request ${selectedPull.number} discussion`}
+                authorLogin={detail?.authorLogin ?? selectedPull.authorLogin}
+                authorAvatarUrl={detail?.authorAvatarUrl ?? selectedPull.authorAvatarUrl}
+                createdAt={detail?.createdAt ?? selectedPull.createdAt}
+                body={detail?.body}
+                comments={detail?.commentsList ?? []}
+                loading={pullDetail.isLoading || pullDetail.isFetching}
+                emptyBody="No pull request description provided."
+              />
+              <form
+                className="comment-composer"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (!commentBody.trim()) {
+                    return;
+                  }
+                  onMutate("addComment", false, { issueNumber: selectedPull.number, body: commentBody.trim() });
+                  setCommentBody("");
+                }}
+              >
+                <textarea
+                  value={commentBody}
+                  onChange={(event) => setCommentBody(event.target.value)}
+                  placeholder="Leave a comment"
+                />
+                <button className="dark-action" type="submit">
+                  Comment
+                </button>
+              </form>
+              <div className="thread-actions">
+                <button type="button" onClick={() => onOpenExternal(selectedPull.htmlUrl)}>
+                  <ExternalLink size={16} /> Open on GitHub
+                </button>
+                <button
+                  className="dark-action"
+                  type="button"
+                  onClick={() => onMutate("mergePullRequest", true, { pullNumber: selectedPull.number })}
+                >
+                  Merge pull request
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="empty-state">No pull requests found.</div>
+          )}
+        </div>
+      </div>
     </section>
   );
 }
@@ -1560,34 +2078,105 @@ function ActionsTab({
   onOpenExternal(url: string): void;
   onMutate(action: GitHubAction, dangerous: boolean, payload?: Record<string, unknown>): void;
 }): JSX.Element {
+  const [selectedRunId, setSelectedRunId] = useState<number | null>(actions[0]?.id ?? null);
+  const [dispatching, setDispatching] = useState(false);
+  const [workflowId, setWorkflowId] = useState("");
+  const [ref, setRef] = useState(repository.defaultBranch ?? "main");
+  const selectedRun = actions.find((run) => run.id === selectedRunId) ?? actions[0] ?? null;
+
   return (
-    <section className="table-panel">
+    <section className="table-panel github-surface">
       <div className="table-action-row">
-        <button type="button" onClick={() => onOpenExternal(repositoryPath(repository, "/actions"))}>
-          <Workflow size={16} /> Workflows
+        <button type="button" onClick={() => setDispatching(true)}>
+          <Workflow size={16} /> Run workflow
         </button>
       </div>
-      {loading && actions.length === 0 && <div className="empty-state">Loading workflow runs...</div>}
-      {actions.map((run) => (
-        <div className="issue-row" key={run.id}>
-          <Workflow size={17} />
-          <div>
-            <strong>{run.name}</strong>
-            <small>
-              {run.event} on {run.branch ?? "unknown"} · {formatRelativeDate(run.updatedAt)}
-            </small>
-          </div>
-          <span className={`state-chip ${run.conclusion === "success" ? "success" : ""}`}>
-            {run.conclusion ?? run.status ?? "queued"}
-          </span>
-          <button type="button" onClick={() => onMutate("rerunWorkflow", true, { runId: run.id })}>
-            Rerun
-          </button>
-          <button type="button" onClick={() => onOpenExternal(run.htmlUrl)}>
-            Open
-          </button>
+      <div className="github-split">
+        <div className="thread-list">
+          {loading && actions.length === 0 && <div className="empty-state">Loading workflow runs...</div>}
+          {actions.map((run) => (
+            <button
+              className={`issue-row ${selectedRun?.id === run.id && !dispatching ? "active" : ""}`}
+              key={run.id}
+              type="button"
+              onClick={() => {
+                setDispatching(false);
+                setSelectedRunId(run.id);
+              }}
+            >
+              <Workflow size={17} />
+              <div>
+                <strong>{run.name}</strong>
+                <small>
+                  {run.event} on {run.branch ?? "unknown"} · {formatRelativeDate(run.updatedAt)}
+                </small>
+              </div>
+              <span className={`state-chip ${run.conclusion === "success" ? "success" : ""}`}>
+                {run.conclusion ?? run.status ?? "queued"}
+              </span>
+            </button>
+          ))}
         </div>
-      ))}
+
+        <div className="thread-detail">
+          {dispatching ? (
+            <form
+              className="compose-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (!workflowId.trim() || !ref.trim()) {
+                  return;
+                }
+                onMutate("dispatchWorkflow", true, { workflowId: workflowId.trim(), ref: ref.trim() });
+                setWorkflowId("");
+                setDispatching(false);
+              }}
+            >
+              <h2>Run workflow</h2>
+              <input
+                value={workflowId}
+                onChange={(event) => setWorkflowId(event.target.value)}
+                placeholder="workflow file, name, or id"
+              />
+              <input value={ref} onChange={(event) => setRef(event.target.value)} placeholder="branch or tag" />
+              <div>
+                <button className="dark-action" type="submit">
+                  <Workflow size={16} /> Run workflow
+                </button>
+                <button type="button" onClick={() => setDispatching(false)}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          ) : selectedRun ? (
+            <>
+              <header className="thread-header">
+                <h2>{selectedRun.name}</h2>
+                <small>
+                  {selectedRun.event} · {selectedRun.branch ?? "unknown branch"} ·{" "}
+                  {formatRelativeDate(selectedRun.updatedAt)}
+                </small>
+              </header>
+              <div className="workflow-summary">
+                <span className={`state-chip ${selectedRun.conclusion === "success" ? "success" : ""}`}>
+                  {selectedRun.conclusion ?? selectedRun.status ?? "queued"}
+                </span>
+                <span>{selectedRun.commitSha?.slice(0, 7) ?? "No commit"}</span>
+              </div>
+              <div className="thread-actions">
+                <button type="button" onClick={() => onOpenExternal(selectedRun.htmlUrl)}>
+                  <ExternalLink size={16} /> Open on GitHub
+                </button>
+                <button type="button" onClick={() => onMutate("rerunWorkflow", true, { runId: selectedRun.id })}>
+                  Rerun
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="empty-state">No workflow runs found.</div>
+          )}
+        </div>
+      </div>
     </section>
   );
 }

@@ -16,11 +16,15 @@ import type {
   GitHubMutationInput,
   GitHubMutationResult,
   GitHubProvider,
+  IssueDetail,
+  IssueDetailInput,
   IssueListInput,
   IssueSummary,
   LanguageStat,
   ProjectSummary,
   ProjectsInput,
+  PullRequestDetail,
+  PullRequestDetailInput,
   PullRequestListInput,
   PullRequestSummary,
   ReleaseSummary,
@@ -405,7 +409,6 @@ export class GhCliProvider implements GitHubProvider {
   }
 
   async getRepository(owner: string, repo: string): Promise<RepositoryDetail> {
-    const readmeMarkdown = this.getReadme(owner, repo).catch(() => null);
     const data = await this.graphql<{
       repository: GitHubRepositoryNode & {
         url: string;
@@ -492,7 +495,7 @@ export class GhCliProvider implements GitHubProvider {
       topics: data.repository.repositoryTopics.nodes.map((node) => node.topic.name),
       branchCount: data.repository.branches.totalCount,
       tagCount: data.repository.tags.totalCount,
-      readmeMarkdown: await readmeMarkdown,
+      readmeMarkdown: null,
       htmlUrl: data.repository.url,
       languages: mapLanguages(data.repository.languages),
       parent: mapRepositoryRef(data.repository.parent),
@@ -510,6 +513,10 @@ export class GhCliProvider implements GitHubProvider {
         isDisabled: data.repository.isDisabled
       }
     };
+  }
+
+  async getReadme(input: RepoDetailInput): Promise<string | null> {
+    return this.getReadmeMarkdown(input.owner, input.repo).catch(() => null);
   }
 
   async listContents(input: RepoContentsInput): Promise<RepoEntry[]> {
@@ -570,6 +577,25 @@ export class GhCliProvider implements GitHubProvider {
     return data.filter((issue) => !issue.pull_request).map(mapIssue);
   }
 
+  async getIssueDetail(input: IssueDetailInput): Promise<IssueDetail> {
+    const [issue, comments] = await Promise.all([
+      this.rest<GitHubIssue>(
+        "GET",
+        `/repos/${input.owner}/${input.repo}/issues/${input.issueNumber}`
+      ),
+      this.rest<GitHubIssueComment[]>(
+        "GET",
+        `/repos/${input.owner}/${input.repo}/issues/${input.issueNumber}/comments?per_page=50`
+      )
+    ]);
+
+    return {
+      ...mapIssue(issue),
+      body: issue.body ?? null,
+      commentsList: comments.map(mapTimelineComment)
+    };
+  }
+
   async listPullRequests(input: PullRequestListInput): Promise<PullRequestSummary[]> {
     const state = input.state ?? "open";
     const data = await this.rest<GitHubPullRequest[]>(
@@ -578,6 +604,25 @@ export class GhCliProvider implements GitHubProvider {
     );
 
     return data.map(mapPullRequest);
+  }
+
+  async getPullRequestDetail(input: PullRequestDetailInput): Promise<PullRequestDetail> {
+    const [pullRequest, comments] = await Promise.all([
+      this.rest<GitHubPullRequest>(
+        "GET",
+        `/repos/${input.owner}/${input.repo}/pulls/${input.pullNumber}`
+      ),
+      this.rest<GitHubIssueComment[]>(
+        "GET",
+        `/repos/${input.owner}/${input.repo}/issues/${input.pullNumber}/comments?per_page=50`
+      )
+    ]);
+
+    return {
+      ...mapPullRequest(pullRequest),
+      body: pullRequest.body ?? null,
+      commentsList: comments.map(mapTimelineComment)
+    };
   }
 
   async listDiscussions(input: DiscussionListInput): Promise<DiscussionSummary[]> {
@@ -788,7 +833,7 @@ export class GhCliProvider implements GitHubProvider {
     } as TResult;
   }
 
-  private async getReadme(owner: string, repo: string): Promise<string> {
+  private async getReadmeMarkdown(owner: string, repo: string): Promise<string> {
     return this.restText("GET", `/repos/${owner}/${repo}/readme`, {
       accept: "application/vnd.github.raw"
     });
@@ -796,11 +841,6 @@ export class GhCliProvider implements GitHubProvider {
 
   private async performMutation(input: GitHubMutationInput): Promise<unknown> {
     const { owner, repo, payload = {} } = input;
-    const issueNumber = getNumber(payload, "issueNumber");
-    const pullNumber = getNumber(payload, "pullNumber");
-    const commentId = getNumber(payload, "commentId");
-    const runId = getNumber(payload, "runId");
-    const releaseId = getNumber(payload, "releaseId");
 
     switch (input.action) {
       case "star":
@@ -826,63 +866,78 @@ export class GhCliProvider implements GitHubProvider {
       case "editIssue":
         return this.rest(
           "PATCH",
-          `/repos/${owner}/${repo}/issues/${issueNumber}`,
+          `/repos/${owner}/${repo}/issues/${getNumber(payload, "issueNumber")}`,
           pick(payload, ["title", "body", "state", "labels", "assignees", "milestone"])
         );
       case "closeIssue":
-        return this.rest("PATCH", `/repos/${owner}/${repo}/issues/${issueNumber}`, { state: "closed" });
+        return this.rest("PATCH", `/repos/${owner}/${repo}/issues/${getNumber(payload, "issueNumber")}`, { state: "closed" });
       case "reopenIssue":
-        return this.rest("PATCH", `/repos/${owner}/${repo}/issues/${issueNumber}`, { state: "open" });
+        return this.rest("PATCH", `/repos/${owner}/${repo}/issues/${getNumber(payload, "issueNumber")}`, { state: "open" });
       case "addComment":
         return this.rest(
           "POST",
-          `/repos/${owner}/${repo}/issues/${issueNumber}/comments`,
+          `/repos/${owner}/${repo}/issues/${getNumber(payload, "issueNumber")}/comments`,
           pick(payload, ["body"])
         );
       case "editComment":
         return this.rest(
           "PATCH",
-          `/repos/${owner}/${repo}/issues/comments/${commentId}`,
+          `/repos/${owner}/${repo}/issues/comments/${getNumber(payload, "commentId")}`,
           pick(payload, ["body"])
         );
       case "deleteComment":
-        return this.rest("DELETE", `/repos/${owner}/${repo}/issues/comments/${commentId}`);
+        return this.rest("DELETE", `/repos/${owner}/${repo}/issues/comments/${getNumber(payload, "commentId")}`);
       case "addLabels":
         return this.rest(
           "POST",
-          `/repos/${owner}/${repo}/issues/${issueNumber}/labels`,
+          `/repos/${owner}/${repo}/issues/${getNumber(payload, "issueNumber")}/labels`,
           pick(payload, ["labels"])
         );
       case "setAssignees":
         return this.rest(
           "POST",
-          `/repos/${owner}/${repo}/issues/${issueNumber}/assignees`,
+          `/repos/${owner}/${repo}/issues/${getNumber(payload, "issueNumber")}/assignees`,
           pick(payload, ["assignees"])
+        );
+      case "createPullRequest":
+        return this.rest(
+          "POST",
+          `/repos/${owner}/${repo}/pulls`,
+          pick(payload, ["title", "head", "base", "body", "draft", "maintainer_can_modify"])
         );
       case "mergePullRequest":
         return this.rest(
           "PUT",
-          `/repos/${owner}/${repo}/pulls/${pullNumber}/merge`,
+          `/repos/${owner}/${repo}/pulls/${getNumber(payload, "pullNumber")}/merge`,
           pick(payload, ["commit_title", "commit_message", "merge_method", "sha"])
         );
       case "closePullRequest":
-        return this.rest("PATCH", `/repos/${owner}/${repo}/pulls/${pullNumber}`, { state: "closed" });
+        return this.rest("PATCH", `/repos/${owner}/${repo}/pulls/${getNumber(payload, "pullNumber")}`, { state: "closed" });
       case "reopenPullRequest":
-        return this.rest("PATCH", `/repos/${owner}/${repo}/pulls/${pullNumber}`, { state: "open" });
+        return this.rest("PATCH", `/repos/${owner}/${repo}/pulls/${getNumber(payload, "pullNumber")}`, { state: "open" });
       case "approvePullRequest":
-        return this.rest("POST", `/repos/${owner}/${repo}/pulls/${pullNumber}/reviews`, {
+        return this.rest("POST", `/repos/${owner}/${repo}/pulls/${getNumber(payload, "pullNumber")}/reviews`, {
           body: typeof payload.body === "string" ? payload.body : "",
           event: "APPROVE"
         });
       case "requestChanges":
-        return this.rest("POST", `/repos/${owner}/${repo}/pulls/${pullNumber}/reviews`, {
+        return this.rest("POST", `/repos/${owner}/${repo}/pulls/${getNumber(payload, "pullNumber")}/reviews`, {
           body: typeof payload.body === "string" ? payload.body : "Changes requested from Control.",
           event: "REQUEST_CHANGES"
         });
       case "rerunWorkflow":
-        return this.rest("POST", `/repos/${owner}/${repo}/actions/runs/${runId}/rerun`);
+        return this.rest("POST", `/repos/${owner}/${repo}/actions/runs/${getNumber(payload, "runId")}/rerun`);
+      case "dispatchWorkflow":
+        return this.rest(
+          "POST",
+          `/repos/${owner}/${repo}/actions/workflows/${encodeURIComponent(getString(payload, "workflowId"))}/dispatches`,
+          {
+            ref: getString(payload, "ref"),
+            inputs: typeof payload.inputs === "object" && payload.inputs !== null ? payload.inputs : undefined
+          }
+        );
       case "cancelWorkflow":
-        return this.rest("POST", `/repos/${owner}/${repo}/actions/runs/${runId}/cancel`);
+        return this.rest("POST", `/repos/${owner}/${repo}/actions/runs/${getNumber(payload, "runId")}/cancel`);
       case "createRelease":
         return this.rest(
           "POST",
@@ -892,7 +947,7 @@ export class GhCliProvider implements GitHubProvider {
       case "editRelease":
         return this.rest(
           "PATCH",
-          `/repos/${owner}/${repo}/releases/${releaseId}`,
+          `/repos/${owner}/${repo}/releases/${getNumber(payload, "releaseId")}`,
           pick(payload, [
             "tag_name",
             "target_commitish",
@@ -904,7 +959,7 @@ export class GhCliProvider implements GitHubProvider {
           ])
         );
       case "deleteRelease":
-        return this.rest("DELETE", `/repos/${owner}/${repo}/releases/${releaseId}`);
+        return this.rest("DELETE", `/repos/${owner}/${repo}/releases/${getNumber(payload, "releaseId")}`);
       default:
         throw new Error(`Unsupported GitHub action: ${input.action}`);
     }
@@ -1019,6 +1074,14 @@ function getNumber(payload: Record<string, unknown>, key: string): number {
   const value = payload[key];
   if (typeof value !== "number" || Number.isNaN(value)) {
     throw new Error(`GitHub action payload requires numeric ${key}.`);
+  }
+  return value;
+}
+
+function getString(payload: Record<string, unknown>, key: string): string {
+  const value = payload[key];
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`GitHub action payload requires string ${key}.`);
   }
   return value;
 }
@@ -1201,6 +1264,18 @@ function mapPullRequest(pr: GitHubPullRequest): PullRequestSummary {
   };
 }
 
+function mapTimelineComment(comment: GitHubIssueComment) {
+  return {
+    id: comment.id,
+    authorLogin: comment.user?.login ?? null,
+    authorAvatarUrl: comment.user?.avatar_url ?? null,
+    body: comment.body ?? null,
+    createdAt: comment.created_at,
+    updatedAt: comment.updated_at,
+    htmlUrl: comment.html_url
+  };
+}
+
 interface GitHubRepositoryNode {
   id: string;
   name: string;
@@ -1367,6 +1442,7 @@ interface GitHubIssue {
   title: string;
   state: string;
   user: GitHubUser | null;
+  body?: string | null;
   comments: number;
   labels: Array<{
     id: number;
@@ -1379,6 +1455,15 @@ interface GitHubIssue {
   pull_request?: unknown;
 }
 
+interface GitHubIssueComment {
+  id: number;
+  user: GitHubUser | null;
+  body: string | null;
+  created_at: string;
+  updated_at: string;
+  html_url: string;
+}
+
 interface GitHubPullRequest {
   id: number;
   number: number;
@@ -1386,6 +1471,7 @@ interface GitHubPullRequest {
   state: string;
   draft: boolean;
   user: GitHubUser | null;
+  body?: string | null;
   comments?: number;
   review_comments?: number;
   additions?: number;

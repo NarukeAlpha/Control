@@ -63,6 +63,7 @@ function makeApi(overrides: Partial<ControlApi["github"]> = {}): ControlApi {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   delete window.control;
   useUiStore.setState(defaultUiState);
 });
@@ -187,6 +188,11 @@ describe("Control renderer routing", () => {
   });
 
   it("does not fetch inactive repository tabs when opening code", async () => {
+    const getRepository = vi.fn<ControlApi["github"]["getRepository"]>(async () => ({
+      ...mockRepository,
+      readmeMarkdown: null
+    }));
+    const getReadme = vi.fn<ControlApi["github"]["getReadme"]>(async () => mockRepository.readmeMarkdown);
     const listContents = vi.fn<ControlApi["github"]["listContents"]>(async () => mockContents);
     const listIssues = vi.fn<ControlApi["github"]["listIssues"]>(async () => mockIssues);
     const listPullRequests = vi.fn<ControlApi["github"]["listPullRequests"]>(async () => mockPullRequests);
@@ -199,6 +205,8 @@ describe("Control renderer routing", () => {
 
     renderControl(
       makeApi({
+        getRepository,
+        getReadme,
         listContents,
         listIssues,
         listPullRequests,
@@ -208,21 +216,29 @@ describe("Control renderer routing", () => {
 
     expect(await screen.findByRole("heading", { name: /apple \/ swift/i })).toBeInTheDocument();
     await waitFor(() => expect(listContents).toHaveBeenCalledTimes(1));
+    expect(getReadme).toHaveBeenCalledWith({ owner: "apple", repo: "swift" });
+    expect(await screen.findByText(/Swift is a powerful and intuitive/)).toBeInTheDocument();
 
     expect(listIssues).not.toHaveBeenCalled();
     expect(listPullRequests).not.toHaveBeenCalled();
     expect(listActions).not.toHaveBeenCalled();
   });
 
-  it("opens file rows with GitHub blob URLs for the repository branch", async () => {
-    const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
+  it("opens file rows in the in-app code browser", async () => {
+    const getFileContent = vi.fn<ControlApi["github"]["getFileContent"]>(async (input) => ({
+      path: input.path,
+      name: input.path.split("/").pop() ?? input.path,
+      ref: input.ref ?? "main",
+      content: "# README.md\n\nLoaded in Control.",
+      htmlUrl: `https://github.com/apple/swift/blob/main/${input.path}`
+    }));
 
     useUiStore.setState({
       ...defaultUiState,
       route: { kind: "repository", nameWithOwner: "apple/swift", tab: "code" }
     });
 
-    renderControl({ ...makeApi(), openExternal });
+    renderControl(makeApi({ getFileContent }));
 
     const fileList = await waitFor(() => {
       const element = document.querySelector(".virtual-file-list");
@@ -235,9 +251,112 @@ describe("Control renderer routing", () => {
 
     await userEvent.click(within(fileList).getByRole("button", { name: /README\.md/i }));
 
-    expect(openExternal).toHaveBeenCalledWith("https://github.com/apple/swift/blob/main/README.md");
+    await waitFor(() => {
+      expect(useUiStore.getState().route).toEqual({
+        kind: "codeBrowser",
+        nameWithOwner: "apple/swift",
+        path: "README.md",
+        entryType: "file",
+        ref: "main"
+      });
+    });
+    expect(await screen.findByRole("heading", { name: "README.md" })).toBeInTheDocument();
+    expect(await screen.findByText(/Loaded in Control/)).toBeInTheDocument();
+    expect(getFileContent).toHaveBeenCalledWith({
+      owner: "apple",
+      repo: "swift",
+      path: "README.md",
+      ref: "main"
+    });
     expect(document.querySelector(".readme-mark")).toBeNull();
     expect(screen.queryByText("1,562 commits")).not.toBeInTheDocument();
+  });
+
+  it("creates issues, pull requests, and workflow dispatches from repository tabs", async () => {
+    const mutate = vi.fn<ControlApi["github"]["mutate"]>(async (input) => ({
+      ok: true,
+      action: input.action,
+      message: `${input.action} ok`
+    }));
+    const getIssueDetail = vi.fn<ControlApi["github"]["getIssueDetail"]>(
+      mockControlApi.github.getIssueDetail
+    );
+    const getPullRequestDetail = vi.fn<ControlApi["github"]["getPullRequestDetail"]>(
+      mockControlApi.github.getPullRequestDetail
+    );
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "issues" }
+    });
+    renderControl(makeApi({ mutate, getIssueDetail, getPullRequestDetail }));
+
+    expect(await screen.findByText(/This issue reproduces/)).toBeInTheDocument();
+    expect(getIssueDetail).toHaveBeenCalledWith({
+      owner: "apple",
+      repo: "swift",
+      issueNumber: mockIssues[0].number
+    });
+
+    await userEvent.click(await screen.findByRole("button", { name: "New issue" }));
+    await userEvent.type(screen.getByPlaceholderText("Issue title"), "Bug report");
+    await userEvent.type(screen.getByPlaceholderText("Describe the problem"), "Steps to reproduce");
+    await userEvent.click(screen.getByRole("button", { name: /Create issue/i }));
+
+    await waitFor(() =>
+      expect(mutate).toHaveBeenCalledWith({
+        action: "createIssue",
+        owner: "apple",
+        repo: "swift",
+        payload: { title: "Bug report", body: "Steps to reproduce" }
+      }, expect.anything())
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /^Pull requests/ }));
+    expect(await screen.findByText(/This pull request updates/)).toBeInTheDocument();
+    expect(getPullRequestDetail).toHaveBeenCalledWith({
+      owner: "apple",
+      repo: "swift",
+      pullNumber: mockPullRequests[0].number
+    });
+    await userEvent.click(await screen.findByRole("button", { name: "New pull request" }));
+    await userEvent.type(screen.getByPlaceholderText("Pull request title"), "Feature branch");
+    await userEvent.type(screen.getByPlaceholderText("compare branch"), "feature/demo");
+    await userEvent.click(screen.getByRole("button", { name: /Create pull request/i }));
+
+    await waitFor(() =>
+      expect(mutate).toHaveBeenCalledWith({
+        action: "createPullRequest",
+        owner: "apple",
+        repo: "swift",
+        payload: {
+          title: "Feature branch",
+          head: "feature/demo",
+          base: "main",
+          body: ""
+        }
+      }, expect.anything())
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /^Actions/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "Run workflow" }));
+    await userEvent.type(screen.getByPlaceholderText("workflow file, name, or id"), "ci.yml");
+    const workflowForm = screen.getByRole("heading", { name: "Run workflow" }).closest("form");
+    expect(workflowForm).not.toBeNull();
+    await userEvent.click(
+      within(workflowForm as HTMLElement).getByRole("button", { name: /^Run workflow$/i })
+    );
+
+    await waitFor(() =>
+      expect(mutate).toHaveBeenCalledWith({
+        action: "dispatchWorkflow",
+        owner: "apple",
+        repo: "swift",
+        payload: { workflowId: "ci.yml", ref: "main" }
+      }, expect.anything())
+    );
+    expect(confirm).toHaveBeenCalledWith("Run dispatchWorkflow on apple/swift?");
   });
 
   it("moves from collection navigation back into a repository route when a repository is selected from search", async () => {

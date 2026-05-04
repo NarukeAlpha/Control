@@ -15,6 +15,19 @@ test("renders the Control glass GitHub surface", async ({ page }) => {
   await expect(page.locator(".file-row").first()).toBeVisible();
 });
 
+test("opens repository files in the code browser", async ({ page }) => {
+  await page.goto("/");
+  await page
+    .locator(".topbar")
+    .getByTitle(/Open apple\/swift/)
+    .click();
+
+  await page.locator(".virtual-file-list").getByRole("button", { name: /README\.md/i }).click();
+  await expect(page.getByRole("heading", { name: "README.md" })).toBeVisible();
+  await expect(page.locator(".code-viewer")).toContainText("Mock file content from Control.");
+  await expect(page.getByRole("button", { name: "Repository", exact: true })).toBeVisible();
+});
+
 test("exposes current titlebar controls without overlapping the shell", async ({ page }) => {
   await page.goto("/");
 
@@ -77,12 +90,14 @@ test("navigates repository tabs from the repository route", async ({ page }) => 
     .getByRole("button", { name: /^Issues/ })
     .click();
   await expect(page.locator(".table-panel .issue-row").first()).toBeVisible();
+  await expect(page.locator(".timeline-thread").first()).toContainText("This issue reproduces");
 
   await page
     .locator(".repo-tabs")
     .getByRole("button", { name: /^Pull requests/ })
     .click();
   await expect(page.locator(".table-panel .issue-row").first()).toBeVisible();
+  await expect(page.locator(".timeline-thread").first()).toContainText("This pull request updates");
 
   await page
     .locator(".repo-tabs")

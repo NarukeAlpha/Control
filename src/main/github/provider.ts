@@ -11,10 +11,14 @@ import type {
   GitHubMutationInput,
   GitHubMutationResult,
   GitHubProvider,
+  IssueDetail,
+  IssueDetailInput,
   IssueListInput,
   IssueSummary,
   ProjectSummary,
   ProjectsInput,
+  PullRequestDetail,
+  PullRequestDetailInput,
   PullRequestListInput,
   PullRequestSummary,
   ReleaseSummary,
@@ -81,6 +85,12 @@ export class GitHubProviderManager implements GitHubProvider {
     return repository;
   }
 
+  async getReadme(input: RepoDetailInput): Promise<string | null> {
+    return this.withCache(`readme:${input.owner}/${input.repo}`, 120_000, () =>
+      this.provider().getReadme(input)
+    );
+  }
+
   async listContents(input: RepoContentsInput): Promise<RepoEntry[]> {
     const key = `contents:${input.owner}/${input.repo}:${input.ref ?? "default"}:${input.path ?? ""}`;
     return this.withCache(key, 30_000, () => this.provider().listContents(input));
@@ -97,10 +107,20 @@ export class GitHubProviderManager implements GitHubProvider {
     );
   }
 
+  async getIssueDetail(input: IssueDetailInput): Promise<IssueDetail> {
+    const key = `issue-detail:${input.owner}/${input.repo}:${input.issueNumber}`;
+    return this.withCache(key, 30_000, () => this.provider().getIssueDetail(input));
+  }
+
   async listPullRequests(input: PullRequestListInput): Promise<PullRequestSummary[]> {
     return this.withCache(`pulls:${input.owner}/${input.repo}:${input.state ?? "open"}`, 30_000, () =>
       this.provider().listPullRequests(input)
     );
+  }
+
+  async getPullRequestDetail(input: PullRequestDetailInput): Promise<PullRequestDetail> {
+    const key = `pull-detail:${input.owner}/${input.repo}:${input.pullNumber}`;
+    return this.withCache(key, 30_000, () => this.provider().getPullRequestDetail(input));
   }
 
   async listDiscussions(input: DiscussionListInput): Promise<DiscussionSummary[]> {
@@ -204,6 +224,10 @@ class GitHubAppProvider implements GitHubProvider {
     return this.unavailable();
   }
 
+  async getReadme(): Promise<string | null> {
+    return this.unavailable();
+  }
+
   async listContents(): Promise<RepoEntry[]> {
     return this.unavailable();
   }
@@ -216,7 +240,15 @@ class GitHubAppProvider implements GitHubProvider {
     return this.unavailable();
   }
 
+  async getIssueDetail(): Promise<IssueDetail> {
+    return this.unavailable();
+  }
+
   async listPullRequests(): Promise<PullRequestSummary[]> {
+    return this.unavailable();
+  }
+
+  async getPullRequestDetail(): Promise<PullRequestDetail> {
     return this.unavailable();
   }
 

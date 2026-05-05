@@ -44,6 +44,11 @@ async function loadKeytar(): Promise<KeytarClient> {
 }
 
 export async function getGitHubToken(): Promise<string | null> {
+  const e2eToken = process.env.CONTROL_E2E === "1" ? process.env.CONTROL_GITHUB_TOKEN?.trim() : null;
+  if (e2eToken) {
+    return e2eToken;
+  }
+
   try {
     const keytar = await loadKeytar();
     return keytar.getPassword(tokenServiceName, tokenAccountName);

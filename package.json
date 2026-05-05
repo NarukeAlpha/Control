@@ -18,6 +18,12 @@
     "test:e2e": "playwright test",
     "test:e2e:profile": "playwright test --project=testing-profile",
     "test:e2e:headed": "playwright test --project=testing-profile --headed",
+    "test:e2e:github": "npm run build && playwright test -c playwright.github.config.ts",
+    "test:e2e:github:repositories": "npm run build && playwright test -c playwright.github.config.ts tests/e2e/benchmarks/github/repositories.spec.ts",
+    "test:e2e:github:issues": "npm run build && playwright test -c playwright.github.config.ts tests/e2e/benchmarks/github/issues.spec.ts",
+    "test:e2e:github:pull-requests": "npm run build && playwright test -c playwright.github.config.ts tests/e2e/benchmarks/github/pull-requests.spec.ts",
+    "test:e2e:github:files": "npm run build && playwright test -c playwright.github.config.ts tests/e2e/benchmarks/github/files.spec.ts",
+    "compare:e2e:github": "node scripts/compare-e2e-github.cjs",
     "format": "prettier --write ."
   },
   "dependencies": {

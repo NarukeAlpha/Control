@@ -17,6 +17,7 @@ import {
   GitPullRequest,
   Home,
   Inbox,
+  LogIn,
   Lock,
   MoreHorizontal,
   PlayCircle,
@@ -29,7 +30,7 @@ import {
   Workflow,
   X
 } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -37,10 +38,10 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import type {
   AppState,
   ContributorSummary,
-  CredentialProvider,
   DiscussionSummary,
   GitHubAccountProfile,
   GitHubAction,
+  GitHubSignInSession,
   GlassMode,
   IssueDetail,
   IssueSummary,
@@ -565,27 +566,31 @@ export function App(): JSX.Element {
     queryKey: ["app-state"],
     queryFn: () => api.getAppState()
   });
+  const githubAuthenticated = appState.data?.github.authenticated ?? false;
+  const githubReady = appState.isSuccess && githubAuthenticated;
 
   const repositories = useQuery({
     queryKey: ["repositories"],
-    queryFn: () => api.github.listRepositories({ limit: 80 })
+    queryFn: () => api.github.listRepositories({ limit: 80 }),
+    enabled: githubReady
   });
 
   const accountProfile = useQuery({
     queryKey: ["account-profile"],
-    queryFn: () => api.github.getAccountProfile({})
+    queryFn: () => api.github.getAccountProfile({}),
+    enabled: githubReady
   });
 
   const accountIssues = useQuery({
     queryKey: ["account-issues"],
     queryFn: () => api.github.listAccountIssues({ state: "open", limit: 30 }),
-    enabled: route.kind === "home" || route.kind === "mailbox"
+    enabled: githubReady && (route.kind === "home" || route.kind === "mailbox")
   });
 
   const accountPulls = useQuery({
     queryKey: ["account-pulls"],
     queryFn: () => api.github.listAccountPullRequests({ state: "open", limit: 30 }),
-    enabled: route.kind === "home" || route.kind === "mailbox"
+    enabled: githubReady && (route.kind === "home" || route.kind === "mailbox")
   });
 
   const isRepositoryRoute = route.kind === "repository";
@@ -605,7 +610,7 @@ export function App(): JSX.Element {
   const repository = useQuery({
     queryKey: ["repository", owner, repo],
     queryFn: () => api.github.getRepository({ owner, repo }),
-    enabled: isRepositoryContext && hasRepositoryParts,
+    enabled: githubReady && isRepositoryContext && hasRepositoryParts,
     staleTime: 120_000
   });
 
@@ -619,6 +624,7 @@ export function App(): JSX.Element {
         ref: codeBrowserRef ?? undefined
       }),
     enabled:
+      githubReady &&
       hasRepositoryParts &&
       ((isRepositoryRoute && activeRepositoryTab === "code") ||
         (isCodeBrowserRoute && codeBrowserEntryType === "dir")),
@@ -628,7 +634,7 @@ export function App(): JSX.Element {
   const readme = useQuery({
     queryKey: ["readme", owner, repo],
     queryFn: () => api.github.getReadme({ owner, repo }),
-    enabled: isRepositoryRoute && activeRepositoryTab === "code" && hasRepositoryParts,
+    enabled: githubReady && isRepositoryRoute && activeRepositoryTab === "code" && hasRepositoryParts,
     staleTime: 120_000
   });
 
@@ -642,6 +648,7 @@ export function App(): JSX.Element {
         ref: codeBrowserRef ?? undefined
       }),
     enabled:
+      githubReady &&
       isCodeBrowserRoute &&
       codeBrowserEntryType === "file" &&
       hasRepositoryParts &&
@@ -652,14 +659,14 @@ export function App(): JSX.Element {
   const issues = useQuery({
     queryKey: ["issues", owner, repo],
     queryFn: () => api.github.listIssues({ owner, repo, state: "open" }),
-    enabled: isRepositoryRoute && activeRepositoryTab === "issues" && hasRepositoryParts,
+    enabled: githubReady && isRepositoryRoute && activeRepositoryTab === "issues" && hasRepositoryParts,
     staleTime: 60_000
   });
 
   const pulls = useQuery({
     queryKey: ["pulls", owner, repo],
     queryFn: () => api.github.listPullRequests({ owner, repo, state: "open" }),
-    enabled: isRepositoryRoute && activeRepositoryTab === "pulls" && hasRepositoryParts,
+    enabled: githubReady && isRepositoryRoute && activeRepositoryTab === "pulls" && hasRepositoryParts,
     staleTime: 60_000
   });
 
@@ -672,7 +679,7 @@ export function App(): JSX.Element {
   const actions = useQuery({
     queryKey: ["actions", owner, repo],
     queryFn: () => api.github.listActions({ owner, repo, limit: 20 }),
-    enabled: isRepositoryRoute && activeRepositoryTab === "actions" && hasRepositoryParts,
+    enabled: githubReady && isRepositoryRoute && activeRepositoryTab === "actions" && hasRepositoryParts,
     staleTime: 60_000
   });
 
@@ -685,14 +692,14 @@ export function App(): JSX.Element {
   const releases = useQuery({
     queryKey: ["releases", owner, repo],
     queryFn: () => api.github.listReleases({ owner, repo, limit: 20 }),
-    enabled: isRepositoryRoute && hasRepositoryParts && repository.isSuccess,
+    enabled: githubReady && isRepositoryRoute && hasRepositoryParts && repository.isSuccess,
     staleTime: 120_000
   });
 
   const contributors = useQuery({
     queryKey: ["contributors", owner, repo],
     queryFn: () => api.github.listContributors({ owner, repo }),
-    enabled: isRepositoryRoute && hasRepositoryParts && repository.isSuccess,
+    enabled: githubReady && isRepositoryRoute && hasRepositoryParts && repository.isSuccess,
     staleTime: 120_000
   });
 
@@ -707,6 +714,18 @@ export function App(): JSX.Element {
       await queryClient.invalidateQueries({ queryKey: ["actions", owner, repo] });
     }
   });
+
+  useEffect(
+    () =>
+      api.onGitHubRepositoriesUpdated((event) => {
+        void queryClient.invalidateQueries({ queryKey: ["repositories"] });
+        if (!event.nameWithOwner || event.nameWithOwner === effectiveRepository) {
+          void queryClient.invalidateQueries({ queryKey: ["repository", owner, repo] });
+          void queryClient.invalidateQueries({ queryKey: ["readme", owner, repo] });
+        }
+      }),
+    [api, effectiveRepository, owner, queryClient, repo]
+  );
 
   const shellClass = appState.data?.settings.glassMode === "solid" ? "app-shell solid-shell" : "app-shell";
 
@@ -731,7 +750,7 @@ export function App(): JSX.Element {
       />
 
       <section className={isRepositoryRoute ? "workspace" : "workspace workspace-wide"}>
-        {!appState.data?.gh.authenticated && <SetupPanel appState={appState.data} />}
+        {!appState.data?.github.authenticated && <SetupPanel appState={appState.data} />}
 
         <main className="content-scroll">
           {route.kind === "home" && (
@@ -827,8 +846,23 @@ export function App(): JSX.Element {
         <SettingsPanel
           appState={appState.data}
           onClose={() => setSettingsOpen(false)}
+          onOpenExternal={(url) => void api.openExternal(url)}
           onSave={async (settings) => {
             await api.updateSettings(settings);
+            await queryClient.invalidateQueries({ queryKey: ["app-state"] });
+            setSettingsOpen(false);
+          }}
+          onSignInWithGitHub={() => api.signInWithGitHub()}
+          onGetGitHubSignIn={() => api.getGitHubSignIn()}
+          onCompleteGitHubSignIn={async () => {
+            await queryClient.invalidateQueries({ queryKey: ["app-state"] });
+            await queryClient.invalidateQueries({ queryKey: ["repositories"] });
+            await queryClient.invalidateQueries({ queryKey: ["account-profile"] });
+            setSettingsOpen(false);
+          }}
+          onCancelGitHubSignIn={() => api.cancelGitHubSignIn()}
+          onClearToken={async () => {
+            await api.clearGitHubToken();
             await queryClient.invalidateQueries({ queryKey: ["app-state"] });
             setSettingsOpen(false);
           }}
@@ -1088,7 +1122,7 @@ function SetupPanel({ appState }: { appState?: AppState }): JSX.Element {
   return (
     <div className="setup-panel">
       <Inbox size={18} />
-      <span>{appState?.gh.error ?? "Connect GitHub CLI to load live GitHub data."}</span>
+      <span>{appState?.github.error ?? "Sign in with GitHub in Settings to load live GitHub data."}</span>
     </div>
   );
 }
@@ -2574,57 +2608,197 @@ function RightRail({
 function SettingsPanel({
   appState,
   onClose,
-  onSave
+  onOpenExternal,
+  onSave,
+  onSignInWithGitHub,
+  onGetGitHubSignIn,
+  onCompleteGitHubSignIn,
+  onCancelGitHubSignIn,
+  onClearToken
 }: {
   appState?: AppState;
   onClose(): void;
+  onOpenExternal(url: string): void;
   onSave(settings: Partial<AppState["settings"]>): Promise<void>;
+  onSignInWithGitHub(): Promise<GitHubSignInSession>;
+  onGetGitHubSignIn(): Promise<GitHubSignInSession | null>;
+  onCompleteGitHubSignIn(): Promise<void>;
+  onCancelGitHubSignIn(): Promise<void>;
+  onClearToken(): Promise<void>;
 }): JSX.Element {
-  const [credentialProvider, setCredentialProvider] = useState<CredentialProvider>(
-    appState?.settings.credentialProvider ?? "gh-cli"
-  );
-  const [ghPath, setGhPath] = useState(appState?.settings.ghPath ?? "");
-  const [githubAppClientId, setGithubAppClientId] = useState(appState?.settings.githubAppClientId ?? "");
+  const [signInStatus, setSignInStatus] = useState<"idle" | "waiting" | "error">("idle");
+  const [signInSession, setSignInSession] = useState<GitHubSignInSession | null>(null);
+  const [signInError, setSignInError] = useState<string | null>(null);
   const [glassMode, setGlassMode] = useState<GlassMode>(appState?.settings.glassMode ?? "glass-shell");
+  const authenticated = appState?.github.authenticated ?? false;
+  const githubUser = appState?.github.user ?? null;
+  const signInConfigured = appState?.github.signInConfigured ?? true;
+  const signInBusy = signInStatus === "waiting";
+  const githubConnectionLabel = signInBusy
+    ? `Enter ${signInSession?.userCode ?? "the code"} in GitHub.`
+    : authenticated
+      ? `Connected as ${githubUser ?? "GitHub"}`
+      : signInConfigured
+        ? "Not connected."
+        : "GitHub sign-in is not configured in this build.";
+
+  useEffect(() => {
+    if (!signInBusy || !signInSession) {
+      return;
+    }
+
+    let active = true;
+    let pollHandle: number | null = null;
+
+    const poll = async (): Promise<void> => {
+      try {
+        const session = await onGetGitHubSignIn();
+        if (!active) {
+          return;
+        }
+
+        if (!session) {
+          setSignInStatus("idle");
+          setSignInSession(null);
+          return;
+        }
+
+        setSignInSession(session);
+
+        if (session.status === "complete") {
+          await onCompleteGitHubSignIn();
+          return;
+        }
+
+        if (session.status === "error") {
+          setSignInStatus("error");
+          setSignInError(session.error ?? "GitHub sign-in failed.");
+          return;
+        }
+
+        if (session.status === "cancelled") {
+          setSignInStatus("idle");
+          setSignInSession(null);
+          setSignInError(null);
+          return;
+        }
+
+        pollHandle = window.setTimeout(() => {
+          void poll();
+        }, 300);
+      } catch (error) {
+        setSignInStatus("error");
+        setSignInError(error instanceof Error ? error.message : "GitHub sign-in failed.");
+      }
+    };
+
+    pollHandle = window.setTimeout(() => {
+      void poll();
+    }, 300);
+
+    return () => {
+      active = false;
+      if (pollHandle !== null) {
+        window.clearTimeout(pollHandle);
+      }
+    };
+  }, [onCompleteGitHubSignIn, onGetGitHubSignIn, signInBusy, signInSession]);
+
+  async function handleGitHubSignIn(): Promise<void> {
+    setSignInError(null);
+
+    if (!signInConfigured) {
+      setSignInStatus("error");
+      setSignInError("GitHub sign-in is not configured in this build.");
+      return;
+    }
+
+    setSignInSession(null);
+    setSignInStatus("waiting");
+
+    try {
+      const session = await onSignInWithGitHub();
+      setSignInSession(session);
+
+      if (session.status === "complete") {
+        await onCompleteGitHubSignIn();
+        return;
+      }
+
+      if (session.status === "error") {
+        setSignInStatus("error");
+        setSignInError(session.error ?? "GitHub sign-in failed.");
+        return;
+      }
+
+      if (session.status === "cancelled") {
+        setSignInStatus("idle");
+        setSignInSession(null);
+      }
+    } catch (error) {
+      setSignInStatus("error");
+      setSignInError(error instanceof Error ? error.message : "GitHub sign-in failed.");
+    }
+  }
+
+  function handleClose(): void {
+    if (signInBusy) {
+      void onCancelGitHubSignIn();
+    }
+
+    onClose();
+  }
+
+  function handleCancelSignIn(): void {
+    void onCancelGitHubSignIn();
+    setSignInStatus("idle");
+    setSignInSession(null);
+    setSignInError(null);
+  }
 
   return (
     <div className="modal-backdrop">
       <section className="settings-panel">
         <header>
           <h2>Settings</h2>
-          <button className="icon-button" type="button" onClick={onClose}>
+          <button className="icon-button" type="button" onClick={handleClose}>
             <X size={18} />
           </button>
         </header>
 
-        <label>
-          Credential provider
-          <select
-            value={credentialProvider}
-            onChange={(event) => setCredentialProvider(event.target.value as CredentialProvider)}
-          >
-            <option value="gh-cli">GitHub CLI</option>
-            <option value="github-app">GitHub App OAuth</option>
-          </select>
-        </label>
+        <div className="settings-inline-actions">
+          <span>{githubConnectionLabel}</span>
+          <button type="button" disabled={signInBusy} onClick={() => void handleGitHubSignIn()}>
+            <LogIn size={15} /> Sign in with GitHub
+          </button>
+          <button type="button" disabled={!authenticated || signInBusy} onClick={() => void onClearToken()}>
+            Sign out
+          </button>
+        </div>
 
-        <label>
-          GitHub CLI path
-          <input
-            value={ghPath}
-            onChange={(event) => setGhPath(event.target.value)}
-            placeholder="/opt/homebrew/bin/gh"
-          />
-        </label>
+        {signInBusy && (
+          <div className="settings-inline-actions">
+            <span>{signInSession?.verificationUri ?? "Open GitHub and enter your code."}</span>
+            {signInSession?.userCode && <strong className="settings-inline-code">{signInSession.userCode}</strong>}
+            {(() => {
+              const verificationUri = signInSession?.verificationUri;
+              if (!verificationUri) {
+                return null;
+              }
 
-        <label>
-          GitHub App client ID
-          <input
-            value={githubAppClientId}
-            onChange={(event) => setGithubAppClientId(event.target.value)}
-            placeholder="Configured later for packaged OAuth"
-          />
-        </label>
+              return (
+                <button type="button" onClick={() => void onOpenExternal(verificationUri)}>
+                  Open GitHub
+                </button>
+              );
+            })()}
+            <button type="button" onClick={handleCancelSignIn}>
+              Cancel sign-in
+            </button>
+          </div>
+        )}
+
+        {signInError && <p className="settings-error">{signInError}</p>}
 
         <label>
           Glass mode
@@ -2636,7 +2810,7 @@ function SettingsPanel({
         </label>
 
         <footer>
-          <button type="button" onClick={onClose}>
+          <button type="button" onClick={handleClose}>
             Cancel
           </button>
           <button
@@ -2644,9 +2818,7 @@ function SettingsPanel({
             type="button"
             onClick={() =>
               void onSave({
-                credentialProvider,
-                ghPath: ghPath.trim() || null,
-                githubAppClientId: githubAppClientId.trim() || null,
+                credentialProvider: appState?.settings.credentialProvider ?? "github-oauth",
                 glassMode
               })
             }

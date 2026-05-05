@@ -110,6 +110,17 @@ function registerIpc(store: LocalStore, github: GitHubProviderManager): void {
   ipcMain.handle(ipcChannels.appState, async () => createAppState(store));
   ipcMain.handle(ipcChannels.getSettings, () => store.getSettings());
   ipcMain.handle(ipcChannels.updateSettings, (_event, settings) => store.updateSettings(settings));
+  ipcMain.handle(ipcChannels.signInWithGitHub, async () =>
+    github.signInWithBrowser((url) => shell.openExternal(url))
+  );
+  ipcMain.handle(ipcChannels.getGitHubSignIn, () => github.getGitHubSignInState());
+  ipcMain.handle(ipcChannels.cancelGitHubSignIn, () => {
+    github.cancelWebSignIn();
+  });
+  ipcMain.handle(ipcChannels.clearGitHubToken, async () => {
+    await github.clearToken();
+    return createAppState(store);
+  });
   ipcMain.handle(ipcChannels.openExternal, async (_event, url: string) => {
     if (!url.startsWith("https://")) {
       throw new Error("Control only opens external HTTPS links.");
@@ -167,17 +178,29 @@ function registerIpc(store: LocalStore, github: GitHubProviderManager): void {
 app.commandLine.appendSwitch("enable-features", "PlatformHEVCDecoderSupport");
 nativeTheme.themeSource = "light";
 
-void bootstrap();
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore();
+      }
+      mainWindow.focus();
+    }
+  });
+
+  void bootstrap();
+}
 
 async function bootstrap(): Promise<void> {
   await app.whenReady();
 
   const store = await createLocalStore(app.getPath("userData"));
-  const initialState = await createAppState(store);
-  if (initialState.gh.path && !initialState.settings.ghPath) {
-    store.updateSettings({ ghPath: initialState.gh.path });
-  }
-  const github = new GitHubProviderManager(store);
+  const github = new GitHubProviderManager(store, (nameWithOwner) => {
+    mainWindow?.webContents.send(ipcChannels.githubRepositoriesUpdated, { nameWithOwner });
+  });
 
   registerIpc(store, github);
   createWindow();

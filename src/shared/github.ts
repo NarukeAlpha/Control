@@ -1,21 +1,27 @@
 export type CodeHost = "github";
 
-export type CredentialProvider = "gh-cli" | "github-app";
+export type CredentialProvider = "github-oauth";
 
 export type GlassMode = "glass-shell" | "reduced" | "solid";
 
 export interface ControlSettings {
   credentialProvider: CredentialProvider;
-  ghPath: string | null;
-  githubAppClientId: string | null;
   glassMode: GlassMode;
 }
 
-export interface GhStatus {
+export interface GitHubAuthStatus {
   available: boolean;
   authenticated: boolean;
-  path: string | null;
+  signInConfigured: boolean;
   user: string | null;
+  error: string | null;
+}
+
+export interface GitHubSignInSession {
+  status: "pending" | "complete" | "error" | "cancelled";
+  userCode: string | null;
+  verificationUri: string | null;
+  expiresAt: string | null;
   error: string | null;
 }
 
@@ -86,7 +92,7 @@ export interface AppState {
   platform: NodeJS.Platform;
   isMac: boolean;
   settings: ControlSettings;
-  gh: GhStatus;
+  github: GitHubAuthStatus;
   viewer: Viewer | null;
 }
 

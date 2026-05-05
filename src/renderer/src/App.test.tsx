@@ -9,11 +9,13 @@ import type { RepositoryDetail } from "@shared/github";
 import { App } from "./App";
 import {
   mockActions,
+  mockAccountProfile,
   mockAppState,
   mockContents,
   mockContributors,
   mockControlApi,
   mockDiscussions,
+  mockGitHubSignInSession,
   mockIssues,
   mockProjects,
   mockPullRequests,
@@ -128,6 +130,38 @@ describe("Control renderer routing", () => {
     });
   });
 
+  it("refetches repository rows when the main process reports a SQLite repository update", async () => {
+    let repositoryUpdate: Parameters<ControlApi["onGitHubRepositoriesUpdated"]>[0] = () => undefined;
+    const refreshedRepository = {
+      ...mockRepositories[0],
+      id: "R_NarukeAlpha_blog",
+      owner: "NarukeAlpha",
+      name: "Blog",
+      nameWithOwner: "NarukeAlpha/Blog"
+    };
+    const listRepositories = vi
+      .fn<ControlApi["github"]["listRepositories"]>()
+      .mockResolvedValueOnce([mockRepositories[0]])
+      .mockResolvedValue([refreshedRepository]);
+
+    useUiStore.setState({ ...defaultUiState, route: { kind: "repositories" } });
+    renderControl({
+      ...makeApi({ listRepositories }),
+      onGitHubRepositoriesUpdated: (callback) => {
+        repositoryUpdate = callback;
+        return () => undefined;
+      }
+    });
+
+    expect(await screen.findByRole("heading", { name: "Repositories" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /apple\/swift/i })).toBeInTheDocument();
+
+    repositoryUpdate({ nameWithOwner: null });
+
+    expect(await screen.findByRole("button", { name: /NarukeAlpha\/Blog/i })).toBeInTheDocument();
+    expect(listRepositories).toHaveBeenCalledTimes(2);
+  });
+
   it("shortens repository names owned by the authenticated viewer", async () => {
     useUiStore.setState(defaultUiState);
     renderControl(
@@ -185,6 +219,135 @@ describe("Control renderer routing", () => {
     await userEvent.click(await screen.findByTitle("Repository settings"));
 
     expect(openExternal).toHaveBeenCalledWith("https://github.com/apple/swift/settings");
+  });
+
+  it("starts GitHub account sign-in from settings", async () => {
+    const signInWithGitHub = vi.fn<ControlApi["signInWithGitHub"]>(async () => mockGitHubSignInSession);
+    const getGitHubSignIn = vi
+      .fn<ControlApi["getGitHubSignIn"]>()
+      .mockResolvedValueOnce(mockGitHubSignInSession)
+      .mockResolvedValueOnce({ ...mockGitHubSignInSession, status: "complete" });
+
+    useUiStore.setState(defaultUiState);
+    renderControl({ ...makeApi(), signInWithGitHub, getGitHubSignIn });
+
+    await userEvent.click(await screen.findByTitle("Account settings"));
+    await userEvent.click(screen.getByRole("button", { name: "Sign in with GitHub" }));
+
+    expect(signInWithGitHub).toHaveBeenCalledWith();
+    expect(await screen.findByText("WDJB-MJHT")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Open GitHub" })).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.queryByRole("heading", { name: "Settings" })).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps the GitHub device code visible when sign-in startup is slow", async () => {
+    const signInWithGitHub = vi.fn<ControlApi["signInWithGitHub"]>(
+      async () =>
+        await new Promise((resolve) => {
+          setTimeout(() => resolve(mockGitHubSignInSession), 350);
+        })
+    );
+
+    useUiStore.setState(defaultUiState);
+    renderControl({ ...makeApi(), signInWithGitHub });
+
+    await userEvent.click(await screen.findByTitle("Account settings"));
+    await userEvent.click(screen.getByRole("button", { name: "Sign in with GitHub" }));
+
+    expect(await screen.findByText("Enter the code in GitHub.")).toBeInTheDocument();
+    expect(await screen.findByText("WDJB-MJHT")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open GitHub" })).toBeInTheDocument();
+  });
+
+  it("does not expose manual GitHub credential fields in settings", async () => {
+    useUiStore.setState(defaultUiState);
+    renderControl(makeApi());
+
+    await userEvent.click(await screen.findByTitle("Account settings"));
+
+    expect(screen.queryByLabelText("GitHub token")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("GitHub OAuth client ID")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("GitHub OAuth client secret")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign in with GitHub" })).toBeInTheDocument();
+  });
+
+  it("shows app setup state when GitHub sign-in is not configured", async () => {
+    const signInWithGitHub = vi.fn<ControlApi["signInWithGitHub"]>(async () => mockGitHubSignInSession);
+
+    useUiStore.setState(defaultUiState);
+    renderControl({
+      ...makeApi(),
+      signInWithGitHub,
+      getAppState: async () => ({
+        ...mockAppState,
+        github: {
+          available: true,
+          authenticated: false,
+          signInConfigured: false,
+          user: null,
+          error: "GitHub sign-in is not configured in this build."
+        },
+        viewer: null
+      })
+    });
+
+    await userEvent.click(await screen.findByTitle("Account settings"));
+
+    expect(screen.getAllByText("GitHub sign-in is not configured in this build.").length).toBeGreaterThan(0);
+
+    await userEvent.click(screen.getByRole("button", { name: "Sign in with GitHub" }));
+
+    expect(signInWithGitHub).not.toHaveBeenCalled();
+    expect(screen.getAllByText("GitHub sign-in is not configured in this build.").length).toBeGreaterThan(0);
+  });
+
+  it("does not fetch GitHub account data before authentication", async () => {
+    const listRepositories = vi.fn<ControlApi["github"]["listRepositories"]>(async () => mockRepositories);
+    const getAccountProfile = vi.fn<ControlApi["github"]["getAccountProfile"]>(async () => mockAccountProfile);
+    const listAccountIssues = vi.fn<ControlApi["github"]["listAccountIssues"]>(async () => mockIssues);
+    const listAccountPullRequests = vi.fn<ControlApi["github"]["listAccountPullRequests"]>(async () => mockPullRequests);
+
+    useUiStore.setState(defaultUiState);
+    renderControl({
+      ...makeApi({
+        listRepositories,
+        getAccountProfile,
+        listAccountIssues,
+        listAccountPullRequests
+      }),
+      getAppState: async () => ({
+        ...mockAppState,
+        github: {
+          available: true,
+          authenticated: false,
+          signInConfigured: true,
+          user: null,
+          error: "Sign in with GitHub in Settings to load live GitHub data."
+        },
+        viewer: null
+      })
+    });
+
+    expect(await screen.findByText("Sign in with GitHub in Settings to load live GitHub data.")).toBeInTheDocument();
+    expect(listRepositories).not.toHaveBeenCalled();
+    expect(getAccountProfile).not.toHaveBeenCalled();
+    expect(listAccountIssues).not.toHaveBeenCalled();
+    expect(listAccountPullRequests).not.toHaveBeenCalled();
+  });
+
+  it("signs out from settings", async () => {
+    const clearGitHubToken = vi.fn<ControlApi["clearGitHubToken"]>(async () => mockAppState);
+
+    useUiStore.setState(defaultUiState);
+    renderControl({ ...makeApi(), clearGitHubToken });
+
+    await userEvent.click(await screen.findByTitle("Account settings"));
+    await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
+
+    expect(clearGitHubToken).toHaveBeenCalledTimes(1);
   });
 
   it("does not fetch inactive repository tabs when opening code", async () => {

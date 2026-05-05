@@ -1,12 +1,10 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
-import type { ControlSettings } from "@shared/github";
+import type { ControlSettings, RepositoryDetail, RepositorySummary } from "@shared/github";
 
 const defaultSettings: ControlSettings = {
-  credentialProvider: "gh-cli",
-  ghPath: null,
-  githubAppClientId: null,
+  credentialProvider: "github-oauth",
   glassMode: "glass-shell"
 };
 
@@ -25,6 +23,13 @@ export interface LocalStore {
   getCache<T>(provider: string, cacheKey: string): T | null;
   setCache(record: CacheRecord): void;
   addRecentItem(kind: string, provider: string, itemKey: string, payload: unknown): void;
+  listGitHubRepositories(limit?: number): RepositorySummary[];
+  getGitHubRepository(id: string): RepositorySummary | null;
+  getGitHubRepositoryDetail(id: string): RepositoryDetail | null;
+  getGitHubRepositoryReadme(id: string): string | null;
+  upsertGitHubRepositorySummary(repository: RepositorySummary): void;
+  upsertGitHubRepositoryDetail(repository: RepositoryDetail): void;
+  upsertGitHubRepositoryReadme(id: string, readmeMarkdown: string | null): void;
   pinRepository(nameWithOwner: string): void;
   unpinRepository(nameWithOwner: string): void;
   listPinnedRepositories(): string[];
@@ -86,6 +91,35 @@ class SqliteLocalStore implements LocalStore {
         name_with_owner TEXT PRIMARY KEY,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
+
+      CREATE TABLE IF NOT EXISTS github_repositories (
+        id TEXT PRIMARY KEY,
+        owner TEXT NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT,
+        visibility TEXT NOT NULL,
+        is_private INTEGER NOT NULL DEFAULT 0,
+        is_fork INTEGER NOT NULL DEFAULT 0,
+        default_branch TEXT,
+        avatar_url TEXT,
+        primary_language_json TEXT,
+        counts_json TEXT NOT NULL,
+        stargazer_count INTEGER NOT NULL DEFAULT 0,
+        fork_count INTEGER NOT NULL DEFAULT 0,
+        watcher_count INTEGER NOT NULL DEFAULT 0,
+        open_issues_count INTEGER NOT NULL DEFAULT 0,
+        pushed_at TEXT,
+        updated_at TEXT,
+        summary_json TEXT NOT NULL,
+        detail_json TEXT,
+        readme_markdown TEXT,
+        languages_json TEXT,
+        viewer_state_json TEXT,
+        permissions_json TEXT,
+        synced_at TEXT,
+        detail_synced_at TEXT,
+        readme_synced_at TEXT
+      );
     `);
   }
 
@@ -96,10 +130,7 @@ class SqliteLocalStore implements LocalStore {
       return acc;
     }, {});
 
-    return {
-      ...defaultSettings,
-      ...stored
-    };
+    return normalizeSettings(stored);
   }
 
   updateSettings(settings: Partial<ControlSettings>): ControlSettings {
@@ -182,6 +213,147 @@ class SqliteLocalStore implements LocalStore {
       .run(kind, provider, itemKey, JSON.stringify(payload));
   }
 
+  listGitHubRepositories(limit = 80): RepositorySummary[] {
+    const rows = this.db
+      .prepare(
+        `SELECT summary_json AS summaryJson
+         FROM github_repositories
+         ORDER BY COALESCE(pushed_at, updated_at, synced_at) DESC
+         LIMIT ?`
+      )
+      .all(limit) as Array<{ summaryJson: string }>;
+    return rows.map((row) => JSON.parse(row.summaryJson) as RepositorySummary);
+  }
+
+  getGitHubRepository(id: string): RepositorySummary | null {
+    const row = this.db
+      .prepare("SELECT summary_json AS summaryJson FROM github_repositories WHERE id = ?")
+      .get(id) as { summaryJson: string } | undefined;
+    return row ? (JSON.parse(row.summaryJson) as RepositorySummary) : null;
+  }
+
+  getGitHubRepositoryDetail(id: string): RepositoryDetail | null {
+    const row = this.db
+      .prepare("SELECT detail_json AS detailJson FROM github_repositories WHERE id = ?")
+      .get(id) as { detailJson: string | null } | undefined;
+    return row?.detailJson ? (JSON.parse(row.detailJson) as RepositoryDetail) : null;
+  }
+
+  getGitHubRepositoryReadme(id: string): string | null {
+    const row = this.db
+      .prepare("SELECT readme_markdown AS readmeMarkdown FROM github_repositories WHERE id = ?")
+      .get(id) as { readmeMarkdown: string | null } | undefined;
+    return row?.readmeMarkdown ?? null;
+  }
+
+  upsertGitHubRepositorySummary(repository: RepositorySummary): void {
+    this.upsertGitHubRepository(repository, null);
+  }
+
+  upsertGitHubRepositoryDetail(repository: RepositoryDetail): void {
+    this.upsertGitHubRepository(repository, repository);
+  }
+
+  upsertGitHubRepositoryReadme(id: string, readmeMarkdown: string | null): void {
+    this.db
+      .prepare(
+        `UPDATE github_repositories
+         SET readme_markdown = @readmeMarkdown,
+             readme_synced_at = CURRENT_TIMESTAMP
+         WHERE id = @id`
+      )
+      .run({ id, readmeMarkdown });
+  }
+
+  private upsertGitHubRepository(repository: RepositorySummary, detail: RepositoryDetail | null): void {
+    this.db
+      .prepare(
+        `INSERT INTO github_repositories (
+          id,
+          owner,
+          name,
+          description,
+          visibility,
+          is_private,
+          is_fork,
+          default_branch,
+          avatar_url,
+          primary_language_json,
+          counts_json,
+          stargazer_count,
+          fork_count,
+          watcher_count,
+          open_issues_count,
+          pushed_at,
+          updated_at,
+          summary_json,
+          detail_json,
+          readme_markdown,
+          languages_json,
+          viewer_state_json,
+          permissions_json,
+          synced_at,
+          detail_synced_at
+        )
+        VALUES (
+          @id,
+          @owner,
+          @name,
+          @description,
+          @visibility,
+          @isPrivate,
+          @isFork,
+          @defaultBranch,
+          @avatarUrl,
+          @primaryLanguageJson,
+          @countsJson,
+          @stargazerCount,
+          @forkCount,
+          @watcherCount,
+          @openIssuesCount,
+          @pushedAt,
+          @updatedAt,
+          @summaryJson,
+          @detailJson,
+          @readmeMarkdown,
+          @languagesJson,
+          @viewerStateJson,
+          @permissionsJson,
+          CURRENT_TIMESTAMP,
+          CASE WHEN @detailJson IS NULL THEN NULL ELSE CURRENT_TIMESTAMP END
+        )
+        ON CONFLICT(id) DO UPDATE SET
+          owner = excluded.owner,
+          name = excluded.name,
+          description = excluded.description,
+          visibility = excluded.visibility,
+          is_private = excluded.is_private,
+          is_fork = excluded.is_fork,
+          default_branch = excluded.default_branch,
+          avatar_url = excluded.avatar_url,
+          primary_language_json = excluded.primary_language_json,
+          counts_json = excluded.counts_json,
+          stargazer_count = excluded.stargazer_count,
+          fork_count = excluded.fork_count,
+          watcher_count = excluded.watcher_count,
+          open_issues_count = excluded.open_issues_count,
+          pushed_at = excluded.pushed_at,
+          updated_at = excluded.updated_at,
+          summary_json = excluded.summary_json,
+          detail_json = COALESCE(excluded.detail_json, github_repositories.detail_json),
+          readme_markdown = COALESCE(excluded.readme_markdown, github_repositories.readme_markdown),
+          languages_json = COALESCE(excluded.languages_json, github_repositories.languages_json),
+          viewer_state_json = COALESCE(excluded.viewer_state_json, github_repositories.viewer_state_json),
+          permissions_json = COALESCE(excluded.permissions_json, github_repositories.permissions_json),
+          synced_at = CURRENT_TIMESTAMP,
+          detail_synced_at = CASE
+            WHEN excluded.detail_json IS NULL THEN github_repositories.detail_synced_at
+            ELSE CURRENT_TIMESTAMP
+          END`
+      )
+      .run(toGitHubRepositoryRow(repository, detail));
+  }
+
   pinRepository(nameWithOwner: string): void {
     this.db
       .prepare("INSERT OR IGNORE INTO pinned_repositories (name_with_owner, created_at) VALUES (?, CURRENT_TIMESTAMP)")
@@ -205,10 +377,11 @@ class MemoryLocalStore implements LocalStore {
   private readonly accounts = new Map<string, unknown>();
   private readonly cache = new Map<string, CacheRecord>();
   private readonly recentItems = new Map<string, unknown>();
+  private readonly repositories = new Map<string, { summary: RepositorySummary; detail: RepositoryDetail | null; readme: string | null }>();
   private readonly pinnedRepositories = new Set<string>();
 
   getSettings(): ControlSettings {
-    return { ...this.settings };
+    return normalizeSettings({ ...this.settings });
   }
 
   updateSettings(settings: Partial<ControlSettings>): ControlSettings {
@@ -239,6 +412,53 @@ class MemoryLocalStore implements LocalStore {
     this.recentItems.set(`${kind}:${provider}:${itemKey}`, payload);
   }
 
+  listGitHubRepositories(limit = 80): RepositorySummary[] {
+    return [...this.repositories.values()]
+      .map((record) => record.summary)
+      .sort((a, b) =>
+        (Date.parse(b.pushedAt ?? b.updatedAt ?? "0") || 0) -
+        (Date.parse(a.pushedAt ?? a.updatedAt ?? "0") || 0)
+      )
+      .slice(0, limit);
+  }
+
+  getGitHubRepository(id: string): RepositorySummary | null {
+    return this.repositories.get(id)?.summary ?? null;
+  }
+
+  getGitHubRepositoryDetail(id: string): RepositoryDetail | null {
+    return this.repositories.get(id)?.detail ?? null;
+  }
+
+  getGitHubRepositoryReadme(id: string): string | null {
+    return this.repositories.get(id)?.readme ?? null;
+  }
+
+  upsertGitHubRepositorySummary(repository: RepositorySummary): void {
+    const existing = this.repositories.get(repository.nameWithOwner);
+    this.repositories.set(repository.nameWithOwner, {
+      summary: repository,
+      detail: existing?.detail ?? null,
+      readme: existing?.readme ?? null
+    });
+  }
+
+  upsertGitHubRepositoryDetail(repository: RepositoryDetail): void {
+    this.repositories.set(repository.nameWithOwner, {
+      summary: repository,
+      detail: repository,
+      readme: repository.readmeMarkdown
+    });
+  }
+
+  upsertGitHubRepositoryReadme(id: string, readme: string | null): void {
+    const existing = this.repositories.get(id);
+    if (!existing) {
+      return;
+    }
+    this.repositories.set(id, { ...existing, readme });
+  }
+
   pinRepository(nameWithOwner: string): void {
     this.pinnedRepositories.add(nameWithOwner);
   }
@@ -252,3 +472,41 @@ class MemoryLocalStore implements LocalStore {
   }
 }
 
+function toGitHubRepositoryRow(repository: RepositorySummary, detail: RepositoryDetail | null): Record<string, unknown> {
+  return {
+    id: repository.nameWithOwner,
+    owner: repository.owner,
+    name: repository.name,
+    description: repository.description,
+    visibility: repository.visibility,
+    isPrivate: repository.isPrivate ? 1 : 0,
+    isFork: repository.isFork ? 1 : 0,
+    defaultBranch: repository.defaultBranch,
+    avatarUrl: repository.avatarUrl,
+    primaryLanguageJson: JSON.stringify(repository.primaryLanguage),
+    countsJson: JSON.stringify(repository.counts),
+    stargazerCount: repository.stargazerCount,
+    forkCount: repository.forkCount,
+    watcherCount: repository.watcherCount,
+    openIssuesCount: repository.openIssuesCount,
+    pushedAt: repository.pushedAt,
+    updatedAt: repository.updatedAt,
+    summaryJson: JSON.stringify(repository),
+    detailJson: detail ? JSON.stringify(detail) : null,
+    readmeMarkdown: detail?.readmeMarkdown ?? null,
+    languagesJson: detail ? JSON.stringify(detail.languages) : null,
+    viewerStateJson: detail ? JSON.stringify(detail.viewerState) : null,
+    permissionsJson: detail ? JSON.stringify(detail.permissions) : null
+  };
+}
+
+function normalizeSettings(settings: Record<string, unknown>): ControlSettings {
+  const credentialProvider = settings.credentialProvider === "github-oauth" ? "github-oauth" : defaultSettings.credentialProvider;
+  return {
+    credentialProvider,
+    glassMode:
+      settings.glassMode === "reduced" || settings.glassMode === "solid" || settings.glassMode === "glass-shell"
+        ? settings.glassMode
+        : defaultSettings.glassMode
+  };
+}

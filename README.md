@@ -2,7 +2,7 @@
 
 Control is a local-first desktop client for GitHub, designed around a macOS glass shell inspired by the provided GitHub concept and Apple Music.app.
 
-V1 is GitHub.com-only and uses the authenticated GitHub CLI account by default. GitHub App OAuth is modeled in settings and provider interfaces for packaged-user flows.
+V1 is GitHub.com-only and signs in with GitHub through OAuth device flow. Control opens GitHub's verification page, shows the one-time user code in-app, stores the resulting access token in the OS keychain, and loads GitHub data through Octokit with a local SQLite cache for faster repository opens.
 
 ## Development
 
@@ -10,6 +10,8 @@ V1 is GitHub.com-only and uses the authenticated GitHub CLI account by default. 
 npm install
 npm run dev
 ```
+
+GitHub account sign-in uses the app-owned OAuth App client ID embedded in the desktop build. In development you can override it with `CONTROL_GITHUB_CLIENT_ID=<client_id> npm run dev`. The OAuth App must have `Enable Device Flow` turned on in GitHub.
 
 ## Checks
 
@@ -28,5 +30,7 @@ The Playwright E2E project is `testing-profile`. It runs with a fixed desktop vi
 - Electron + React + TypeScript.
 - macOS-first visual target.
 - Local-only storage and credentials.
-- GitHub CLI provider for live API reads and writes.
+- GitHub OAuth device-flow sign-in with keychain credential storage.
+- Octokit provider for live API reads and writes.
+- SQLite repository read model for immediate cached repository rendering.
 - Azure DevOps planning docs only; no runtime Azure DevOps integration in V1.

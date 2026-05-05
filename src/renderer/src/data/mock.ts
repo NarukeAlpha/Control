@@ -3,6 +3,7 @@ import type {
   ContributorSummary,
   DiscussionSummary,
   GitHubAccountProfile,
+  GitHubSignInSession,
   IssueSummary,
   ProjectSummary,
   PullRequestSummary,
@@ -320,26 +321,47 @@ export const mockAppState: AppState = {
   platform: "darwin",
   isMac: true,
   settings: {
-    credentialProvider: "gh-cli",
-    ghPath: "/opt/homebrew/bin/gh",
-    githubAppClientId: null,
+    credentialProvider: "github-oauth",
     glassMode: "glass-shell"
   },
-  gh: {
+  github: {
     available: true,
     authenticated: true,
-    path: "/opt/homebrew/bin/gh",
+    signInConfigured: true,
     user: mockViewer.login,
     error: null
   },
   viewer: mockViewer
 };
 
+export const mockGitHubSignInSession: GitHubSignInSession = {
+  status: "pending",
+  userCode: "WDJB-MJHT",
+  verificationUri: "https://github.com/login/device",
+  expiresAt: new Date(Date.now() + 900_000).toISOString(),
+  error: null
+};
+
 export const mockControlApi: ControlApi = {
   getAppState: async () => mockAppState,
   getSettings: async () => mockAppState.settings,
   updateSettings: async (settings) => ({ ...mockAppState.settings, ...settings }),
+  signInWithGitHub: async () => mockGitHubSignInSession,
+  getGitHubSignIn: async () => mockGitHubSignInSession,
+  cancelGitHubSignIn: async () => undefined,
+  clearGitHubToken: async () => ({
+    ...mockAppState,
+    github: {
+      available: true,
+      authenticated: false,
+      signInConfigured: true,
+      user: null,
+      error: "Sign in with GitHub in Settings to load live GitHub data."
+    },
+    viewer: null
+  }),
   openExternal: async () => undefined,
+  onGitHubRepositoriesUpdated: () => () => undefined,
   github: {
     getViewer: async () => mockViewer,
     getAccountProfile: async () => mockAccountProfile,

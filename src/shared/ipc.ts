@@ -10,6 +10,7 @@ import type {
   DiscussionListInput,
   DiscussionSummary,
   GitHubAccountProfile,
+  GitHubSignInSession,
   GitHubMutationInput,
   GitHubMutationResult,
   IssueDetail,
@@ -41,7 +42,12 @@ export interface ControlApi {
   getAppState(): Promise<AppState>;
   getSettings(): Promise<ControlSettings>;
   updateSettings(settings: Partial<ControlSettings>): Promise<ControlSettings>;
+  signInWithGitHub(): Promise<GitHubSignInSession>;
+  getGitHubSignIn(): Promise<GitHubSignInSession | null>;
+  cancelGitHubSignIn(): Promise<void>;
+  clearGitHubToken(): Promise<AppState>;
   openExternal(url: string): Promise<void>;
+  onGitHubRepositoriesUpdated(callback: (event: GitHubRepositoriesUpdatedEvent) => void): () => void;
   github: {
     getViewer(): Promise<Viewer>;
     getAccountProfile(input?: AccountProfileInput): Promise<GitHubAccountProfile>;
@@ -67,11 +73,20 @@ export interface ControlApi {
   };
 }
 
+export interface GitHubRepositoriesUpdatedEvent {
+  nameWithOwner: string | null;
+}
+
 export const ipcChannels = {
   appState: "control:app-state",
   getSettings: "control:get-settings",
   updateSettings: "control:update-settings",
+  signInWithGitHub: "control:sign-in-with-github",
+  getGitHubSignIn: "control:get-github-sign-in",
+  cancelGitHubSignIn: "control:cancel-github-sign-in",
+  clearGitHubToken: "control:clear-github-token",
   openExternal: "control:open-external",
+  githubRepositoriesUpdated: "github:repositories-updated",
   githubViewer: "github:viewer",
   githubAccountProfile: "github:account-profile",
   githubRepositories: "github:repositories",

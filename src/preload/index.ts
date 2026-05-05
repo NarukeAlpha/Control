@@ -8,7 +8,18 @@ const controlApi: ControlApi = {
   getSettings: () => ipcRenderer.invoke(ipcChannels.getSettings),
   updateSettings: (settings: Partial<ControlSettings>) =>
     ipcRenderer.invoke(ipcChannels.updateSettings, settings),
+  signInWithGitHub: () => ipcRenderer.invoke(ipcChannels.signInWithGitHub),
+  getGitHubSignIn: () => ipcRenderer.invoke(ipcChannels.getGitHubSignIn),
+  cancelGitHubSignIn: () => ipcRenderer.invoke(ipcChannels.cancelGitHubSignIn),
+  clearGitHubToken: () => ipcRenderer.invoke(ipcChannels.clearGitHubToken),
   openExternal: (url: string) => ipcRenderer.invoke(ipcChannels.openExternal, url),
+  onGitHubRepositoriesUpdated: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: unknown): void => {
+      callback(payload as Parameters<typeof callback>[0]);
+    };
+    ipcRenderer.on(ipcChannels.githubRepositoriesUpdated, listener);
+    return () => ipcRenderer.removeListener(ipcChannels.githubRepositoriesUpdated, listener);
+  },
   github: {
     getViewer: () => ipcRenderer.invoke(ipcChannels.githubViewer),
     getAccountProfile: (input = {}) => ipcRenderer.invoke(ipcChannels.githubAccountProfile, input),

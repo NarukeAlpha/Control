@@ -757,6 +757,7 @@ p {
 .code-toolbar button,
 .collection-view button,
 .issue-row button,
+.settings-inline-actions button,
 .settings-panel footer button {
   display: inline-flex;
   align-items: center;
@@ -1511,6 +1512,34 @@ p {
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.72);
   padding: 0 12px;
+}
+
+.settings-inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-inline-actions span {
+  flex: 1 1 180px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.settings-inline-code {
+  border-radius: 10px;
+  background: rgba(21, 38, 61, 0.08);
+  padding: 8px 12px;
+  color: #132238;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+}
+
+.settings-error {
+  margin: 0;
+  color: #b42318;
+  font-size: 13px;
 }
 
 @media (max-width: 1180px) {

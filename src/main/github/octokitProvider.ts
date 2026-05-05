@@ -1,6 +1,4 @@
-import { existsSync } from "node:fs";
-import { delimiter, join } from "node:path";
-import { spawn } from "node:child_process";
+import { Octokit } from "octokit";
 
 import type {
   AccountIssueListInput,
@@ -11,7 +9,6 @@ import type {
   ContributorSummary,
   DiscussionListInput,
   DiscussionSummary,
-  GhStatus,
   GitHubAccountProfile,
   GitHubMutationInput,
   GitHubMutationResult,
@@ -40,13 +37,13 @@ import type {
   RepositoryRef,
   RepositorySummary,
   SearchInput,
-  ViewerRepositoryState,
   Viewer,
+  ViewerRepositoryState,
   WorkflowRunSummary
 } from "@shared/github";
 
-const githubApiVersion = "2026-03-10";
-const githubHost = "github.com";
+const githubRestApiVersion = "2022-11-28";
+const githubJsonAccept = "application/vnd.github+json";
 
 const repositorySummaryFragment = `
   fragment RepositorySummaryFields on Repository {
@@ -67,7 +64,6 @@ const repositorySummaryFragment = `
     issues(states: OPEN) { totalCount }
     pullRequests(states: OPEN) { totalCount }
     discussions { totalCount }
-    projectsV2 { totalCount }
     releases { totalCount }
     primaryLanguage { name color }
   }
@@ -101,76 +97,15 @@ const githubProfileFragment = `
   }
 `;
 
-interface RunResult {
-  stdout: string;
-  stderr: string;
-}
+export class OctokitProvider implements GitHubProvider {
+  private readonly octokit: Octokit;
 
-export async function resolveGhPath(configuredPath?: string | null): Promise<string | null> {
-  const candidates = [
-    configuredPath,
-    ...(process.env.PATH ?? "")
-      .split(delimiter)
-      .filter(Boolean)
-      .map((directory) => join(directory, "gh")),
-    "/opt/homebrew/bin/gh",
-    "/usr/local/bin/gh",
-    "/usr/bin/gh"
-  ].filter(Boolean) as string[];
-
-  for (const candidate of [...new Set(candidates)]) {
-    if (candidate.includes("/") && !existsSync(candidate)) {
-      continue;
-    }
-
-    try {
-      await run(candidate, ["--version"]);
-      return candidate;
-    } catch {
-      continue;
-    }
+  constructor(token: string) {
+    this.octokit = new Octokit({
+      auth: token,
+      userAgent: "Control/0.1.0"
+    });
   }
-
-  return null;
-}
-
-export async function getGhStatus(configuredPath?: string | null): Promise<GhStatus> {
-  const path = await resolveGhPath(configuredPath);
-
-  if (!path) {
-    return {
-      available: false,
-      authenticated: false,
-      path: null,
-      user: null,
-      error: "GitHub CLI was not found. Install gh or set the path in Settings."
-    };
-  }
-
-  try {
-    const result = await run(path, ["auth", "status", "--hostname", githubHost]);
-    const combined = `${result.stdout}\n${result.stderr}`;
-    const user = combined.match(/account\s+([^\s]+)/i)?.[1] ?? null;
-    return {
-      available: true,
-      authenticated: true,
-      path,
-      user,
-      error: null
-    };
-  } catch (error) {
-    return {
-      available: true,
-      authenticated: false,
-      path,
-      user: null,
-      error: error instanceof Error ? error.message : "GitHub CLI authentication failed."
-    };
-  }
-}
-
-export class GhCliProvider implements GitHubProvider {
-  constructor(private readonly ghPath: string) {}
 
   async getViewer(): Promise<Viewer> {
     const data = await this.graphql<{
@@ -203,9 +138,7 @@ export class GhCliProvider implements GitHubProvider {
     const limit = 6;
 
     if (input.login) {
-      const data = await this.graphql<{
-        user: GitHubProfileNode | null;
-      }>(
+      const data = await this.graphql<{ user: GitHubProfileNode | null }>(
         `
         query AccountProfile($login: String!, $limit: Int!) {
           user(login: $login) {
@@ -225,9 +158,7 @@ export class GhCliProvider implements GitHubProvider {
       return mapAccountProfile(data.user);
     }
 
-    const data = await this.graphql<{
-      viewer: GitHubProfileNode;
-    }>(
+    const data = await this.graphql<{ viewer: GitHubProfileNode }>(
       `
       query ViewerProfile($limit: Int!) {
         viewer {
@@ -246,11 +177,7 @@ export class GhCliProvider implements GitHubProvider {
   async listRepositories(input: RepoListInput = {}): Promise<RepositorySummary[]> {
     const limit = input.limit ?? 50;
     const data = await this.graphql<{
-      viewer: {
-        repositories: {
-          nodes: GitHubRepositoryNode[];
-        };
-      };
+      viewer: { repositories: { nodes: GitHubRepositoryNode[] } };
     }>(
       `
       query ViewerRepositories($limit: Int!) {
@@ -267,22 +194,7 @@ export class GhCliProvider implements GitHubProvider {
         }
       }
 
-      fragment RepositorySummaryFields on Repository {
-        id
-        name
-        nameWithOwner
-        description
-        visibility
-        isPrivate
-        isFork
-        stargazerCount
-        forkCount
-        updatedAt
-        pushedAt
-        defaultBranchRef { name }
-        owner { login avatarUrl }
-        primaryLanguage { name color }
-      }
+      ${repositorySummaryFragment}
     `,
       { limit }
     );
@@ -293,34 +205,30 @@ export class GhCliProvider implements GitHubProvider {
   async listAccountRepositories(input: AccountRepositoryInput = {}): Promise<RepositorySummary[]> {
     const limit = input.limit ?? 50;
 
-    if (input.login) {
-      const data = await this.graphql<{
-        user: {
-          repositories: {
-            nodes: GitHubRepositoryNode[];
-          };
-        } | null;
-      }>(
-        `
-        query AccountRepositories($login: String!, $limit: Int!) {
-          user(login: $login) {
-            repositories(first: $limit, orderBy: { field: UPDATED_AT, direction: DESC }) {
-              nodes {
-                ...RepositorySummaryFields
-              }
+    if (!input.login) {
+      return this.listRepositories({ limit });
+    }
+
+    const data = await this.graphql<{
+      user: { repositories: { nodes: GitHubRepositoryNode[] } } | null;
+    }>(
+      `
+      query AccountRepositories($login: String!, $limit: Int!) {
+        user(login: $login) {
+          repositories(first: $limit, orderBy: { field: UPDATED_AT, direction: DESC }) {
+            nodes {
+              ...RepositorySummaryFields
             }
           }
         }
+      }
 
-        ${repositorySummaryFragment}
-      `,
-        { login: input.login, limit }
-      );
+      ${repositorySummaryFragment}
+    `,
+      { login: input.login, limit }
+    );
 
-      return data.user?.repositories.nodes.map(mapRepositorySummary) ?? [];
-    }
-
-    return this.listRepositories({ limit });
+    return data.user?.repositories.nodes.map(mapRepositorySummary) ?? [];
   }
 
   async listAccountIssues(input: AccountIssueListInput = {}): Promise<IssueSummary[]> {
@@ -329,11 +237,7 @@ export class GhCliProvider implements GitHubProvider {
     const state = input.state ?? "open";
     const stateQualifier = state === "all" ? "" : ` is:${state}`;
     const query = `is:issue${stateQualifier} involves:${login} archived:false sort:updated-desc`;
-    const data = await this.graphql<{
-      search: {
-        nodes: GitHubSearchIssueNode[];
-      };
-    }>(
+    const data = await this.graphql<{ search: { nodes: GitHubSearchIssueNode[] } }>(
       `
       query AccountIssues($searchQuery: String!, $limit: Int!) {
         search(query: $searchQuery, type: ISSUE, first: $limit) {
@@ -369,11 +273,7 @@ export class GhCliProvider implements GitHubProvider {
     const state = input.state ?? "open";
     const stateQualifier = state === "all" ? "" : ` is:${state}`;
     const query = `is:pr${stateQualifier} involves:${login} archived:false sort:updated-desc`;
-    const data = await this.graphql<{
-      search: {
-        nodes: GitHubSearchPullRequestNode[];
-      };
-    }>(
+    const data = await this.graphql<{ search: { nodes: GitHubSearchPullRequestNode[] } }>(
       `
       query AccountPullRequests($searchQuery: String!, $limit: Int!) {
         search(query: $searchQuery, type: ISSUE, first: $limit) {
@@ -414,9 +314,7 @@ export class GhCliProvider implements GitHubProvider {
         url: string;
         homepageUrl: string | null;
         licenseInfo: { name: string; spdxId: string | null } | null;
-        repositoryTopics: {
-          nodes: Array<{ topic: { name: string } }>;
-        };
+        repositoryTopics: { nodes: Array<{ topic: { name: string } }> };
         branches: { totalCount: number };
         tags: { totalCount: number };
         languages: GitHubLanguages;
@@ -452,7 +350,6 @@ export class GhCliProvider implements GitHubProvider {
           issues(states: OPEN) { totalCount }
           pullRequests(states: OPEN) { totalCount }
           discussions { totalCount }
-          projectsV2 { totalCount }
           releases { totalCount }
           primaryLanguage { name color }
           languages(first: 8, orderBy: { field: SIZE, direction: DESC }) {
@@ -486,7 +383,6 @@ export class GhCliProvider implements GitHubProvider {
     );
 
     const summary = mapRepositorySummary(data.repository);
-
     return {
       ...summary,
       homepageUrl: data.repository.homepageUrl,
@@ -516,15 +412,27 @@ export class GhCliProvider implements GitHubProvider {
   }
 
   async getReadme(input: RepoDetailInput): Promise<string | null> {
-    return this.getReadmeMarkdown(input.owner, input.repo).catch(() => null);
+    try {
+      return await this.restText("GET /repos/{owner}/{repo}/readme", {
+        owner: input.owner,
+        repo: input.repo,
+        headers: { accept: "application/vnd.github.raw" }
+      });
+    } catch {
+      return null;
+    }
   }
 
   async listContents(input: RepoContentsInput): Promise<RepoEntry[]> {
-    const encodedPath = input.path ? `/${encodePath(input.path)}` : "";
-    const ref = input.ref ? `?ref=${encodeURIComponent(input.ref)}` : "";
+    const route = input.path ? "GET /repos/{owner}/{repo}/contents/{path}" : "GET /repos/{owner}/{repo}/contents";
     const data = await this.rest<GitHubContentItem[] | GitHubContentItem>(
-      "GET",
-      `/repos/${input.owner}/${input.repo}/contents${encodedPath}${ref}`
+      route,
+      {
+        owner: input.owner,
+        repo: input.repo,
+        path: input.path || undefined,
+        ref: input.ref ?? undefined
+      }
     );
 
     const items = Array.isArray(data) ? data : [data];
@@ -549,46 +457,47 @@ export class GhCliProvider implements GitHubProvider {
   }
 
   async getFileContent(input: RepoFileContentInput): Promise<RepoFileContent> {
-    const encodedPath = encodePath(input.path);
-    const ref = input.ref ? `?ref=${encodeURIComponent(input.ref)}` : "";
-    const content = await this.restText(
-      "GET",
-      `/repos/${input.owner}/${input.repo}/contents/${encodedPath}${ref}`,
-      { accept: "application/vnd.github.raw" }
-    );
-
+    const content = await this.restText("GET /repos/{owner}/{repo}/contents/{path}", {
+      owner: input.owner,
+      repo: input.repo,
+      path: input.path,
+      ref: input.ref ?? undefined,
+      headers: { accept: "application/vnd.github.raw" }
+    });
     const branch = encodeURIComponent(input.ref ?? "HEAD");
     return {
       path: input.path,
       name: input.path.split("/").pop() ?? input.path,
       ref: input.ref ?? null,
       content,
-      htmlUrl: `https://github.com/${input.owner}/${input.repo}/blob/${branch}/${encodedPath}`
+      htmlUrl: `https://github.com/${input.owner}/${input.repo}/blob/${branch}/${encodePath(input.path)}`
     };
   }
 
   async listIssues(input: IssueListInput): Promise<IssueSummary[]> {
-    const state = input.state ?? "open";
-    const data = await this.rest<GitHubIssue[]>(
-      "GET",
-      `/repos/${input.owner}/${input.repo}/issues?state=${state}&per_page=50`
-    );
-
+    const data = await this.rest<GitHubIssue[]>("GET /repos/{owner}/{repo}/issues", {
+      owner: input.owner,
+      repo: input.repo,
+      state: input.state ?? "open",
+      per_page: 50
+    });
     return data.filter((issue) => !issue.pull_request).map(mapIssue);
   }
 
   async getIssueDetail(input: IssueDetailInput): Promise<IssueDetail> {
     const [issue, comments] = await Promise.all([
-      this.rest<GitHubIssue>(
-        "GET",
-        `/repos/${input.owner}/${input.repo}/issues/${input.issueNumber}`
-      ),
-      this.rest<GitHubIssueComment[]>(
-        "GET",
-        `/repos/${input.owner}/${input.repo}/issues/${input.issueNumber}/comments?per_page=50`
-      )
+      this.rest<GitHubIssue>("GET /repos/{owner}/{repo}/issues/{issue_number}", {
+        owner: input.owner,
+        repo: input.repo,
+        issue_number: input.issueNumber
+      }),
+      this.rest<GitHubIssueComment[]>("GET /repos/{owner}/{repo}/issues/{issue_number}/comments", {
+        owner: input.owner,
+        repo: input.repo,
+        issue_number: input.issueNumber,
+        per_page: 50
+      })
     ]);
-
     return {
       ...mapIssue(issue),
       body: issue.body ?? null,
@@ -597,27 +506,29 @@ export class GhCliProvider implements GitHubProvider {
   }
 
   async listPullRequests(input: PullRequestListInput): Promise<PullRequestSummary[]> {
-    const state = input.state ?? "open";
-    const data = await this.rest<GitHubPullRequest[]>(
-      "GET",
-      `/repos/${input.owner}/${input.repo}/pulls?state=${state}&per_page=50`
-    );
-
+    const data = await this.rest<GitHubPullRequest[]>("GET /repos/{owner}/{repo}/pulls", {
+      owner: input.owner,
+      repo: input.repo,
+      state: input.state ?? "open",
+      per_page: 50
+    });
     return data.map(mapPullRequest);
   }
 
   async getPullRequestDetail(input: PullRequestDetailInput): Promise<PullRequestDetail> {
     const [pullRequest, comments] = await Promise.all([
-      this.rest<GitHubPullRequest>(
-        "GET",
-        `/repos/${input.owner}/${input.repo}/pulls/${input.pullNumber}`
-      ),
-      this.rest<GitHubIssueComment[]>(
-        "GET",
-        `/repos/${input.owner}/${input.repo}/issues/${input.pullNumber}/comments?per_page=50`
-      )
+      this.rest<GitHubPullRequest>("GET /repos/{owner}/{repo}/pulls/{pull_number}", {
+        owner: input.owner,
+        repo: input.repo,
+        pull_number: input.pullNumber
+      }),
+      this.rest<GitHubIssueComment[]>("GET /repos/{owner}/{repo}/issues/{issue_number}/comments", {
+        owner: input.owner,
+        repo: input.repo,
+        issue_number: input.pullNumber,
+        per_page: 50
+      })
     ]);
-
     return {
       ...mapPullRequest(pullRequest),
       body: pullRequest.body ?? null,
@@ -681,12 +592,14 @@ export class GhCliProvider implements GitHubProvider {
   }
 
   async listActions(input: ActionsInput): Promise<WorkflowRunSummary[]> {
-    const perPage = input.limit ?? 30;
     const data = await this.rest<{ workflow_runs: GitHubWorkflowRun[] }>(
-      "GET",
-      `/repos/${input.owner}/${input.repo}/actions/runs?per_page=${perPage}`
+      "GET /repos/{owner}/{repo}/actions/runs",
+      {
+        owner: input.owner,
+        repo: input.repo,
+        per_page: input.limit ?? 30
+      }
     );
-
     return data.workflow_runs.map((run) => ({
       id: run.id,
       name: run.name,
@@ -707,13 +620,7 @@ export class GhCliProvider implements GitHubProvider {
       const data = await this.graphql<{
         repository: {
           projectsV2: {
-            nodes: Array<{
-              id: string;
-              title: string;
-              closed: boolean;
-              updatedAt: string | null;
-              url: string | null;
-            }>;
+            nodes: Array<{ id: string; title: string; closed: boolean; updatedAt: string | null; url: string | null }>;
           };
         };
       }>(
@@ -748,12 +655,11 @@ export class GhCliProvider implements GitHubProvider {
   }
 
   async listReleases(input: ReleasesInput): Promise<ReleaseSummary[]> {
-    const perPage = input.limit ?? 20;
-    const data = await this.rest<GitHubRelease[]>(
-      "GET",
-      `/repos/${input.owner}/${input.repo}/releases?per_page=${perPage}`
-    );
-
+    const data = await this.rest<GitHubRelease[]>("GET /repos/{owner}/{repo}/releases", {
+      owner: input.owner,
+      repo: input.repo,
+      per_page: input.limit ?? 20
+    });
     return data.map((release) => ({
       id: release.id,
       name: release.name,
@@ -766,11 +672,11 @@ export class GhCliProvider implements GitHubProvider {
   }
 
   async listContributors(input: RepoDetailInput): Promise<ContributorSummary[]> {
-    const data = await this.rest<GitHubContributor[]>(
-      "GET",
-      `/repos/${input.owner}/${input.repo}/contributors?per_page=24`
-    );
-
+    const data = await this.rest<GitHubContributor[]>("GET /repos/{owner}/{repo}/contributors", {
+      owner: input.owner,
+      repo: input.repo,
+      per_page: 24
+    });
     return data.map((contributor) => ({
       id: contributor.id,
       login: contributor.login,
@@ -786,34 +692,19 @@ export class GhCliProvider implements GitHubProvider {
     }
 
     const limit = input.limit ?? 12;
-    const data = await this.graphql<{
-      search: {
-        nodes: GitHubRepositoryNode[];
-      };
-    }>(
+    const data = await this.graphql<{ search: { nodes: GitHubRepositoryNode[] } }>(
       `
       query RepositorySearch($searchQuery: String!, $limit: Int!) {
         search(query: $searchQuery, type: REPOSITORY, first: $limit) {
           nodes {
             ... on Repository {
-              id
-              name
-              nameWithOwner
-              description
-              visibility
-              isPrivate
-              isFork
-              stargazerCount
-              forkCount
-              updatedAt
-              pushedAt
-              defaultBranchRef { name }
-              owner { login avatarUrl }
-              primaryLanguage { name color }
+              ...RepositorySummaryFields
             }
           }
         }
       }
+
+      ${repositorySummaryFragment}
     `,
       { searchQuery: input.query, limit }
     );
@@ -833,122 +724,161 @@ export class GhCliProvider implements GitHubProvider {
     } as TResult;
   }
 
-  private async getReadmeMarkdown(owner: string, repo: string): Promise<string> {
-    return this.restText("GET", `/repos/${owner}/${repo}/readme`, {
-      accept: "application/vnd.github.raw"
-    });
-  }
-
   private async performMutation(input: GitHubMutationInput): Promise<unknown> {
     const { owner, repo, payload = {} } = input;
 
     switch (input.action) {
       case "star":
-        return this.rest("PUT", `/user/starred/${owner}/${repo}`);
+        return this.rest("PUT /user/starred/{owner}/{repo}", { owner, repo });
       case "unstar":
-        return this.rest("DELETE", `/user/starred/${owner}/${repo}`);
+        return this.rest("DELETE /user/starred/{owner}/{repo}", { owner, repo });
       case "watch":
-        return this.rest("PUT", `/repos/${owner}/${repo}/subscription`, { subscribed: true, ignored: false });
+        return this.rest("PUT /repos/{owner}/{repo}/subscription", {
+          owner,
+          repo,
+          subscribed: true,
+          ignored: false
+        });
       case "unwatch":
-        return this.rest("DELETE", `/repos/${owner}/${repo}/subscription`);
+        return this.rest("DELETE /repos/{owner}/{repo}/subscription", { owner, repo });
       case "fork":
-        return this.rest(
-          "POST",
-          `/repos/${owner}/${repo}/forks`,
-          pick(payload, ["organization", "name", "default_branch_only"])
-        );
+        return this.rest("POST /repos/{owner}/{repo}/forks", { owner, repo });
       case "createIssue":
-        return this.rest(
-          "POST",
-          `/repos/${owner}/${repo}/issues`,
-          pick(payload, ["title", "body", "labels", "assignees"])
-        );
+        return this.rest("POST /repos/{owner}/{repo}/issues", {
+          owner,
+          repo,
+          ...pick(payload, ["title", "body", "labels", "assignees", "milestone"])
+        });
       case "editIssue":
-        return this.rest(
-          "PATCH",
-          `/repos/${owner}/${repo}/issues/${getNumber(payload, "issueNumber")}`,
-          pick(payload, ["title", "body", "state", "labels", "assignees", "milestone"])
-        );
+        return this.rest("PATCH /repos/{owner}/{repo}/issues/{issue_number}", {
+          owner,
+          repo,
+          issue_number: getNumber(payload, "issueNumber"),
+          ...pick(payload, ["title", "body", "state", "labels", "assignees", "milestone"])
+        });
       case "closeIssue":
-        return this.rest("PATCH", `/repos/${owner}/${repo}/issues/${getNumber(payload, "issueNumber")}`, { state: "closed" });
+        return this.rest("PATCH /repos/{owner}/{repo}/issues/{issue_number}", {
+          owner,
+          repo,
+          issue_number: getNumber(payload, "issueNumber"),
+          state: "closed"
+        });
       case "reopenIssue":
-        return this.rest("PATCH", `/repos/${owner}/${repo}/issues/${getNumber(payload, "issueNumber")}`, { state: "open" });
+        return this.rest("PATCH /repos/{owner}/{repo}/issues/{issue_number}", {
+          owner,
+          repo,
+          issue_number: getNumber(payload, "issueNumber"),
+          state: "open"
+        });
       case "addComment":
-        return this.rest(
-          "POST",
-          `/repos/${owner}/${repo}/issues/${getNumber(payload, "issueNumber")}/comments`,
-          pick(payload, ["body"])
-        );
+        return this.rest("POST /repos/{owner}/{repo}/issues/{issue_number}/comments", {
+          owner,
+          repo,
+          issue_number: getNumber(payload, "issueNumber"),
+          ...pick(payload, ["body"])
+        });
       case "editComment":
-        return this.rest(
-          "PATCH",
-          `/repos/${owner}/${repo}/issues/comments/${getNumber(payload, "commentId")}`,
-          pick(payload, ["body"])
-        );
+        return this.rest("PATCH /repos/{owner}/{repo}/issues/comments/{comment_id}", {
+          owner,
+          repo,
+          comment_id: getNumber(payload, "commentId"),
+          ...pick(payload, ["body"])
+        });
       case "deleteComment":
-        return this.rest("DELETE", `/repos/${owner}/${repo}/issues/comments/${getNumber(payload, "commentId")}`);
+        return this.rest("DELETE /repos/{owner}/{repo}/issues/comments/{comment_id}", {
+          owner,
+          repo,
+          comment_id: getNumber(payload, "commentId")
+        });
       case "addLabels":
-        return this.rest(
-          "POST",
-          `/repos/${owner}/${repo}/issues/${getNumber(payload, "issueNumber")}/labels`,
-          pick(payload, ["labels"])
-        );
+        return this.rest("POST /repos/{owner}/{repo}/issues/{issue_number}/labels", {
+          owner,
+          repo,
+          issue_number: getNumber(payload, "issueNumber"),
+          ...pick(payload, ["labels"])
+        });
       case "setAssignees":
-        return this.rest(
-          "POST",
-          `/repos/${owner}/${repo}/issues/${getNumber(payload, "issueNumber")}/assignees`,
-          pick(payload, ["assignees"])
-        );
+        return this.rest("POST /repos/{owner}/{repo}/issues/{issue_number}/assignees", {
+          owner,
+          repo,
+          issue_number: getNumber(payload, "issueNumber"),
+          ...pick(payload, ["assignees"])
+        });
       case "createPullRequest":
-        return this.rest(
-          "POST",
-          `/repos/${owner}/${repo}/pulls`,
-          pick(payload, ["title", "head", "base", "body", "draft", "maintainer_can_modify"])
-        );
+        return this.rest("POST /repos/{owner}/{repo}/pulls", {
+          owner,
+          repo,
+          ...pick(payload, ["title", "head", "base", "body", "draft", "maintainer_can_modify"])
+        });
       case "mergePullRequest":
-        return this.rest(
-          "PUT",
-          `/repos/${owner}/${repo}/pulls/${getNumber(payload, "pullNumber")}/merge`,
-          pick(payload, ["commit_title", "commit_message", "merge_method", "sha"])
-        );
+        return this.rest("PUT /repos/{owner}/{repo}/pulls/{pull_number}/merge", {
+          owner,
+          repo,
+          pull_number: getNumber(payload, "pullNumber"),
+          ...pick(payload, ["commit_title", "commit_message", "merge_method", "sha"])
+        });
       case "closePullRequest":
-        return this.rest("PATCH", `/repos/${owner}/${repo}/pulls/${getNumber(payload, "pullNumber")}`, { state: "closed" });
+        return this.rest("PATCH /repos/{owner}/{repo}/pulls/{pull_number}", {
+          owner,
+          repo,
+          pull_number: getNumber(payload, "pullNumber"),
+          state: "closed"
+        });
       case "reopenPullRequest":
-        return this.rest("PATCH", `/repos/${owner}/${repo}/pulls/${getNumber(payload, "pullNumber")}`, { state: "open" });
+        return this.rest("PATCH /repos/{owner}/{repo}/pulls/{pull_number}", {
+          owner,
+          repo,
+          pull_number: getNumber(payload, "pullNumber"),
+          state: "open"
+        });
       case "approvePullRequest":
-        return this.rest("POST", `/repos/${owner}/${repo}/pulls/${getNumber(payload, "pullNumber")}/reviews`, {
+        return this.rest("POST /repos/{owner}/{repo}/pulls/{pull_number}/reviews", {
+          owner,
+          repo,
+          pull_number: getNumber(payload, "pullNumber"),
           body: typeof payload.body === "string" ? payload.body : "",
           event: "APPROVE"
         });
       case "requestChanges":
-        return this.rest("POST", `/repos/${owner}/${repo}/pulls/${getNumber(payload, "pullNumber")}/reviews`, {
+        return this.rest("POST /repos/{owner}/{repo}/pulls/{pull_number}/reviews", {
+          owner,
+          repo,
+          pull_number: getNumber(payload, "pullNumber"),
           body: typeof payload.body === "string" ? payload.body : "Changes requested from Control.",
           event: "REQUEST_CHANGES"
         });
       case "rerunWorkflow":
-        return this.rest("POST", `/repos/${owner}/${repo}/actions/runs/${getNumber(payload, "runId")}/rerun`);
+        return this.rest("POST /repos/{owner}/{repo}/actions/runs/{run_id}/rerun", {
+          owner,
+          repo,
+          run_id: getNumber(payload, "runId")
+        });
       case "dispatchWorkflow":
-        return this.rest(
-          "POST",
-          `/repos/${owner}/${repo}/actions/workflows/${encodeURIComponent(getString(payload, "workflowId"))}/dispatches`,
-          {
-            ref: getString(payload, "ref"),
-            inputs: typeof payload.inputs === "object" && payload.inputs !== null ? payload.inputs : undefined
-          }
-        );
+        return this.rest("POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches", {
+          owner,
+          repo,
+          workflow_id: getString(payload, "workflowId"),
+          ref: getString(payload, "ref"),
+          inputs: typeof payload.inputs === "object" && payload.inputs !== null ? payload.inputs : undefined
+        });
       case "cancelWorkflow":
-        return this.rest("POST", `/repos/${owner}/${repo}/actions/runs/${getNumber(payload, "runId")}/cancel`);
+        return this.rest("POST /repos/{owner}/{repo}/actions/runs/{run_id}/cancel", {
+          owner,
+          repo,
+          run_id: getNumber(payload, "runId")
+        });
       case "createRelease":
-        return this.rest(
-          "POST",
-          `/repos/${owner}/${repo}/releases`,
-          pick(payload, ["tag_name", "target_commitish", "name", "body", "draft", "prerelease"])
-        );
+        return this.rest("POST /repos/{owner}/{repo}/releases", {
+          owner,
+          repo,
+          ...pick(payload, ["tag_name", "target_commitish", "name", "body", "draft", "prerelease"])
+        });
       case "editRelease":
-        return this.rest(
-          "PATCH",
-          `/repos/${owner}/${repo}/releases/${getNumber(payload, "releaseId")}`,
-          pick(payload, [
+        return this.rest("PATCH /repos/{owner}/{repo}/releases/{release_id}", {
+          owner,
+          repo,
+          release_id: getNumber(payload, "releaseId"),
+          ...pick(payload, [
             "tag_name",
             "target_commitish",
             "name",
@@ -957,117 +887,55 @@ export class GhCliProvider implements GitHubProvider {
             "prerelease",
             "make_latest"
           ])
-        );
+        });
       case "deleteRelease":
-        return this.rest("DELETE", `/repos/${owner}/${repo}/releases/${getNumber(payload, "releaseId")}`);
+        return this.rest("DELETE /repos/{owner}/{repo}/releases/{release_id}", {
+          owner,
+          repo,
+          release_id: getNumber(payload, "releaseId")
+        });
       default:
         throw new Error(`Unsupported GitHub action: ${input.action}`);
     }
   }
 
-  private async graphql<T>(
-    query: string,
-    variables: Record<string, string | number | boolean> = {}
-  ): Promise<T> {
-    const args = ["api", "graphql", "--hostname", githubHost, "-f", `query=${query}`];
-    for (const [key, value] of Object.entries(variables)) {
-      args.push("-F", `${key}=${value}`);
-    }
-
-    const result = await run(this.ghPath, args);
-    const parsed = JSON.parse(result.stdout) as { data?: T; errors?: Array<{ message: string }> };
-    if (parsed.errors?.length) {
-      throw new Error(parsed.errors.map((error) => error.message).join("; "));
-    }
-    if (!parsed.data) {
-      throw new Error("GitHub GraphQL response did not include data.");
-    }
-    return parsed.data;
+  private async graphql<T>(query: string, variables: Record<string, string | number | boolean> = {}): Promise<T> {
+    return this.octokit.graphql<T>(query, variables);
   }
 
-  private async rest<T>(
-    method: string,
-    endpoint: string,
-    body?: Record<string, unknown>,
-    options: { accept?: string } = {}
-  ): Promise<T> {
-    const text = await this.restText(method, endpoint, options, body);
-    if (!text.trim()) {
-      return {} as T;
-    }
-    return JSON.parse(text) as T;
+  private async rest<T>(route: string, params: Record<string, unknown> = {}): Promise<T> {
+    const response = await this.octokit.request(route, withGitHubRestHeaders(params));
+    return response.data as T;
   }
 
-  private async restText(
-    method: string,
-    endpoint: string,
-    options: { accept?: string } = {},
-    body?: Record<string, unknown>
-  ): Promise<string> {
-    const args = [
-      "api",
-      endpoint,
-      "--hostname",
-      githubHost,
-      "--method",
-      method,
-      "-H",
-      `X-GitHub-Api-Version: ${githubApiVersion}`,
-      "-H",
-      `Accept: ${options.accept ?? "application/vnd.github+json"}`
-    ];
-
-    let input: string | undefined;
-    if (body && Object.keys(body).length > 0) {
-      args.push("-H", "Content-Type: application/json", "--input", "-");
-      input = JSON.stringify(body);
-    }
-
-    const result = await run(this.ghPath, args, input);
-    return result.stdout;
+  private async restText(route: string, params: Record<string, unknown> = {}): Promise<string> {
+    const response = await this.octokit.request(route, withGitHubRestHeaders(params));
+    return response.data as string;
   }
 }
 
-async function run(command: string, args: string[], input?: string): Promise<RunResult> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
-      env: {
-        ...process.env,
-        GH_HOST: githubHost
-      },
-      windowsHide: true
-    });
-
-    let stdout = "";
-    let stderr = "";
-
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk: string) => {
-      stdout += chunk;
-    });
-    child.stderr.on("data", (chunk: string) => {
-      stderr += chunk;
-    });
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (code === 0) {
-        resolve({ stdout, stderr });
-        return;
-      }
-      reject(new Error(stderr.trim() || stdout.trim() || `${command} exited with code ${code ?? "unknown"}`));
-    });
-
-    if (input) {
-      child.stdin.end(input);
-    } else {
-      child.stdin.end();
-    }
-  });
+export async function validateGitHubToken(token: string): Promise<Viewer> {
+  return new OctokitProvider(token).getViewer();
 }
 
 function encodePath(path: string): string {
   return path.split("/").map(encodeURIComponent).join("/");
+}
+
+function withGitHubRestHeaders(params: Record<string, unknown>): Record<string, unknown> {
+  const headers =
+    params.headers && typeof params.headers === "object" && !Array.isArray(params.headers)
+      ? (params.headers as Record<string, unknown>)
+      : {};
+
+  return {
+    ...params,
+    headers: {
+      accept: githubJsonAccept,
+      ...headers,
+      "X-GitHub-Api-Version": githubRestApiVersion
+    }
+  };
 }
 
 function getNumber(payload: Record<string, unknown>, key: string): number {
@@ -1289,32 +1157,14 @@ interface GitHubRepositoryNode {
   updatedAt: string | null;
   pushedAt: string | null;
   defaultBranchRef: { name: string } | null;
-  owner: {
-    login: string;
-    avatarUrl: string | null;
-  };
-  watchers?: {
-    totalCount: number;
-  };
-  issues?: {
-    totalCount: number;
-  };
-  pullRequests?: {
-    totalCount: number;
-  };
-  discussions?: {
-    totalCount: number;
-  };
-  projectsV2?: {
-    totalCount: number;
-  };
-  releases?: {
-    totalCount: number;
-  };
-  primaryLanguage: {
-    name: string;
-    color: string | null;
-  } | null;
+  owner: { login: string; avatarUrl: string | null };
+  watchers?: { totalCount: number };
+  issues?: { totalCount: number };
+  pullRequests?: { totalCount: number };
+  discussions?: { totalCount: number };
+  projectsV2?: { totalCount: number };
+  releases?: { totalCount: number };
+  primaryLanguage: { name: string; color: string | null } | null;
 }
 
 interface GitHubRepositoryRefNode {
@@ -1323,20 +1173,12 @@ interface GitHubRepositoryRefNode {
   nameWithOwner: string;
   url: string;
   defaultBranchRef: { name: string } | null;
-  owner: {
-    login: string;
-  };
+  owner: { login: string };
 }
 
 interface GitHubLanguages {
   totalSize: number;
-  edges: Array<{
-    size: number;
-    node: {
-      name: string;
-      color: string | null;
-    };
-  }>;
+  edges: Array<{ size: number; node: { name: string; color: string | null } }>;
 }
 
 interface GitHubProfileNode {
@@ -1349,25 +1191,12 @@ interface GitHubProfileNode {
   company: string | null;
   location: string | null;
   websiteUrl: string | null;
-  followers: {
-    totalCount: number;
-  };
-  following: {
-    totalCount: number;
-  };
-  repositories: {
-    totalCount: number;
-  };
-  starredRepositories: {
-    totalCount: number;
-  };
-  status: {
-    emoji: string | null;
-    message: string | null;
-  } | null;
-  pinnedItems: {
-    nodes: GitHubRepositoryNode[];
-  };
+  followers: { totalCount: number };
+  following: { totalCount: number };
+  repositories: { totalCount: number };
+  starredRepositories: { totalCount: number };
+  status: { emoji: string | null; message: string | null } | null;
+  pinnedItems: { nodes: GitHubRepositoryNode[] };
 }
 
 interface GitHubSearchIssueNode {
@@ -1379,19 +1208,9 @@ interface GitHubSearchIssueNode {
   createdAt: string;
   updatedAt: string;
   author: { login: string; avatarUrl: string | null } | null;
-  comments: {
-    totalCount: number;
-  };
-  labels: {
-    nodes: Array<{
-      id: string;
-      name: string;
-      color: string;
-    }>;
-  };
-  repository: {
-    nameWithOwner: string;
-  };
+  comments: { totalCount: number };
+  labels: { nodes: Array<{ id: string; name: string; color: string }> };
+  repository: { nameWithOwner: string };
 }
 
 interface GitHubSearchPullRequestNode {
@@ -1404,21 +1223,15 @@ interface GitHubSearchPullRequestNode {
   createdAt: string;
   updatedAt: string;
   author: { login: string; avatarUrl: string | null } | null;
-  comments: {
-    totalCount: number;
-  };
-  reviewThreads: {
-    totalCount: number;
-  };
+  comments: { totalCount: number };
+  reviewThreads: { totalCount: number };
   additions: number;
   deletions: number;
   changedFiles: number;
   mergeStateStatus: string | null;
   headRefName: string;
   baseRefName: string;
-  repository: {
-    nameWithOwner: string;
-  };
+  repository: { nameWithOwner: string };
 }
 
 interface GitHubContentItem {
@@ -1444,11 +1257,7 @@ interface GitHubIssue {
   user: GitHubUser | null;
   body?: string | null;
   comments: number;
-  labels: Array<{
-    id: number;
-    name: string;
-    color: string;
-  }>;
+  labels: Array<{ id: number; name: string; color: string }>;
   created_at: string;
   updated_at: string;
   html_url: string;

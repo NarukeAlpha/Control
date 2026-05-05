@@ -33,6 +33,10 @@ const __dirname = dirname(__filename);
 let mainWindow: BrowserWindowType | null = null;
 let liquidGlassViewId = -1;
 
+if (process.env.CONTROL_USER_DATA_DIR) {
+  app.setPath("userData", process.env.CONTROL_USER_DATA_DIR);
+}
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1512,

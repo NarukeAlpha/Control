@@ -5,6 +5,7 @@ const testingProfileStorageState = "tests/e2e/state/testing-profile.json";
 
 export default defineConfig({
   testDir: "tests/e2e",
+  testIgnore: "**/benchmarks/**",
   timeout: 30_000,
   expect: {
     timeout: 10_000

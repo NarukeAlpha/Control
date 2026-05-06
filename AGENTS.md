@@ -44,7 +44,8 @@ Do not be afraid to change existing code when the current shape is the problem. 
 Do not code defensively by default. Prefer strong types and clear invariants over spreading `unknown`, redundant guards, or repeated output validation through the codebase.
 
 ## Testing Guidelines
-Add or update tests when behavior changes materially, regressions are likely, or shared logic is introduced. Do not add tests for every small refactor. Keep unit tests close to the code; keep workflow and UI-path validation in `tests/e2e`.
+Add or update tests when behavior changes materially  or shared logic is introduced. Do not add tests for every small refactor. Keep unit tests close to the code; keep workflow and UI-path validation in `tests/e2e`.
+Never add tests to e2e unless specifically asked to.
 
 ## Commit & Pull Request Guidelines
 Follow the existing commit style: short, imperative subjects like `Add ...`, `Remove ...`, or `Improve ...`. Keep pull requests focused. Include:

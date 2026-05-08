@@ -1791,11 +1791,6 @@ export class OctokitProvider implements GitHubProvider {
       reviewCommentsResult.items,
       reviewThreadStatesResult.items
     );
-    const reviewThreadsAvailability =
-      reviewCommentsResult.availability.status === "available" &&
-      reviewThreadStatesResult.availability.status !== "available"
-        ? reviewThreadStatesResult.availability
-        : reviewCommentsResult.availability;
     return {
       ...mapPullRequest(pullRequest),
       reviewDecision: reviewDecisionResult.reviewDecision,
@@ -1818,7 +1813,8 @@ export class OctokitProvider implements GitHubProvider {
       checks: checks.items,
       checksAvailability: checks.availability,
       reviewThreads,
-      reviewThreadsAvailability,
+      reviewThreadsAvailability: reviewCommentsResult.availability,
+      reviewThreadStatesAvailability: reviewThreadStatesResult.availability,
       timelineEvents: timeline.items,
       timelineAvailability: timeline.availability,
       linkedIssues: linkedIssues.items,

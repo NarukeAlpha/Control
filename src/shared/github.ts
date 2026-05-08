@@ -980,6 +980,7 @@ export interface PullRequestDetail extends PullRequestSummary {
   checksAvailability: GitHubReadAvailability;
   reviewThreads: PullRequestReviewThreadSummary[];
   reviewThreadsAvailability: GitHubReadAvailability;
+  reviewThreadStatesAvailability?: GitHubReadAvailability;
   timelineEvents: PullRequestTimelineEventSummary[];
   timelineAvailability: GitHubReadAvailability;
   linkedIssues: PullRequestLinkedIssueSummary[];

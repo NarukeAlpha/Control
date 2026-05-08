@@ -16501,6 +16501,10 @@ function PullRequestInspection({
     "Pull request review threads",
     detail?.reviewThreadsAvailability ?? null
   );
+  const reviewThreadStatesAvailabilityMessage = readAvailabilityMessage(
+    "Review thread state",
+    detail?.reviewThreadStatesAvailability ?? null
+  );
   const reviewsAvailabilityMessage = readAvailabilityMessage(
     "Pull request reviews",
     detail?.reviewsAvailability ?? null
@@ -16772,6 +16776,9 @@ function PullRequestInspection({
           {renderExpansionToggle("reviewThreads", "review threads", reviewThreads.length, reviewThreadLimit)}
           {!loading && reviewThreadsAvailabilityMessage && (
             <div className="error-state">{reviewThreadsAvailabilityMessage}</div>
+          )}
+          {!loading && reviewThreadStatesAvailabilityMessage && (
+            <div className="error-state">{reviewThreadStatesAvailabilityMessage}</div>
           )}
           {!loading && !reviewThreadsAvailabilityMessage && reviewThreads.length === 0 && (
             <div className="empty-state">No review threads returned.</div>
@@ -17071,8 +17078,13 @@ function DiscussionsTab({
   const selectedPreviewComments =
     selectedDiscussion?.previewComments.filter((comment) => comment.id !== selectedDiscussion.answer?.id) ?? [];
   const availabilityMessage = readAvailabilityMessage("Discussions", availability);
+  const disabledFeatureMessage =
+    !availabilityMessage && repository.administration.features.discussions === false
+      ? "Discussions are disabled for this repository."
+      : null;
   const discussionsLimitHit = discussions.length >= discussionsLimit;
-  const canExpandDiscussions = discussionsLimitHit && discussionsLimit < maxDiscussionsLimit;
+  const canExpandDiscussions =
+    !disabledFeatureMessage && discussionsLimitHit && discussionsLimit < maxDiscussionsLimit;
   const detail = useQuery<DiscussionDetailResult>({
     queryKey: [
       "discussion-detail",
@@ -17140,6 +17152,7 @@ function DiscussionsTab({
         <div className="thread-list">
           {loading && discussions.length === 0 && <div className="loading-state">Loading discussions...</div>}
           {availabilityMessage && <div className="error-state">{availabilityMessage}</div>}
+          {!loading && disabledFeatureMessage && <div className="empty-state">{disabledFeatureMessage}</div>}
           {error && <div className="error-state">Discussions unavailable: {error.message}</div>}
           {canExpandDiscussions && (
             <div className="table-action-row">
@@ -17198,7 +17211,7 @@ function DiscussionsTab({
               </button>
             </div>
           ))}
-          {!loading && !error && !availabilityMessage && filteredDiscussions.length === 0 && (
+          {!loading && !error && !availabilityMessage && !disabledFeatureMessage && filteredDiscussions.length === 0 && (
             <div className="empty-state">
               {filter.trim() ? "No discussions match this filter." : "No discussions returned."}
             </div>
@@ -17397,8 +17410,12 @@ function ProjectsTab({
   const projectExternalReason = selectedProject?.htmlUrl ? null : "External project URL unavailable.";
   const ownerExternalReason = selectedProject?.ownerHtmlUrl ? null : "Project owner URL unavailable.";
   const availabilityMessage = readAvailabilityMessage("Projects", availability);
+  const disabledFeatureMessage =
+    !availabilityMessage && repository.administration.features.projects === false
+      ? "Projects are disabled for this repository."
+      : null;
   const projectsLimitHit = projects.length >= projectsLimit;
-  const canExpandProjects = projectsLimitHit && projectsLimit < maxProjectsLimit;
+  const canExpandProjects = !disabledFeatureMessage && projectsLimitHit && projectsLimit < maxProjectsLimit;
 
   return (
     <section className="table-panel github-surface">
@@ -17420,6 +17437,7 @@ function ProjectsTab({
         <div className="thread-list">
           {loading && projects.length === 0 && <div className="loading-state">Loading projects...</div>}
           {availabilityMessage && <div className="error-state">{availabilityMessage}</div>}
+          {!loading && disabledFeatureMessage && <div className="empty-state">{disabledFeatureMessage}</div>}
           {error && <div className="error-state">Projects unavailable: {error.message}</div>}
           {canExpandProjects && (
             <div className="table-action-row">
@@ -17486,7 +17504,7 @@ function ProjectsTab({
               </button>
             </div>
           ))}
-          {!loading && !error && !availabilityMessage && filteredProjects.length === 0 && (
+          {!loading && !error && !availabilityMessage && !disabledFeatureMessage && filteredProjects.length === 0 && (
             <div className="empty-state">
               {filter.trim() ? "No projects match this filter." : "No projects returned."}
             </div>
@@ -18608,9 +18626,10 @@ function ActionsTab({
                 const inputs = selectedWorkflow
                   ? workflowDispatchInputsPayload(selectedWorkflow.inputs, workflowInputValues)
                   : {};
+                const workflowDispatchId = selectedWorkflow?.path ?? effectiveWorkflowId.trim();
                 setSubmittedWorkflowAction("dispatchWorkflow");
                 onMutate("dispatchWorkflow", true, {
-                  workflowId: effectiveWorkflowId.trim(),
+                  workflowId: workflowDispatchId,
                   ref: ref.trim(),
                   ...(Object.keys(inputs).length > 0 ? { inputs } : {})
                 });

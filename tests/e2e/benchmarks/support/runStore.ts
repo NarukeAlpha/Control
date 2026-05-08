@@ -5,7 +5,6 @@ import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 import type {
-  BenchmarkPhase,
   FixtureTier,
   MetricEvent,
   RunTarget,

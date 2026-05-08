@@ -1,6 +1,20 @@
 export type FixtureTier = "standard" | "stress";
 export type RunTarget = "github-web" | "control-electron";
-export type ScenarioCategory = "repositories" | "issues" | "pull-requests" | "files";
+export type ScenarioCategory =
+  | "repositories"
+  | "issues"
+  | "pull-requests"
+  | "files"
+  | "releases"
+  | "actions"
+  | "discussions"
+  | "projects"
+  | "refs"
+  | "notifications"
+  | "repository-admin"
+  | "organizations"
+  | "contributors"
+  | "security-quality";
 export type BenchmarkPhase = "cold" | "warm";
 export type MetricStatus = "passed" | "failed";
 

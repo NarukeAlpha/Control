@@ -1,19 +1,58 @@
 import { create } from "zustand";
+import type { LocalRecentSecurityItemKind } from "@shared/local";
 
-export type RepositoryTab = "code" | "issues" | "pulls" | "agents" | "actions" | "wiki" | "securityQuality";
+export type RepositoryTab =
+  | "code"
+  | "issues"
+  | "pulls"
+  | "discussions"
+  | "projects"
+  | "releases"
+  | "contributors"
+  | "agents"
+  | "actions"
+  | "wiki"
+  | "securityQuality"
+  | "settings";
 
 export type AppRoute =
   | { kind: "home" }
   | { kind: "mailbox" }
   | { kind: "repositories" }
   | { kind: "organizations" }
-  | { kind: "repository"; nameWithOwner: string; tab: RepositoryTab }
+  | {
+      kind: "repository";
+      nameWithOwner: string;
+      tab: RepositoryTab;
+      issueNumber?: number;
+      pullNumber?: number;
+      discussionNumber?: number;
+      projectId?: string;
+      releaseId?: number;
+      releaseTagName?: string;
+      releaseAssetId?: number;
+      contributorLogin?: string;
+      settingsCollaboratorLogin?: string;
+      workflowRunId?: number;
+      workflowArtifactId?: number;
+      securityItemKind?: LocalRecentSecurityItemKind;
+      securityItemId?: string;
+      wikiPagePath?: string;
+      issueFilter?: string;
+      pullFilter?: string;
+      workflowFilter?: string;
+      issueComposer?: "create";
+      pullComposer?: "create";
+      releaseComposer?: "create";
+      workflowComposer?: "dispatch";
+    }
   | {
       kind: "codeBrowser";
       nameWithOwner: string;
       path: string;
       entryType: "file" | "dir";
       ref: string | null;
+      line?: number | null;
     };
 
 interface UiState {
@@ -26,7 +65,13 @@ interface UiState {
   goToRepositories(): void;
   goToOrganizations(): void;
   goToRepository(nameWithOwner: string, tab?: RepositoryTab): void;
-  openCodeBrowser(nameWithOwner: string, path: string, entryType: "file" | "dir", ref?: string | null): void;
+  openCodeBrowser(
+    nameWithOwner: string,
+    path: string,
+    entryType: "file" | "dir",
+    ref?: string | null,
+    line?: number | null
+  ): void;
   setRepositoryTab(tab: RepositoryTab): void;
   setSelectedRepository(nameWithOwner: string): void;
   setSettingsOpen(open: boolean): void;
@@ -47,10 +92,10 @@ export const useUiStore = create<UiState>((set) => ({
   goToOrganizations: () => set({ route: { kind: "organizations" } }),
   goToRepository: (nameWithOwner, tab = "code") =>
     set({ selectedRepository: nameWithOwner, route: { kind: "repository", nameWithOwner, tab } }),
-  openCodeBrowser: (nameWithOwner, path, entryType, ref = null) =>
+  openCodeBrowser: (nameWithOwner, path, entryType, ref = null, line = null) =>
     set({
       selectedRepository: nameWithOwner,
-      route: { kind: "codeBrowser", nameWithOwner, path, entryType, ref }
+      route: { kind: "codeBrowser", nameWithOwner, path, entryType, ref, line }
     }),
   setRepositoryTab: (tab) =>
     set((state) => {

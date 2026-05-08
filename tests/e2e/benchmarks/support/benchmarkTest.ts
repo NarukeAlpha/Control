@@ -34,6 +34,36 @@ function scenarioCategoryFromTitle(titlePath: string[]): ScenarioCategory {
   if (joined.includes("files")) {
     return "files";
   }
+  if (joined.includes("releases")) {
+    return "releases";
+  }
+  if (joined.includes("actions")) {
+    return "actions";
+  }
+  if (joined.includes("discussions")) {
+    return "discussions";
+  }
+  if (joined.includes("projects")) {
+    return "projects";
+  }
+  if (joined.includes("refs")) {
+    return "refs";
+  }
+  if (joined.includes("notifications")) {
+    return "notifications";
+  }
+  if (joined.includes("repository-admin")) {
+    return "repository-admin";
+  }
+  if (joined.includes("organizations")) {
+    return "organizations";
+  }
+  if (joined.includes("contributors")) {
+    return "contributors";
+  }
+  if (joined.includes("security-quality")) {
+    return "security-quality";
+  }
   return "repositories";
 }
 
@@ -45,7 +75,7 @@ export const benchmarkTest = base.extend<BenchmarkFixtures, BenchmarkOptions>({
     await use(getGithubFixture(fixtureTier));
   },
 
-  runStore: async ({}, use) => {
+  runStore: async ({ target: _target }, use) => {
     const store = new BenchmarkRunStore();
     await use(store);
   },

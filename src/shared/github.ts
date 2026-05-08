@@ -1646,7 +1646,8 @@ export type GitHubAction =
   | "cancelWorkflow"
   | "createRelease"
   | "editRelease"
-  | "deleteRelease";
+  | "deleteRelease"
+  | "deleteReleaseAsset";
 
 export interface GitHubMutationInput {
   action: GitHubAction;

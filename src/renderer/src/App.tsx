@@ -1606,7 +1606,8 @@ const githubActionLabels: Record<GitHubAction, string> = {
   cancelWorkflow: "Cancel workflow",
   createRelease: "Create release",
   editRelease: "Edit release",
-  deleteRelease: "Delete release"
+  deleteRelease: "Delete release",
+  deleteReleaseAsset: "Delete release asset"
 };
 
 function githubActionLabel(action: GitHubAction | null): string {
@@ -1651,7 +1652,13 @@ function mutationAffectsRepositoryCollections(action: GitHubAction): boolean {
     action === "reopenPullRequest" ||
     action === "createRelease" ||
     action === "editRelease" ||
-    action === "deleteRelease"
+    action === "deleteRelease" ||
+    action === "deleteReleaseAsset" ||
+    action === "rerunWorkflow" ||
+    action === "rerunFailedWorkflowJobs" ||
+    action === "rerunWorkflowJob" ||
+    action === "dispatchWorkflow" ||
+    action === "cancelWorkflow"
   );
 }
 
@@ -17681,7 +17688,10 @@ function ReleasesTab({
   const liveReleaseDisabledReason = !githubReady ? "Sign in with GitHub to change releases." : null;
   const releaseMutationDisabledReason = liveReleaseDisabledReason ?? repositoryMutationDisabledReason(repository);
   const releaseMutationAction =
-    mutationAction === "createRelease" || mutationAction === "editRelease" || mutationAction === "deleteRelease"
+    mutationAction === "createRelease" ||
+    mutationAction === "editRelease" ||
+    mutationAction === "deleteRelease" ||
+    mutationAction === "deleteReleaseAsset"
       ? mutationAction
       : null;
   const releaseActionPendingReason =
@@ -17732,6 +17742,18 @@ function ReleasesTab({
     setCreating(false);
     setEditingRelease(true);
   }
+
+  function submitReleaseMutation(
+    action: GitHubAction,
+    dangerous: boolean,
+    payload?: Record<string, unknown>
+  ): void {
+    setSubmittedReleaseAction(action);
+    onMutate(action, dangerous, payload);
+  }
+
+  const releaseMutationStatusActive =
+    submittedReleaseAction !== null && releaseMutationAction === submittedReleaseAction;
 
   return (
     <section className="table-panel github-surface">
@@ -17991,6 +18013,21 @@ function ReleasesTab({
                 </span>
                 {selectedRelease.isPrerelease && <span className="state-chip">prerelease</span>}
               </header>
+              {releaseMutationStatusActive && mutationPending && (
+                <div className="loading-state">
+                  {githubActionLabel(submittedReleaseAction)} is running. Release data is locked until GitHub responds.
+                </div>
+              )}
+              {releaseMutationStatusActive && !mutationPending && mutationSucceeded && (
+                <div className="success-state">
+                  {githubActionLabel(submittedReleaseAction)} completed. Release data is refreshing.
+                </div>
+              )}
+              {releaseMutationStatusActive && !mutationPending && mutationError && (
+                <div className="error-state">
+                  {githubActionLabel(submittedReleaseAction)} failed: {mutationError.message}
+                </div>
+              )}
               <div className="workflow-summary">
                 <span>Release id {selectedRelease.id}</span>
                 <span>{selectedRelease.targetCommitish ?? "Target unknown"}</span>
@@ -18065,6 +18102,18 @@ function ReleasesTab({
                       >
                         <ExternalLink size={15} /> Download
                       </button>
+                      <button
+                        type="button"
+                        disabled={Boolean(releaseControlDisabledReason)}
+                        title={releaseControlDisabledReason ?? undefined}
+                        onClick={() =>
+                          submitReleaseMutation("deleteReleaseAsset", true, {
+                            assetId: asset.id
+                          })
+                        }
+                      >
+                        Delete asset
+                      </button>
                     </article>
                   ))}
                 </div>
@@ -18102,7 +18151,7 @@ function ReleasesTab({
                   disabled={Boolean(releaseControlDisabledReason)}
                   title={releaseControlDisabledReason ?? undefined}
                   onClick={() =>
-                    onMutate("editRelease", true, {
+                    submitReleaseMutation("editRelease", true, {
                       releaseId: selectedRelease.id,
                       draft: !selectedRelease.isDraft
                     })
@@ -18114,7 +18163,7 @@ function ReleasesTab({
                   type="button"
                   disabled={Boolean(releaseControlDisabledReason)}
                   title={releaseControlDisabledReason ?? undefined}
-                  onClick={() => onMutate("deleteRelease", true, { releaseId: selectedRelease.id })}
+                  onClick={() => submitReleaseMutation("deleteRelease", true, { releaseId: selectedRelease.id })}
                 >
                   Delete release
                 </button>
@@ -18402,6 +18451,10 @@ function ActionsTab({
     workflowDispatchDisabledReason(selectedWorkflow, effectiveWorkflowId, ref, workflowInputValues);
   const dispatchConfigurationDisabled = Boolean(workflowActionPendingReason ?? repositoryDispatchDisabledReason);
   const dispatchMutationActive = submittedWorkflowAction === "dispatchWorkflow" && mutationAction === "dispatchWorkflow";
+  const workflowRunMutationActive =
+    submittedWorkflowAction !== null &&
+    submittedWorkflowAction !== "dispatchWorkflow" &&
+    mutationAction === submittedWorkflowAction;
   const workflowDefinitionsEmpty =
     Boolean(dispatching && workflows.data && workflowItems.length === 0) && !workflows.isLoading;
   const workflowDefinitionsLimitHit = workflowItems.length >= workflowDefinitionLimit;
@@ -18425,6 +18478,15 @@ function ActionsTab({
     "Workflow check runs",
     detail?.checkRunsAvailability ?? null
   );
+
+  function submitWorkflowMutation(
+    action: GitHubAction,
+    dangerous: boolean,
+    payload?: Record<string, unknown>
+  ): void {
+    setSubmittedWorkflowAction(action);
+    onMutate(action, dangerous, payload);
+  }
 
   return (
     <section className="table-panel github-surface">
@@ -18776,6 +18838,21 @@ function ActionsTab({
               {workflowRunDetailAvailabilityMessage && (
                 <div className="error-state">{workflowRunDetailAvailabilityMessage}</div>
               )}
+              {workflowRunMutationActive && mutationPending && (
+                <div className="loading-state">
+                  {githubActionLabel(submittedWorkflowAction)} is running. Workflow run data is locked until GitHub responds.
+                </div>
+              )}
+              {workflowRunMutationActive && !mutationPending && mutationSucceeded && (
+                <div className="success-state">
+                  {githubActionLabel(submittedWorkflowAction)} completed. Workflow runs are refreshing.
+                </div>
+              )}
+              {workflowRunMutationActive && !mutationPending && mutationError && (
+                <div className="error-state">
+                  {githubActionLabel(submittedWorkflowAction)} failed: {mutationError.message}
+                </div>
+              )}
               {detail && (
                 <div className="workflow-detail-grid">
                   {failureSummary.length > 0 && (
@@ -18897,7 +18974,7 @@ function ActionsTab({
                               type="button"
                               disabled={Boolean(jobRerunDisabledReason)}
                               title={jobRerunDisabledReason ?? undefined}
-                              onClick={() => onMutate("rerunWorkflowJob", true, { jobId: job.id })}
+                              onClick={() => submitWorkflowMutation("rerunWorkflowJob", true, { jobId: job.id })}
                             >
                               Rerun job
                             </button>
@@ -19378,7 +19455,7 @@ function ActionsTab({
                   type="button"
                   disabled={Boolean(selectedRerunDisabledReason)}
                   title={selectedRerunDisabledReason ?? undefined}
-                  onClick={() => onMutate("rerunWorkflow", true, { runId: selectedRun.id })}
+                  onClick={() => submitWorkflowMutation("rerunWorkflow", true, { runId: selectedRun.id })}
                 >
                   Rerun
                 </button>
@@ -19386,7 +19463,7 @@ function ActionsTab({
                   type="button"
                   disabled={Boolean(selectedFailedJobsRerunDisabledReason)}
                   title={selectedFailedJobsRerunDisabledReason ?? undefined}
-                  onClick={() => onMutate("rerunFailedWorkflowJobs", true, { runId: selectedRun.id })}
+                  onClick={() => submitWorkflowMutation("rerunFailedWorkflowJobs", true, { runId: selectedRun.id })}
                 >
                   Rerun failed jobs
                 </button>
@@ -19394,7 +19471,7 @@ function ActionsTab({
                   type="button"
                   disabled={Boolean(selectedCancelDisabledReason)}
                   title={selectedCancelDisabledReason ?? undefined}
-                  onClick={() => onMutate("cancelWorkflow", true, { runId: selectedRun.id })}
+                  onClick={() => submitWorkflowMutation("cancelWorkflow", true, { runId: selectedRun.id })}
                 >
                   Cancel run
                 </button>
@@ -20014,6 +20091,13 @@ function SecurityQualityTab({
   const repositoryCommunityProfileAvailabilityMessage = readAvailabilityMessage(
     "Community profile",
     repositoryCommunityProfileAvailability
+  );
+  const administrationAvailabilityMessage = readAvailabilityMessage(
+    "Repository settings metadata",
+    repository.administrationAvailability ?? null
+  );
+  const administrationAvailabilityLabel = readAvailabilityStatusLabel(
+    repository.administrationAvailability ?? null
   );
   const branchProtectionStatusUnavailable =
     Boolean(branchProtectionError) || Boolean(branchProtectionAvailabilityLabel);
@@ -20678,10 +20762,14 @@ function SecurityQualityTab({
             <h2>Security feature availability</h2>
             <small>Repository-level feature statuses returned by GitHub settings metadata.</small>
           </div>
-          <span className="state-chip">
-            {formatCompactNumber(securityFeatureRows.filter(([, status]) => status !== null).length)} returned
+          <span className={`state-chip ${administrationAvailabilityLabel ? "attention" : ""}`}>
+            {administrationAvailabilityLabel ??
+              `${formatCompactNumber(securityFeatureRows.filter(([, status]) => status !== null).length)} returned`}
           </span>
         </header>
+        {administrationAvailabilityMessage && (
+          <div className="error-state">{administrationAvailabilityMessage}</div>
+        )}
         <div className="workflow-summary branch-protection-flags">
           {securityFeatureRows.map(([label, status]) => (
             <span key={label}>

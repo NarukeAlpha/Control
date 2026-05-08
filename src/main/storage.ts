@@ -17,6 +17,10 @@ interface CacheRecord {
   expiresAt: string | null;
 }
 
+interface CacheReadOptions {
+  allowExpired?: boolean;
+}
+
 interface RecentItemRow {
   kind: string;
   provider: string;
@@ -29,7 +33,7 @@ export interface LocalStore {
   getSettings(): ControlSettings;
   updateSettings(settings: Partial<ControlSettings>): ControlSettings;
   saveAccount(provider: string, login: string, payload: unknown): void;
-  getCache<T>(provider: string, cacheKey: string): T | null;
+  getCache<T>(provider: string, cacheKey: string, options?: CacheReadOptions): T | null;
   setCache(record: CacheRecord): void;
   clearCacheByPrefix(provider: string, cacheKeyPrefix: string): void;
   addRecentItem(kind: string, provider: string, itemKey: string, payload: unknown): void;
@@ -181,7 +185,7 @@ class SqliteLocalStore implements LocalStore {
       .run(provider, login, JSON.stringify(payload));
   }
 
-  getCache<T>(provider: string, cacheKey: string): T | null {
+  getCache<T>(provider: string, cacheKey: string, options: CacheReadOptions = {}): T | null {
     const row = this.db
       .prepare(
         "SELECT payload, expires_at AS expiresAt FROM cache_entries WHERE provider = ? AND cache_key = ?"
@@ -192,7 +196,7 @@ class SqliteLocalStore implements LocalStore {
       return null;
     }
 
-    if (row.expiresAt && Date.parse(row.expiresAt) < Date.now()) {
+    if (!options.allowExpired && row.expiresAt && Date.parse(row.expiresAt) < Date.now()) {
       return null;
     }
 
@@ -450,12 +454,12 @@ class MemoryLocalStore implements LocalStore {
     this.accounts.set(`${provider}:${login}`, payload);
   }
 
-  getCache<T>(provider: string, cacheKey: string): T | null {
+  getCache<T>(provider: string, cacheKey: string, options: CacheReadOptions = {}): T | null {
     const record = this.cache.get(`${provider}:${cacheKey}`);
     if (!record) {
       return null;
     }
-    if (record.expiresAt && Date.parse(record.expiresAt) < Date.now()) {
+    if (!options.allowExpired && record.expiresAt && Date.parse(record.expiresAt) < Date.now()) {
       return null;
     }
     return record.payload as T;

@@ -275,8 +275,10 @@ export class GitHubProviderManager implements GitHubProvider {
     const cacheKey = `account-profile:${input.login ?? "viewer"}`;
     const available: GitHubReadAvailability = { status: "available", message: null };
 
-    if (!input.forceRefresh) {
-      const cached = this.store.getCache<GitHubAccountProfile>("github", cacheKey);
+    if (!input.forceRefresh || input.cacheOnly) {
+      const cached = this.store.getCache<GitHubAccountProfile>("github", cacheKey, {
+        allowExpired: input.cacheOnly
+      });
       if (cached !== null) {
         this.store.saveAccount("github", cached.login, cached);
         return { profile: cached, availability: available };
@@ -348,7 +350,9 @@ export class GitHubProviderManager implements GitHubProvider {
     const limit = input.limit ?? 50;
     const cached = this.store.listGitHubRepositories(limit);
     const cacheKey = `repositories-with-status:${limit}`;
-    const cachedResult = this.store.getCache<RepositoryListResult>("github", cacheKey);
+    const cachedResult = this.store.getCache<RepositoryListResult>("github", cacheKey, {
+      allowExpired: input.cacheOnly
+    });
     const available = { status: "available", message: null } as const;
 
     if (input.cacheOnly) {
@@ -415,7 +419,9 @@ export class GitHubProviderManager implements GitHubProvider {
     }
 
     const key = `account-repositories:${input.login}:${input.limit ?? 50}`;
-    const cached = this.store.getCache<RepositorySummary[]>("github", key);
+    const cached = this.store.getCache<RepositorySummary[]>("github", key, {
+      allowExpired: input.cacheOnly
+    });
     const available = { status: "available", message: null } as const;
 
     if (input.cacheOnly) {
@@ -819,7 +825,9 @@ export class GitHubProviderManager implements GitHubProvider {
       };
     }
 
-    const cachedResult = this.store.getCache<RepoReadmeResult>("github", key);
+    const cachedResult = this.store.getCache<RepoReadmeResult>("github", key, {
+      allowExpired: input.cacheOnly
+    });
     if (cachedResult !== null) {
       if (!input.cacheOnly) {
         this.refreshInBackground(() => this.refreshReadme(input));
@@ -1368,6 +1376,12 @@ export class GitHubProviderManager implements GitHubProvider {
       case "createRelease":
       case "editRelease":
       case "deleteRelease":
+      case "deleteReleaseAsset":
+      case "rerunWorkflow":
+      case "rerunFailedWorkflowJobs":
+      case "rerunWorkflowJob":
+      case "dispatchWorkflow":
+      case "cancelWorkflow":
         this.clearCachePrefixes([
           "repositories-with-status:",
           "account-repositories:",
@@ -1534,7 +1548,7 @@ export class GitHubProviderManager implements GitHubProvider {
           cacheKey: `repositories-with-status:${input.limit ?? 50}`,
           payload: result,
           etag: null,
-          expiresAt: new Date(Date.now() + 60_000).toISOString()
+          expiresAt: null
         });
         this.onRepositoryDataUpdated(null);
       }
@@ -1576,7 +1590,7 @@ export class GitHubProviderManager implements GitHubProvider {
           cacheKey: `readme:${input.owner}/${input.repo}:default`,
           payload: result,
           etag: null,
-          expiresAt: new Date(Date.now() + 60_000).toISOString()
+          expiresAt: null
         });
 
         if (result.markdown !== null) {
@@ -1608,8 +1622,10 @@ export class GitHubProviderManager implements GitHubProvider {
     load: () => Promise<T>,
     options: { forceRefresh?: boolean; cacheOnly?: boolean } = {}
   ): Promise<T> {
-    if (!options.forceRefresh) {
-      const cached = this.store.getCache<T>("github", cacheKey);
+    if (!options.forceRefresh || options.cacheOnly) {
+      const cached = this.store.getCache<T>("github", cacheKey, {
+        allowExpired: options.cacheOnly
+      });
       if (cached !== null) {
         return cached;
       }
@@ -1639,8 +1655,10 @@ export class GitHubProviderManager implements GitHubProvider {
     load: () => Promise<T>,
     options: { forceRefresh?: boolean; cacheOnly?: boolean } = {}
   ): Promise<T> {
-    if (!options.forceRefresh) {
-      const cached = this.store.getCache<T>("github", cacheKey);
+    if (!options.forceRefresh || options.cacheOnly) {
+      const cached = this.store.getCache<T>("github", cacheKey, {
+        allowExpired: options.cacheOnly
+      });
       if (cached !== null) {
         return cached;
       }
@@ -1677,8 +1695,10 @@ export class GitHubProviderManager implements GitHubProvider {
     emptyValue: Omit<T, "availability">,
     options: { forceRefresh?: boolean; cacheOnly?: boolean } = {}
   ): Promise<T> {
-    if (!options.forceRefresh) {
-      const cached = this.store.getCache<T>("github", cacheKey);
+    if (!options.forceRefresh || options.cacheOnly) {
+      const cached = this.store.getCache<T>("github", cacheKey, {
+        allowExpired: options.cacheOnly
+      });
       if (cached !== null) {
         return cached;
       }
@@ -1714,8 +1734,10 @@ export class GitHubProviderManager implements GitHubProvider {
     load: () => Promise<RepositoryAccessResult>,
     options: { forceRefresh?: boolean; cacheOnly?: boolean } = {}
   ): Promise<RepositoryAccessResult> {
-    if (!options.forceRefresh) {
-      const cached = this.store.getCache<RepositoryAccessResult>("github", cacheKey);
+    if (!options.forceRefresh || options.cacheOnly) {
+      const cached = this.store.getCache<RepositoryAccessResult>("github", cacheKey, {
+        allowExpired: options.cacheOnly
+      });
       if (cached !== null) {
         return cached;
       }

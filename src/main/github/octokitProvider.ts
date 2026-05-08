@@ -1030,7 +1030,8 @@ export class OctokitProvider implements GitHubProvider {
           defaultBranch: data.repository.defaultBranchRef?.name ?? null,
           isPrivate: data.repository.isPrivate,
           isArchived: data.repository.isArchived,
-          isDisabled: data.repository.isDisabled
+          isDisabled: data.repository.isDisabled,
+          viewerPermission: data.repository.viewerPermission
         })
     };
   }
@@ -1763,6 +1764,7 @@ export class OctokitProvider implements GitHubProvider {
       commitsResult,
       reviewsResult,
       reviewCommentsResult,
+      reviewThreadStatesResult,
       checks,
       timeline,
       linkedIssues,
@@ -1778,12 +1780,22 @@ export class OctokitProvider implements GitHubProvider {
       this.fetchPullRequestCommits(input),
       this.fetchPullRequestReviews(input),
       this.fetchPullRequestReviewComments(input),
+      this.fetchPullRequestReviewThreadStates(input),
       this.fetchPullRequestChecks(input.owner, input.repo, pullRequest.head?.sha ?? null),
       this.fetchPullRequestTimeline(input),
       this.fetchPullRequestLinkedIssues(input),
       this.fetchPullRequestReviewDecision(input)
     ]);
     const mappedReviews = reviewsResult.items.map(mapPullRequestReview);
+    const reviewThreads = groupPullRequestReviewThreads(
+      reviewCommentsResult.items,
+      reviewThreadStatesResult.items
+    );
+    const reviewThreadsAvailability =
+      reviewCommentsResult.availability.status === "available" &&
+      reviewThreadStatesResult.availability.status !== "available"
+        ? reviewThreadStatesResult.availability
+        : reviewCommentsResult.availability;
     return {
       ...mapPullRequest(pullRequest),
       reviewDecision: reviewDecisionResult.reviewDecision,
@@ -1805,8 +1817,8 @@ export class OctokitProvider implements GitHubProvider {
       reviewDecisionAvailability: reviewDecisionResult.availability,
       checks: checks.items,
       checksAvailability: checks.availability,
-      reviewThreads: groupPullRequestReviewThreads(reviewCommentsResult.items),
-      reviewThreadsAvailability: reviewCommentsResult.availability,
+      reviewThreads,
+      reviewThreadsAvailability,
       timelineEvents: timeline.items,
       timelineAvailability: timeline.availability,
       linkedIssues: linkedIssues.items,
@@ -1870,6 +1882,56 @@ export class OctokitProvider implements GitHubProvider {
       );
       return {
         items,
+        availability: { status: "available", message: null }
+      };
+    } catch (error) {
+      return {
+        items: [],
+        availability: mapGitHubFeatureError(error)
+      };
+    }
+  }
+
+  private async fetchPullRequestReviewThreadStates(
+    input: PullRequestDetailInput
+  ): Promise<{ items: GitHubPullRequestReviewThreadNode[]; availability: GitHubReadAvailability }> {
+    try {
+      const data = await this.graphql<{
+        repository: {
+          pullRequest: {
+            reviewThreads: {
+              nodes: GitHubPullRequestReviewThreadNode[];
+            };
+          } | null;
+        } | null;
+      }>(
+        `
+        query PullRequestReviewThreadStates($owner: String!, $repo: String!, $number: Int!) {
+          repository(owner: $owner, name: $repo) {
+            pullRequest(number: $number) {
+              reviewThreads(first: 100) {
+                nodes {
+                  isResolved
+                  isOutdated
+                  path
+                  comments(first: 100) {
+                    nodes {
+                      databaseId
+                      replyTo {
+                        databaseId
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        `,
+        { owner: input.owner, repo: input.repo, number: input.pullNumber }
+      );
+      return {
+        items: data.repository?.pullRequest?.reviewThreads.nodes ?? [],
         availability: { status: "available", message: null }
       };
     } catch (error) {
@@ -3493,6 +3555,12 @@ export class OctokitProvider implements GitHubProvider {
           repo,
           release_id: getNumber(payload, "releaseId")
         });
+      case "deleteReleaseAsset":
+        return this.rest("DELETE /repos/{owner}/{repo}/releases/assets/{asset_id}", {
+          owner,
+          repo,
+          asset_id: getNumber(payload, "assetId")
+        });
       default:
         throw new Error(`Unsupported GitHub action: ${input.action}`);
     }
@@ -3928,6 +3996,61 @@ function mapRestRepositoryPermission(
   return null;
 }
 
+function mapViewerPermissionToRepositoryAdministrationPermissions(
+  viewerPermission: string | null
+): RepositoryAdministrationMetadata["viewerPermissions"] {
+  switch (viewerPermission?.toUpperCase()) {
+    case "ADMIN":
+      return {
+        admin: true,
+        maintain: true,
+        push: true,
+        triage: true,
+        pull: true
+      };
+    case "MAINTAIN":
+      return {
+        admin: false,
+        maintain: true,
+        push: true,
+        triage: true,
+        pull: true
+      };
+    case "WRITE":
+      return {
+        admin: false,
+        maintain: false,
+        push: true,
+        triage: true,
+        pull: true
+      };
+    case "TRIAGE":
+      return {
+        admin: false,
+        maintain: false,
+        push: false,
+        triage: true,
+        pull: true
+      };
+    case "READ":
+      return {
+        admin: false,
+        maintain: false,
+        push: false,
+        triage: false,
+        pull: true
+      };
+    default:
+      return {
+        admin: null,
+        maintain: null,
+        push: null,
+        triage: null,
+        pull: null
+      };
+  }
+}
+
 function mapRestRepositoryAdministration(repository: GitHubRestRepository): RepositoryAdministrationMetadata {
   const securityAndAnalysis = repository.security_and_analysis;
 
@@ -3982,6 +4105,7 @@ function fallbackRepositoryAdministration(input: {
   isPrivate: boolean;
   isArchived: boolean;
   isDisabled: boolean;
+  viewerPermission: string | null;
 }): RepositoryAdministrationMetadata {
   return {
     visibility: input.visibility,
@@ -4006,13 +4130,7 @@ function fallbackRepositoryAdministration(input: {
       deleteBranchOnMerge: null,
       allowUpdateBranch: null
     },
-    viewerPermissions: {
-      admin: null,
-      maintain: null,
-      push: null,
-      triage: null,
-      pull: null
-    },
+    viewerPermissions: mapViewerPermissionToRepositoryAdministrationPermissions(input.viewerPermission),
     securityAndAnalysis: {
       advancedSecurity: null,
       codeSecurity: null,
@@ -5438,10 +5556,20 @@ function mapPullRequestCheck(run: GitHubCheckRun): PullRequestCheckSummary {
 }
 
 function groupPullRequestReviewThreads(
-  comments: GitHubPullRequestReviewComment[]
+  comments: GitHubPullRequestReviewComment[],
+  threadStates: GitHubPullRequestReviewThreadNode[] = []
 ): PullRequestReviewThreadSummary[] {
   const threadComments = comments.map(mapPullRequestReviewThreadComment);
   const byThreadId = new Map<number, PullRequestReviewThreadCommentSummary[]>();
+  const stateByThreadId = new Map<number, GitHubPullRequestReviewThreadNode>();
+
+  for (const threadState of threadStates) {
+    const rootComment = threadState.comments.nodes.find((comment) => comment.replyTo === null);
+    const rootCommentId = rootComment?.databaseId ?? threadState.comments.nodes[0]?.databaseId ?? null;
+    if (rootCommentId !== null) {
+      stateByThreadId.set(rootCommentId, threadState);
+    }
+  }
 
   for (const comment of threadComments) {
     const threadId = comment.inReplyToId ?? comment.id;
@@ -5450,11 +5578,14 @@ function groupPullRequestReviewThreads(
 
   return Array.from(byThreadId.entries()).map(([threadId, commentsInThread]) => {
     const root = commentsInThread.find((comment) => comment.id === threadId) ?? commentsInThread[0]!;
+    const threadState =
+      stateByThreadId.get(threadId) ??
+      commentsInThread.map((comment) => stateByThreadId.get(comment.id)).find((state) => state !== undefined);
     return {
       id: threadId,
-      path: root.path,
-      isResolved: null,
-      isOutdated: null,
+      path: threadState?.path ?? root.path,
+      isResolved: threadState?.isResolved ?? null,
+      isOutdated: threadState?.isOutdated ?? null,
       comments: commentsInThread.sort(
         (a, b) => (Date.parse(a.createdAt) || 0) - (Date.parse(b.createdAt) || 0)
       )
@@ -6240,6 +6371,22 @@ interface GitHubPullRequestReviewComment {
   created_at: string;
   updated_at: string;
   html_url?: string | null;
+}
+
+interface GitHubPullRequestReviewThreadNode {
+  isResolved: boolean;
+  isOutdated: boolean;
+  path: string;
+  comments: {
+    nodes: GitHubPullRequestReviewThreadCommentNode[];
+  };
+}
+
+interface GitHubPullRequestReviewThreadCommentNode {
+  databaseId: number | null;
+  replyTo: {
+    databaseId: number | null;
+  } | null;
 }
 
 interface GitHubWorkflowRun {

@@ -1607,7 +1607,34 @@ const githubActionLabels: Record<GitHubAction, string> = {
   createRelease: "Create release",
   editRelease: "Edit release",
   deleteRelease: "Delete release",
-  deleteReleaseAsset: "Delete release asset"
+  deleteReleaseAsset: "Delete release asset",
+  updateBranchProtection: "Update branch protection",
+  deleteBranchProtection: "Delete branch protection",
+  addRepositoryCollaborator: "Add repository collaborator",
+  removeRepositoryCollaborator: "Remove repository collaborator",
+  updateCollaboratorPermission: "Update collaborator permission",
+  addRepositoryTeam: "Add repository team",
+  removeRepositoryTeam: "Remove repository team",
+  updateTeamPermission: "Update team permission",
+  createRepositoryRuleset: "Create repository ruleset",
+  updateRepositoryRuleset: "Update repository ruleset",
+  deleteRepositoryRuleset: "Delete repository ruleset",
+  createDiscussion: "Create discussion",
+  editDiscussion: "Edit discussion",
+  closeDiscussion: "Close discussion",
+  reopenDiscussion: "Reopen discussion",
+  addDiscussionComment: "Add discussion comment",
+  editDiscussionComment: "Edit discussion comment",
+  deleteDiscussionComment: "Delete discussion comment",
+  createProjectV2: "Create project",
+  updateProjectV2: "Update project",
+  deleteProjectV2: "Delete project",
+  addProjectV2Item: "Add project item",
+  updateProjectV2Item: "Update project item",
+  deleteProjectV2Item: "Delete project item",
+  createWikiPage: "Create wiki page",
+  editWikiPage: "Edit wiki page",
+  deleteWikiPage: "Delete wiki page"
 };
 
 function githubActionLabel(action: GitHubAction | null): string {
@@ -17115,9 +17142,6 @@ function DiscussionsTab({
     selectedDiscussionDetail?.commentsList.filter((comment) => comment.id !== acceptedAnswer?.id) ??
     selectedPreviewComments;
   const selectedCommentsArePreview = !selectedDiscussionDetail;
-  const selectedCommentsTruncated = selectedDiscussionDetail
-    ? selectedDiscussionDetail.commentsTruncated
-    : (selectedDiscussion?.previewCommentsTruncated ?? false);
   const selectedRepliesTruncated = selectedComments.some((comment) => {
     const detailComment = comment as Partial<DiscussionCommentSummary>;
     return detailComment.repliesTruncated === true;
@@ -17198,7 +17222,7 @@ function DiscussionsTab({
                 {discussion.isAnswered && <span className="state-chip success">answered</span>}
                 {discussion.closed && <span className="state-chip">closed</span>}
                 {discussion.locked && <span className="state-chip">locked</span>}
-                {discussion.previewCommentsTruncated && <span className="state-chip">preview</span>}
+
               </button>
               <button
                 className="pin-row-button"
@@ -17279,7 +17303,7 @@ function DiscussionsTab({
                     Showing {formatCompactNumber(selectedComments.length)} of{" "}
                     {formatCompactNumber(selectedDiscussion.comments)} comments
                     {selectedCommentsArePreview ? " from the list preview" : ""}
-                    {selectedCommentsTruncated ? ". Use GitHub fallback for the full thread." : "."}
+                    .
                   </small>
                 )}
                 {canLoadMoreReplies && (

@@ -1316,7 +1316,15 @@ export class GitHubProviderManager implements GitHubProvider {
   }
 
   async search(input: SearchInput): Promise<RepositorySummary[]> {
-    const repositories = await (await this.provider()).search(input);
+    let provider: GitHubProvider;
+    try {
+      provider = await this.provider();
+    } catch (error) {
+      console.warn("Control could not search GitHub repositories.", error);
+      return [];
+    }
+
+    const repositories = await provider.search(input);
     repositories.forEach((repository) => this.store.upsertGitHubRepositorySummary(repository));
     this.onRepositoryDataUpdated(null);
     return repositories;
@@ -1530,29 +1538,45 @@ export class GitHubProviderManager implements GitHubProvider {
   private async refreshRepositories(input: RepoListInput): Promise<RepositorySummary[]> {
     const key = `refresh-repositories:${input.limit ?? 50}`;
     return this.dedupe(key, async () => {
-      const repositories = await (await this.provider()).listRepositories(input);
-      repositories.forEach((repository) => this.store.upsertGitHubRepositorySummary(repository));
-      this.onRepositoryDataUpdated(null);
-      return repositories;
+      try {
+        const repositories = await (await this.provider()).listRepositories(input);
+        repositories.forEach((repository) => this.store.upsertGitHubRepositorySummary(repository));
+        this.onRepositoryDataUpdated(null);
+        return repositories;
+      } catch (error) {
+        console.warn("Control could not refresh GitHub repositories.", error);
+        return [];
+      }
     });
   }
 
   private async refreshRepositoriesWithStatus(input: RepoListInput): Promise<RepositoryListResult> {
     const key = `refresh-repositories-with-status:${input.limit ?? 50}`;
     return this.dedupe(key, async () => {
-      const result = await (await this.provider()).listRepositoriesWithStatus(input);
-      if (result.availability.status === "available") {
-        result.items.forEach((repository) => this.store.upsertGitHubRepositorySummary(repository));
-        this.store.setCache({
-          provider: "github",
-          cacheKey: `repositories-with-status:${input.limit ?? 50}`,
-          payload: result,
-          etag: null,
-          expiresAt: null
-        });
-        this.onRepositoryDataUpdated(null);
+      try {
+        const result = await (await this.provider()).listRepositoriesWithStatus(input);
+        if (result.availability.status === "available") {
+          result.items.forEach((repository) => this.store.upsertGitHubRepositorySummary(repository));
+          this.store.setCache({
+            provider: "github",
+            cacheKey: `repositories-with-status:${input.limit ?? 50}`,
+            payload: result,
+            etag: null,
+            expiresAt: null
+          });
+          this.onRepositoryDataUpdated(null);
+        }
+        return result;
+      } catch (error) {
+        console.warn("Control could not refresh GitHub repositories with status.", error);
+        return {
+          items: [],
+          availability: {
+            status: "error",
+            message: error instanceof Error ? error.message : "GitHub repository list is unavailable."
+          }
+        };
       }
-      return result;
     });
   }
 
@@ -1561,44 +1585,71 @@ export class GitHubProviderManager implements GitHubProvider {
   ): Promise<AccountRepositoryListResult> {
     const key = `refresh-account-repositories-with-status:${input.login ?? "viewer"}:${input.limit ?? 50}`;
     return this.dedupe(key, async () => {
-      const result = await (await this.provider()).listAccountRepositoriesWithStatus(input);
-      if (result.availability.status === "available") {
-        result.items.forEach((repository) => this.store.upsertGitHubRepositorySummary(repository));
-        this.onRepositoryDataUpdated(null);
+      try {
+        const result = await (await this.provider()).listAccountRepositoriesWithStatus(input);
+        if (result.availability.status === "available") {
+          result.items.forEach((repository) => this.store.upsertGitHubRepositorySummary(repository));
+          this.onRepositoryDataUpdated(null);
+        }
+        return result;
+      } catch (error) {
+        console.warn("Control could not refresh account repositories with status.", error);
+        return {
+          items: [],
+          availability: {
+            status: "error",
+            message: error instanceof Error ? error.message : "GitHub account repositories are unavailable."
+          }
+        };
       }
-      return result;
     });
   }
 
   private async refreshRepository(owner: string, repo: string): Promise<RepositoryDetail> {
     const key = `refresh-repository:${owner}/${repo}`;
     return this.dedupe(key, async () => {
-      const detail = await (await this.provider()).getRepository(owner, repo);
-      this.store.upsertGitHubRepositoryDetail(detail);
-      this.onRepositoryDataUpdated(detail.nameWithOwner);
-      return detail;
+      try {
+        const detail = await (await this.provider()).getRepository(owner, repo);
+        this.store.upsertGitHubRepositoryDetail(detail);
+        this.onRepositoryDataUpdated(detail.nameWithOwner);
+        return detail;
+      } catch (error) {
+        console.warn("Control could not refresh GitHub repository.", error);
+        throw error;
+      }
     });
   }
 
   private async refreshReadme(input: RepoReadmeInput): Promise<RepoReadmeResult> {
     const key = `refresh-readme:${input.owner}/${input.repo}`;
     return this.dedupe(key, async () => {
-      const result = await (await this.provider()).getReadme(input);
-      if (result.availability.status === "available") {
-        this.store.setCache({
-          provider: "github",
-          cacheKey: `readme:${input.owner}/${input.repo}:default`,
-          payload: result,
-          etag: null,
-          expiresAt: null
-        });
+      try {
+        const result = await (await this.provider()).getReadme(input);
+        if (result.availability.status === "available") {
+          this.store.setCache({
+            provider: "github",
+            cacheKey: `readme:${input.owner}/${input.repo}:default`,
+            payload: result,
+            etag: null,
+            expiresAt: null
+          });
 
-        if (result.markdown !== null) {
-          this.store.upsertGitHubRepositoryReadme(`${input.owner}/${input.repo}`, result.markdown);
-          this.onRepositoryDataUpdated(`${input.owner}/${input.repo}`);
+          if (result.markdown !== null) {
+            this.store.upsertGitHubRepositoryReadme(`${input.owner}/${input.repo}`, result.markdown);
+            this.onRepositoryDataUpdated(`${input.owner}/${input.repo}`);
+          }
         }
+        return result;
+      } catch (error) {
+        console.warn("Control could not refresh GitHub readme.", error);
+        return {
+          markdown: null,
+          availability: {
+            status: "error",
+            message: error instanceof Error ? error.message : "GitHub readme is unavailable."
+          }
+        };
       }
-      return result;
     });
   }
 
@@ -1637,15 +1688,26 @@ export class GitHubProviderManager implements GitHubProvider {
 
     const dedupeKey = options.forceRefresh ? `force:${cacheKey}` : cacheKey;
     return this.dedupe(dedupeKey, async () => {
-      const payload = await load();
-      this.store.setCache({
-        provider: "github",
-        cacheKey,
-        payload,
-        etag: null,
-        expiresAt: new Date(Date.now() + ttlMs).toISOString()
-      });
-      return payload;
+      try {
+        const payload = await load();
+        this.store.setCache({
+          provider: "github",
+          cacheKey,
+          payload,
+          etag: null,
+          expiresAt: new Date(Date.now() + ttlMs).toISOString()
+        });
+        return payload;
+      } catch (error) {
+        const expired = this.store.getCache<T>("github", cacheKey, {
+          allowExpired: true
+        });
+        if (expired !== null) {
+          console.warn("Control served stale cache for GitHub cache key.", cacheKey, error);
+          return expired;
+        }
+        throw error;
+      }
     });
   }
 
@@ -1676,15 +1738,32 @@ export class GitHubProviderManager implements GitHubProvider {
 
     const dedupeKey = options.forceRefresh ? `force:${cacheKey}` : cacheKey;
     return this.dedupe(dedupeKey, async () => {
-      const payload = await load();
-      this.store.setCache({
-        provider: "github",
-        cacheKey,
-        payload,
-        etag: null,
-        expiresAt: new Date(Date.now() + ttlMs).toISOString()
-      });
-      return payload;
+      try {
+        const payload = await load();
+        this.store.setCache({
+          provider: "github",
+          cacheKey,
+          payload,
+          etag: null,
+          expiresAt: new Date(Date.now() + ttlMs).toISOString()
+        });
+        return payload;
+      } catch (error) {
+        const expired = this.store.getCache<T>("github", cacheKey, {
+          allowExpired: true
+        });
+        if (expired !== null) {
+          console.warn("Control served stale cache for GitHub cache key.", cacheKey, error);
+          return expired;
+        }
+        return {
+          items: [],
+          availability: {
+            status: "error",
+            message: error instanceof Error ? error.message : "GitHub list data is unavailable."
+          }
+        } as unknown as T;
+      }
     });
   }
 
@@ -1716,15 +1795,32 @@ export class GitHubProviderManager implements GitHubProvider {
 
     const dedupeKey = options.forceRefresh ? `force:${cacheKey}` : cacheKey;
     return this.dedupe(dedupeKey, async () => {
-      const payload = await load();
-      this.store.setCache({
-        provider: "github",
-        cacheKey,
-        payload,
-        etag: null,
-        expiresAt: new Date(Date.now() + ttlMs).toISOString()
-      });
-      return payload;
+      try {
+        const payload = await load();
+        this.store.setCache({
+          provider: "github",
+          cacheKey,
+          payload,
+          etag: null,
+          expiresAt: new Date(Date.now() + ttlMs).toISOString()
+        });
+        return payload;
+      } catch (error) {
+        const expired = this.store.getCache<T>("github", cacheKey, {
+          allowExpired: true
+        });
+        if (expired !== null) {
+          console.warn("Control served stale cache for GitHub cache key.", cacheKey, error);
+          return expired;
+        }
+        return {
+          ...emptyValue,
+          availability: {
+            status: "error",
+            message: error instanceof Error ? error.message : "GitHub data is unavailable."
+          }
+        } as T;
+      }
     });
   }
 

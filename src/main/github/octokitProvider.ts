@@ -1849,7 +1849,7 @@ export class OctokitProvider implements GitHubProvider {
           repo,
           issue_number: issueNumber
         },
-        50
+        Number.MAX_SAFE_INTEGER
       );
       return {
         items,
@@ -1874,7 +1874,7 @@ export class OctokitProvider implements GitHubProvider {
           repo: input.repo,
           pull_number: input.pullNumber
         },
-        100
+        Number.MAX_SAFE_INTEGER
       );
       return {
         items,
@@ -1892,29 +1892,38 @@ export class OctokitProvider implements GitHubProvider {
     input: PullRequestDetailInput
   ): Promise<{ items: GitHubPullRequestReviewThreadNode[]; availability: GitHubReadAvailability }> {
     try {
-      const data = await this.graphql<{
-        repository: {
-          pullRequest: {
-            reviewThreads: {
-              nodes: GitHubPullRequestReviewThreadNode[];
-            };
+      const allNodes: GitHubPullRequestReviewThreadNode[] = [];
+      let hasNextPage = true;
+      let after: string | null = null;
+
+      while (hasNextPage) {
+        type ReviewThreadsData = {
+          repository: {
+            pullRequest: {
+              reviewThreads: {
+                nodes: GitHubPullRequestReviewThreadNode[];
+                pageInfo: { hasNextPage: boolean; endCursor: string | null };
+              };
+            } | null;
           } | null;
-        } | null;
-      }>(
-        `
-        query PullRequestReviewThreadStates($owner: String!, $repo: String!, $number: Int!) {
-          repository(owner: $owner, name: $repo) {
-            pullRequest(number: $number) {
-              reviewThreads(first: 100) {
-                nodes {
-                  isResolved
-                  isOutdated
-                  path
-                  comments(first: 100) {
-                    nodes {
-                      databaseId
-                      replyTo {
+        };
+        const data: ReviewThreadsData = await this.graphql<ReviewThreadsData>(
+          `
+          query PullRequestReviewThreadStates($owner: String!, $repo: String!, $number: Int!, $after: String) {
+            repository(owner: $owner, name: $repo) {
+              pullRequest(number: $number) {
+                reviewThreads(first: 100, after: $after) {
+                  pageInfo { hasNextPage endCursor }
+                  nodes {
+                    isResolved
+                    isOutdated
+                    path
+                    comments(first: 250) {
+                      nodes {
                         databaseId
+                        replyTo {
+                          databaseId
+                        }
                       }
                     }
                   }
@@ -1922,12 +1931,29 @@ export class OctokitProvider implements GitHubProvider {
               }
             }
           }
+          `,
+          {
+            owner: input.owner,
+            repo: input.repo,
+            number: input.pullNumber,
+            after
+          }
+        );
+
+        const threads: {
+          nodes: GitHubPullRequestReviewThreadNode[];
+          pageInfo: { hasNextPage: boolean; endCursor: string | null };
+        } | undefined =
+          data.repository?.pullRequest?.reviewThreads ?? undefined;
+        if (threads?.nodes) {
+          allNodes.push(...threads.nodes);
         }
-        `,
-        { owner: input.owner, repo: input.repo, number: input.pullNumber }
-      );
+        hasNextPage = threads?.pageInfo?.hasNextPage ?? false;
+        after = threads?.pageInfo?.endCursor ?? null;
+      }
+
       return {
-        items: data.repository?.pullRequest?.reviewThreads.nodes ?? [],
+        items: allNodes,
         availability: { status: "available", message: null }
       };
     } catch (error) {
@@ -1949,7 +1975,7 @@ export class OctokitProvider implements GitHubProvider {
           repo: input.repo,
           pull_number: input.pullNumber
         },
-        100
+        Number.MAX_SAFE_INTEGER
       );
       return {
         items,
@@ -1974,7 +2000,7 @@ export class OctokitProvider implements GitHubProvider {
           repo: input.repo,
           pull_number: input.pullNumber
         },
-        100
+        Number.MAX_SAFE_INTEGER
       );
       return {
         items,
@@ -1999,7 +2025,7 @@ export class OctokitProvider implements GitHubProvider {
           repo: input.repo,
           pull_number: input.pullNumber
         },
-        100
+        Number.MAX_SAFE_INTEGER
       );
       return {
         items,
@@ -2073,7 +2099,7 @@ export class OctokitProvider implements GitHubProvider {
           repo: input.repo,
           issue_number: input.pullNumber
         },
-        100
+        Number.MAX_SAFE_INTEGER
       );
       return {
         items: events.map((event) => mapPullRequestTimelineEvent(event, input.owner, input.repo)),
@@ -2280,11 +2306,9 @@ export class OctokitProvider implements GitHubProvider {
   }
 
   private async fetchDiscussionDetail(input: DiscussionDetailInput): Promise<DiscussionDetail | null> {
-    const commentsLimit = input.commentsLimit ?? 100;
-    const repliesLimit = input.repliesLimit ?? 20;
-    const data = await this.graphql<{
-      repository: {
-        discussion: {
+    const allCommentNodes: GitHubDiscussionCommentNode[] = [];
+    let discussionMeta:
+      | {
           id: string;
           number: number;
           title: string;
@@ -2294,116 +2318,153 @@ export class OctokitProvider implements GitHubProvider {
           updatedAt: string;
           author: { login: string; avatarUrl?: string | null } | null;
           category: { name: string } | null;
-          comments: {
-            totalCount: number;
-            nodes?: GitHubDiscussionCommentNode[];
-          };
           answer?: GitHubDiscussionCommentNode | null;
           isAnswered?: boolean | null;
           upvoteCount?: number;
           closed?: boolean;
           locked?: boolean;
-        } | null;
+        }
+      | null = null;
+    let totalComments = 0;
+    let hasNextPage = true;
+    let after: string | null = null;
+
+    while (hasNextPage) {
+      type DiscussionDetailData = {
+        repository: {
+          discussion: {
+            id: string;
+            number: number;
+            title: string;
+            url: string;
+            body?: string | null;
+            createdAt?: string;
+            updatedAt: string;
+            author: { login: string; avatarUrl?: string | null } | null;
+            category: { name: string } | null;
+            comments: {
+              totalCount: number;
+              nodes?: GitHubDiscussionCommentNode[];
+              pageInfo: { hasNextPage: boolean; endCursor: string | null };
+            };
+            answer?: GitHubDiscussionCommentNode | null;
+            isAnswered?: boolean | null;
+            upvoteCount?: number;
+            closed?: boolean;
+            locked?: boolean;
+          } | null;
+        };
       };
-    }>(
-      `
-      query RepositoryDiscussionDetail(
-        $owner: String!
-        $repo: String!
-        $number: Int!
-        $commentsLimit: Int!
-        $repliesLimit: Int!
-      ) {
-        repository(owner: $owner, name: $repo) {
-          discussion(number: $number) {
-            id
-            number
-            title
-            url
-            body
-            createdAt
-            updatedAt
-            author { login avatarUrl }
-            category { name }
-            upvoteCount
-            isAnswered
-            closed
-            locked
-            answer {
+      const data: DiscussionDetailData = await this.graphql<DiscussionDetailData>(
+        `
+        query RepositoryDiscussionDetail(
+          $owner: String!
+          $repo: String!
+          $number: Int!
+          $commentsAfter: String
+        ) {
+          repository(owner: $owner, name: $repo) {
+            discussion(number: $number) {
               id
-              author { login avatarUrl }
+              number
+              title
+              url
               body
               createdAt
               updatedAt
-              url
-            }
-            comments(first: $commentsLimit) {
-              totalCount
-              nodes {
+              author { login avatarUrl }
+              category { name }
+              upvoteCount
+              isAnswered
+              closed
+              locked
+              answer {
                 id
                 author { login avatarUrl }
                 body
                 createdAt
                 updatedAt
                 url
-                replies(first: $repliesLimit) {
-                  totalCount
-                  nodes {
-                    id
-                    author { login avatarUrl }
-                    body
-                    createdAt
-                    updatedAt
-                    url
+              }
+              comments(first: 100, after: $commentsAfter) {
+                totalCount
+                pageInfo { hasNextPage endCursor }
+                nodes {
+                  id
+                  author { login avatarUrl }
+                  body
+                  createdAt
+                  updatedAt
+                  url
+                  replies(first: 500) {
+                    totalCount
+                    nodes {
+                      id
+                      author { login avatarUrl }
+                      body
+                      createdAt
+                      updatedAt
+                      url
+                    }
                   }
                 }
               }
             }
           }
         }
-      }
-    `,
-      {
-        owner: input.owner,
-        repo: input.repo,
-        number: input.discussionNumber,
-        commentsLimit,
-        repliesLimit
-      }
-    );
+      `,
+        {
+          owner: input.owner,
+          repo: input.repo,
+          number: input.discussionNumber,
+          commentsAfter: after
+        }
+      );
 
-    const discussion = data.repository.discussion;
-    if (!discussion) {
+      const discussion: DiscussionDetailData["repository"]["discussion"] | undefined =
+        data.repository.discussion ?? undefined;
+      if (!discussion) {
+        return null;
+      }
+
+      discussionMeta ??= discussion;
+      totalComments = discussion.comments.totalCount;
+      allCommentNodes.push(...(discussion.comments.nodes ?? []));
+      hasNextPage = discussion.comments.pageInfo?.hasNextPage ?? false;
+      after = discussion.comments.pageInfo?.endCursor ?? null;
+    }
+
+    if (!discussionMeta) {
       return null;
     }
 
-    const commentsList = (discussion.comments.nodes ?? []).map((comment) => ({
+    const commentsList = allCommentNodes.map((comment) => ({
       ...mapGraphqlDiscussionComment(comment),
       replies: (comment.replies?.nodes ?? []).map(mapGraphqlDiscussionComment),
-      repliesTruncated: (comment.replies?.totalCount ?? 0) > (comment.replies?.nodes ?? []).length
+      repliesTruncated: false
     }));
 
     return {
-      id: discussion.id,
-      number: discussion.number,
-      title: discussion.title,
-      authorLogin: discussion.author?.login ?? null,
-      authorAvatarUrl: discussion.author?.avatarUrl ?? null,
-      category: discussion.category?.name ?? null,
-      body: discussion.body ?? null,
-      createdAt: discussion.createdAt ?? discussion.updatedAt,
-      comments: discussion.comments.totalCount,
+      id: discussionMeta.id,
+      number: discussionMeta.number,
+      title: discussionMeta.title,
+      authorLogin: discussionMeta.author?.login ?? null,
+      authorAvatarUrl: discussionMeta.author?.avatarUrl ?? null,
+      category: discussionMeta.category?.name ?? null,
+      body: discussionMeta.body ?? null,
+      createdAt: discussionMeta.createdAt ?? discussionMeta.updatedAt,
+      comments: totalComments,
       previewComments: commentsList,
-      previewCommentsTruncated: discussion.comments.totalCount > commentsList.length,
+      previewCommentsTruncated: totalComments > commentsList.length,
       commentsList,
-      commentsTruncated: discussion.comments.totalCount > commentsList.length,
-      answer: discussion.answer ? mapGraphqlDiscussionComment(discussion.answer) : null,
-      isAnswered: discussion.isAnswered ?? null,
-      upvotes: discussion.upvoteCount ?? 0,
-      closed: discussion.closed ?? false,
-      locked: discussion.locked ?? false,
-      updatedAt: discussion.updatedAt,
-      htmlUrl: discussion.url
+      commentsTruncated: totalComments > commentsList.length,
+      answer: discussionMeta.answer ? mapGraphqlDiscussionComment(discussionMeta.answer) : null,
+      isAnswered: discussionMeta.isAnswered ?? null,
+      upvotes: discussionMeta.upvoteCount ?? 0,
+      closed: discussionMeta.closed ?? false,
+      locked: discussionMeta.locked ?? false,
+      updatedAt: discussionMeta.updatedAt,
+      htmlUrl: discussionMeta.url
     };
   }
 
@@ -3557,6 +3618,407 @@ export class OctokitProvider implements GitHubProvider {
           repo,
           asset_id: getNumber(payload, "assetId")
         });
+      case "updateBranchProtection":
+        return this.rest("PUT /repos/{owner}/{repo}/branches/{branch}/protection", {
+          owner,
+          repo,
+          branch: getString(payload, "branch"),
+          required_status_checks: payload.required_status_checks ?? null,
+          enforce_admins: payload.enforce_admins ?? null,
+          required_pull_request_reviews: payload.required_pull_request_reviews ?? null,
+          restrictions: payload.restrictions ?? null,
+          required_linear_history: payload.required_linear_history ?? false,
+          allow_force_pushes: payload.allow_force_pushes ?? false,
+          allow_deletions: payload.allow_deletions ?? false,
+          block_creations: payload.block_creations ?? false,
+          required_conversation_resolution: payload.required_conversation_resolution ?? false,
+          lock_branch: payload.lock_branch ?? false,
+          allow_fork_syncing: payload.allow_fork_syncing ?? false
+        });
+      case "deleteBranchProtection":
+        return this.rest("DELETE /repos/{owner}/{repo}/branches/{branch}/protection", {
+          owner,
+          repo,
+          branch: getString(payload, "branch")
+        });
+      case "addRepositoryCollaborator":
+        return this.rest("PUT /repos/{owner}/{repo}/collaborators/{username}", {
+          owner,
+          repo,
+          username: getString(payload, "username"),
+          permission: payload.permission ?? "push"
+        });
+      case "removeRepositoryCollaborator":
+        return this.rest("DELETE /repos/{owner}/{repo}/collaborators/{username}", {
+          owner,
+          repo,
+          username: getString(payload, "username")
+        });
+      case "updateCollaboratorPermission":
+        return this.rest("PUT /repos/{owner}/{repo}/collaborators/{username}", {
+          owner,
+          repo,
+          username: getString(payload, "username"),
+          permission: getString(payload, "permission")
+        });
+      case "addRepositoryTeam":
+        return this.rest("PUT /orgs/{org}/teams/{team_slug}/repos/{owner}/{repo}", {
+          org: owner,
+          team_slug: getString(payload, "teamSlug"),
+          owner,
+          repo,
+          permission: payload.permission ?? "push"
+        });
+      case "removeRepositoryTeam":
+        return this.rest("DELETE /orgs/{org}/teams/{team_slug}/repos/{owner}/{repo}", {
+          org: owner,
+          team_slug: getString(payload, "teamSlug"),
+          owner,
+          repo
+        });
+      case "updateTeamPermission":
+        return this.rest("PUT /orgs/{org}/teams/{team_slug}/repos/{owner}/{repo}", {
+          org: owner,
+          team_slug: getString(payload, "teamSlug"),
+          owner,
+          repo,
+          permission: getString(payload, "permission")
+        });
+      case "createRepositoryRuleset":
+        return this.rest("POST /repos/{owner}/{repo}/rulesets", {
+          owner,
+          repo,
+          name: getString(payload, "name"),
+          target: payload.target ?? "branch",
+          enforcement: getString(payload, "enforcement"),
+          bypass_actors: payload.bypass_actors ?? [],
+          conditions: payload.conditions ?? {},
+          rules: payload.rules ?? []
+        });
+      case "updateRepositoryRuleset":
+        return this.rest("PUT /repos/{owner}/{repo}/rulesets/{ruleset_id}", {
+          owner,
+          repo,
+          ruleset_id: getNumber(payload, "rulesetId"),
+          name: getString(payload, "name"),
+          target: payload.target ?? "branch",
+          enforcement: getString(payload, "enforcement"),
+          bypass_actors: payload.bypass_actors ?? [],
+          conditions: payload.conditions ?? {},
+          rules: payload.rules ?? []
+        });
+      case "deleteRepositoryRuleset":
+        return this.rest("DELETE /repos/{owner}/{repo}/rulesets/{ruleset_id}", {
+          owner,
+          repo,
+          ruleset_id: getNumber(payload, "rulesetId")
+        });
+      case "createDiscussion": {
+        const repoData = await this.graphql<{ repository: { id: string } }>(
+          `query RepoId($owner: String!, $repo: String!) {
+            repository(owner: $owner, name: $repo) { id }
+          }`,
+          { owner, repo }
+        );
+        return this.graphql(
+          `mutation CreateDiscussion($repoId: ID!, $categoryId: ID!, $title: String!, $body: String!) {
+            createDiscussion(input: { repositoryId: $repoId, categoryId: $categoryId, title: $title, body: $body }) {
+              discussion { id number title url }
+            }
+          }`,
+          {
+            repoId: repoData.repository.id,
+            categoryId: getString(payload, "categoryId"),
+            title: getString(payload, "title"),
+            body: getString(payload, "body")
+          }
+        );
+      }
+      case "editDiscussion":
+        return this.graphql(
+          `mutation UpdateDiscussion($id: ID!, $title: String!, $body: String!) {
+            updateDiscussion(input: { discussionId: $id, title: $title, body: $body }) {
+              discussion { id number title url }
+            }
+          }`,
+          {
+            id: getString(payload, "discussionId"),
+            title: getString(payload, "title"),
+            body: getString(payload, "body")
+          }
+        );
+      case "closeDiscussion":
+        return this.graphql(
+          `mutation CloseDiscussion($id: ID!) {
+            closeDiscussion(input: { discussionId: $id, reason: NOT_PLANNED }) {
+              discussion { id number title }
+            }
+          }`,
+          { id: getString(payload, "discussionId") }
+        );
+      case "reopenDiscussion":
+        return this.graphql(
+          `mutation ReopenDiscussion($id: ID!) {
+            reopenDiscussion(input: { discussionId: $id }) {
+              discussion { id number title }
+            }
+          }`,
+          { id: getString(payload, "discussionId") }
+        );
+      case "addDiscussionComment":
+        return this.graphql(
+          `mutation AddDiscussionComment($id: ID!, $body: String!) {
+            addDiscussionComment(input: { discussionId: $id, body: $body }) {
+              comment { id body }
+            }
+          }`,
+          {
+            id: getString(payload, "discussionId"),
+            body: getString(payload, "body")
+          }
+        );
+      case "editDiscussionComment":
+        return this.graphql(
+          `mutation UpdateDiscussionComment($id: ID!, $body: String!) {
+            updateDiscussionComment(input: { commentId: $id, body: $body }) {
+              comment { id body }
+            }
+          }`,
+          {
+            id: getString(payload, "commentId"),
+            body: getString(payload, "body")
+          }
+        );
+      case "deleteDiscussionComment":
+        return this.graphql(
+          `mutation DeleteDiscussionComment($id: ID!) {
+            deleteDiscussionComment(input: { commentId: $id }) {
+              clientMutationId
+            }
+          }`,
+          { id: getString(payload, "commentId") }
+        );
+      case "createProjectV2": {
+        const ownerData = await this.graphql<{ repository: { owner: { id: string } } }>(
+          `query RepoOwnerId($owner: String!, $repo: String!) {
+            repository(owner: $owner, name: $repo) { owner { id } }
+          }`,
+          { owner, repo }
+        );
+        return this.graphql(
+          `mutation CreateProjectV2($ownerId: ID!, $title: String!) {
+            createProjectV2(input: { ownerId: $ownerId, title: $title }) {
+              projectV2 { id number title url }
+            }
+          }`,
+          {
+            ownerId: ownerData.repository.owner.id,
+            title: getString(payload, "title")
+          }
+        );
+      }
+      case "updateProjectV2": {
+        const id = getString(payload, "projectId");
+        const title = getString(payload, "title");
+        return this.graphql(
+          `mutation UpdateProjectV2($id: ID!, $title: String!, $shortDescription: String, $readme: String) {
+            updateProjectV2(input: { projectId: $id, title: $title, shortDescription: $shortDescription, readme: $readme }) {
+              projectV2 { id number title }
+            }
+          }`,
+          {
+            id,
+            title,
+            shortDescription: typeof payload.shortDescription === "string" ? payload.shortDescription : null,
+            readme: typeof payload.readme === "string" ? payload.readme : null
+          }
+        );
+      }
+      case "deleteProjectV2":
+        return this.graphql(
+          `mutation DeleteProjectV2($id: ID!) {
+            deleteProjectV2(input: { projectId: $id }) {
+              clientMutationId
+            }
+          }`,
+          { id: getString(payload, "projectId") }
+        );
+      case "addProjectV2Item":
+        return this.graphql(
+          `mutation AddProjectV2Item($projectId: ID!, $contentId: ID!) {
+            addProjectV2ItemById(input: { projectId: $projectId, contentId: $contentId }) {
+              item { id }
+            }
+          }`,
+          {
+            projectId: getString(payload, "projectId"),
+            contentId: getString(payload, "contentId")
+          }
+        );
+      case "updateProjectV2Item":
+        return this.graphql(
+          `mutation UpdateProjectV2Item($projectId: ID!, $itemId: ID!, $fieldId: ID!, $value: ProjectV2FieldValue!) {
+            updateProjectV2ItemFieldValue(input: { projectId: $projectId, itemId: $itemId, fieldId: $fieldId, value: $value }) {
+              projectV2Item { id }
+            }
+          }`,
+          {
+            projectId: getString(payload, "projectId"),
+            itemId: getString(payload, "itemId"),
+            fieldId: getString(payload, "fieldId"),
+            value: (payload.value as string | number | boolean | null) ?? null
+          }
+        );
+      case "deleteProjectV2Item":
+        return this.graphql(
+          `mutation DeleteProjectV2Item($projectId: ID!, $itemId: ID!) {
+            deleteProjectV2Item(input: { projectId: $projectId, itemId: $itemId }) {
+              clientMutationId
+            }
+          }`,
+          {
+            projectId: getString(payload, "projectId"),
+            itemId: getString(payload, "itemId")
+          }
+        );
+      case "createWikiPage": {
+        const wikiRepo = `${repo}.wiki`;
+        const title = getString(payload, "title");
+        const content = getString(payload, "content");
+        const pagePath = `${title}.md`;
+
+        const ref = await this.rest<{ object: { sha: string } }>(
+          "GET /repos/{owner}/{repo}/git/ref/heads/master",
+          { owner, repo: wikiRepo }
+        );
+        const commitSha = ref.object.sha;
+
+        const commit = await this.rest<{ tree: { sha: string } }>(
+          "GET /repos/{owner}/{repo}/git/commits/{commit_sha}",
+          { owner, repo: wikiRepo, commit_sha: commitSha }
+        );
+
+        const blob = await this.rest<{ sha: string }>(
+          "POST /repos/{owner}/{repo}/git/blobs",
+          { owner, repo: wikiRepo, content, encoding: "utf-8" }
+        );
+
+        const tree = await this.rest<{ sha: string }>(
+          "POST /repos/{owner}/{repo}/git/trees",
+          {
+            owner,
+            repo: wikiRepo,
+            base_tree: commit.tree.sha,
+            tree: [{ path: pagePath, mode: "100644", type: "blob", sha: blob.sha }]
+          }
+        );
+
+        const newCommit = await this.rest<{ sha: string }>(
+          "POST /repos/{owner}/{repo}/git/commits",
+          {
+            owner,
+            repo: wikiRepo,
+            message: `Created ${title}`,
+            tree: tree.sha,
+            parents: [commitSha]
+          }
+        );
+
+        return this.rest(
+          "PATCH /repos/{owner}/{repo}/git/refs/heads/master",
+          { owner, repo: wikiRepo, sha: newCommit.sha, force: false }
+        );
+      }
+      case "editWikiPage": {
+        const wikiRepo = `${repo}.wiki`;
+        const pagePath = getString(payload, "pagePath");
+        const content = getString(payload, "content");
+        const title = pagePath.replace(/\.md$/, "");
+
+        const ref = await this.rest<{ object: { sha: string } }>(
+          "GET /repos/{owner}/{repo}/git/ref/heads/master",
+          { owner, repo: wikiRepo }
+        );
+        const commitSha = ref.object.sha;
+
+        const commit = await this.rest<{ tree: { sha: string } }>(
+          "GET /repos/{owner}/{repo}/git/commits/{commit_sha}",
+          { owner, repo: wikiRepo, commit_sha: commitSha }
+        );
+
+        const blob = await this.rest<{ sha: string }>(
+          "POST /repos/{owner}/{repo}/git/blobs",
+          { owner, repo: wikiRepo, content, encoding: "utf-8" }
+        );
+
+        const tree = await this.rest<{ sha: string }>(
+          "POST /repos/{owner}/{repo}/git/trees",
+          {
+            owner,
+            repo: wikiRepo,
+            base_tree: commit.tree.sha,
+            tree: [{ path: pagePath, mode: "100644", type: "blob", sha: blob.sha }]
+          }
+        );
+
+        const newCommit = await this.rest<{ sha: string }>(
+          "POST /repos/{owner}/{repo}/git/commits",
+          {
+            owner,
+            repo: wikiRepo,
+            message: `Updated ${title}`,
+            tree: tree.sha,
+            parents: [commitSha]
+          }
+        );
+
+        return this.rest(
+          "PATCH /repos/{owner}/{repo}/git/refs/heads/master",
+          { owner, repo: wikiRepo, sha: newCommit.sha, force: false }
+        );
+      }
+      case "deleteWikiPage": {
+        const wikiRepo = `${repo}.wiki`;
+        const pagePath = getString(payload, "pagePath");
+        const title = pagePath.replace(/\.md$/, "");
+
+        const ref = await this.rest<{ object: { sha: string } }>(
+          "GET /repos/{owner}/{repo}/git/ref/heads/master",
+          { owner, repo: wikiRepo }
+        );
+        const commitSha = ref.object.sha;
+
+        const commit = await this.rest<{ tree: { sha: string } }>(
+          "GET /repos/{owner}/{repo}/git/commits/{commit_sha}",
+          { owner, repo: wikiRepo, commit_sha: commitSha }
+        );
+
+        const tree = await this.rest<{ sha: string }>(
+          "POST /repos/{owner}/{repo}/git/trees",
+          {
+            owner,
+            repo: wikiRepo,
+            base_tree: commit.tree.sha,
+            tree: [{ path: pagePath, mode: "100644", type: "blob", sha: null }]
+          }
+        );
+
+        const newCommit = await this.rest<{ sha: string }>(
+          "POST /repos/{owner}/{repo}/git/commits",
+          {
+            owner,
+            repo: wikiRepo,
+            message: `Deleted ${title}`,
+            tree: tree.sha,
+            parents: [commitSha]
+          }
+        );
+
+        return this.rest(
+          "PATCH /repos/{owner}/{repo}/git/refs/heads/master",
+          { owner, repo: wikiRepo, sha: newCommit.sha, force: false }
+        );
+      }
       default:
         throw new Error(`Unsupported GitHub action: ${input.action}`);
     }
@@ -3564,7 +4026,7 @@ export class OctokitProvider implements GitHubProvider {
 
   private async graphql<T>(
     query: string,
-    variables: Record<string, string | number | boolean> = {}
+    variables: Record<string, string | number | boolean | null> = {}
   ): Promise<T> {
     return this.octokit.graphql<T>(query, variables);
   }
@@ -3731,18 +4193,37 @@ function mapGitHubFeatureError(error: unknown): GitHubReadAvailability {
   const message =
     error instanceof Error ? error.message : typeof error === "string" ? error : "GitHub request failed.";
   const errorRecord =
-    error && typeof error === "object" ? (error as { errors?: unknown; status?: unknown }) : {};
+    error && typeof error === "object"
+      ? (error as { errors?: unknown; status?: unknown; code?: unknown })
+      : {};
   const status = typeof errorRecord.status === "number" ? errorRecord.status : null;
+  const code = typeof errorRecord.code === "string" ? errorRecord.code : null;
   const normalized = message.toLowerCase();
+
+  if (
+    code === "ENOTFOUND" ||
+    code === "ECONNREFUSED" ||
+    code === "ECONNRESET" ||
+    code === "ETIMEDOUT" ||
+    code === "ECONNABORTED" ||
+    normalized.includes("fetch failed")
+  ) {
+    return { status: "offline", message };
+  }
+
+  if (
+    status === 429 ||
+    (status === 403 && normalized.includes("rate limit")) ||
+    normalized.includes("secondary rate")
+  ) {
+    return { status: "rate_limited", message };
+  }
+
   const isFeatureDisabled =
     normalized.includes("disabled") ||
     normalized.includes("not enabled") ||
     normalized.includes("has discussions disabled") ||
     normalized.includes("projects are disabled");
-
-  if (status === 429 || normalized.includes("rate limit") || normalized.includes("secondary rate")) {
-    return { status: "rate_limited", message };
-  }
 
   if (isFeatureDisabled) {
     return { status: "feature_disabled", message };

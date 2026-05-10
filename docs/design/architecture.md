@@ -15,21 +15,27 @@ Control is an Electron + React desktop app with a narrow, typed bridge between r
 - `contextIsolation` remains enabled.
 - `nodeIntegration` remains disabled.
 - External links must be `https://` and are opened by the main process.
-- GitHub CLI commands are executed with file/argument arrays, never shell interpolation.
 - Tokens are never sent to the renderer.
 
 ## Provider Boundary
 
-The renderer talks to a provider-shaped IPC surface. GitHub is the only runtime provider in V1, but the UI uses normalized objects so Azure DevOps can be added later.
+The renderer talks to a typed IPC surface that is shaped around GitHub management workflows. GitHub is the only runtime provider in V1. Azure DevOps and other providers remain planning-only work in their own documents.
 
-The V1 default credential provider is `gh-cli`. It:
+The V1 credential provider is GitHub OAuth device flow:
 
-- Resolves the GitHub CLI path from settings, `PATH`, or common macOS install paths.
-- Verifies auth with `gh auth status --hostname github.com`.
-- Reads and writes through `gh api`.
-- Uses GitHub REST API version `2026-03-10` for REST calls.
+- `src/main/github/webOAuth.ts` requests and polls GitHub device authorization.
+- `src/main/github/credentials.ts` stores the resulting access token with `keytar`.
+- `src/main/github/provider.ts` owns credential loading, cache reads, background refreshes, and provider lifetime.
+- `src/main/github/octokitProvider.ts` performs privileged GitHub REST and GraphQL calls through Octokit.
+- REST calls use GitHub REST API version `2022-11-28`.
 
-GitHub App OAuth is modeled in settings and keychain helpers. Runtime API execution remains disabled until the packaged OAuth flow is completed.
+The renderer calls typed methods from `src/shared/ipc.ts` and `src/shared/github.ts`. It never receives the raw token and never constructs Octokit. Operations that open GitHub.com remain explicit fallback actions and still go through the main-process external-link handler.
+
+## GitHub Management Surfaces
+
+The current in-app GitHub scope includes repository lists and details, code browsing, issues, pull requests, Actions, releases, discussions, projects, notifications, organizations, teams, repository settings basics, wiki availability, security and quality signals, branch/tag browsing, file search, repository pins, and local recents.
+
+Each promoted surface should expose loading, empty, unavailable, permission-denied, stale, success, and mutation failure states where the workflow needs them. External GitHub links remain escape hatches for unsupported deep editing or GitHub APIs that are unavailable to the token.
 
 ## Local Storage
 
@@ -45,14 +51,15 @@ SQLite tables:
 
 Secrets:
 
-- GitHub App OAuth tokens are stored with `keytar`.
-- GitHub CLI mode never persists the token.
+- GitHub OAuth access tokens are stored with `keytar`.
+- Local pins, recents, cache entries, and repository read models are not synced.
 
 ## Caching
 
-The main process applies short TTL cache entries for repository summaries, repository detail, contents, issues, PRs, actions, projects, releases, and contributors. Mutations invalidate renderer query caches.
+The main process applies short TTL cache entries for GitHub reads and stores repository summaries/details in SQLite for fast reopens. Repository list and detail reads support a cache-only path so local repository navigation can keep working while signed out or offline. When cached data is returned during an authenticated session, the main process may refresh it in the background. Cache-only reads must not load a GitHub token or start privileged GitHub API work.
+
+Mutations invalidate renderer query caches and, where needed, provider cache prefixes so refreshed data comes from GitHub rather than stale local state.
 
 ## Packaging
 
 V1 targets macOS packaging through `electron-builder`. Windows and Linux are left as architecture-compatible future targets, but are not V1 acceptance platforms.
-

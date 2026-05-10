@@ -1,27 +1,41 @@
 import React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ControlApi } from "@shared/ipc";
 import type { RepositoryDetail } from "@shared/github";
+import type { LocalRecentItem } from "@shared/local";
 import { App } from "./App";
 import {
   mockActions,
   mockAccountProfile,
+  mockAssignableUsers,
   mockAppState,
+  mockBranchProtection,
+  mockBranches,
+  mockCodeScanningAlerts,
   mockContents,
   mockContributors,
   mockControlApi,
+  mockDependabotAlerts,
   mockDiscussions,
   mockGitHubSignInSession,
   mockIssues,
+  mockLabels,
+  mockNotifications,
+  mockOrganizations,
   mockProjects,
   mockPullRequests,
   mockReleases,
   mockRepositories,
-  mockRepository
+  mockRepository,
+  mockSecretScanningAlerts,
+  mockTags,
+  mockTeams,
+  mockTree,
+  mockWorkflowRunDetail
 } from "./data/mock";
 import { useUiStore } from "./stores/uiStore";
 
@@ -54,18 +68,45 @@ function renderControl(api: ControlApi): void {
 }
 
 function makeApi(overrides: Partial<ControlApi["github"]> = {}): ControlApi {
+  const github = {
+    ...mockControlApi.github,
+    ...overrides
+  };
+  if (overrides.listRepositories && !overrides.listRepositoriesWithStatus) {
+    github.listRepositoriesWithStatus = async (input = {}) => ({
+      items: await overrides.listRepositories!(input),
+      availability: { status: "available", message: null }
+    });
+  }
+  if (overrides.getAccountProfile && !overrides.getAccountProfileWithStatus) {
+    github.getAccountProfileWithStatus = async (input = {}) => ({
+      profile: await overrides.getAccountProfile!(input),
+      availability: { status: "available", message: null }
+    });
+  }
+  if (overrides.listAccountRepositories && !overrides.listAccountRepositoriesWithStatus) {
+    github.listAccountRepositoriesWithStatus = async (input = {}) => ({
+      items: await overrides.listAccountRepositories!(input),
+      availability: { status: "available", message: null }
+    });
+  }
+  if (overrides.search && !overrides.searchWithStatus) {
+    github.searchWithStatus = async (input) => ({
+      items: await overrides.search!(input),
+      availability: { status: "available", message: null }
+    });
+  }
+
   return {
     ...mockControlApi,
-    github: {
-      ...mockControlApi.github,
-      ...overrides
-    }
+    github
   };
 }
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   delete window.control;
   useUiStore.setState(defaultUiState);
 });
@@ -96,7 +137,9 @@ describe("Control renderer routing", () => {
     expect(homePanel).not.toBeNull();
 
     await waitFor(() =>
-      expect(within(homePanel as HTMLElement).getByRole("button", { name: /apple\/swift/i })).toBeInTheDocument()
+      expect(
+        within(homePanel as HTMLElement).getByRole("button", { name: /apple\/swift/i })
+      ).toBeInTheDocument()
     );
     await userEvent.click(within(homePanel as HTMLElement).getByRole("button", { name: /apple\/swift/i }));
 
@@ -117,7 +160,9 @@ describe("Control renderer routing", () => {
     const collection = document.querySelector(".collection-view");
     expect(collection).not.toBeNull();
     await waitFor(() =>
-      expect(within(collection as HTMLElement).getByRole("button", { name: /apple\/swift/i })).toBeInTheDocument()
+      expect(
+        within(collection as HTMLElement).getByRole("button", { name: /apple\/swift/i })
+      ).toBeInTheDocument()
     );
     await userEvent.click(within(collection as HTMLElement).getByRole("button", { name: /apple\/swift/i }));
 
@@ -128,6 +173,67 @@ describe("Control renderer routing", () => {
         tab: "code"
       });
     });
+  });
+
+  it("refreshes the repository list from the repositories surface", async () => {
+    const refreshedRepository = {
+      ...mockRepositories[0],
+      id: "R_apple_refreshed",
+      name: "refreshed",
+      nameWithOwner: "apple/refreshed",
+      description: "Repository loaded after manual refresh."
+    };
+    const listRepositories = vi
+      .fn<ControlApi["github"]["listRepositories"]>()
+      .mockResolvedValueOnce([mockRepositories[0]])
+      .mockResolvedValue([refreshedRepository]);
+
+    useUiStore.setState({ ...defaultUiState, route: { kind: "repositories" } });
+    renderControl(makeApi({ listRepositories }));
+
+    expect(await screen.findByRole("heading", { name: "Repositories" })).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("button", { name: "Refresh repositories" }));
+
+    expect(await screen.findByRole("button", { name: /apple\/refreshed/i })).toBeInTheDocument();
+    expect(listRepositories).toHaveBeenCalledTimes(2);
+    expect(screen.getByTitle(/Updated|Stale|Not loaded/)).toBeInTheDocument();
+  });
+
+  it("renders GitHub organizations from provider records", async () => {
+    const listOrganizations = vi.fn<ControlApi["github"]["listOrganizations"]>(
+      async () => mockOrganizations
+    );
+    const listOrganizationTeams = vi.fn<ControlApi["github"]["listOrganizationTeams"]>(
+      async () => mockTeams
+    );
+    const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
+
+    useUiStore.setState({ ...defaultUiState, route: { kind: "organizations" } });
+    renderControl({
+      ...makeApi({ listOrganizations, listOrganizationTeams }),
+      openExternal
+    });
+
+    expect(await screen.findByRole("heading", { name: "Organizations" })).toBeInTheDocument();
+    await waitFor(() => expect(listOrganizations).toHaveBeenCalledWith({ limit: 50 }));
+
+    const collection = document.querySelector(".collection-view");
+    expect(collection).not.toBeNull();
+    const organizationRow = await within(collection as HTMLElement).findByRole("button", {
+      name: /Apple.*188 repositories.*14 teams.*member/i
+    });
+
+    expect(within(organizationRow).getByText("Open source projects from Apple.")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(listOrganizationTeams).toHaveBeenCalledWith({ org: "apple", limit: 30 })
+    );
+    expect(await screen.findByText("Compiler")).toBeInTheDocument();
+    expect(screen.getByText(/compiler · closed · push · 18 members · 12 repositories/i)).toBeInTheDocument();
+    expect(screen.getByText("Maintains the Swift compiler and language implementation.")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Open apple on GitHub" }));
+
+    expect(openExternal).toHaveBeenCalledWith("https://github.com/apple");
   });
 
   it("refetches repository rows when the main process reports a SQLite repository update", async () => {
@@ -207,7 +313,701 @@ describe("Control renderer routing", () => {
     expect(screen.queryByText("NarukeAlpha/blog")).not.toBeInTheDocument();
   });
 
-  it("opens repository settings on GitHub instead of rendering an in-app settings tab", async () => {
+  it("renders local repository pins in the sidebar and Home dashboard", async () => {
+    const listPinnedRepositories = vi.fn<ControlApi["listPinnedRepositories"]>(async () => ["local/pinned"]);
+
+    useUiStore.setState(defaultUiState);
+    renderControl({ ...makeApi(), listPinnedRepositories });
+
+    expect(await screen.findByRole("heading", { name: "Pinned repositories" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /local\/pinned/i }).length).toBeGreaterThan(0);
+    expect(listPinnedRepositories).toHaveBeenCalled();
+  });
+
+  it("pins the current repository from repository detail without using a GitHub mutation", async () => {
+    const listPinnedRepositories = vi
+      .fn<ControlApi["listPinnedRepositories"]>()
+      .mockResolvedValueOnce([])
+      .mockResolvedValue(["apple/swift"]);
+    const pinRepository = vi.fn<ControlApi["pinRepository"]>(async () => ["apple/swift"]);
+    const mutate = vi.fn<ControlApi["github"]["mutate"]>(mockControlApi.github.mutate);
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "code" }
+    });
+    renderControl({ ...makeApi({ mutate }), listPinnedRepositories, pinRepository });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Pin" }));
+
+    await waitFor(() => {
+      expect(pinRepository).toHaveBeenCalledWith({ nameWithOwner: "apple/swift" });
+    });
+    expect(mutate).not.toHaveBeenCalledWith(
+      expect.objectContaining({ action: expect.stringMatching(/pin/i) }),
+      expect.anything()
+    );
+    expect(await screen.findByRole("button", { name: "Pinned" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("unpins repositories from the repository list", async () => {
+    const listPinnedRepositories = vi
+      .fn<ControlApi["listPinnedRepositories"]>()
+      .mockResolvedValueOnce(["apple/swift"])
+      .mockResolvedValue([]);
+    const unpinRepository = vi.fn<ControlApi["unpinRepository"]>(async () => []);
+
+    useUiStore.setState({ ...defaultUiState, route: { kind: "repositories" } });
+    renderControl({ ...makeApi(), listPinnedRepositories, unpinRepository });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Unpin swift" }));
+
+    await waitFor(() => {
+      expect(unpinRepository).toHaveBeenCalledWith({ nameWithOwner: "apple/swift" });
+    });
+  });
+
+  it("records a local recent when a repository is opened", async () => {
+    const recordRecentItem = vi.fn<ControlApi["recordRecentItem"]>(async () => []);
+
+    useUiStore.setState(defaultUiState);
+    renderControl({ ...makeApi(), recordRecentItem });
+
+    const homeActivity = await screen.findByRole("heading", { name: "Latest repository activity" });
+    const homePanel = homeActivity.closest(".home-panel");
+    expect(homePanel).not.toBeNull();
+    await waitFor(() =>
+      expect(
+        within(homePanel as HTMLElement).getByRole("button", { name: /apple\/swift/i })
+      ).toBeInTheDocument()
+    );
+
+    await userEvent.click(within(homePanel as HTMLElement).getByRole("button", { name: /apple\/swift/i }));
+
+    await waitFor(() => {
+      expect(recordRecentItem).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: "repository",
+          itemKey: "apple/swift",
+          repositoryNameWithOwner: "apple/swift"
+        }),
+        expect.anything()
+      );
+    });
+  });
+
+  it("opens recent files in the in-app code browser", async () => {
+    const recentFile: LocalRecentItem = {
+      kind: "file",
+      provider: "github",
+      itemKey: "apple/swift:main:README.md",
+      title: "README.md",
+      subtitle: "swift/README.md",
+      repositoryNameWithOwner: "apple/swift",
+      url: "https://github.com/apple/swift/blob/main/README.md",
+      metadata: {
+        path: "README.md",
+        ref: "main"
+      },
+      updatedAt: new Date().toISOString()
+    };
+
+    useUiStore.setState(defaultUiState);
+    renderControl({
+      ...makeApi(),
+      listRecentItems: async () => [recentFile]
+    });
+
+    const recentsHeading = await screen.findByRole("heading", { name: "Recents" });
+    const recentsPanel = recentsHeading.closest(".home-panel");
+    expect(recentsPanel).not.toBeNull();
+    await waitFor(() =>
+      expect(
+        within(recentsPanel as HTMLElement).getByRole("button", { name: /README\.md/i })
+      ).toBeInTheDocument()
+    );
+
+    await userEvent.click(within(recentsPanel as HTMLElement).getByRole("button", { name: /README\.md/i }));
+
+    await waitFor(() => {
+      expect(useUiStore.getState().route).toEqual({
+        kind: "codeBrowser",
+        nameWithOwner: "apple/swift",
+        path: "README.md",
+        entryType: "file",
+        ref: "main"
+      });
+    });
+  });
+
+  it("records local recents when issues pull requests and workflow runs are selected", async () => {
+    const recordRecentItem = vi.fn<ControlApi["recordRecentItem"]>(async () => []);
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "issues" }
+    });
+    renderControl({ ...makeApi(), recordRecentItem });
+
+    const issueMeta = await screen.findByText(/#1199 opened by swift-ci/i);
+    await userEvent.click(issueMeta.closest("button") as HTMLButtonElement);
+
+    await waitFor(() =>
+      expect(recordRecentItem).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: "issue",
+          itemKey: "apple/swift:issue:1199",
+          repositoryNameWithOwner: "apple/swift",
+          metadata: expect.objectContaining({ number: 1199, state: "open" })
+        }),
+        expect.anything()
+      )
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /Pull requests/i }));
+    const pullMeta = await screen.findByText(/#519 feature\/sendable-1/i);
+    await userEvent.click(pullMeta.closest("button") as HTMLButtonElement);
+
+    await waitFor(() =>
+      expect(recordRecentItem).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: "pullRequest",
+          itemKey: "apple/swift:pull:519",
+          repositoryNameWithOwner: "apple/swift",
+          metadata: expect.objectContaining({ number: 519, state: "open" })
+        }),
+        expect.anything()
+      )
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /^Actions/i }));
+    const runMeta = (await screen.findAllByText(/push on main/i))[0];
+    await userEvent.click(runMeta.closest("button") as HTMLButtonElement);
+
+    await waitFor(() =>
+      expect(recordRecentItem).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: "workflowRun",
+          itemKey: "apple/swift:workflow:9001",
+          repositoryNameWithOwner: "apple/swift",
+          metadata: expect.objectContaining({ runId: 9001, status: "completed" })
+        }),
+        expect.anything()
+      )
+    );
+  });
+
+  it("opens Home account work rows in-app and records local recents", async () => {
+    const recordRecentItem = vi.fn<ControlApi["recordRecentItem"]>(async () => []);
+    const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
+
+    useUiStore.setState(defaultUiState);
+    renderControl({ ...makeApi(), recordRecentItem, openExternal });
+
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: /Improve Sendable diagnostics for global actors/i }))[0]
+    );
+
+    await waitFor(() => {
+      expect(useUiStore.getState().route).toEqual({
+        kind: "repository",
+        nameWithOwner: "apple/swift",
+        tab: "issues",
+        issueNumber: 1197
+      });
+    });
+    expect(recordRecentItem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "issue",
+        itemKey: "apple/swift:issue:1197",
+        repositoryNameWithOwner: "apple/swift"
+      }),
+      expect.anything()
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /^Home$/ }));
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: /Add Sendable support for @MainActor types/i }))[0]
+    );
+
+    await waitFor(() => {
+      expect(useUiStore.getState().route).toEqual({
+        kind: "repository",
+        nameWithOwner: "apple/swift",
+        tab: "pulls",
+        pullNumber: 520
+      });
+    });
+    expect(recordRecentItem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "pullRequest",
+        itemKey: "apple/swift:pull:520",
+        repositoryNameWithOwner: "apple/swift"
+      }),
+      expect.anything()
+    );
+    expect(openExternal).not.toHaveBeenCalled();
+  });
+
+  it("opens Mailbox account work rows in-app instead of GitHub", async () => {
+    const recordRecentItem = vi.fn<ControlApi["recordRecentItem"]>(async () => []);
+    const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "mailbox" }
+    });
+    renderControl({
+      ...makeApi({
+        listNotifications: async () => []
+      }),
+      recordRecentItem,
+      openExternal
+    });
+
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: /Improve Sendable diagnostics for global actors/i }))[0]
+    );
+
+    await waitFor(() => {
+      expect(useUiStore.getState().route).toEqual({
+        kind: "repository",
+        nameWithOwner: "apple/swift",
+        tab: "issues",
+        issueNumber: 1197
+      });
+    });
+    expect(recordRecentItem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "issue",
+        itemKey: "apple/swift:issue:1197"
+      }),
+      expect.anything()
+    );
+    expect(openExternal).not.toHaveBeenCalled();
+  });
+
+  it("opens issue pull request and workflow recents in-app from the command palette", async () => {
+    const recents: LocalRecentItem[] = [
+      {
+        kind: "issue",
+        provider: "github",
+        itemKey: "apple/swift:issue:1199",
+        title: "#1199 Compiler crash in async closure",
+        subtitle: "apple/swift issue · open",
+        repositoryNameWithOwner: "apple/swift",
+        url: "https://github.com/apple/swift/issues/1199",
+        metadata: { number: 1199, state: "open" },
+        updatedAt: new Date().toISOString()
+      },
+      {
+        kind: "pullRequest",
+        provider: "github",
+        itemKey: "apple/swift:pull:519",
+        title: "#519 Update concurrency runtime tests",
+        subtitle: "feature/sendable-1 -> main · open",
+        repositoryNameWithOwner: "apple/swift",
+        url: "https://github.com/apple/swift/pull/519",
+        metadata: { number: 519, state: "open" },
+        updatedAt: new Date(Date.now() - 1_000).toISOString()
+      },
+      {
+        kind: "workflowRun",
+        provider: "github",
+        itemKey: "apple/swift:workflow:9001",
+        title: "Docs",
+        subtitle: "apple/swift · push · main",
+        repositoryNameWithOwner: "apple/swift",
+        url: "https://github.com/apple/swift/actions/runs/9001",
+        metadata: { runId: 9001, status: "completed", conclusion: "success" },
+        updatedAt: new Date(Date.now() - 2_000).toISOString()
+      }
+    ];
+    const recordRecentItem = vi.fn<ControlApi["recordRecentItem"]>(async () => recents);
+
+    useUiStore.setState(defaultUiState);
+    renderControl({
+      ...makeApi(),
+      listRecentItems: async () => recents,
+      recordRecentItem
+    });
+
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    let palette = await screen.findByRole("dialog", { name: "Command palette" });
+    await userEvent.type(within(palette).getByLabelText("Command palette search"), "1199");
+    await userEvent.click(within(palette).getByRole("button", { name: /#1199 Compiler crash/i }));
+
+    await waitFor(() => {
+      expect(useUiStore.getState().route).toEqual({
+        kind: "repository",
+        nameWithOwner: "apple/swift",
+        tab: "issues",
+        issueNumber: 1199
+      });
+    });
+
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    palette = await screen.findByRole("dialog", { name: "Command palette" });
+    await userEvent.type(within(palette).getByLabelText("Command palette search"), "519");
+    await userEvent.click(within(palette).getByRole("button", { name: /#519 Update concurrency/i }));
+
+    await waitFor(() => {
+      expect(useUiStore.getState().route).toEqual({
+        kind: "repository",
+        nameWithOwner: "apple/swift",
+        tab: "pulls",
+        pullNumber: 519
+      });
+    });
+
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    palette = await screen.findByRole("dialog", { name: "Command palette" });
+    await userEvent.type(within(palette).getByLabelText("Command palette search"), "docs");
+    await userEvent.click(within(palette).getByRole("button", { name: /^Docs/i }));
+
+    await waitFor(() => {
+      expect(useUiStore.getState().route).toEqual({
+        kind: "repository",
+        nameWithOwner: "apple/swift",
+        tab: "actions",
+        workflowRunId: 9001
+      });
+    });
+    expect(recordRecentItem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "workflowRun",
+        itemKey: "apple/swift:workflow:9001",
+        metadata: expect.objectContaining({ runId: 9001 })
+      }),
+      expect.anything()
+    );
+  });
+
+  it("opens the command palette with Cmd K and navigates to a repository result", async () => {
+    const recordRecentItem = vi.fn<ControlApi["recordRecentItem"]>(async () => []);
+
+    useUiStore.setState(defaultUiState);
+    renderControl({ ...makeApi(), recordRecentItem });
+
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+
+    const palette = await screen.findByRole("dialog", { name: "Command palette" });
+    await userEvent.type(within(palette).getByLabelText("Command palette search"), "open-source");
+    await userEvent.click(within(palette).getByRole("button", { name: /apple\/open-source/i }));
+
+    await waitFor(() => {
+      expect(useUiStore.getState().route).toEqual({
+        kind: "repository",
+        nameWithOwner: "apple/open-source",
+        tab: "code"
+      });
+    });
+    expect(recordRecentItem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "repository",
+        itemKey: "apple/open-source"
+      }),
+      expect.anything()
+    );
+    expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument();
+  });
+
+  it("opens the command palette from the top bar affordance", async () => {
+    useUiStore.setState(defaultUiState);
+    renderControl(makeApi());
+
+    await userEvent.click(await screen.findByRole("button", { name: "Open command palette" }));
+
+    const palette = await screen.findByRole("dialog", { name: "Command palette" });
+    expect(within(palette).getByText("Browse cached GitHub repositories")).toBeInTheDocument();
+  });
+
+  it("navigates command palette results with the keyboard", async () => {
+    useUiStore.setState(defaultUiState);
+    renderControl(makeApi());
+
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+
+    const palette = await screen.findByRole("dialog", { name: "Command palette" });
+    await userEvent.type(within(palette).getByLabelText("Command palette search"), "apple{ArrowDown}{Enter}");
+
+    await waitFor(() => {
+      expect(useUiStore.getState().route).toEqual({
+        kind: "repository",
+        nameWithOwner: "apple/swift",
+        tab: "issues"
+      });
+    });
+    expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument();
+  });
+
+  it("opens create and workflow composer commands from the command palette", async () => {
+    const recordRecentItem = vi.fn<ControlApi["recordRecentItem"]>(async () => []);
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "code" }
+    });
+    renderControl({ ...makeApi(), recordRecentItem });
+
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    let palette = await screen.findByRole("dialog", { name: "Command palette" });
+    await userEvent.type(within(palette).getByLabelText("Command palette search"), "create issue");
+    await userEvent.click(within(palette).getByRole("button", { name: /Create issue in apple\/swift/i }));
+
+    await waitFor(() => {
+      expect(useUiStore.getState().route).toEqual({
+        kind: "repository",
+        nameWithOwner: "apple/swift",
+        tab: "issues",
+        issueComposer: "create"
+      });
+    });
+    expect(await screen.findByPlaceholderText("Issue title")).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    palette = await screen.findByRole("dialog", { name: "Command palette" });
+    await userEvent.type(within(palette).getByLabelText("Command palette search"), "create pull request");
+    await userEvent.click(
+      within(palette).getByRole("button", { name: /Create pull request in apple\/swift/i })
+    );
+
+    await waitFor(() => {
+      expect(useUiStore.getState().route).toEqual({
+        kind: "repository",
+        nameWithOwner: "apple/swift",
+        tab: "pulls",
+        pullComposer: "create"
+      });
+    });
+    expect(await screen.findByPlaceholderText("Pull request title")).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    palette = await screen.findByRole("dialog", { name: "Command palette" });
+    await userEvent.type(within(palette).getByLabelText("Command palette search"), "run workflow");
+    await userEvent.click(within(palette).getByRole("button", { name: /Run workflow in apple\/swift/i }));
+
+    await waitFor(() => {
+      expect(useUiStore.getState().route).toEqual({
+        kind: "repository",
+        nameWithOwner: "apple/swift",
+        tab: "actions",
+        workflowComposer: "dispatch"
+      });
+    });
+    expect(await screen.findByRole("heading", { name: "Run workflow" })).toBeInTheDocument();
+    expect(recordRecentItem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "repository",
+        itemKey: "apple/swift"
+      }),
+      expect.anything()
+    );
+  });
+
+  it("opens the Go to file finder from the command palette", async () => {
+    const listTree = vi.fn<ControlApi["github"]["listTree"]>(async (input) => ({
+      ...mockTree,
+      ref: input.ref ?? mockTree.ref
+    }));
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "code" }
+    });
+    renderControl(makeApi({ listTree }));
+
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+
+    const palette = await screen.findByRole("dialog", { name: "Command palette" });
+    await userEvent.type(within(palette).getByLabelText("Command palette search"), "go to file");
+    await userEvent.click(within(palette).getByRole("button", { name: /Go to file in apple\/swift/i }));
+
+    const finder = await screen.findByRole("dialog", { name: "Go to file" });
+    expect(within(finder).getByLabelText("Go to file search")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(listTree).toHaveBeenCalledWith(
+        expect.objectContaining({ owner: "apple", repo: "swift", recursive: true })
+      )
+    );
+    expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument();
+  });
+
+  it("opens repository tab and external fallback commands from the command palette", async () => {
+    const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "code" }
+    });
+    renderControl({ ...makeApi(), openExternal });
+
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    let palette = await screen.findByRole("dialog", { name: "Command palette" });
+    await userEvent.type(within(palette).getByLabelText("Command palette search"), "actions in");
+    await userEvent.click(within(palette).getByRole("button", { name: /Actions in apple\/swift/i }));
+    await waitFor(() =>
+      expect(useUiStore.getState().route).toEqual({
+        kind: "repository",
+        nameWithOwner: "apple/swift",
+        tab: "actions"
+      })
+    );
+
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    palette = await screen.findByRole("dialog", { name: "Command palette" });
+    await userEvent.type(within(palette).getByLabelText("Command palette search"), "wiki");
+    await userEvent.click(within(palette).getByRole("button", { name: /Wiki in apple\/swift/i }));
+    await waitFor(() =>
+      expect(useUiStore.getState().route).toEqual({
+        kind: "repository",
+        nameWithOwner: "apple/swift",
+        tab: "wiki"
+      })
+    );
+    expect(await screen.findByRole("heading", { name: "Repository wiki" })).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    palette = await screen.findByRole("dialog", { name: "Command palette" });
+    await userEvent.type(within(palette).getByLabelText("Command palette search"), "security quality");
+    await userEvent.click(
+      within(palette).getByRole("button", { name: /Security and Quality in apple\/swift/i })
+    );
+    await waitFor(() =>
+      expect(useUiStore.getState().route).toEqual({
+        kind: "repository",
+        nameWithOwner: "apple/swift",
+        tab: "securityQuality"
+      })
+    );
+
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    palette = await screen.findByRole("dialog", { name: "Command palette" });
+    await userEvent.type(within(palette).getByLabelText("Command palette search"), "repository settings");
+    await userEvent.click(
+      within(palette).getByRole("button", { name: /Repository settings in apple\/swift/i })
+    );
+    await waitFor(() =>
+      expect(useUiStore.getState().route).toEqual({
+        kind: "repository",
+        nameWithOwner: "apple/swift",
+        tab: "settings"
+      })
+    );
+    expect(await screen.findByRole("heading", { name: "Repository settings" })).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    palette = await screen.findByRole("dialog", { name: "Command palette" });
+    await userEvent.type(within(palette).getByLabelText("Command palette search"), "external fallback");
+    await userEvent.click(
+      within(palette).getByRole("button", { name: /Open apple\/swift on GitHub/i })
+    );
+
+    expect(openExternal).toHaveBeenCalledWith("https://github.com/apple/swift");
+  });
+
+  it("adds a repository through the in-app GitHub search picker", async () => {
+    const remoteRepository = {
+      ...mockRepositories[0],
+      id: "R_remote_control",
+      owner: "NarukeAlpha",
+      name: "remote-control",
+      nameWithOwner: "NarukeAlpha/remote-control",
+      description: "Remote repository discovered through GitHub search."
+    };
+    const search = vi.fn<ControlApi["github"]["search"]>(async (input) =>
+      input.query.toLowerCase().includes("remote") ? [remoteRepository] : []
+    );
+    const recordRecentItem = vi.fn<ControlApi["recordRecentItem"]>(async () => []);
+
+    useUiStore.setState(defaultUiState);
+    renderControl({ ...makeApi({ search }), recordRecentItem });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Add repository" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Add repository" });
+    expect(within(dialog).getByText(/Search cached repositories first/i)).toBeInTheDocument();
+
+    await userEvent.type(within(dialog).getByLabelText("Repository search"), "remote");
+
+    await waitFor(() => expect(search).toHaveBeenLastCalledWith({ query: "remote", limit: 12 }));
+    expect(await within(dialog).findByText("GitHub search results")).toBeInTheDocument();
+
+    await userEvent.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(useUiStore.getState().route).toEqual({
+        kind: "repository",
+        nameWithOwner: "NarukeAlpha/remote-control",
+        tab: "code"
+      });
+    });
+    expect(recordRecentItem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "repository",
+        itemKey: "NarukeAlpha/remote-control",
+        repositoryNameWithOwner: "NarukeAlpha/remote-control"
+      }),
+      expect.anything()
+    );
+    expect(screen.queryByRole("dialog", { name: "Add repository" })).not.toBeInTheDocument();
+  });
+
+  it("keeps add repository search local in cached mode before authentication", async () => {
+    const listRepositories = vi.fn<ControlApi["github"]["listRepositories"]>(async () => mockRepositories);
+    const search = vi.fn<ControlApi["github"]["search"]>(async () => []);
+    const recordRecentItem = vi.fn<ControlApi["recordRecentItem"]>(async () => []);
+
+    useUiStore.setState(defaultUiState);
+    renderControl({
+      ...makeApi({ listRepositories, search }),
+      recordRecentItem,
+      getAppState: async () => ({
+        ...mockAppState,
+        github: {
+          available: true,
+          authenticated: false,
+          signInConfigured: true,
+          user: null,
+          error: null
+        },
+        viewer: null
+      })
+    });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Add repository" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Add repository" });
+    expect(within(dialog).getByText(/Cached mode: search local repositories/i)).toBeInTheDocument();
+
+    await userEvent.type(within(dialog).getByLabelText("Repository search"), "open-source");
+
+    expect(await within(dialog).findByText("Local cached repositories")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: /apple\/open-source/i })).toBeInTheDocument();
+    expect(within(dialog).getByText("Remote GitHub search is unavailable in cached mode.")).toBeInTheDocument();
+    expect(search).not.toHaveBeenCalled();
+
+    await userEvent.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(useUiStore.getState().route).toEqual({
+        kind: "repository",
+        nameWithOwner: "apple/open-source",
+        tab: "code"
+      });
+    });
+    expect(recordRecentItem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "repository",
+        itemKey: "apple/open-source",
+        repositoryNameWithOwner: "apple/open-source"
+      }),
+      expect.anything()
+    );
+    expect(listRepositories).toHaveBeenCalledWith({ limit: 80, cacheOnly: true });
+  });
+
+  it("renders repository settings in-app with GitHub as a fallback", async () => {
     const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
     useUiStore.setState({
       ...defaultUiState,
@@ -218,7 +1018,120 @@ describe("Control renderer routing", () => {
 
     await userEvent.click(await screen.findByTitle("Repository settings"));
 
+    expect(await screen.findByRole("heading", { name: "Repository settings" })).toBeInTheDocument();
+    expect(screen.getByText(/default branch main/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Features" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Merge policy" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Your access" })).toBeInTheDocument();
+    expect(openExternal).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole("button", { name: /Open settings on GitHub/i }));
+
     expect(openExternal).toHaveBeenCalledWith("https://github.com/apple/swift/settings");
+  });
+
+  it("renders wiki availability in-app with explicit GitHub fallback", async () => {
+    const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "wiki" }
+    });
+
+    renderControl({ ...makeApi(), openExternal });
+
+    expect(await screen.findByRole("heading", { name: "Repository wiki" })).toBeInTheDocument();
+    expect(screen.getByText("Wiki is enabled for this repository.")).toBeInTheDocument();
+    expect(screen.getByText(/wiki pages are stored through a separate wiki repository/i)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /Open wiki/i }));
+    await userEvent.click(screen.getByRole("button", { name: /New wiki page/i }));
+
+    expect(openExternal).toHaveBeenCalledWith("https://github.com/apple/swift/wiki");
+    expect(openExternal).toHaveBeenCalledWith("https://github.com/apple/swift/wiki/_new");
+  });
+
+  it("labels the Agents tab as an in-app workflow collection with GitHub fallbacks", async () => {
+    const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "agents" }
+    });
+
+    renderControl({ ...makeApi(), openExternal });
+
+    expect(await screen.findByRole("heading", { name: "Agent workflows open in Control" })).toBeInTheDocument();
+    expect(screen.getByText("in-app first")).toBeInTheDocument();
+    expect(screen.getByText(/routes common agent triage paths to the existing Issues, Actions, and Pull requests/i))
+      .toBeInTheDocument();
+
+    const agentIssuesTile = screen.getByText("Agent issues").closest("article");
+    expect(agentIssuesTile).not.toBeNull();
+
+    await userEvent.click(within(agentIssuesTile as HTMLElement).getByRole("button", { name: /GitHub fallback/i }));
+
+    expect(openExternal).toHaveBeenCalledWith(
+      "https://github.com/apple/swift/issues?q=is%3Aissue%20is%3Aopen%20label%3Aagent"
+    );
+
+    await userEvent.click(within(agentIssuesTile as HTMLElement).getByRole("button", { name: /Open in Control/i }));
+
+    await waitFor(() => {
+      expect(useUiStore.getState().route).toEqual({
+        kind: "repository",
+        nameWithOwner: "apple/swift",
+        tab: "issues",
+        issueFilter: "label:agent",
+        pullFilter: undefined,
+        workflowFilter: undefined
+      });
+    });
+  });
+
+  it("renders disabled wiki state without enabling page creation", async () => {
+    const disabledWikiRepository: RepositoryDetail = {
+      ...mockRepository,
+      administration: {
+        ...mockRepository.administration,
+        features: {
+          ...mockRepository.administration.features,
+          wiki: false
+        }
+      }
+    };
+    const getRepository = vi.fn<ControlApi["github"]["getRepository"]>(async () => disabledWikiRepository);
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "wiki" }
+    });
+
+    renderControl(makeApi({ getRepository }));
+
+    expect(await screen.findByText("Wiki is disabled for this repository.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /New wiki page/i })).toBeDisabled();
+  });
+
+  it("refreshes the active repository surface", async () => {
+    const getRepository = vi
+      .fn<ControlApi["github"]["getRepository"]>()
+      .mockResolvedValueOnce(mockRepository)
+      .mockResolvedValue({
+        ...mockRepository,
+        description: "Repository detail after manual refresh."
+      });
+    const listContents = vi.fn<ControlApi["github"]["listContents"]>(mockControlApi.github.listContents);
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "code" }
+    });
+    renderControl(makeApi({ getRepository, listContents }));
+
+    expect(await screen.findByRole("heading", { name: /apple \/ swift/i })).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("button", { name: "Refresh apple/swift" }));
+
+    expect((await screen.findAllByText("Repository detail after manual refresh.")).length).toBeGreaterThan(0);
+    expect(getRepository).toHaveBeenCalledTimes(2);
+    expect(listContents).toHaveBeenCalledTimes(2);
   });
 
   it("starts GitHub account sign-in from settings", async () => {
@@ -304,11 +1217,22 @@ describe("Control renderer routing", () => {
     expect(screen.getAllByText("GitHub sign-in is not configured in this build.").length).toBeGreaterThan(0);
   });
 
-  it("does not fetch GitHub account data before authentication", async () => {
+  it("loads cache-only repositories but no privileged account data before authentication", async () => {
     const listRepositories = vi.fn<ControlApi["github"]["listRepositories"]>(async () => mockRepositories);
-    const getAccountProfile = vi.fn<ControlApi["github"]["getAccountProfile"]>(async () => mockAccountProfile);
+    const getAccountProfile = vi.fn<ControlApi["github"]["getAccountProfile"]>(
+      async () => mockAccountProfile
+    );
     const listAccountIssues = vi.fn<ControlApi["github"]["listAccountIssues"]>(async () => mockIssues);
-    const listAccountPullRequests = vi.fn<ControlApi["github"]["listAccountPullRequests"]>(async () => mockPullRequests);
+    const listAccountPullRequests = vi.fn<ControlApi["github"]["listAccountPullRequests"]>(
+      async () => mockPullRequests
+    );
+    const listOrganizations = vi.fn<ControlApi["github"]["listOrganizations"]>(
+      async () => mockOrganizations
+    );
+    const listOrganizationTeams = vi.fn<ControlApi["github"]["listOrganizationTeams"]>(
+      async () => mockTeams
+    );
+    const listNotifications = vi.fn<ControlApi["github"]["listNotifications"]>(async () => mockNotifications);
 
     useUiStore.setState(defaultUiState);
     renderControl({
@@ -316,7 +1240,10 @@ describe("Control renderer routing", () => {
         listRepositories,
         getAccountProfile,
         listAccountIssues,
-        listAccountPullRequests
+        listAccountPullRequests,
+        listOrganizations,
+        listOrganizationTeams,
+        listNotifications
       }),
       getAppState: async () => ({
         ...mockAppState,
@@ -331,11 +1258,17 @@ describe("Control renderer routing", () => {
       })
     });
 
-    expect(await screen.findByText("Sign in with GitHub in Settings to load live GitHub data.")).toBeInTheDocument();
-    expect(listRepositories).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText("Sign in with GitHub in Settings to load live GitHub data.")
+    ).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /apple\/swift/i })).toBeInTheDocument();
+    expect(listRepositories).toHaveBeenCalledWith({ limit: 80, cacheOnly: true });
     expect(getAccountProfile).not.toHaveBeenCalled();
     expect(listAccountIssues).not.toHaveBeenCalled();
     expect(listAccountPullRequests).not.toHaveBeenCalled();
+    expect(listOrganizations).not.toHaveBeenCalled();
+    expect(listOrganizationTeams).not.toHaveBeenCalled();
+    expect(listNotifications).not.toHaveBeenCalled();
   });
 
   it("signs out from settings", async () => {
@@ -350,12 +1283,244 @@ describe("Control renderer routing", () => {
     expect(clearGitHubToken).toHaveBeenCalledTimes(1);
   });
 
+  it("renders GitHub notifications in the mailbox", async () => {
+    const readNotifications = mockNotifications.map((notification) => ({
+      ...notification,
+      unread: false,
+      lastReadAt: new Date().toISOString()
+    }));
+    let notificationRead = false;
+    const listNotifications = vi.fn<ControlApi["github"]["listNotifications"]>(async () =>
+      notificationRead ? readNotifications : mockNotifications
+    );
+    const markNotificationThreadRead = vi.fn<ControlApi["github"]["markNotificationThreadRead"]>(
+      async (input) => {
+        notificationRead = true;
+        return {
+          ok: true,
+          threadId: input.threadId,
+          message: "Notification thread marked as read."
+        };
+      }
+    );
+    const unsubscribeNotificationThread = vi.fn<ControlApi["github"]["unsubscribeNotificationThread"]>(
+      async (input) => ({
+        ok: true,
+        threadId: input.threadId,
+        message: "Notification thread unsubscribed."
+      })
+    );
+    const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "mailbox" }
+    });
+
+    renderControl({
+      ...makeApi({
+        listNotifications,
+        markNotificationThreadRead,
+        unsubscribeNotificationThread,
+        listAccountIssues: async () => [],
+        listAccountPullRequests: async () => []
+      }),
+      openExternal
+    });
+
+    expect(await screen.findByRole("heading", { name: "Mailbox" })).toBeInTheDocument();
+    await waitFor(() => expect(listNotifications).toHaveBeenCalledWith({ all: false, limit: 30 }));
+    expect(screen.getByRole("button", { name: "Unread" })).toHaveAttribute("aria-pressed", "true");
+
+    await userEvent.click(screen.getByRole("button", { name: "All" }));
+    await waitFor(() => expect(listNotifications).toHaveBeenCalledWith({ all: true, limit: 30 }));
+    expect(screen.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
+
+    await userEvent.click(screen.getByRole("button", { name: "Participating" }));
+    await waitFor(() =>
+      expect(listNotifications).toHaveBeenCalledWith({ all: false, participating: true, limit: 30 })
+    );
+    expect(screen.getByRole("button", { name: "Participating" })).toHaveAttribute("aria-pressed", "true");
+
+    const notificationRow = await screen.findByRole("button", {
+      name: /^Improve Sendable diagnostics for global actors/i
+    });
+    const notificationContainer = notificationRow.closest(".notification-row") as HTMLElement;
+    expect(notificationContainer).not.toBeNull();
+
+    expect(within(notificationRow).getByText(/apple\/swift/i)).toBeInTheDocument();
+    expect(within(notificationRow).getByText(/mention/i)).toBeInTheDocument();
+    expect(within(notificationRow).getByText(/participating/i)).toBeInTheDocument();
+    expect(within(notificationContainer).getByText(/unread/i)).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /Mark Improve Sendable diagnostics for global actors as read/i })
+    );
+
+    expect(markNotificationThreadRead.mock.calls[0]?.[0]).toEqual({ threadId: mockNotifications[0].id });
+    expect(await within(notificationContainer).findByText(/read/i)).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /Unsubscribe from Improve Sendable diagnostics for global actors/i })
+    );
+
+    expect(unsubscribeNotificationThread.mock.calls[0]?.[0]).toEqual({ threadId: mockNotifications[0].id });
+  });
+
+  it("opens issue and pull request notifications in-app and records local recents", async () => {
+    const recordRecentItem = vi.fn<ControlApi["recordRecentItem"]>(async () => []);
+    const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "mailbox" }
+    });
+
+    renderControl({
+      ...makeApi({
+        listNotifications: async () => mockNotifications,
+        listAccountIssues: async () => [],
+        listAccountPullRequests: async () => []
+      }),
+      recordRecentItem,
+      openExternal
+    });
+
+    await userEvent.click(await screen.findByRole("button", { name: "All" }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: /^Improve Sendable diagnostics for global actors/i })
+    );
+
+    await waitFor(() => {
+      expect(useUiStore.getState().route).toEqual({
+        kind: "repository",
+        nameWithOwner: "apple/swift",
+        tab: "issues",
+        issueNumber: 1200
+      });
+    });
+    expect(recordRecentItem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "issue",
+        itemKey: "apple/swift:issue:1200",
+        repositoryNameWithOwner: "apple/swift",
+        metadata: expect.objectContaining({ number: 1200, subjectType: "Issue" })
+      }),
+      expect.anything()
+    );
+    expect(openExternal).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole("button", { name: /^Mailbox/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "All" }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: /^Add Sendable support for @MainActor types/i })
+    );
+
+    await waitFor(() => {
+      expect(useUiStore.getState().route).toEqual({
+        kind: "repository",
+        nameWithOwner: "apple/swift",
+        tab: "pulls",
+        pullNumber: 520
+      });
+    });
+    expect(recordRecentItem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "pullRequest",
+        itemKey: "apple/swift:pull:520",
+        repositoryNameWithOwner: "apple/swift",
+        metadata: expect.objectContaining({ number: 520, subjectType: "PullRequest" })
+      }),
+      expect.anything()
+    );
+    expect(openExternal).not.toHaveBeenCalled();
+  });
+
+  it("opens discussion and release notifications in-app with external fallback unused", async () => {
+    const notifications = [
+      {
+        ...mockNotifications[0],
+        id: "notification-discussion",
+        reason: "subscribed",
+        repositoryNameWithOwner: "apple/swift",
+        subject: {
+          title: mockDiscussions[1].title,
+          type: "Discussion",
+          apiUrl: null,
+          latestCommentApiUrl: null,
+          latestCommentHtmlUrl: null,
+          htmlUrl: mockDiscussions[1].htmlUrl
+        },
+        htmlUrl: mockDiscussions[1].htmlUrl
+      },
+      {
+        ...mockNotifications[0],
+        id: "notification-release",
+        reason: "release",
+        repositoryNameWithOwner: "apple/swift",
+        subject: {
+          title: mockReleases[0].name ?? mockReleases[0].tagName,
+          type: "Release",
+          apiUrl: null,
+          latestCommentApiUrl: null,
+          latestCommentHtmlUrl: null,
+          htmlUrl: mockReleases[0].htmlUrl
+        },
+        htmlUrl: mockReleases[0].htmlUrl
+      }
+    ];
+    const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "mailbox" }
+    });
+
+    renderControl({
+      ...makeApi({
+        listNotifications: async () => notifications,
+        listAccountIssues: async () => [],
+        listAccountPullRequests: async () => []
+      }),
+      openExternal
+    });
+
+    await userEvent.click(await screen.findByRole("button", { name: /^Package manager ergonomics/i }));
+
+    await waitFor(() => {
+      expect(useUiStore.getState().route).toEqual({
+        kind: "repository",
+        nameWithOwner: "apple/swift",
+        tab: "discussions",
+        discussionNumber: mockDiscussions[1].number
+      });
+    });
+    expect(await screen.findByRole("heading", { name: "Package manager ergonomics" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /^Mailbox/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /^Swift 5\.10\.0/i }));
+
+    await waitFor(() => {
+      expect(useUiStore.getState().route).toEqual({
+        kind: "repository",
+        nameWithOwner: "apple/swift",
+        tab: "releases",
+        releaseTagName: "swift-5.10.0"
+      });
+    });
+    expect(await screen.findByRole("heading", { name: "Swift 5.10.0" })).toBeInTheDocument();
+    expect(openExternal).not.toHaveBeenCalled();
+  });
+
   it("does not fetch inactive repository tabs when opening code", async () => {
     const getRepository = vi.fn<ControlApi["github"]["getRepository"]>(async () => ({
       ...mockRepository,
       readmeMarkdown: null
     }));
-    const getReadme = vi.fn<ControlApi["github"]["getReadme"]>(async () => mockRepository.readmeMarkdown);
+    const getReadme = vi.fn<ControlApi["github"]["getReadme"]>(async () => ({
+      markdown: mockRepository.readmeMarkdown,
+      availability: { status: "available", message: null }
+    }));
     const listContents = vi.fn<ControlApi["github"]["listContents"]>(async () => mockContents);
     const listIssues = vi.fn<ControlApi["github"]["listIssues"]>(async () => mockIssues);
     const listPullRequests = vi.fn<ControlApi["github"]["listPullRequests"]>(async () => mockPullRequests);
@@ -387,13 +1552,126 @@ describe("Control renderer routing", () => {
     expect(listActions).not.toHaveBeenCalled();
   });
 
-  it("opens file rows in the in-app code browser", async () => {
-    const getFileContent = vi.fn<ControlApi["github"]["getFileContent"]>(async (input) => ({
-      path: input.path,
-      name: input.path.split("/").pop() ?? input.path,
-      ref: input.ref ?? "main",
-      content: "# README.md\n\nLoaded in Control.",
-      htmlUrl: `https://github.com/apple/swift/blob/main/${input.path}`
+  it("renders GitHub markdown basics safely and routes links through main", async () => {
+    const readmeMarkdown = [
+      "# Markdown QA",
+      "",
+      "Track **bold** text, `inline code`, @swift-ci, and #1200.",
+      "",
+      "- [x] Completed task",
+      "- [ ] Pending task",
+      "",
+      "| Area | State |",
+      "| --- | --- |",
+      "| Links | [Control docs](https://github.com/apple/swift) |",
+      "",
+      "![Logo](https://example.com/logo.png)",
+      "[Unsafe](javascript:alert(1))",
+      "<script>alert('x')</script>"
+    ].join("\n");
+    const getReadme = vi.fn<ControlApi["github"]["getReadme"]>(async () => ({
+      markdown: readmeMarkdown,
+      availability: { status: "available", message: null }
+    }));
+    const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "code" }
+    });
+
+    renderControl({ ...makeApi({ getReadme }), openExternal });
+
+    expect(await screen.findByRole("heading", { name: "Markdown QA" })).toBeInTheDocument();
+    expect(screen.getByText("bold").tagName).toBe("STRONG");
+    expect(screen.getByText("inline code").tagName).toBe("CODE");
+    expect(screen.getByText("@swift-ci")).toHaveClass("markdown-reference");
+    expect(screen.getByText("#1200")).toHaveClass("markdown-reference");
+    expect(screen.getByText("Completed task")).toBeInTheDocument();
+    expect((document.querySelector(".markdown-task-list input") as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByRole("cell", { name: "Links" })).toBeInTheDocument();
+    expect(screen.getByAltText("Logo")).toHaveAttribute("src", "https://example.com/logo.png");
+    expect(document.querySelector("script")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Unsafe" })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Control docs" }));
+
+    expect(openExternal).toHaveBeenCalledWith("https://github.com/apple/swift");
+  });
+
+  it("renders extra markdown block types and rejects unsafe image and relative URLs", async () => {
+    const readmeMarkdown = [
+      "# Markdown Safety",
+      "",
+      "> Quoted **guidance** for reviewers.",
+      "",
+      "1. First ordered item",
+      "2. Second ordered item",
+      "",
+      "```ts",
+      "const unsafe = '<script>';",
+      "```",
+      "",
+      "![Unsafe image](http://example.com/logo.png)",
+      "[Relative docs](docs/guide.md)"
+    ].join("\n");
+    const getReadme = vi.fn<ControlApi["github"]["getReadme"]>(async () => ({
+      markdown: readmeMarkdown,
+      availability: { status: "available", message: null }
+    }));
+    const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "code" }
+    });
+
+    renderControl({ ...makeApi({ getReadme }), openExternal });
+
+    expect(await screen.findByRole("heading", { name: "Markdown Safety" })).toBeInTheDocument();
+    expect(screen.getByText("guidance").tagName).toBe("STRONG");
+    expect(document.querySelector("blockquote")?.textContent).toContain("Quoted guidance for reviewers.");
+    expect(screen.getByText("First ordered item").closest("ol")).not.toBeNull();
+    expect(screen.getByText("ts")).toBeInTheDocument();
+    expect(screen.getByText("const unsafe = '<script>';")).toBeInTheDocument();
+    expect(screen.queryByAltText("Unsafe image")).not.toBeInTheDocument();
+    expect(screen.getByText("Unsafe image")).toHaveClass("markdown-unsafe");
+    expect(screen.queryByRole("button", { name: "Relative docs" })).not.toBeInTheDocument();
+    expect(screen.getByText("Relative docs")).toHaveClass("markdown-unsafe");
+    expect(openExternal).not.toHaveBeenCalled();
+  });
+
+  it("renders file last changed metadata in repository code rows", async () => {
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "code" }
+    });
+
+    renderControl(makeApi());
+
+    const fileList = await waitFor(() => {
+      const element = document.querySelector(".virtual-file-list");
+      expect(element).not.toBeNull();
+      return element as HTMLElement;
+    });
+    const readmeRow = await waitFor(() =>
+      within(fileList).getByRole("button", { name: /README\.md/i })
+    );
+
+    expect(within(readmeRow).getByText(/Update installation instructions by swift-ci/i)).toBeInTheDocument();
+    expect(readmeRow).toHaveAttribute("title", expect.stringContaining("last changed in abcdef8"));
+    expect(readmeRow).toHaveAttribute("title", expect.stringContaining("by swift-ci"));
+  });
+
+  it("changes the repository code listing when selecting a branch or tag", async () => {
+    const listContents = vi.fn<ControlApi["github"]["listContents"]>(async () => mockContents);
+    const listBranchesWithStatus = vi.fn<ControlApi["github"]["listBranchesWithStatus"]>(async () => ({
+      items: mockBranches,
+      availability: { status: "available", message: null }
+    }));
+    const listTagsWithStatus = vi.fn<ControlApi["github"]["listTagsWithStatus"]>(async () => ({
+      items: mockTags,
+      availability: { status: "available", message: null }
     }));
 
     useUiStore.setState({
@@ -401,7 +1679,161 @@ describe("Control renderer routing", () => {
       route: { kind: "repository", nameWithOwner: "apple/swift", tab: "code" }
     });
 
-    renderControl(makeApi({ getFileContent }));
+    renderControl(makeApi({ listContents, listBranchesWithStatus, listTagsWithStatus }));
+
+    const refSelect = await screen.findByLabelText("Code reference");
+    await waitFor(() =>
+      expect(listBranchesWithStatus).toHaveBeenCalledWith({ owner: "apple", repo: "swift", limit: 50 })
+    );
+    expect(screen.getByRole("option", { name: /release\/6\.0/i })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /swift-6\.0/i })).toBeInTheDocument();
+
+    await userEvent.selectOptions(refSelect, "release/6.0");
+
+    await waitFor(() =>
+      expect(listContents).toHaveBeenCalledWith(
+        expect.objectContaining({ owner: "apple", repo: "swift", ref: "release/6.0" })
+      )
+    );
+
+    await userEvent.selectOptions(refSelect, "swift-6.0");
+
+    await waitFor(() =>
+      expect(listContents).toHaveBeenCalledWith(
+        expect.objectContaining({ owner: "apple", repo: "swift", ref: "swift-6.0" })
+      )
+    );
+  });
+
+  it("opens repository files through the in-app Go to file finder", async () => {
+    const listTree = vi.fn<ControlApi["github"]["listTree"]>(async (input) => ({
+      ...mockTree,
+      ref: input.ref ?? mockTree.ref
+    }));
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "code" }
+    });
+
+    renderControl(makeApi({ listTree }));
+
+    await userEvent.selectOptions(await screen.findByLabelText("Code reference"), "release/6.0");
+    await userEvent.click(await screen.findByRole("button", { name: "Go to file" }));
+
+    const finder = await screen.findByRole("dialog", { name: "Go to file" });
+    await waitFor(() =>
+      expect(listTree).toHaveBeenCalledWith(
+        expect.objectContaining({ owner: "apple", repo: "swift", ref: "release/6.0", recursive: true })
+      )
+    );
+
+    await userEvent.type(within(finder).getByLabelText("Go to file search"), "readme{Enter}");
+
+    await waitFor(() => {
+      expect(useUiStore.getState().route).toEqual({
+        kind: "codeBrowser",
+        nameWithOwner: "apple/swift",
+        path: "README.md",
+        entryType: "file",
+        ref: "release/6.0"
+      });
+    });
+    expect(screen.queryByRole("dialog", { name: "Go to file" })).not.toBeInTheDocument();
+  });
+
+  it("supports keyboard navigation and active result semantics in the Go to file finder", async () => {
+    const listTree = vi.fn<ControlApi["github"]["listTree"]>(async (input) => ({
+      ...mockTree,
+      ref: input.ref ?? mockTree.ref
+    }));
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "code" }
+    });
+
+    renderControl(makeApi({ listTree }));
+
+    await userEvent.click(await screen.findByRole("button", { name: "Go to file" }));
+
+    const finder = await screen.findByRole("dialog", { name: "Go to file" });
+    const searchInput = within(finder).getByLabelText("Go to file search");
+    const resultList = within(finder).getByRole("listbox", { name: "Files in apple/swift" });
+    const workflowOption = await within(resultList).findByRole("option", { name: /ci\.yml/i });
+
+    expect(searchInput).toHaveAttribute("aria-controls", "file-finder-results");
+    expect(searchInput).toHaveAttribute("aria-activedescendant", "file-finder-result-0");
+    expect(searchInput).toHaveAttribute("aria-describedby", "file-finder-instructions");
+    expect(workflowOption).toHaveAttribute("aria-selected", "true");
+
+    await userEvent.keyboard("{ArrowDown}");
+
+    const readmeOption = within(resultList).getByRole("option", { name: /README\.md/i });
+    expect(readmeOption).toHaveAttribute("aria-selected", "true");
+    expect(searchInput).toHaveAttribute("aria-activedescendant", "file-finder-result-1");
+
+    await userEvent.keyboard("{End}");
+    expect(within(resultList).getByRole("option", { name: /documentation/i })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+
+    await userEvent.keyboard("{Home}{ArrowDown}");
+    expect(readmeOption).toHaveAttribute("aria-selected", "true");
+
+    await userEvent.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(useUiStore.getState().route).toEqual({
+        kind: "codeBrowser",
+        nameWithOwner: "apple/swift",
+        path: "README.md",
+        entryType: "file",
+        ref: "main"
+      });
+    });
+  });
+
+  it("opens file rows in the in-app code browser", async () => {
+    const getFileContent = vi.fn<ControlApi["github"]["getFileContent"]>(async (input) => ({
+      path: input.path,
+      name: input.path.split("/").pop() ?? input.path,
+      ref: input.ref ?? "main",
+      content: "# README.md\n\nLoaded in Control.",
+      htmlUrl: `https://github.com/apple/swift/blob/main/${input.path}`,
+      downloadUrl: `https://raw.githubusercontent.com/apple/swift/main/${input.path}`,
+      lastCommitSha: null,
+      lastCommitMessage: null,
+      lastCommitAuthorLogin: null,
+      lastCommitAuthorName: null,
+      lastCommitAuthorAvatarUrl: null,
+      lastAuthoredDate: null,
+      lastCommittedDate: null,
+      lastCommitDate: null,
+      lastCommitHtmlUrl: null,
+      lastCommitAdditions: null,
+      lastCommitDeletions: null,
+      lastCommitChanges: null,
+      lastCommitAvailability: { status: "available", message: null }
+    }));
+    const openExternal = vi.fn(async () => undefined);
+    const writeText = vi.fn(async () => undefined);
+
+    vi.stubGlobal("navigator", {
+      ...navigator,
+      clipboard: { writeText }
+    });
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "code" }
+    });
+
+    renderControl({
+      ...makeApi({ getFileContent }),
+      openExternal
+    });
 
     const fileList = await waitFor(() => {
       const element = document.querySelector(".virtual-file-list");
@@ -433,6 +1865,13 @@ describe("Control renderer routing", () => {
     });
     expect(document.querySelector(".readme-mark")).toBeNull();
     expect(screen.queryByText("1,562 commits")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Copy raw" }));
+    expect(writeText).toHaveBeenCalledWith("# README.md\n\nLoaded in Control.");
+    expect(await screen.findByText("Copied")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Open raw" }));
+    expect(openExternal).toHaveBeenCalledWith("https://raw.githubusercontent.com/apple/swift/main/README.md");
   });
 
   it("creates issues, pull requests, and workflow dispatches from repository tabs", async () => {
@@ -441,11 +1880,11 @@ describe("Control renderer routing", () => {
       action: input.action,
       message: `${input.action} ok`
     }));
-    const getIssueDetail = vi.fn<ControlApi["github"]["getIssueDetail"]>(
-      mockControlApi.github.getIssueDetail
+    const getIssueDetailWithStatus = vi.fn<ControlApi["github"]["getIssueDetailWithStatus"]>(
+      mockControlApi.github.getIssueDetailWithStatus
     );
-    const getPullRequestDetail = vi.fn<ControlApi["github"]["getPullRequestDetail"]>(
-      mockControlApi.github.getPullRequestDetail
+    const getPullRequestDetailWithStatus = vi.fn<ControlApi["github"]["getPullRequestDetailWithStatus"]>(
+      mockControlApi.github.getPullRequestDetailWithStatus
     );
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
 
@@ -453,10 +1892,10 @@ describe("Control renderer routing", () => {
       ...defaultUiState,
       route: { kind: "repository", nameWithOwner: "apple/swift", tab: "issues" }
     });
-    renderControl(makeApi({ mutate, getIssueDetail, getPullRequestDetail }));
+    renderControl(makeApi({ mutate, getIssueDetailWithStatus, getPullRequestDetailWithStatus }));
 
     expect(await screen.findByText(/This issue reproduces/)).toBeInTheDocument();
-    expect(getIssueDetail).toHaveBeenCalledWith({
+    expect(getIssueDetailWithStatus).toHaveBeenCalledWith({
       owner: "apple",
       repo: "swift",
       issueNumber: mockIssues[0].number
@@ -468,20 +1907,24 @@ describe("Control renderer routing", () => {
     await userEvent.click(screen.getByRole("button", { name: /Create issue/i }));
 
     await waitFor(() =>
-      expect(mutate).toHaveBeenCalledWith({
-        action: "createIssue",
-        owner: "apple",
-        repo: "swift",
-        payload: { title: "Bug report", body: "Steps to reproduce" }
-      }, expect.anything())
+      expect(mutate).toHaveBeenCalledWith(
+        {
+          action: "createIssue",
+          owner: "apple",
+          repo: "swift",
+          payload: { title: "Bug report", body: "Steps to reproduce" }
+        },
+        expect.anything()
+      )
     );
 
     await userEvent.click(screen.getByRole("button", { name: /^Pull requests/ }));
     expect(await screen.findByText(/This pull request updates/)).toBeInTheDocument();
-    expect(getPullRequestDetail).toHaveBeenCalledWith({
+    expect(getPullRequestDetailWithStatus).toHaveBeenCalledWith({
       owner: "apple",
       repo: "swift",
-      pullNumber: mockPullRequests[0].number
+      pullNumber: mockPullRequests[0].number,
+      cacheOnly: false
     });
     await userEvent.click(await screen.findByRole("button", { name: "New pull request" }));
     await userEvent.type(screen.getByPlaceholderText("Pull request title"), "Feature branch");
@@ -489,22 +1932,29 @@ describe("Control renderer routing", () => {
     await userEvent.click(screen.getByRole("button", { name: /Create pull request/i }));
 
     await waitFor(() =>
-      expect(mutate).toHaveBeenCalledWith({
-        action: "createPullRequest",
-        owner: "apple",
-        repo: "swift",
-        payload: {
-          title: "Feature branch",
-          head: "feature/demo",
-          base: "main",
-          body: ""
-        }
-      }, expect.anything())
+      expect(mutate).toHaveBeenCalledWith(
+        {
+          action: "createPullRequest",
+          owner: "apple",
+          repo: "swift",
+          payload: {
+            title: "Feature branch",
+            head: "feature/demo",
+            base: "main",
+            body: ""
+          }
+        },
+        expect.anything()
+      )
     );
 
     await userEvent.click(screen.getByRole("button", { name: /^Actions/ }));
     await userEvent.click(await screen.findByRole("button", { name: "Run workflow" }));
-    await userEvent.type(screen.getByPlaceholderText("workflow file, name, or id"), "ci.yml");
+    expect(await screen.findByRole("combobox", { name: "Workflow" })).toHaveValue(
+      ".github/workflows/ci.yml"
+    );
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "configuration" }), "release");
+    await userEvent.click(screen.getByRole("checkbox", { name: /run_tests/i }));
     const workflowForm = screen.getByRole("heading", { name: "Run workflow" }).closest("form");
     expect(workflowForm).not.toBeNull();
     await userEvent.click(
@@ -512,14 +1962,954 @@ describe("Control renderer routing", () => {
     );
 
     await waitFor(() =>
-      expect(mutate).toHaveBeenCalledWith({
-        action: "dispatchWorkflow",
-        owner: "apple",
-        repo: "swift",
-        payload: { workflowId: "ci.yml", ref: "main" }
-      }, expect.anything())
+      expect(mutate).toHaveBeenCalledWith(
+        {
+          action: "dispatchWorkflow",
+          owner: "apple",
+          repo: "swift",
+          payload: {
+            workflowId: ".github/workflows/ci.yml",
+            ref: "main",
+            inputs: {
+              configuration: "release",
+              run_tests: false
+            }
+          }
+        },
+        expect.anything()
+      )
     );
     expect(confirm).toHaveBeenCalledWith("Run dispatchWorkflow on apple/swift?");
+  });
+
+  it("runs provider-backed issue and pull request management actions from repository tabs", async () => {
+    const mutate = vi.fn<ControlApi["github"]["mutate"]>(async (input) => ({
+      ok: true,
+      action: input.action,
+      message: `${input.action} ok`
+    }));
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "issues" }
+    });
+    renderControl(makeApi({ mutate }));
+
+    expect(await screen.findByRole("button", { name: "Reopen issue" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Reopen issue" }));
+
+    await waitFor(() =>
+      expect(mutate).toHaveBeenCalledWith(
+        {
+          action: "reopenIssue",
+          owner: "apple",
+          repo: "swift",
+          payload: { issueNumber: mockIssues[0].number }
+        },
+        expect.anything()
+      )
+    );
+
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: /Compiler crash in async closure/i }))[0]
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Close issue" }));
+
+    await waitFor(() =>
+      expect(mutate).toHaveBeenCalledWith(
+        {
+          action: "closeIssue",
+          owner: "apple",
+          repo: "swift",
+          payload: { issueNumber: mockIssues[1].number }
+        },
+        expect.anything()
+      )
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /^Pull requests/ }));
+    expect(await screen.findByText("Merge unavailable: Pull request is not open.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Merge pull request" })).toBeDisabled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Reopen pull request" }));
+    await waitFor(() =>
+      expect(mutate).toHaveBeenCalledWith(
+        {
+          action: "reopenPullRequest",
+          owner: "apple",
+          repo: "swift",
+          payload: { pullNumber: mockPullRequests[0].number }
+        },
+        expect.anything()
+      )
+    );
+
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: /Update concurrency runtime tests/i }))[0]
+    );
+    await screen.findByText("CI is running. Review the changed files and merge status before landing.");
+    await userEvent.type(screen.getByPlaceholderText("GitHub usernames"), "octocat, applebot");
+    await userEvent.type(screen.getByPlaceholderText("team slugs"), "compiler");
+    await userEvent.click(screen.getByRole("button", { name: "Request review" }));
+    await waitFor(() =>
+      expect(mutate).toHaveBeenCalledWith(
+        {
+          action: "requestReviewers",
+          owner: "apple",
+          repo: "swift",
+          payload: {
+            pullNumber: mockPullRequests[1].number,
+            reviewers: ["octocat", "applebot"],
+            teamReviewers: ["compiler"]
+          }
+        },
+        expect.anything()
+      )
+    );
+
+    const requestedReviewers = screen.getByLabelText("Requested reviewers");
+    await userEvent.click(
+      within(requestedReviewers).getByRole("button", { name: "Remove reviewer swift-ci" })
+    );
+    await waitFor(() =>
+      expect(mutate).toHaveBeenCalledWith(
+        {
+          action: "removeReviewers",
+          owner: "apple",
+          repo: "swift",
+          payload: {
+            pullNumber: mockPullRequests[1].number,
+            reviewers: ["swift-ci"]
+          }
+        },
+        expect.anything()
+      )
+    );
+    await userEvent.click(
+      within(requestedReviewers).getByRole("button", { name: "Remove team reviewer compiler" })
+    );
+    await waitFor(() =>
+      expect(mutate).toHaveBeenCalledWith(
+        {
+          action: "removeReviewers",
+          owner: "apple",
+          repo: "swift",
+          payload: {
+            pullNumber: mockPullRequests[1].number,
+            teamReviewers: ["compiler"]
+          }
+        },
+        expect.anything()
+      )
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: "Approve" }));
+    await waitFor(() =>
+      expect(mutate).toHaveBeenCalledWith(
+        {
+          action: "approvePullRequest",
+          owner: "apple",
+          repo: "swift",
+          payload: { pullNumber: mockPullRequests[1].number }
+        },
+        expect.anything()
+      )
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Request changes" }));
+    await waitFor(() =>
+      expect(mutate).toHaveBeenCalledWith(
+        {
+          action: "requestChanges",
+          owner: "apple",
+          repo: "swift",
+          payload: { pullNumber: mockPullRequests[1].number }
+        },
+        expect.anything()
+      )
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Close pull request" }));
+    await waitFor(() =>
+      expect(mutate).toHaveBeenCalledWith(
+        {
+          action: "closePullRequest",
+          owner: "apple",
+          repo: "swift",
+          payload: { pullNumber: mockPullRequests[1].number }
+        },
+        expect.anything()
+      )
+    );
+    expect(confirm).toHaveBeenCalledWith("Run closeIssue on apple/swift?");
+    expect(confirm).toHaveBeenCalledWith("Run requestReviewers on apple/swift?");
+    expect(confirm).toHaveBeenCalledWith("Run requestChanges on apple/swift?");
+    expect(confirm).toHaveBeenCalledWith("Run closePullRequest on apple/swift?");
+  });
+
+  it("renders pull request reviews, timeline events, checks, commits, and changed files from rich PR detail", async () => {
+    const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
+    const getPullRequestDetailWithStatus = vi.fn<ControlApi["github"]["getPullRequestDetailWithStatus"]>(
+      mockControlApi.github.getPullRequestDetailWithStatus
+    );
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "pulls" }
+    });
+    renderControl({ ...makeApi({ getPullRequestDetailWithStatus }), openExternal });
+
+    expect(await screen.findByText("Add repository management controls")).toBeInTheDocument();
+    expect(await screen.findByText("APPROVED by reviewer")).toBeInTheDocument();
+    expect(await screen.findByText("connected apple/swift #1200 Crash on build")).toBeInTheDocument();
+    expect(await screen.findByText(/Can this be a typed helper/)).toBeInTheDocument();
+    expect(await screen.findByText("macOS build")).toBeInTheDocument();
+    expect(screen.getByText(/All tests passed/)).toBeInTheDocument();
+    expect(await screen.findByText("src/renderer/src/App.tsx")).toBeInTheDocument();
+    expect(getPullRequestDetailWithStatus).toHaveBeenCalledWith({
+      owner: "apple",
+      repo: "swift",
+      pullNumber: mockPullRequests[0].number,
+      cacheOnly: false
+    });
+
+    const changedFilesPanel = screen.getByRole("heading", { name: "Changed files" }).closest("article");
+    expect(changedFilesPanel).not.toBeNull();
+    const timelinePanel = screen.getByRole("heading", { name: "Timeline events" }).closest("article");
+    expect(timelinePanel).not.toBeNull();
+    await userEvent.click(
+      within(timelinePanel as HTMLElement).getByRole("button", {
+        name: /connected apple\/swift #1200 Crash on build/
+      })
+    );
+    expect(openExternal).toHaveBeenCalledWith("https://github.com/apple/swift/issues/1200");
+
+    await userEvent.click(
+      within(changedFilesPanel as HTMLElement).getByRole("button", {
+        name: /src\/renderer\/src\/App\.tsx/
+      })
+    );
+
+    expect(openExternal).toHaveBeenCalledWith(`${mockPullRequests[0].htmlUrl}/files#diff-app`);
+  });
+
+  it("edits an issue title and body through the provider mutation path", async () => {
+    const mutate = vi.fn<ControlApi["github"]["mutate"]>(async (input) => ({
+      ok: true,
+      action: input.action,
+      message: `${input.action} ok`
+    }));
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "issues" }
+    });
+    renderControl(makeApi({ mutate }));
+
+    expect(await screen.findByText(/This issue reproduces/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Edit issue" }));
+
+    const titleInput = screen.getByPlaceholderText("Edit issue title");
+    const bodyInput = screen.getByPlaceholderText("Edit issue body");
+    await userEvent.clear(titleInput);
+    await userEvent.type(titleInput, "Updated issue title");
+    await userEvent.clear(bodyInput);
+    await userEvent.type(bodyInput, "Updated issue body from Control");
+    await userEvent.click(screen.getByRole("button", { name: "Save issue" }));
+
+    await waitFor(() =>
+      expect(mutate).toHaveBeenCalledWith(
+        {
+          action: "editIssue",
+          owner: "apple",
+          repo: "swift",
+          payload: {
+            issueNumber: mockIssues[0].number,
+            title: "Updated issue title",
+            body: "Updated issue body from Control"
+          }
+        },
+        expect.anything()
+      )
+    );
+  });
+
+  it("adds labels and assignees from the issue detail panel", async () => {
+    const mutate = vi.fn<ControlApi["github"]["mutate"]>(async (input) => ({
+      ok: true,
+      action: input.action,
+      message: `${input.action} ok`
+    }));
+    const listLabels = vi.fn<ControlApi["github"]["listLabels"]>(async () => mockLabels);
+    const listAssignableUsers = vi.fn<ControlApi["github"]["listAssignableUsers"]>(
+      async () => mockAssignableUsers
+    );
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "issues" }
+    });
+    renderControl(makeApi({ mutate, listLabels, listAssignableUsers }));
+
+    expect(await screen.findByText(/This issue reproduces/)).toBeInTheDocument();
+    expect(screen.getByText("Milestone Swift 6 readiness")).toBeInTheDocument();
+    expect(screen.getByText("Assigned @slightbug")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(listLabels).toHaveBeenCalledWith({ owner: "apple", repo: "swift", limit: 100 })
+    );
+    await waitFor(() =>
+      expect(listAssignableUsers).toHaveBeenCalledWith({ owner: "apple", repo: "swift", limit: 100 })
+    );
+
+    const labelsPicker = screen.getByLabelText("Available labels");
+    await userEvent.click(within(labelsPicker).getByRole("button", { name: "bug" }));
+    await userEvent.click(within(labelsPicker).getByRole("button", { name: "compiler" }));
+    await userEvent.click(within(labelsPicker).getByRole("button", { name: "bug" }));
+    await userEvent.click(screen.getByRole("button", { name: "Add labels" }));
+
+    await waitFor(() =>
+      expect(mutate).toHaveBeenCalledWith(
+        {
+          action: "addLabels",
+          owner: "apple",
+          repo: "swift",
+          payload: {
+            issueNumber: mockIssues[0].number,
+            labels: ["bug", "compiler"]
+          }
+        },
+        expect.anything()
+      )
+    );
+
+    await userEvent.click(
+      within(screen.getByLabelText("Current labels")).getByRole("button", { name: "Remove label compiler" })
+    );
+    await waitFor(() =>
+      expect(mutate).toHaveBeenCalledWith(
+        {
+          action: "removeLabel",
+          owner: "apple",
+          repo: "swift",
+          payload: {
+            issueNumber: mockIssues[0].number,
+            name: "compiler"
+          }
+        },
+        expect.anything()
+      )
+    );
+
+    const assigneesPicker = screen.getByLabelText("Assignable users");
+    await userEvent.click(within(assigneesPicker).getByRole("button", { name: "slightbug" }));
+    await userEvent.click(within(assigneesPicker).getByRole("button", { name: "swift-ci" }));
+    await userEvent.click(screen.getByRole("button", { name: "Add assignees" }));
+
+    await waitFor(() =>
+      expect(mutate).toHaveBeenCalledWith(
+        {
+          action: "setAssignees",
+          owner: "apple",
+          repo: "swift",
+          payload: {
+            issueNumber: mockIssues[0].number,
+            assignees: ["slightbug", "swift-ci"]
+          }
+        },
+        expect.anything()
+      )
+    );
+
+    await userEvent.click(
+      within(screen.getByLabelText("Current assignees")).getByRole("button", {
+        name: "Remove assignee slightbug"
+      })
+    );
+    await waitFor(() =>
+      expect(mutate).toHaveBeenCalledWith(
+        {
+          action: "removeAssignees",
+          owner: "apple",
+          repo: "swift",
+          payload: {
+            issueNumber: mockIssues[0].number,
+            assignees: ["slightbug"]
+          }
+        },
+        expect.anything()
+      )
+    );
+  });
+
+  it("edits and deletes issue comments through the provider mutation path", async () => {
+    const mutate = vi.fn<ControlApi["github"]["mutate"]>(async (input) => ({
+      ok: true,
+      action: input.action,
+      message: `${input.action} ok`
+    }));
+    const getIssueDetailWithStatus = vi.fn<ControlApi["github"]["getIssueDetailWithStatus"]>(async (input) => {
+      const issue = mockIssues.find((item) => item.number === input.issueNumber) ?? mockIssues[0];
+      return {
+        detail: {
+          ...issue,
+          body: "Issue body with editable comments.",
+          commentsList: [
+            {
+              id: 44001,
+              authorLogin: "swift-ci",
+              authorAvatarUrl: null,
+              body: "Original comment body",
+              createdAt: issue.createdAt,
+              updatedAt: issue.updatedAt,
+              htmlUrl: `${issue.htmlUrl}#issuecomment-44001`
+            }
+          ],
+          commentsAvailability: { status: "available", message: null }
+        },
+        availability: { status: "available", message: null }
+      };
+    });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "issues" }
+    });
+    renderControl(makeApi({ mutate, getIssueDetailWithStatus }));
+
+    expect(await screen.findByText("Original comment body")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Edit comment" }));
+    const commentInput = screen.getByPlaceholderText("Edit comment body");
+    await userEvent.clear(commentInput);
+    await userEvent.type(commentInput, "Updated comment body");
+    await userEvent.click(screen.getByRole("button", { name: "Save comment" }));
+
+    await waitFor(() =>
+      expect(mutate).toHaveBeenCalledWith(
+        {
+          action: "editComment",
+          owner: "apple",
+          repo: "swift",
+          payload: { commentId: 44001, body: "Updated comment body" }
+        },
+        expect.anything()
+      )
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Delete comment" }));
+
+    await waitFor(() =>
+      expect(mutate).toHaveBeenCalledWith(
+        {
+          action: "deleteComment",
+          owner: "apple",
+          repo: "swift",
+          payload: { commentId: 44001 }
+        },
+        expect.anything()
+      )
+    );
+    expect(confirm).toHaveBeenCalledWith("Run deleteComment on apple/swift?");
+  });
+
+  it("cancels in-progress workflow runs and explains completed workflow limits", async () => {
+    const mutate = vi.fn<ControlApi["github"]["mutate"]>(async (input) => ({
+      ok: true,
+      action: input.action,
+      message: `${input.action} ok`
+    }));
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const listActions = vi.fn<ControlApi["github"]["listActions"]>(async () => [
+      {
+        ...mockActions[0],
+        id: 9701,
+        name: "Deploy preview",
+        status: "in_progress",
+        conclusion: null
+      },
+      {
+        ...mockActions[1],
+        id: 9702,
+        name: "Release validation",
+        status: "completed",
+        conclusion: "success"
+      }
+    ]);
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "actions" }
+    });
+    renderControl(makeApi({ mutate, listActions }));
+
+    expect(await screen.findByRole("heading", { name: "Deploy preview" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Rerun" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "Cancel run" }));
+
+    await waitFor(() =>
+      expect(mutate).toHaveBeenCalledWith(
+        {
+          action: "cancelWorkflow",
+          owner: "apple",
+          repo: "swift",
+          payload: { runId: 9701 }
+        },
+        expect.anything()
+      )
+    );
+    expect(confirm).toHaveBeenCalledWith("Run cancelWorkflow on apple/swift?");
+
+    await userEvent.click(screen.getByRole("button", { name: /Release validation/i }));
+
+    expect(
+      await screen.findByText("Cancel unavailable: Completed workflow runs cannot be canceled.")
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cancel run" })).toBeDisabled();
+  });
+
+  it("reruns only failed workflow jobs when the selected run failed", async () => {
+    const mutate = vi.fn<ControlApi["github"]["mutate"]>(async (input) => ({
+      ok: true,
+      action: input.action,
+      message: `${input.action} ok`
+    }));
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "actions" }
+    });
+    renderControl(makeApi({ mutate }));
+
+    expect(await screen.findByRole("heading", { name: mockActions[0].name })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Rerun failed jobs" }));
+
+    await waitFor(() =>
+      expect(mutate).toHaveBeenCalledWith(
+        {
+          action: "rerunFailedWorkflowJobs",
+          owner: "apple",
+          repo: "swift",
+          payload: { runId: mockActions[0].id }
+        },
+        expect.anything()
+      )
+    );
+    expect(confirm).toHaveBeenCalledWith("Run rerunFailedWorkflowJobs on apple/swift?");
+
+    await userEvent.click((await screen.findAllByRole("button", { name: /^Docs/ }))[0]);
+
+    expect(
+      await screen.findByText(
+        "Failed-job rerun unavailable: Only failed workflow runs can rerun failed jobs."
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Rerun failed jobs" })).toBeDisabled();
+  });
+
+  it("renders workflow run jobs, steps, checks, and artifacts in-app", async () => {
+    const getWorkflowRunDetailWithStatus = vi.fn<ControlApi["github"]["getWorkflowRunDetailWithStatus"]>(async (input) => ({
+      detail: {
+        ...mockWorkflowRunDetail,
+        id: input.runId
+      },
+      availability: { status: "available", message: null }
+    }));
+    const mutate = vi.fn<ControlApi["github"]["mutate"]>(async (input) => ({
+      ok: true,
+      action: input.action,
+      message: `${input.action} ok`
+    }));
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "actions" }
+    });
+    renderControl({ ...makeApi({ getWorkflowRunDetailWithStatus, mutate }), openExternal });
+
+    expect(await screen.findByRole("heading", { name: mockActions[0].name })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(getWorkflowRunDetailWithStatus).toHaveBeenCalledWith({
+        owner: "apple",
+        repo: "swift",
+        runId: mockActions[0].id,
+        cacheOnly: false
+      })
+    );
+
+    expect(await screen.findByText("macOS build")).toBeInTheDocument();
+    expect(screen.getByText("Build compiler")).toBeInTheDocument();
+    expect(screen.getByText("build-logs")).toBeInTheDocument();
+    expect(screen.getByText("1 jobs")).toBeInTheDocument();
+    expect(screen.getByText("1 checks")).toBeInTheDocument();
+    expect(screen.getByText("1 artifacts")).toBeInTheDocument();
+    expect(screen.getByText("Swift build")).toBeInTheDocument();
+    expect(screen.getByText("Swift build failed")).toBeInTheDocument();
+    expect(screen.getByText("Compiler test failed")).toBeInTheDocument();
+    expect(screen.getByText("Temporary download ready")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Download logs" }));
+
+    expect(openExternal).toHaveBeenCalledWith("https://pipelines.actions.githubusercontent.com/logs.zip");
+
+    await userEvent.click(screen.getByRole("button", { name: "Rerun job" }));
+
+    await waitFor(() =>
+      expect(mutate).toHaveBeenCalledWith(
+        {
+          action: "rerunWorkflowJob",
+          owner: "apple",
+          repo: "swift",
+          payload: { jobId: 7100 }
+        },
+        expect.anything()
+      )
+    );
+    expect(confirm).toHaveBeenCalledWith("Run rerunWorkflowJob on apple/swift?");
+  });
+
+  it("renders repository discussions in-app with filtering and external fallback", async () => {
+    const listDiscussionsWithStatus = vi.fn<ControlApi["github"]["listDiscussionsWithStatus"]>(async () => ({
+      items: mockDiscussions,
+      availability: { status: "available", message: null }
+    }));
+    const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "discussions" }
+    });
+    renderControl({ ...makeApi({ listDiscussionsWithStatus }), openExternal });
+
+    expect(
+      (await screen.findAllByRole("button", { name: /^Swift 6 concurrency migration notes/ })).length
+    ).toBeGreaterThan(0);
+    expect(listDiscussionsWithStatus).toHaveBeenCalledWith({ owner: "apple", repo: "swift", limit: 30 });
+
+    await userEvent.type(screen.getByLabelText("Filter discussions"), "package");
+
+    expect(
+      (await screen.findAllByRole("button", { name: /^Package manager ergonomics/ })).length
+    ).toBeGreaterThan(0);
+    expect(
+      screen.queryByRole("button", { name: /^Swift 6 concurrency migration notes/ })
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Open discussion" }));
+
+    expect(openExternal).toHaveBeenCalledWith(mockDiscussions[1].htmlUrl);
+  });
+
+  it("renders discussion rate limits without treating them as empty lists", async () => {
+    const listDiscussionsWithStatus = vi.fn<ControlApi["github"]["listDiscussionsWithStatus"]>(async () => ({
+      items: [],
+      availability: { status: "rate_limited", message: "API rate limit exceeded" }
+    }));
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "discussions" }
+    });
+    renderControl(makeApi({ listDiscussionsWithStatus }));
+
+    expect(
+      await screen.findByText("GitHub rate-limited the discussions request. API rate limit exceeded")
+    ).toBeInTheDocument();
+    expect(screen.queryByText("No discussions returned.")).not.toBeInTheDocument();
+  });
+
+  it("renders repository projects in-app and exposes provider errors", async () => {
+    const listProjectsWithStatus = vi
+      .fn<ControlApi["github"]["listProjectsWithStatus"]>()
+      .mockResolvedValueOnce({
+        items: mockProjects,
+        availability: { status: "available", message: null }
+      })
+      .mockResolvedValue({
+        items: [],
+        availability: { status: "permission_denied", message: "Projects are not enabled or accessible." }
+      });
+    const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "projects" }
+    });
+    renderControl({ ...makeApi({ listProjectsWithStatus }), openExternal });
+
+    expect(await screen.findByRole("button", { name: /^Compiler quality/ })).toBeInTheDocument();
+    expect(listProjectsWithStatus).toHaveBeenCalledWith({ owner: "apple", repo: "swift", limit: 20 });
+
+    await userEvent.click(screen.getByRole("button", { name: "Open project" }));
+    expect(openExternal).toHaveBeenCalledWith(mockProjects[0].htmlUrl);
+
+    await userEvent.click(screen.getByRole("button", { name: "Refresh apple/swift" }));
+
+    expect(
+      await screen.findByText(
+        "The current GitHub token cannot access projects. Projects are not enabled or accessible."
+      )
+    ).toBeInTheDocument();
+  });
+
+  it("renders project GraphQL errors without treating them as empty lists", async () => {
+    const listProjectsWithStatus = vi.fn<ControlApi["github"]["listProjectsWithStatus"]>(async () => ({
+      items: [],
+      availability: { status: "graphql_error", message: "GraphQL failed while loading repository projects" }
+    }));
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "projects" }
+    });
+    renderControl(makeApi({ listProjectsWithStatus }));
+
+    expect(
+      await screen.findByText(
+        "GitHub returned a GraphQL error for projects. GraphQL failed while loading repository projects"
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText("No projects returned.")).not.toBeInTheDocument();
+  });
+
+  it("renders branch protection in the security and quality tab", async () => {
+    const getBranchProtection = vi.fn<ControlApi["github"]["getBranchProtection"]>(
+      async () => mockBranchProtection
+    );
+    const listDependabotAlerts = vi.fn<ControlApi["github"]["listDependabotAlerts"]>(async () => ({
+      items: mockDependabotAlerts,
+      availability: { status: "available", message: null }
+    }));
+    const listCodeScanningAlerts = vi.fn<ControlApi["github"]["listCodeScanningAlerts"]>(async () => ({
+      items: mockCodeScanningAlerts,
+      availability: { status: "available", message: null }
+    }));
+    const listSecretScanningAlerts = vi.fn<ControlApi["github"]["listSecretScanningAlerts"]>(async () => ({
+      items: mockSecretScanningAlerts,
+      availability: { status: "available", message: null }
+    }));
+    const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "securityQuality" }
+    });
+    renderControl({
+      ...makeApi({
+        getBranchProtection,
+        listDependabotAlerts,
+        listCodeScanningAlerts,
+        listSecretScanningAlerts
+      }),
+      openExternal
+    });
+
+    expect(await screen.findByRole("heading", { name: "Default branch protection" })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(getBranchProtection).toHaveBeenCalledWith({ owner: "apple", repo: "swift", branch: "main" })
+    );
+    await waitFor(() =>
+      expect(listDependabotAlerts).toHaveBeenCalledWith({
+        owner: "apple",
+        repo: "swift",
+        state: "open",
+        limit: 20
+      })
+    );
+    await waitFor(() =>
+      expect(listCodeScanningAlerts).toHaveBeenCalledWith({
+        owner: "apple",
+        repo: "swift",
+        state: "open",
+        limit: 20
+      })
+    );
+    await waitFor(() =>
+      expect(listSecretScanningAlerts).toHaveBeenCalledWith({
+        owner: "apple",
+        repo: "swift",
+        state: "open",
+        limit: 20
+      })
+    );
+    expect(screen.getByText("protected")).toBeInTheDocument();
+    expect(screen.getByText("macOS build")).toBeInTheDocument();
+    expect(screen.getByText("linux build")).toBeInTheDocument();
+    expect(screen.getByText("Linear history: Enabled")).toBeInTheDocument();
+    expect(screen.getByText("Force pushes: Disabled")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Dependabot alerts" })).toBeInTheDocument();
+    expect(screen.getByText("swift-nio")).toBeInTheDocument();
+    expect(screen.getByText("Improper input validation in dependency metadata")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Code scanning alerts" })).toBeInTheDocument();
+    expect(screen.getByText("swift/path-injection")).toBeInTheDocument();
+    expect(screen.getByText("This path depends on a user-provided value.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Secret scanning alerts" })).toBeInTheDocument();
+    expect(screen.getByText("Mailchimp API Key")).toBeInTheDocument();
+    expect(screen.getByText("Secret value hidden by Control.")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Open alert" }));
+    expect(openExternal).toHaveBeenCalledWith(mockDependabotAlerts[0].htmlUrl);
+    await userEvent.click(screen.getByRole("button", { name: "Open code alert" }));
+    expect(openExternal).toHaveBeenCalledWith(mockCodeScanningAlerts[0].htmlUrl);
+    await userEvent.click(screen.getByRole("button", { name: "Open secret alert" }));
+    expect(openExternal).toHaveBeenCalledWith(mockSecretScanningAlerts[0].htmlUrl);
+
+    await userEvent.click(screen.getByRole("button", { name: "Open branch rules" }));
+
+    expect(openExternal).toHaveBeenCalledWith("https://github.com/apple/swift/settings/branches");
+  });
+
+  it("renders Dependabot permission states without confusing them with empty alerts", async () => {
+    const listDependabotAlerts = vi.fn<ControlApi["github"]["listDependabotAlerts"]>(async () => ({
+      items: [],
+      availability: { status: "permission_denied", message: "Resource not accessible by integration" }
+    }));
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "securityQuality" }
+    });
+    renderControl(makeApi({ listDependabotAlerts }));
+
+    expect(
+      await screen.findByText(
+        "The current GitHub token cannot access dependabot alerts. Resource not accessible by integration"
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText("No open Dependabot alerts.")).not.toBeInTheDocument();
+  });
+
+  it("renders code scanning feature-disabled states without confusing them with empty alerts", async () => {
+    const listCodeScanningAlerts = vi.fn<ControlApi["github"]["listCodeScanningAlerts"]>(async () => ({
+      items: [],
+      availability: { status: "feature_disabled", message: "Code scanning is not enabled." }
+    }));
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "securityQuality" }
+    });
+    renderControl(makeApi({ listCodeScanningAlerts }));
+
+    expect(
+      await screen.findByText(
+        "Code scanning alerts is disabled or not enabled for this repository. Code scanning is not enabled."
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText("No open code scanning alerts.")).not.toBeInTheDocument();
+  });
+
+  it("renders secret scanning permission states without confusing them with empty alerts", async () => {
+    const listSecretScanningAlerts = vi.fn<ControlApi["github"]["listSecretScanningAlerts"]>(async () => ({
+      items: [],
+      availability: { status: "permission_denied", message: "Resource not accessible by integration" }
+    }));
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "securityQuality" }
+    });
+    renderControl(makeApi({ listSecretScanningAlerts }));
+
+    expect(
+      await screen.findByText(
+        "The current GitHub token cannot access secret scanning alerts. Resource not accessible by integration"
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText("No open secret scanning alerts.")).not.toBeInTheDocument();
+  });
+
+  it("creates and deletes releases from the repository releases tab", async () => {
+    const mutate = vi.fn<ControlApi["github"]["mutate"]>(async (input) => ({
+      ok: true,
+      action: input.action,
+      message: `${input.action} ok`
+    }));
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "releases" }
+    });
+    renderControl({ ...makeApi({ mutate }), openExternal });
+
+    expect((await screen.findAllByRole("button", { name: /^Swift 5\.10\.0/ })).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Release notes include compiler fixes/)).toBeInTheDocument();
+    expect(screen.getByText("swift-5.10.0-macos.pkg")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Download" }));
+    expect(openExternal).toHaveBeenCalledWith(mockReleases[0].assets[0]?.browserDownloadUrl);
+
+    await userEvent.click(screen.getByRole("button", { name: "New release" }));
+    await userEvent.type(screen.getByPlaceholderText("Release tag"), "swift-5.11.0");
+    await userEvent.type(screen.getByPlaceholderText("Release name"), "Swift 5.11.0");
+    await userEvent.type(screen.getByPlaceholderText("Release notes"), "Release notes from Control");
+    await userEvent.click(screen.getByLabelText("Prerelease"));
+    await userEvent.click(screen.getByRole("button", { name: /Create release/i }));
+
+    await waitFor(() =>
+      expect(mutate).toHaveBeenCalledWith(
+        {
+          action: "createRelease",
+          owner: "apple",
+          repo: "swift",
+          payload: {
+            tag_name: "swift-5.11.0",
+            target_commitish: "main",
+            name: "Swift 5.11.0",
+            body: "Release notes from Control",
+            draft: false,
+            prerelease: true
+          }
+        },
+        expect.anything()
+      )
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Edit release" }));
+    await userEvent.clear(screen.getByPlaceholderText("Release name"));
+    await userEvent.type(screen.getByPlaceholderText("Release name"), "Swift 5.10.1");
+    await userEvent.type(screen.getByPlaceholderText("Release notes"), "Edited release notes from Control");
+    await userEvent.click(screen.getByLabelText("Draft"));
+    await userEvent.click(screen.getByRole("button", { name: /Save release/i }));
+
+    await waitFor(() =>
+      expect(mutate).toHaveBeenCalledWith(
+        {
+          action: "editRelease",
+          owner: "apple",
+          repo: "swift",
+          payload: {
+            releaseId: mockReleases[0].id,
+            tag_name: "swift-5.10.0",
+            target_commitish: "main",
+            name: "Swift 5.10.1",
+            body: "Edited release notes from Control",
+            draft: true,
+            prerelease: false
+          }
+        },
+        expect.anything()
+      )
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Delete release" }));
+
+    await waitFor(() =>
+      expect(mutate).toHaveBeenCalledWith(
+        {
+          action: "deleteRelease",
+          owner: "apple",
+          repo: "swift",
+          payload: { releaseId: mockReleases[0].id }
+        },
+        expect.anything()
+      )
+    );
+    expect(confirm).toHaveBeenCalledWith("Run deleteRelease on apple/swift?");
   });
 
   it("moves from collection navigation back into a repository route when a repository is selected from search", async () => {
@@ -583,6 +2973,32 @@ describe("fork repository count contracts", () => {
         stars: 3,
         watchers: 2
       },
+      parent: {
+        id: "R_parent",
+        owner: "mirror",
+        name: "swift-parent",
+        nameWithOwner: "mirror/swift-parent",
+        htmlUrl: "https://github.com/mirror/swift-parent",
+        defaultBranch: "main",
+        visibility: "PUBLIC",
+        isPrivate: false,
+        forkCount: 20,
+        stargazerCount: 80,
+        viewerPermission: "READ"
+      },
+      source: {
+        id: "R_source",
+        owner: "apple",
+        name: "swift",
+        nameWithOwner: "apple/swift",
+        htmlUrl: "https://github.com/apple/swift",
+        defaultBranch: "main",
+        visibility: "PUBLIC",
+        isPrivate: false,
+        forkCount: 3500,
+        stargazerCount: 23300,
+        viewerPermission: "READ"
+      },
       htmlUrl: "https://github.com/NarukeAlpha/swift-fork"
     };
 
@@ -609,7 +3025,15 @@ describe("fork repository count contracts", () => {
         listActions: async () => mockActions,
         listProjects: async () => mockProjects,
         listReleases: async () => mockReleases,
+        listReleasesWithStatus: async () => ({
+          items: mockReleases,
+          availability: { status: "available", message: null }
+        }),
         listContributors: async () => mockContributors,
+        listContributorsWithStatus: async () => ({
+          items: mockContributors,
+          availability: { status: "available", message: null }
+        }),
         listContents: async () => mockContents,
         getViewer: async () => mockAppState.viewer!
       })
@@ -623,5 +3047,97 @@ describe("fork repository count contracts", () => {
     expect(within(tabs as HTMLElement).getByRole("button", { name: /Issues\s*7/i })).toBeInTheDocument();
   });
 
-  it.todo("shows parent and source repository counts only in fork-context UI, never as primary fork counts");
+  it("shows parent and source repository counts only in fork-context UI, never as primary fork counts", async () => {
+    const forkRepository: RepositoryDetail = {
+      ...mockRepository,
+      id: "R_NarukeAlpha_swift_fork",
+      owner: "NarukeAlpha",
+      name: "swift-fork",
+      nameWithOwner: "NarukeAlpha/swift-fork",
+      description: "Fork of apple/swift",
+      isFork: true,
+      stargazerCount: 3,
+      forkCount: 1,
+      watcherCount: 2,
+      openIssuesCount: 7,
+      counts: {
+        ...mockRepository.counts,
+        openIssues: 7,
+        openPullRequests: 2,
+        forks: 1,
+        stars: 3,
+        watchers: 2
+      },
+      parent: {
+        id: "R_parent",
+        owner: "mirror",
+        name: "swift-parent",
+        nameWithOwner: "mirror/swift-parent",
+        htmlUrl: "https://github.com/mirror/swift-parent",
+        defaultBranch: "main",
+        visibility: "PUBLIC",
+        isPrivate: false,
+        forkCount: 20,
+        stargazerCount: 80,
+        viewerPermission: "READ"
+      },
+      source: {
+        id: "R_source",
+        owner: "apple",
+        name: "swift",
+        nameWithOwner: "apple/swift",
+        htmlUrl: "https://github.com/apple/swift",
+        defaultBranch: "main",
+        visibility: "PUBLIC",
+        isPrivate: false,
+        forkCount: 3500,
+        stargazerCount: 23300,
+        viewerPermission: "ADMIN"
+      },
+      htmlUrl: "https://github.com/NarukeAlpha/swift-fork"
+    };
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: forkRepository.nameWithOwner, tab: "code" },
+      selectedRepository: forkRepository.nameWithOwner
+    });
+
+    renderControl(
+      makeApi({
+        listRepositories: async () => [forkRepository],
+        getRepository: async () => forkRepository,
+        listIssues: async () => [],
+        listPullRequests: async () => [],
+        listDiscussions: async () => [],
+        listActions: async () => [],
+        listProjects: async () => [],
+        listReleases: async () => [],
+        listReleasesWithStatus: async () => ({
+          items: [],
+          availability: { status: "available", message: null }
+        }),
+        listContributors: async () => [],
+        listContributorsWithStatus: async () => ({
+          items: [],
+          availability: { status: "available", message: null }
+        }),
+        listContents: async () => mockContents,
+        getViewer: async () => mockAppState.viewer!
+      })
+    );
+
+    expect(await screen.findByRole("heading", { name: /NarukeAlpha \/ swift-fork/i })).toBeInTheDocument();
+
+    const actionRow = document.querySelector(".repo-action-row");
+    expect(actionRow).not.toBeNull();
+    expect(within(actionRow as HTMLElement).getByRole("button", { name: /Fork\s*1/i })).toBeInTheDocument();
+    expect(within(actionRow as HTMLElement).queryByText(/3\.5K forks/i)).not.toBeInTheDocument();
+
+    expect(screen.getByRole("button", { name: "mirror/swift-parent" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "apple/swift" })).toBeInTheDocument();
+    expect(screen.getByText(/20 forks/i)).toBeInTheDocument();
+    expect(screen.getByText(/3\.5K forks/i)).toBeInTheDocument();
+    expect(screen.getByText(/admin access/i)).toBeInTheDocument();
+  });
 });

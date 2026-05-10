@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 import type { ControlSettings, RepositoryDetail, RepositorySummary } from "@shared/github";
+import type { LocalRecentItem, LocalRecentListInput, LocalRecentMetadata } from "@shared/local";
 
 const defaultSettings: ControlSettings = {
   credentialProvider: "github-oauth",
@@ -16,13 +17,27 @@ interface CacheRecord {
   expiresAt: string | null;
 }
 
+interface CacheReadOptions {
+  allowExpired?: boolean;
+}
+
+interface RecentItemRow {
+  kind: string;
+  provider: string;
+  itemKey: string;
+  payload: string;
+  updatedAt: string;
+}
+
 export interface LocalStore {
   getSettings(): ControlSettings;
   updateSettings(settings: Partial<ControlSettings>): ControlSettings;
   saveAccount(provider: string, login: string, payload: unknown): void;
-  getCache<T>(provider: string, cacheKey: string): T | null;
+  getCache<T>(provider: string, cacheKey: string, options?: CacheReadOptions): T | null;
   setCache(record: CacheRecord): void;
+  clearCacheByPrefix(provider: string, cacheKeyPrefix: string): void;
   addRecentItem(kind: string, provider: string, itemKey: string, payload: unknown): void;
+  listRecentItems(input?: LocalRecentListInput): LocalRecentItem[];
   listGitHubRepositories(limit?: number): RepositorySummary[];
   getGitHubRepository(id: string): RepositorySummary | null;
   getGitHubRepositoryDetail(id: string): RepositoryDetail | null;
@@ -124,7 +139,10 @@ class SqliteLocalStore implements LocalStore {
   }
 
   getSettings(): ControlSettings {
-    const rows = this.db.prepare("SELECT key, value FROM settings").all() as Array<{ key: string; value: string }>;
+    const rows = this.db.prepare("SELECT key, value FROM settings").all() as Array<{
+      key: string;
+      value: string;
+    }>;
     const stored = rows.reduce<Record<string, unknown>>((acc, row) => {
       acc[row.key] = JSON.parse(row.value) as unknown;
       return acc;
@@ -167,16 +185,18 @@ class SqliteLocalStore implements LocalStore {
       .run(provider, login, JSON.stringify(payload));
   }
 
-  getCache<T>(provider: string, cacheKey: string): T | null {
+  getCache<T>(provider: string, cacheKey: string, options: CacheReadOptions = {}): T | null {
     const row = this.db
-      .prepare("SELECT payload, expires_at AS expiresAt FROM cache_entries WHERE provider = ? AND cache_key = ?")
+      .prepare(
+        "SELECT payload, expires_at AS expiresAt FROM cache_entries WHERE provider = ? AND cache_key = ?"
+      )
       .get(provider, cacheKey) as { payload: string; expiresAt: string | null } | undefined;
 
     if (!row) {
       return null;
     }
 
-    if (row.expiresAt && Date.parse(row.expiresAt) < Date.now()) {
+    if (!options.allowExpired && row.expiresAt && Date.parse(row.expiresAt) < Date.now()) {
       return null;
     }
 
@@ -203,14 +223,47 @@ class SqliteLocalStore implements LocalStore {
       });
   }
 
+  clearCacheByPrefix(provider: string, cacheKeyPrefix: string): void {
+    this.db
+      .prepare("DELETE FROM cache_entries WHERE provider = ? AND cache_key LIKE ?")
+      .run(provider, `${cacheKeyPrefix}%`);
+  }
+
   addRecentItem(kind: string, provider: string, itemKey: string, payload: unknown): void {
     this.db
       .prepare(
         `INSERT INTO recent_items (kind, provider, item_key, payload, updated_at)
-         VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-         ON CONFLICT(kind, provider, item_key) DO UPDATE SET payload = excluded.payload, updated_at = CURRENT_TIMESTAMP`
+         VALUES (?, ?, ?, ?, STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now'))
+         ON CONFLICT(kind, provider, item_key) DO UPDATE SET
+           payload = excluded.payload,
+           updated_at = STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')`
       )
       .run(kind, provider, itemKey, JSON.stringify(payload));
+  }
+
+  listRecentItems(input: LocalRecentListInput = {}): LocalRecentItem[] {
+    const limit = normalizeRecentLimit(input.limit);
+    const rows = input.kind
+      ? (this.db
+          .prepare(
+            `SELECT kind, provider, item_key AS itemKey, payload, updated_at AS updatedAt
+             FROM recent_items
+             WHERE provider = 'github' AND kind = ?
+             ORDER BY updated_at DESC, rowid DESC
+             LIMIT ?`
+          )
+          .all(input.kind, limit) as RecentItemRow[])
+      : (this.db
+          .prepare(
+            `SELECT kind, provider, item_key AS itemKey, payload, updated_at AS updatedAt
+             FROM recent_items
+             WHERE provider = 'github'
+             ORDER BY updated_at DESC, rowid DESC
+             LIMIT ?`
+          )
+          .all(limit) as RecentItemRow[]);
+
+    return rows.map((row) => mapRecentItemRow(row)).filter((item): item is LocalRecentItem => Boolean(item));
   }
 
   listGitHubRepositories(limit = 80): RepositorySummary[] {
@@ -356,7 +409,9 @@ class SqliteLocalStore implements LocalStore {
 
   pinRepository(nameWithOwner: string): void {
     this.db
-      .prepare("INSERT OR IGNORE INTO pinned_repositories (name_with_owner, created_at) VALUES (?, CURRENT_TIMESTAMP)")
+      .prepare(
+        "INSERT OR IGNORE INTO pinned_repositories (name_with_owner, created_at) VALUES (?, CURRENT_TIMESTAMP)"
+      )
       .run(nameWithOwner);
   }
 
@@ -376,8 +431,14 @@ class MemoryLocalStore implements LocalStore {
   private settings = defaultSettings;
   private readonly accounts = new Map<string, unknown>();
   private readonly cache = new Map<string, CacheRecord>();
-  private readonly recentItems = new Map<string, unknown>();
-  private readonly repositories = new Map<string, { summary: RepositorySummary; detail: RepositoryDetail | null; readme: string | null }>();
+  private readonly recentItems = new Map<
+    string,
+    { kind: string; provider: string; itemKey: string; payload: unknown; updatedAt: string }
+  >();
+  private readonly repositories = new Map<
+    string,
+    { summary: RepositorySummary; detail: RepositoryDetail | null; readme: string | null }
+  >();
   private readonly pinnedRepositories = new Set<string>();
 
   getSettings(): ControlSettings {
@@ -393,12 +454,12 @@ class MemoryLocalStore implements LocalStore {
     this.accounts.set(`${provider}:${login}`, payload);
   }
 
-  getCache<T>(provider: string, cacheKey: string): T | null {
+  getCache<T>(provider: string, cacheKey: string, options: CacheReadOptions = {}): T | null {
     const record = this.cache.get(`${provider}:${cacheKey}`);
     if (!record) {
       return null;
     }
-    if (record.expiresAt && Date.parse(record.expiresAt) < Date.now()) {
+    if (!options.allowExpired && record.expiresAt && Date.parse(record.expiresAt) < Date.now()) {
       return null;
     }
     return record.payload as T;
@@ -408,16 +469,41 @@ class MemoryLocalStore implements LocalStore {
     this.cache.set(`${record.provider}:${record.cacheKey}`, record);
   }
 
+  clearCacheByPrefix(provider: string, cacheKeyPrefix: string): void {
+    const keyPrefix = `${provider}:${cacheKeyPrefix}`;
+    for (const key of this.cache.keys()) {
+      if (key.startsWith(keyPrefix)) {
+        this.cache.delete(key);
+      }
+    }
+  }
+
   addRecentItem(kind: string, provider: string, itemKey: string, payload: unknown): void {
-    this.recentItems.set(`${kind}:${provider}:${itemKey}`, payload);
+    this.recentItems.set(`${kind}:${provider}:${itemKey}`, {
+      kind,
+      provider,
+      itemKey,
+      payload,
+      updatedAt: new Date().toISOString()
+    });
+  }
+
+  listRecentItems(input: LocalRecentListInput = {}): LocalRecentItem[] {
+    return [...this.recentItems.values()]
+      .filter((item) => item.provider === "github" && (!input.kind || item.kind === input.kind))
+      .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+      .slice(0, normalizeRecentLimit(input.limit))
+      .map((item) => mapRecentItemRow({ ...item, payload: JSON.stringify(item.payload) }))
+      .filter((item): item is LocalRecentItem => Boolean(item));
   }
 
   listGitHubRepositories(limit = 80): RepositorySummary[] {
     return [...this.repositories.values()]
       .map((record) => record.summary)
-      .sort((a, b) =>
-        (Date.parse(b.pushedAt ?? b.updatedAt ?? "0") || 0) -
-        (Date.parse(a.pushedAt ?? a.updatedAt ?? "0") || 0)
+      .sort(
+        (a, b) =>
+          (Date.parse(b.pushedAt ?? b.updatedAt ?? "0") || 0) -
+          (Date.parse(a.pushedAt ?? a.updatedAt ?? "0") || 0)
       )
       .slice(0, limit);
   }
@@ -472,7 +558,10 @@ class MemoryLocalStore implements LocalStore {
   }
 }
 
-function toGitHubRepositoryRow(repository: RepositorySummary, detail: RepositoryDetail | null): Record<string, unknown> {
+function toGitHubRepositoryRow(
+  repository: RepositorySummary,
+  detail: RepositoryDetail | null
+): Record<string, unknown> {
   return {
     id: repository.nameWithOwner,
     owner: repository.owner,
@@ -500,12 +589,116 @@ function toGitHubRepositoryRow(repository: RepositorySummary, detail: Repository
   };
 }
 
+function normalizeRecentLimit(limit: number | undefined): number {
+  return typeof limit === "number" && Number.isFinite(limit)
+    ? Math.min(50, Math.max(1, Math.trunc(limit)))
+    : 12;
+}
+
+function mapRecentItemRow(row: RecentItemRow): LocalRecentItem | null {
+  if (!isLocalRecentKind(row.kind) || row.provider !== "github") {
+    return null;
+  }
+
+  const payload = parseRecentPayload(row.payload);
+  const repositoryNameWithOwner =
+    stringValue(payload.repositoryNameWithOwner) ??
+    stringValue(payload.nameWithOwner) ??
+    (row.kind === "repository" ? row.itemKey : null);
+  const metadata = metadataValue(payload.metadata);
+
+  if (!metadata.path && typeof payload.path === "string") {
+    metadata.path = payload.path;
+  }
+  if (!metadata.ref && typeof payload.ref === "string") {
+    metadata.ref = payload.ref;
+  }
+  if (!metadata.number && typeof payload.number === "number") {
+    metadata.number = payload.number;
+  }
+
+  return {
+    kind: row.kind,
+    provider: "github",
+    itemKey: row.itemKey,
+    title: stringValue(payload.title) ?? stringValue(payload.nameWithOwner) ?? row.itemKey,
+    subtitle: stringValue(payload.subtitle) ?? stringValue(payload.description),
+    repositoryNameWithOwner,
+    url:
+      stringValue(payload.url) ??
+      stringValue(payload.htmlUrl) ??
+      (repositoryNameWithOwner ? `https://github.com/${repositoryNameWithOwner}` : null),
+    metadata,
+    updatedAt: row.updatedAt
+  };
+}
+
+function parseRecentPayload(payload: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(payload) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function isLocalRecentKind(kind: string): kind is LocalRecentItem["kind"] {
+  return (
+    kind === "repository" ||
+    kind === "commit" ||
+    kind === "issue" ||
+    kind === "pullRequest" ||
+    kind === "discussion" ||
+    kind === "organization" ||
+    kind === "team" ||
+    kind === "contributor" ||
+    kind === "project" ||
+    kind === "release" ||
+    kind === "releaseAsset" ||
+    kind === "workflowRun" ||
+    kind === "workflowArtifact" ||
+    kind === "securityItem" ||
+    kind === "wikiPage" ||
+    kind === "file"
+  );
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function metadataValue(value: unknown): LocalRecentMetadata {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  return Object.entries(value as Record<string, unknown>).reduce<LocalRecentMetadata>(
+    (metadata, [key, item]) => {
+      if (
+        typeof item === "string" ||
+        typeof item === "number" ||
+        typeof item === "boolean" ||
+        item === null
+      ) {
+        metadata[key] = item;
+      }
+      return metadata;
+    },
+    {}
+  );
+}
+
 function normalizeSettings(settings: Record<string, unknown>): ControlSettings {
-  const credentialProvider = settings.credentialProvider === "github-oauth" ? "github-oauth" : defaultSettings.credentialProvider;
+  const credentialProvider =
+    settings.credentialProvider === "github-oauth" ? "github-oauth" : defaultSettings.credentialProvider;
   return {
     credentialProvider,
     glassMode:
-      settings.glassMode === "reduced" || settings.glassMode === "solid" || settings.glassMode === "glass-shell"
+      settings.glassMode === "reduced" ||
+      settings.glassMode === "solid" ||
+      settings.glassMode === "glass-shell"
         ? settings.glassMode
         : defaultSettings.glassMode
   };

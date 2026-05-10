@@ -27,7 +27,6 @@ Windows and Linux should get a separate shell implementation instead of trying t
 - Validate optional native modules on each target:
   - `better-sqlite3` installation and rebuilds.
   - `keytar` availability and fallback behavior.
-  - GitHub CLI discovery in platform-specific install paths.
 - Add platform-specific signing and notarization plans:
   - Windows code signing certificate and installer reputation.
   - Linux AppImage or deb/rpm packaging and desktop entries.
@@ -39,7 +38,7 @@ Windows and Linux should get a separate shell implementation instead of trying t
   - `customTrafficLights`
   - `systemTitlebarControls`
   - `keychainProvider`
-  - `ghCliDiscoveryPaths`
+  - `credentialStorage`
 - Keep the renderer consuming normalized capability flags instead of direct OS checks where possible.
 - Preserve renderer sandboxing, context isolation, and the narrow `window.control` bridge on every platform.
 - Make all external URL opens go through the main process.
@@ -61,7 +60,7 @@ Windows and Linux should get a separate shell implementation instead of trying t
 - Keychain behavior varies by distribution and desktop environment on Linux.
 - Custom titlebars can break expected OS gestures if spacing and drag regions are not platform-specific.
 - Acrylic or blur effects on Windows/Linux can be slower or less predictable than macOS native material.
-- GitHub CLI path discovery and auth status messages may differ by shell and install method.
+- Keychain and browser handoff behavior may differ by shell, desktop environment, and installed browser defaults.
 
 ## Rollout Phases
 
@@ -69,4 +68,4 @@ Windows and Linux should get a separate shell implementation instead of trying t
 2. Add shell capability flags and platform-scoped CSS fallback without changing macOS visuals.
 3. Add Windows/Linux packaging experiments in CI.
 4. Add platform smoke tests for launch, auth setup, repository navigation, and external URL actions.
-5. Promote Windows or Linux to supported status only after visual, packaging, keychain, and GitHub CLI behavior are verified.
+5. Promote Windows or Linux to supported status only after visual, packaging, keychain, and GitHub OAuth behavior are verified.

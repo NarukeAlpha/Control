@@ -34,5 +34,24 @@ export default tseslint.config(
         }
       ]
     }
+  },
+  {
+    files: ["scripts/**/*.cjs"],
+    languageOptions: {
+      sourceType: "commonjs",
+      globals: {
+        console: "readonly",
+        require: "readonly"
+      }
+    },
+    rules: {
+      "@typescript-eslint/no-require-imports": "off"
+    }
+  },
+  {
+    files: ["tests/e2e/benchmarks/support/benchmarkTest.ts"],
+    rules: {
+      "react-hooks/rules-of-hooks": "off"
+    }
   }
 );

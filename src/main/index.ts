@@ -16,6 +16,7 @@ import type {
   CodeScanningAlertsInput,
   ContributorsInput,
   DependabotAlertsInput,
+  DiscussionCategoryListInput,
   DiscussionDetailInput,
   DiscussionListInput,
   GitHubMutationInput,
@@ -65,7 +66,7 @@ import type {
   LocalRecentRecordInput,
   RepositoryPinInput
 } from "@shared/local";
-import { createAppState, GitHubProviderManager } from "./github/provider";
+import { GitHubProviderManager } from "./github/provider";
 import { createLocalStore, type LocalStore } from "./storage";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -262,7 +263,7 @@ function sanitizeRecentMetadata(metadata: unknown): LocalRecentMetadata {
 }
 
 function registerIpc(store: LocalStore, github: GitHubProviderManager): void {
-  ipcMain.handle(ipcChannels.appState, async () => createAppState(store));
+  ipcMain.handle(ipcChannels.appState, async () => github.createAppState());
   ipcMain.handle(ipcChannels.getSettings, () => store.getSettings());
   ipcMain.handle(ipcChannels.updateSettings, (_event, settings) => store.updateSettings(settings));
   ipcMain.handle(ipcChannels.signInWithGitHub, async () =>
@@ -274,7 +275,7 @@ function registerIpc(store: LocalStore, github: GitHubProviderManager): void {
   });
   ipcMain.handle(ipcChannels.clearGitHubToken, async () => {
     await github.clearToken();
-    return createAppState(store);
+    return github.createAppState();
   });
   ipcMain.handle(ipcChannels.openExternal, async (_event, url: string) => {
     if (!url.startsWith("https://")) {
@@ -314,8 +315,9 @@ function registerIpc(store: LocalStore, github: GitHubProviderManager): void {
   ipcMain.handle(ipcChannels.githubAccountRepositories, (_event, input: AccountRepositoryInput = {}) =>
     github.listAccountRepositories(input)
   );
-  ipcMain.handle(ipcChannels.githubAccountRepositoriesWithStatus, (_event, input: AccountRepositoryInput = {}) =>
-    github.listAccountRepositoriesWithStatus(input)
+  ipcMain.handle(
+    ipcChannels.githubAccountRepositoriesWithStatus,
+    (_event, input: AccountRepositoryInput = {}) => github.listAccountRepositoriesWithStatus(input)
   );
   ipcMain.handle(ipcChannels.githubOrganizations, (_event, input: OrganizationListInput = {}) =>
     github.listOrganizations(input)
@@ -342,12 +344,12 @@ function registerIpc(store: LocalStore, github: GitHubProviderManager): void {
     ipcChannels.githubOrganizationTeamMembersWithStatus,
     (_event, input: OrganizationTeamMembersInput) => github.listOrganizationTeamMembersWithStatus(input)
   );
-  ipcMain.handle(
-    ipcChannels.githubOrganizationMembersWithStatus,
-    (_event, input: OrganizationMembersInput) => github.listOrganizationMembersWithStatus(input)
+  ipcMain.handle(ipcChannels.githubOrganizationMembersWithStatus, (_event, input: OrganizationMembersInput) =>
+    github.listOrganizationMembersWithStatus(input)
   );
-  ipcMain.handle(ipcChannels.githubOrganizationProjectsWithStatus, (_event, input: OrganizationProjectsInput) =>
-    github.listOrganizationProjectsWithStatus(input)
+  ipcMain.handle(
+    ipcChannels.githubOrganizationProjectsWithStatus,
+    (_event, input: OrganizationProjectsInput) => github.listOrganizationProjectsWithStatus(input)
   );
   ipcMain.handle(ipcChannels.githubAccountIssues, (_event, input: AccountIssueListInput = {}) =>
     github.listAccountIssues(input)
@@ -375,7 +377,10 @@ function registerIpc(store: LocalStore, github: GitHubProviderManager): void {
     github.unsubscribeNotificationThread(input)
   );
   ipcMain.handle(ipcChannels.githubRepository, (_event, input: RepoDetailInput) =>
-    github.getRepository(input.owner, input.repo, { cacheOnly: input.cacheOnly, forceRefresh: input.forceRefresh })
+    github.getRepository(input.owner, input.repo, {
+      cacheOnly: input.cacheOnly,
+      forceRefresh: input.forceRefresh
+    })
   );
   ipcMain.handle(ipcChannels.githubRepositoryWithStatus, (_event, input: RepoDetailInput) =>
     github.getRepositoryWithStatus(input)
@@ -388,7 +393,9 @@ function registerIpc(store: LocalStore, github: GitHubProviderManager): void {
     github.listBranchesWithStatus(input)
   );
   ipcMain.handle(ipcChannels.githubTags, (_event, input: TagListInput) => github.listTags(input));
-  ipcMain.handle(ipcChannels.githubTagsWithStatus, (_event, input: TagListInput) => github.listTagsWithStatus(input));
+  ipcMain.handle(ipcChannels.githubTagsWithStatus, (_event, input: TagListInput) =>
+    github.listTagsWithStatus(input)
+  );
   ipcMain.handle(ipcChannels.githubTree, (_event, input: RepoTreeInput) => github.listTree(input));
   ipcMain.handle(ipcChannels.githubTreeWithStatus, (_event, input: RepoTreeInput) =>
     github.listTreeWithStatus(input)
@@ -467,6 +474,10 @@ function registerIpc(store: LocalStore, github: GitHubProviderManager): void {
   ipcMain.handle(ipcChannels.githubDiscussionsWithStatus, (_event, input: DiscussionListInput) =>
     github.listDiscussionsWithStatus(input)
   );
+  ipcMain.handle(
+    ipcChannels.githubDiscussionCategoriesWithStatus,
+    (_event, input: DiscussionCategoryListInput) => github.listDiscussionCategoriesWithStatus(input)
+  );
   ipcMain.handle(ipcChannels.githubDiscussionDetail, (_event, input: DiscussionDetailInput) =>
     github.getDiscussionDetail(input)
   );
@@ -515,8 +526,9 @@ function registerIpc(store: LocalStore, github: GitHubProviderManager): void {
   ipcMain.handle(ipcChannels.githubRepositorySecurityPolicy, (_event, input: RepositorySecurityPolicyInput) =>
     github.getRepositorySecurityPolicy(input)
   );
-  ipcMain.handle(ipcChannels.githubRepositoryCommunityProfile, (_event, input: RepositoryCommunityProfileInput) =>
-    github.getRepositoryCommunityProfile(input)
+  ipcMain.handle(
+    ipcChannels.githubRepositoryCommunityProfile,
+    (_event, input: RepositoryCommunityProfileInput) => github.getRepositoryCommunityProfile(input)
   );
   ipcMain.handle(ipcChannels.githubReleases, (_event, input: ReleasesInput) => github.listReleases(input));
   ipcMain.handle(ipcChannels.githubReleasesWithStatus, (_event, input: ReleasesInput) =>
@@ -558,9 +570,15 @@ async function bootstrap(): Promise<void> {
   await app.whenReady();
 
   const store = await createLocalStore(app.getPath("userData"));
-  const github = new GitHubProviderManager(store, (nameWithOwner) => {
-    mainWindow?.webContents.send(ipcChannels.githubRepositoriesUpdated, { nameWithOwner });
-  });
+  const github = new GitHubProviderManager(
+    store,
+    (nameWithOwner) => {
+      mainWindow?.webContents.send(ipcChannels.githubRepositoriesUpdated, { nameWithOwner });
+    },
+    (appState) => {
+      mainWindow?.webContents.send(ipcChannels.githubAuthUpdated, { appState });
+    }
+  );
 
   registerIpc(store, github);
   createWindow();

@@ -28,6 +28,9 @@ import type {
   DependabotAlertSummary,
   DependabotAlertsInput,
   DependabotAlertsResult,
+  DiscussionCategoryListInput,
+  DiscussionCategoryListResult,
+  DiscussionCategorySummary,
   DiscussionDetail,
   DiscussionDetailInput,
   DiscussionDetailResult,
@@ -180,9 +183,30 @@ const contentCommitMetadataLimit = 25;
 const contentCommitFileStatsLimit = 8;
 const securityPolicyContentLimit = 128_000;
 const workflowCheckRunAnnotationLimit = 10;
+const githubGraphqlConnectionPageLimit = 100;
+const defaultDiscussionDetailCommentsLimit = 100;
+const defaultDiscussionDetailRepliesLimit = 20;
+const maxDiscussionDetailCommentsLimit = 500;
+const maxDiscussionDetailRepliesLimit = 500;
 const defaultWorkflowDefinitionLimit = 50;
 const maxWorkflowDefinitionLimit = 100;
 const securityPolicyCandidatePaths = ["SECURITY.md", ".github/SECURITY.md", "docs/SECURITY.md"];
+
+const discussionCommentNodeSelection = `
+  id
+  author { login avatarUrl }
+  body
+  createdAt
+  updatedAt
+  url
+`;
+
+const pullRequestReviewThreadCommentNodeSelection = `
+  databaseId
+  replyTo {
+    databaseId
+  }
+`;
 
 const repositorySummaryFragment = `
   fragment RepositorySummaryFields on Repository {
@@ -603,7 +627,9 @@ export class OctokitProvider implements GitHubProvider {
     }
   }
 
-  async listOrganizationMembersWithStatus(input: OrganizationMembersInput): Promise<OrganizationMembersResult> {
+  async listOrganizationMembersWithStatus(
+    input: OrganizationMembersInput
+  ): Promise<OrganizationMembersResult> {
     try {
       const members = await this.restPaginatedArray<GitHubOrganizationMember>(
         "GET /orgs/{org}/members",
@@ -1470,8 +1496,8 @@ export class OctokitProvider implements GitHubProvider {
       const selectedPath = input.pagePath ?? findDefaultWikiPagePath(limitedPages);
       const selectedSummary =
         (selectedPath
-          ? pages.find((page) => page.path === selectedPath) ??
-            wikiPageSummaryFromPath(input.owner, input.repo, selectedPath)
+          ? (pages.find((page) => page.path === selectedPath) ??
+            wikiPageSummaryFromPath(input.owner, input.repo, selectedPath))
           : null) ??
         limitedPages[0] ??
         null;
@@ -1648,10 +1674,14 @@ export class OctokitProvider implements GitHubProvider {
       input.limit ?? 100
     );
 
-    return data.map(mapIssueMilestone).filter((milestone): milestone is MilestoneSummary => Boolean(milestone));
+    return data
+      .map(mapIssueMilestone)
+      .filter((milestone): milestone is MilestoneSummary => Boolean(milestone));
   }
 
-  async listMilestonesWithStatus(input: RepositoryMilestoneListInput): Promise<RepositoryMilestoneListResult> {
+  async listMilestonesWithStatus(
+    input: RepositoryMilestoneListInput
+  ): Promise<RepositoryMilestoneListResult> {
     try {
       return {
         items: await this.listMilestones(input),
@@ -1915,15 +1945,14 @@ export class OctokitProvider implements GitHubProvider {
                 reviewThreads(first: 100, after: $after) {
                   pageInfo { hasNextPage endCursor }
                   nodes {
+                    id
                     isResolved
                     isOutdated
                     path
-                    comments(first: 250) {
+                    comments(first: 100) {
+                      pageInfo { hasNextPage endCursor }
                       nodes {
-                        databaseId
-                        replyTo {
-                          databaseId
-                        }
+                        ${pullRequestReviewThreadCommentNodeSelection}
                       }
                     }
                   }
@@ -1940,13 +1969,17 @@ export class OctokitProvider implements GitHubProvider {
           }
         );
 
-        const threads: {
-          nodes: GitHubPullRequestReviewThreadNode[];
-          pageInfo: { hasNextPage: boolean; endCursor: string | null };
-        } | undefined =
-          data.repository?.pullRequest?.reviewThreads ?? undefined;
+        const threads:
+          | {
+              nodes: GitHubPullRequestReviewThreadNode[];
+              pageInfo: { hasNextPage: boolean; endCursor: string | null };
+            }
+          | undefined = data.repository?.pullRequest?.reviewThreads ?? undefined;
         if (threads?.nodes) {
-          allNodes.push(...threads.nodes);
+          const nodes = await Promise.all(
+            threads.nodes.map((thread) => this.fetchRemainingPullRequestReviewThreadComments(thread))
+          );
+          allNodes.push(...nodes);
         }
         hasNextPage = threads?.pageInfo?.hasNextPage ?? false;
         after = threads?.pageInfo?.endCursor ?? null;
@@ -1962,6 +1995,56 @@ export class OctokitProvider implements GitHubProvider {
         availability: mapGitHubFeatureError(error)
       };
     }
+  }
+
+  private async fetchRemainingPullRequestReviewThreadComments(
+    thread: GitHubPullRequestReviewThreadNode
+  ): Promise<GitHubPullRequestReviewThreadNode> {
+    const comments = [...thread.comments.nodes];
+    let hasNextPage = thread.comments.pageInfo?.hasNextPage ?? false;
+    let after = thread.comments.pageInfo?.endCursor ?? null;
+
+    while (hasNextPage && after) {
+      const data = await this.graphql<{
+        node: {
+          comments: {
+            nodes: GitHubPullRequestReviewThreadCommentNode[];
+            pageInfo: { hasNextPage: boolean; endCursor: string | null };
+          };
+        } | null;
+      }>(
+        `
+        query PullRequestReviewThreadComments($threadId: ID!, $after: String) {
+          node(id: $threadId) {
+            ... on PullRequestReviewThread {
+              comments(first: 100, after: $after) {
+                pageInfo { hasNextPage endCursor }
+                nodes {
+                  ${pullRequestReviewThreadCommentNodeSelection}
+                }
+              }
+            }
+          }
+        }
+        `,
+        {
+          threadId: thread.id,
+          after
+        }
+      );
+      const connection = data.node?.comments;
+      comments.push(...(connection?.nodes ?? []));
+      hasNextPage = connection?.pageInfo.hasNextPage ?? false;
+      after = connection?.pageInfo.endCursor ?? null;
+    }
+
+    return {
+      ...thread,
+      comments: {
+        ...thread.comments,
+        nodes: comments
+      }
+    };
   }
 
   private async fetchPullRequestFiles(
@@ -2196,6 +2279,55 @@ export class OctokitProvider implements GitHubProvider {
     }
   }
 
+  async listDiscussionCategoriesWithStatus(
+    input: DiscussionCategoryListInput
+  ): Promise<DiscussionCategoryListResult> {
+    const limit = Math.min(Math.max(input.limit ?? 25, 1), 100);
+
+    try {
+      const data = await this.graphql<{
+        repository: {
+          discussionCategories: {
+            nodes: Array<{
+              id: string;
+              name: string;
+              emoji?: string | null;
+              description?: string | null;
+              isAnswerable?: boolean | null;
+            }>;
+          };
+        };
+      }>(
+        `
+        query RepositoryDiscussionCategories($owner: String!, $repo: String!, $limit: Int!) {
+          repository(owner: $owner, name: $repo) {
+            discussionCategories(first: $limit) {
+              nodes {
+                id
+                name
+                emoji
+                description
+                isAnswerable
+              }
+            }
+          }
+        }
+      `,
+        { owner: input.owner, repo: input.repo, limit }
+      );
+
+      return {
+        items: data.repository.discussionCategories.nodes.map(mapDiscussionCategory),
+        availability: { status: "available", message: null }
+      };
+    } catch (error) {
+      return {
+        items: [],
+        availability: mapGitHubFeatureError(error)
+      };
+    }
+  }
+
   async getDiscussionDetail(input: DiscussionDetailInput): Promise<DiscussionDetailResult> {
     try {
       return {
@@ -2306,30 +2438,43 @@ export class OctokitProvider implements GitHubProvider {
   }
 
   private async fetchDiscussionDetail(input: DiscussionDetailInput): Promise<DiscussionDetail | null> {
+    const commentsLimit = boundedGitHubGraphqlConnectionLimit(
+      input.commentsLimit,
+      defaultDiscussionDetailCommentsLimit,
+      maxDiscussionDetailCommentsLimit
+    );
+    const repliesLimit = boundedGitHubGraphqlConnectionLimit(
+      input.repliesLimit,
+      defaultDiscussionDetailRepliesLimit,
+      maxDiscussionDetailRepliesLimit
+    );
     const allCommentNodes: GitHubDiscussionCommentNode[] = [];
-    let discussionMeta:
-      | {
-          id: string;
-          number: number;
-          title: string;
-          url: string;
-          body?: string | null;
-          createdAt?: string;
-          updatedAt: string;
-          author: { login: string; avatarUrl?: string | null } | null;
-          category: { name: string } | null;
-          answer?: GitHubDiscussionCommentNode | null;
-          isAnswered?: boolean | null;
-          upvoteCount?: number;
-          closed?: boolean;
-          locked?: boolean;
-        }
-      | null = null;
+    let discussionMeta: {
+      id: string;
+      number: number;
+      title: string;
+      url: string;
+      body?: string | null;
+      createdAt?: string;
+      updatedAt: string;
+      author: { login: string; avatarUrl?: string | null } | null;
+      category: { name: string } | null;
+      answer?: GitHubDiscussionCommentNode | null;
+      isAnswered?: boolean | null;
+      upvoteCount?: number;
+      closed?: boolean;
+      locked?: boolean;
+    } | null = null;
     let totalComments = 0;
     let hasNextPage = true;
     let after: string | null = null;
 
-    while (hasNextPage) {
+    while (hasNextPage && allCommentNodes.length < commentsLimit) {
+      const commentsPageSize = Math.min(
+        githubGraphqlConnectionPageLimit,
+        commentsLimit - allCommentNodes.length
+      );
+      const repliesPageSize = Math.min(githubGraphqlConnectionPageLimit, repliesLimit);
       type DiscussionDetailData = {
         repository: {
           discussion: {
@@ -2361,7 +2506,9 @@ export class OctokitProvider implements GitHubProvider {
           $owner: String!
           $repo: String!
           $number: Int!
+          $commentsPageSize: Int!
           $commentsAfter: String
+          $repliesPageSize: Int!
         ) {
           repository(owner: $owner, name: $repo) {
             discussion(number: $number) {
@@ -2379,32 +2526,18 @@ export class OctokitProvider implements GitHubProvider {
               closed
               locked
               answer {
-                id
-                author { login avatarUrl }
-                body
-                createdAt
-                updatedAt
-                url
+                ${discussionCommentNodeSelection}
               }
-              comments(first: 100, after: $commentsAfter) {
+              comments(first: $commentsPageSize, after: $commentsAfter) {
                 totalCount
                 pageInfo { hasNextPage endCursor }
                 nodes {
-                  id
-                  author { login avatarUrl }
-                  body
-                  createdAt
-                  updatedAt
-                  url
-                  replies(first: 500) {
+                  ${discussionCommentNodeSelection}
+                  replies(first: $repliesPageSize) {
                     totalCount
+                    pageInfo { hasNextPage endCursor }
                     nodes {
-                      id
-                      author { login avatarUrl }
-                      body
-                      createdAt
-                      updatedAt
-                      url
+                      ${discussionCommentNodeSelection}
                     }
                   }
                 }
@@ -2417,7 +2550,9 @@ export class OctokitProvider implements GitHubProvider {
           owner: input.owner,
           repo: input.repo,
           number: input.discussionNumber,
-          commentsAfter: after
+          commentsPageSize,
+          commentsAfter: after,
+          repliesPageSize
         }
       );
 
@@ -2430,7 +2565,8 @@ export class OctokitProvider implements GitHubProvider {
       discussionMeta ??= discussion;
       totalComments = discussion.comments.totalCount;
       allCommentNodes.push(...(discussion.comments.nodes ?? []));
-      hasNextPage = discussion.comments.pageInfo?.hasNextPage ?? false;
+      hasNextPage =
+        allCommentNodes.length < commentsLimit && (discussion.comments.pageInfo?.hasNextPage ?? false);
       after = discussion.comments.pageInfo?.endCursor ?? null;
     }
 
@@ -2438,11 +2574,16 @@ export class OctokitProvider implements GitHubProvider {
       return null;
     }
 
-    const commentsList = allCommentNodes.map((comment) => ({
-      ...mapGraphqlDiscussionComment(comment),
-      replies: (comment.replies?.nodes ?? []).map(mapGraphqlDiscussionComment),
-      repliesTruncated: false
-    }));
+    const commentsList = await Promise.all(
+      allCommentNodes.map(async (comment) => {
+        const replyNodes = await this.fetchDiscussionCommentReplies(comment, repliesLimit);
+        return {
+          ...mapGraphqlDiscussionComment(comment),
+          replies: replyNodes.map(mapGraphqlDiscussionComment),
+          repliesTruncated: (comment.replies?.totalCount ?? replyNodes.length) > replyNodes.length
+        };
+      })
+    );
 
     return {
       id: discussionMeta.id,
@@ -2466,6 +2607,64 @@ export class OctokitProvider implements GitHubProvider {
       updatedAt: discussionMeta.updatedAt,
       htmlUrl: discussionMeta.url
     };
+  }
+
+  private async fetchDiscussionCommentReplies(
+    comment: GitHubDiscussionCommentNode,
+    repliesLimit: number
+  ): Promise<GitHubDiscussionCommentNode[]> {
+    const initialReplies = comment.replies?.nodes ?? [];
+    const totalReplies = comment.replies?.totalCount ?? initialReplies.length;
+    const replies = initialReplies.slice(0, repliesLimit);
+    let hasNextPage =
+      replies.length < repliesLimit &&
+      replies.length < totalReplies &&
+      (comment.replies?.pageInfo?.hasNextPage ?? false);
+    let after = comment.replies?.pageInfo?.endCursor ?? null;
+
+    while (hasNextPage && after) {
+      const repliesPageSize = Math.min(githubGraphqlConnectionPageLimit, repliesLimit - replies.length);
+      const data = await this.graphql<{
+        node: {
+          replies: {
+            totalCount: number;
+            nodes?: GitHubDiscussionCommentNode[];
+            pageInfo: { hasNextPage: boolean; endCursor: string | null };
+          };
+        } | null;
+      }>(
+        `
+        query DiscussionCommentReplies($commentId: ID!, $repliesPageSize: Int!, $after: String) {
+          node(id: $commentId) {
+            ... on DiscussionComment {
+              replies(first: $repliesPageSize, after: $after) {
+                totalCount
+                pageInfo { hasNextPage endCursor }
+                nodes {
+                  ${discussionCommentNodeSelection}
+                }
+              }
+            }
+          }
+        }
+        `,
+        {
+          commentId: comment.id,
+          repliesPageSize,
+          after
+        }
+      );
+      const connection = data.node?.replies;
+      const pageReplies = connection?.nodes ?? [];
+      replies.push(...pageReplies);
+      hasNextPage =
+        replies.length < repliesLimit &&
+        replies.length < (connection?.totalCount ?? totalReplies) &&
+        (connection?.pageInfo?.hasNextPage ?? false);
+      after = connection?.pageInfo?.endCursor ?? null;
+    }
+
+    return replies.slice(0, repliesLimit);
   }
 
   async listActions(input: ActionsInput): Promise<WorkflowRunSummary[]> {
@@ -2496,7 +2695,10 @@ export class OctokitProvider implements GitHubProvider {
   }
 
   async listWorkflows(input: WorkflowListInput): Promise<WorkflowDefinitionSummary[]> {
-    const limit = Math.min(Math.max(input.limit ?? defaultWorkflowDefinitionLimit, 0), maxWorkflowDefinitionLimit);
+    const limit = Math.min(
+      Math.max(input.limit ?? defaultWorkflowDefinitionLimit, 0),
+      maxWorkflowDefinitionLimit
+    );
     const workflows = await this.restPaginatedWrapped<GitHubWorkflowDefinition, "workflows">(
       "GET /repos/{owner}/{repo}/actions/workflows",
       "workflows",
@@ -2647,15 +2849,12 @@ export class OctokitProvider implements GitHubProvider {
     const maxCharacters = Math.min(Math.max(input.maxCharacters ?? 12_000, 1_000), 50_000);
 
     try {
-      const response = await this.restResponse<void>(
-        "GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs",
-        {
-          owner: input.owner,
-          repo: input.repo,
-          job_id: input.jobId,
-          request: { redirect: "manual" }
-        }
-      );
+      const response = await this.restResponse<void>("GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs", {
+        owner: input.owner,
+        repo: input.repo,
+        job_id: input.jobId,
+        request: { redirect: "manual" }
+      });
       const downloadUrl = getResponseHeader(response.headers, "location");
       if (!downloadUrl) {
         return {
@@ -2707,7 +2906,9 @@ export class OctokitProvider implements GitHubProvider {
     owner: string,
     repo: string,
     ref: string | null
-  ): Promise<Pick<WorkflowRunDetail, "checkSuites" | "checkSuitesAvailability" | "checkRuns" | "checkRunsAvailability">> {
+  ): Promise<
+    Pick<WorkflowRunDetail, "checkSuites" | "checkSuitesAvailability" | "checkRuns" | "checkRunsAvailability">
+  > {
     if (!ref) {
       const availability: GitHubReadAvailability = {
         status: "feature_disabled",
@@ -2876,15 +3077,12 @@ export class OctokitProvider implements GitHubProvider {
     }
 
     try {
-      const response = await this.restResponse<void>(
-        "GET /repos/{owner}/{repo}/actions/runs/{run_id}/logs",
-        {
-          owner,
-          repo,
-          run_id: runId,
-          request: { redirect: "manual" }
-        }
-      );
+      const response = await this.restResponse<void>("GET /repos/{owner}/{repo}/actions/runs/{run_id}/logs", {
+        owner,
+        repo,
+        run_id: runId,
+        request: { redirect: "manual" }
+      });
       const downloadUrl = getResponseHeader(response.headers, "location");
       const availability: GitHubReadAvailability = downloadUrl
         ? { status: "available", message: null }
@@ -2961,19 +3159,101 @@ export class OctokitProvider implements GitHubProvider {
                 ... on User { login url }
                 ... on Repository { nameWithOwner url }
               }
-              items(first: 1) { totalCount }
+              items(first: 20) {
+                totalCount
+                nodes {
+                  id
+                  type
+                  createdAt
+                  updatedAt
+                  fieldValues(first: 20) {
+                    totalCount
+                    nodes {
+                      __typename
+                      ... on ProjectV2ItemFieldValueCommon {
+                        id
+                        field { ...ProjectV2FieldMetadata }
+                      }
+                      ... on ProjectV2ItemFieldTextValue {
+                        text
+                      }
+                      ... on ProjectV2ItemFieldNumberValue {
+                        number
+                      }
+                      ... on ProjectV2ItemFieldDateValue {
+                        date
+                      }
+                      ... on ProjectV2ItemFieldSingleSelectValue {
+                        name
+                        optionId
+                      }
+                      ... on ProjectV2ItemFieldIterationValue {
+                        title
+                      }
+                    }
+                  }
+                  content {
+                    __typename
+                    ... on Issue {
+                      id
+                      number
+                      title
+                      url
+                      state
+                      body
+                      repository { nameWithOwner }
+                    }
+                    ... on PullRequest {
+                      id
+                      number
+                      title
+                      url
+                      state
+                      merged
+                      isDraft
+                      body
+                      repository { nameWithOwner }
+                    }
+                    ... on DraftIssue {
+                      id
+                      title
+                      body
+                      createdAt
+                      updatedAt
+                    }
+                  }
+                }
+              }
               fields(first: 12) {
                 totalCount
                 nodes {
-                  ... on ProjectV2FieldCommon {
-                    id
-                    name
-                    dataType
-                  }
+                  ...ProjectV2FieldMetadata
                 }
               }
             }
           }
+        }
+      }
+
+      fragment ProjectV2FieldMetadata on ProjectV2FieldConfiguration {
+        ... on ProjectV2Field {
+          id
+          name
+          dataType
+        }
+        ... on ProjectV2SingleSelectField {
+          id
+          name
+          dataType
+          options {
+            id
+            name
+          }
+        }
+        ... on ProjectV2IterationField {
+          id
+          name
+          dataType
         }
       }
     `,
@@ -3151,7 +3431,9 @@ export class OctokitProvider implements GitHubProvider {
     }
   }
 
-  async getRepositorySecurityPolicy(input: RepositorySecurityPolicyInput): Promise<RepositorySecurityPolicyResult> {
+  async getRepositorySecurityPolicy(
+    input: RepositorySecurityPolicyInput
+  ): Promise<RepositorySecurityPolicyResult> {
     try {
       for (const path of securityPolicyCandidatePaths) {
         try {
@@ -3193,13 +3475,10 @@ export class OctokitProvider implements GitHubProvider {
     input: RepositoryCommunityProfileInput
   ): Promise<RepositoryCommunityProfileResult> {
     try {
-      const profile = await this.rest<GitHubCommunityProfile>(
-        "GET /repos/{owner}/{repo}/community/profile",
-        {
-          owner: input.owner,
-          repo: input.repo
-        }
-      );
+      const profile = await this.rest<GitHubCommunityProfile>("GET /repos/{owner}/{repo}/community/profile", {
+        owner: input.owner,
+        repo: input.repo
+      });
 
       return {
         profile: mapCommunityProfile(profile),
@@ -3589,7 +3868,15 @@ export class OctokitProvider implements GitHubProvider {
         return this.rest("POST /repos/{owner}/{repo}/releases", {
           owner,
           repo,
-          ...pick(payload, ["tag_name", "target_commitish", "name", "body", "draft", "prerelease", "make_latest"])
+          ...pick(payload, [
+            "tag_name",
+            "target_commitish",
+            "name",
+            "body",
+            "draft",
+            "prerelease",
+            "make_latest"
+          ])
         });
       case "editRelease":
         return this.rest("PATCH /repos/{owner}/{repo}/releases/{release_id}", {
@@ -3898,36 +4185,34 @@ export class OctokitProvider implements GitHubProvider {
           { owner, repo: wikiRepo, commit_sha: commitSha }
         );
 
-        const blob = await this.rest<{ sha: string }>(
-          "POST /repos/{owner}/{repo}/git/blobs",
-          { owner, repo: wikiRepo, content, encoding: "utf-8" }
-        );
+        const blob = await this.rest<{ sha: string }>("POST /repos/{owner}/{repo}/git/blobs", {
+          owner,
+          repo: wikiRepo,
+          content,
+          encoding: "utf-8"
+        });
 
-        const tree = await this.rest<{ sha: string }>(
-          "POST /repos/{owner}/{repo}/git/trees",
-          {
-            owner,
-            repo: wikiRepo,
-            base_tree: commit.tree.sha,
-            tree: [{ path: pagePath, mode: "100644", type: "blob", sha: blob.sha }]
-          }
-        );
+        const tree = await this.rest<{ sha: string }>("POST /repos/{owner}/{repo}/git/trees", {
+          owner,
+          repo: wikiRepo,
+          base_tree: commit.tree.sha,
+          tree: [{ path: pagePath, mode: "100644", type: "blob", sha: blob.sha }]
+        });
 
-        const newCommit = await this.rest<{ sha: string }>(
-          "POST /repos/{owner}/{repo}/git/commits",
-          {
-            owner,
-            repo: wikiRepo,
-            message: `Created ${title}`,
-            tree: tree.sha,
-            parents: [commitSha]
-          }
-        );
+        const newCommit = await this.rest<{ sha: string }>("POST /repos/{owner}/{repo}/git/commits", {
+          owner,
+          repo: wikiRepo,
+          message: `Created ${title}`,
+          tree: tree.sha,
+          parents: [commitSha]
+        });
 
-        return this.rest(
-          "PATCH /repos/{owner}/{repo}/git/refs/heads/master",
-          { owner, repo: wikiRepo, sha: newCommit.sha, force: false }
-        );
+        return this.rest("PATCH /repos/{owner}/{repo}/git/refs/heads/master", {
+          owner,
+          repo: wikiRepo,
+          sha: newCommit.sha,
+          force: false
+        });
       }
       case "editWikiPage": {
         const wikiRepo = `${repo}.wiki`;
@@ -3946,36 +4231,34 @@ export class OctokitProvider implements GitHubProvider {
           { owner, repo: wikiRepo, commit_sha: commitSha }
         );
 
-        const blob = await this.rest<{ sha: string }>(
-          "POST /repos/{owner}/{repo}/git/blobs",
-          { owner, repo: wikiRepo, content, encoding: "utf-8" }
-        );
+        const blob = await this.rest<{ sha: string }>("POST /repos/{owner}/{repo}/git/blobs", {
+          owner,
+          repo: wikiRepo,
+          content,
+          encoding: "utf-8"
+        });
 
-        const tree = await this.rest<{ sha: string }>(
-          "POST /repos/{owner}/{repo}/git/trees",
-          {
-            owner,
-            repo: wikiRepo,
-            base_tree: commit.tree.sha,
-            tree: [{ path: pagePath, mode: "100644", type: "blob", sha: blob.sha }]
-          }
-        );
+        const tree = await this.rest<{ sha: string }>("POST /repos/{owner}/{repo}/git/trees", {
+          owner,
+          repo: wikiRepo,
+          base_tree: commit.tree.sha,
+          tree: [{ path: pagePath, mode: "100644", type: "blob", sha: blob.sha }]
+        });
 
-        const newCommit = await this.rest<{ sha: string }>(
-          "POST /repos/{owner}/{repo}/git/commits",
-          {
-            owner,
-            repo: wikiRepo,
-            message: `Updated ${title}`,
-            tree: tree.sha,
-            parents: [commitSha]
-          }
-        );
+        const newCommit = await this.rest<{ sha: string }>("POST /repos/{owner}/{repo}/git/commits", {
+          owner,
+          repo: wikiRepo,
+          message: `Updated ${title}`,
+          tree: tree.sha,
+          parents: [commitSha]
+        });
 
-        return this.rest(
-          "PATCH /repos/{owner}/{repo}/git/refs/heads/master",
-          { owner, repo: wikiRepo, sha: newCommit.sha, force: false }
-        );
+        return this.rest("PATCH /repos/{owner}/{repo}/git/refs/heads/master", {
+          owner,
+          repo: wikiRepo,
+          sha: newCommit.sha,
+          force: false
+        });
       }
       case "deleteWikiPage": {
         const wikiRepo = `${repo}.wiki`;
@@ -3993,31 +4276,27 @@ export class OctokitProvider implements GitHubProvider {
           { owner, repo: wikiRepo, commit_sha: commitSha }
         );
 
-        const tree = await this.rest<{ sha: string }>(
-          "POST /repos/{owner}/{repo}/git/trees",
-          {
-            owner,
-            repo: wikiRepo,
-            base_tree: commit.tree.sha,
-            tree: [{ path: pagePath, mode: "100644", type: "blob", sha: null }]
-          }
-        );
+        const tree = await this.rest<{ sha: string }>("POST /repos/{owner}/{repo}/git/trees", {
+          owner,
+          repo: wikiRepo,
+          base_tree: commit.tree.sha,
+          tree: [{ path: pagePath, mode: "100644", type: "blob", sha: null }]
+        });
 
-        const newCommit = await this.rest<{ sha: string }>(
-          "POST /repos/{owner}/{repo}/git/commits",
-          {
-            owner,
-            repo: wikiRepo,
-            message: `Deleted ${title}`,
-            tree: tree.sha,
-            parents: [commitSha]
-          }
-        );
+        const newCommit = await this.rest<{ sha: string }>("POST /repos/{owner}/{repo}/git/commits", {
+          owner,
+          repo: wikiRepo,
+          message: `Deleted ${title}`,
+          tree: tree.sha,
+          parents: [commitSha]
+        });
 
-        return this.rest(
-          "PATCH /repos/{owner}/{repo}/git/refs/heads/master",
-          { owner, repo: wikiRepo, sha: newCommit.sha, force: false }
-        );
+        return this.rest("PATCH /repos/{owner}/{repo}/git/refs/heads/master", {
+          owner,
+          repo: wikiRepo,
+          sha: newCommit.sha,
+          force: false
+        });
       }
       default:
         throw new Error(`Unsupported GitHub action: ${input.action}`);
@@ -4100,9 +4379,7 @@ export class OctokitProvider implements GitHubProvider {
     return response.data as string;
   }
 
-  private async getNotificationReleaseHtmlUrl(
-    notification: GitHubNotification
-  ): Promise<string | null> {
+  private async getNotificationReleaseHtmlUrl(notification: GitHubNotification): Promise<string | null> {
     const release = parseNotificationReleaseApiUrl(notification);
     if (!release) {
       return null;
@@ -4245,7 +4522,11 @@ function mapWikiError(error: unknown): GitHubReadAvailability {
     error && typeof error === "object" ? (error as { status?: unknown; message?: unknown }) : {};
   const status = typeof errorRecord.status === "number" ? errorRecord.status : null;
   const message =
-    error instanceof Error ? error.message : typeof error === "string" ? error : "GitHub wiki request failed.";
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : "GitHub wiki request failed.";
 
   if (status === 404) {
     return {
@@ -4798,7 +5079,13 @@ function mapTreeEntry(
   }
 
   const type =
-    entry.type === "tree" ? "dir" : entry.type === "blob" ? "file" : entry.type === "commit" ? "submodule" : null;
+    entry.type === "tree"
+      ? "dir"
+      : entry.type === "blob"
+        ? "file"
+        : entry.type === "commit"
+          ? "submodule"
+          : null;
   if (!type) {
     return null;
   }
@@ -4838,10 +5125,12 @@ function wikiPageSummaryFromPath(owner: string, repo: string, path: string): Wik
 
 function wikiPageTitle(path: string): string {
   const fileName = path.split("/").pop() ?? path;
-  return fileName
-    .replace(/\.(md|markdown|mediawiki|creole|rst|textile|org|asciidoc|adoc)$/i, "")
-    .replace(/[-_]+/g, " ")
-    .trim() || fileName;
+  return (
+    fileName
+      .replace(/\.(md|markdown|mediawiki|creole|rst|textile|org|asciidoc|adoc)$/i, "")
+      .replace(/[-_]+/g, " ")
+      .trim() || fileName
+  );
 }
 
 function wikiPageSortKey(page: WikiPageSummary): string {
@@ -5490,6 +5779,10 @@ function mapSecretScanningAlert(alert: GitHubSecretScanningAlert): SecretScannin
 }
 
 function mapRepositoryRuleset(ruleset: GitHubRepositoryRuleset): RepositoryRulesetSummary {
+  const bypassActors = mapRepositoryRulesetBypassActors(ruleset.bypass_actors);
+  const conditions = mapRepositoryRulesetConditions(ruleset.conditions);
+  const rules = mapRepositoryRulesetRules(ruleset.rules);
+
   return {
     id: ruleset.id,
     nodeId: ruleset.node_id ?? null,
@@ -5499,16 +5792,122 @@ function mapRepositoryRuleset(ruleset: GitHubRepositoryRuleset): RepositoryRules
     sourceType: ruleset.source_type ?? ruleset.ruleset_source_type ?? null,
     source: ruleset.source ?? ruleset.ruleset_source ?? null,
     htmlUrl: ruleset._links?.html?.href ?? ruleset.html_url ?? null,
-    bypassActorCount: Array.isArray(ruleset.bypass_actors) ? ruleset.bypass_actors.length : null,
-    conditionCount:
-      ruleset.conditions && typeof ruleset.conditions === "object"
-        ? Object.keys(ruleset.conditions).length
-        : null,
-    ruleCount: Array.isArray(ruleset.rules) ? ruleset.rules.length : null,
+    bypassActorCount: Array.isArray(ruleset.bypass_actors) ? bypassActors.length : null,
+    bypassActors,
+    conditionCount: ruleset.conditions ? conditions.length : null,
+    conditions,
+    ruleCount: Array.isArray(ruleset.rules) ? rules.length : null,
+    rules,
     currentUserCanBypass: ruleset.current_user_can_bypass ?? null,
     createdAt: ruleset.created_at ?? null,
     updatedAt: ruleset.updated_at ?? null
   };
+}
+
+function mapRepositoryRulesetBypassActors(
+  value: unknown[] | null | undefined
+): RepositoryRulesetSummary["bypassActors"] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map((actor) => {
+    const record = recordFromUnknown(actor);
+    return {
+      actorId: numberFromUnknown(record.actor_id),
+      actorType: stringFromUnknown(record.actor_type),
+      bypassMode: stringFromUnknown(record.bypass_mode)
+    };
+  });
+}
+
+function mapRepositoryRulesetConditions(
+  conditions: Record<string, unknown> | null | undefined
+): RepositoryRulesetSummary["conditions"] {
+  if (!conditions) {
+    return [];
+  }
+
+  return Object.entries(conditions).map(([type, value]) => {
+    const record = recordFromUnknown(value);
+    return {
+      type,
+      include: stringListFromUnknown(record.include),
+      exclude: stringListFromUnknown(record.exclude),
+      parameters: Object.entries(record)
+        .filter(([key]) => key !== "include" && key !== "exclude")
+        .map(([key, parameterValue]) => `${key}: ${formatUnknownValue(parameterValue)}`)
+    };
+  });
+}
+
+function mapRepositoryRulesetRules(value: unknown[] | null | undefined): RepositoryRulesetSummary["rules"] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map((rule) => {
+    const record = recordFromUnknown(rule);
+    const parameters = recordFromUnknown(record.parameters);
+    return {
+      type: stringFromUnknown(record.type) ?? "unknown",
+      parameters: Object.entries(parameters).map(
+        ([key, parameterValue]) => `${key}: ${formatUnknownValue(parameterValue)}`
+      )
+    };
+  });
+}
+
+function recordFromUnknown(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function stringFromUnknown(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function numberFromUnknown(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function stringListFromUnknown(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((item) => formatUnknownValue(item)).filter((item): item is string => Boolean(item));
+  }
+
+  const formatted = formatUnknownValue(value);
+  return formatted ? [formatted] : [];
+}
+
+function formatUnknownValue(value: unknown): string | null {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => formatUnknownValue(item))
+      .filter((item): item is string => Boolean(item))
+      .join(", ");
+  }
+
+  const record = recordFromUnknown(value);
+  const entries = Object.entries(record)
+    .map(([key, entryValue]) => {
+      const formatted = formatUnknownValue(entryValue);
+      return formatted ? `${key}: ${formatted}` : null;
+    })
+    .filter((entry): entry is string => Boolean(entry));
+  return entries.length > 0 ? entries.join("; ") : null;
 }
 
 function mapRepositorySecurityAdvisory(
@@ -5523,9 +5922,7 @@ function mapRepositorySecurityAdvisory(
     description: advisory.description ?? null,
     cvssScore: advisory.cvss?.score ?? null,
     cvssVector: advisory.cvss?.vector_string ?? null,
-    cweIds: (advisory.cwes ?? [])
-      .map((cwe) => cwe.cwe_id)
-      .filter((cweId): cweId is string => Boolean(cweId)),
+    cweIds: (advisory.cwes ?? []).map((cwe) => cwe.cwe_id).filter((cweId): cweId is string => Boolean(cweId)),
     vulnerabilityCount: Array.isArray(advisory.vulnerabilities) ? advisory.vulnerabilities.length : null,
     creditCount: Array.isArray(advisory.credits) ? advisory.credits.length : null,
     htmlUrl: advisory.html_url ?? null,
@@ -5572,7 +5969,11 @@ function mapCommunityProfile(profile: GitHubCommunityProfile): RepositoryCommuni
       mapCommunityProfileFile("codeOfConduct", "Code of conduct", profile.files?.code_of_conduct),
       mapCommunityProfileFile("contributing", "Contributing", profile.files?.contributing),
       mapCommunityProfileFile("issueTemplate", "Issue template", profile.files?.issue_template),
-      mapCommunityProfileFile("pullRequestTemplate", "Pull request template", profile.files?.pull_request_template)
+      mapCommunityProfileFile(
+        "pullRequestTemplate",
+        "Pull request template",
+        profile.files?.pull_request_template
+      )
     ]
   };
 }
@@ -5642,6 +6043,7 @@ function mapGraphqlAssignableUser(user: GitHubGraphqlAssignableUser): Assignable
 function mapGraphqlIssue(issue: GitHubSearchIssueNode): IssueSummary {
   return {
     id: issue.id,
+    nodeId: issue.id,
     number: issue.number,
     title: issue.title,
     state: issue.state,
@@ -5674,6 +6076,7 @@ function mapGraphqlPullRequest(pr: GitHubSearchPullRequestNode): PullRequestSumm
 
   return {
     id: pr.id,
+    nodeId: pr.id,
     number: pr.number,
     title: pr.title,
     state: pr.state,
@@ -5711,6 +6114,7 @@ function normalizeGraphqlMergeStateStatus(status: string | null): string | null 
 function mapIssue(issue: GitHubIssue): IssueSummary {
   return {
     id: issue.id,
+    nodeId: issue.node_id ?? null,
     number: issue.number,
     title: issue.title,
     state: issue.state,
@@ -5781,6 +6185,7 @@ function mapPullRequest(pr: GitHubPullRequest): PullRequestSummary {
   const baseRepositoryNameWithOwner = pr.base?.repo?.full_name ?? null;
   return {
     id: pr.id,
+    nodeId: pr.node_id ?? null,
     number: pr.number,
     title: pr.title,
     state: pr.state,
@@ -5837,6 +6242,30 @@ function mapGraphqlDiscussionComment(comment: GitHubDiscussionCommentNode) {
   };
 }
 
+function boundedGitHubGraphqlConnectionLimit(
+  value: number | undefined,
+  fallback: number,
+  max: number
+): number {
+  return Math.min(Math.max(value ?? fallback, 1), max);
+}
+
+function mapDiscussionCategory(category: {
+  id: string;
+  name: string;
+  emoji?: string | null;
+  description?: string | null;
+  isAnswerable?: boolean | null;
+}): DiscussionCategorySummary {
+  return {
+    id: category.id,
+    name: category.name,
+    emoji: category.emoji ?? null,
+    description: category.description ?? null,
+    isAnswerable: category.isAnswerable ?? null
+  };
+}
+
 function mapProjectV2(project: GitHubProjectV2Node): ProjectSummary {
   return {
     id: project.id,
@@ -5851,17 +6280,177 @@ function mapProjectV2(project: GitHubProjectV2Node): ProjectSummary {
     createdAt: project.createdAt ?? null,
     updatedAt: project.updatedAt,
     itemsCount: project.items?.totalCount ?? null,
+    items: (project.items?.nodes ?? [])
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
+      .map(mapProjectV2Item),
+    itemsTruncated: project.items ? project.items.totalCount > (project.items.nodes?.length ?? 0) : false,
     fieldsCount: project.fields?.totalCount ?? null,
     fields: (project.fields?.nodes ?? [])
       .filter((field): field is NonNullable<typeof field> => Boolean(field))
-      .map((field) => ({
-        id: field.id,
-        name: field.name,
-        dataType: field.dataType ?? null
-      })),
+      .map(mapProjectV2Field),
     viewerCanUpdate: project.viewerCanUpdate ?? null,
     htmlUrl: project.url
   };
+}
+
+function mapProjectV2Item(item: GitHubProjectV2ItemNode) {
+  const content = item.content ?? null;
+  const fallbackState = item.type ?? null;
+
+  if (!content) {
+    return {
+      id: item.id,
+      type: item.type ?? null,
+      contentId: null,
+      contentType: null,
+      title: null,
+      body: null,
+      number: null,
+      state: fallbackState,
+      repositoryNameWithOwner: null,
+      htmlUrl: null,
+      createdAt: item.createdAt ?? null,
+      updatedAt: item.updatedAt ?? null,
+      fieldValues: mapProjectV2ItemFieldValues(item),
+      fieldValuesTruncated: projectItemFieldValuesTruncated(item)
+    };
+  }
+
+  if (content.__typename === "Issue") {
+    return {
+      id: item.id,
+      type: item.type ?? null,
+      contentId: content.id,
+      contentType: "Issue",
+      title: content.title,
+      body: content.body ?? null,
+      number: content.number ?? null,
+      state: content.state ?? fallbackState,
+      repositoryNameWithOwner: content.repository?.nameWithOwner ?? null,
+      htmlUrl: content.url ?? null,
+      createdAt: item.createdAt ?? null,
+      updatedAt: item.updatedAt ?? null,
+      fieldValues: mapProjectV2ItemFieldValues(item),
+      fieldValuesTruncated: projectItemFieldValuesTruncated(item)
+    };
+  }
+
+  if (content.__typename === "PullRequest") {
+    return {
+      id: item.id,
+      type: item.type ?? null,
+      contentId: content.id,
+      contentType: "PullRequest",
+      title: content.title,
+      body: content.body ?? null,
+      number: content.number ?? null,
+      state: content.merged ? "MERGED" : content.isDraft ? "DRAFT" : (content.state ?? fallbackState),
+      repositoryNameWithOwner: content.repository?.nameWithOwner ?? null,
+      htmlUrl: content.url ?? null,
+      createdAt: item.createdAt ?? null,
+      updatedAt: item.updatedAt ?? null,
+      fieldValues: mapProjectV2ItemFieldValues(item),
+      fieldValuesTruncated: projectItemFieldValuesTruncated(item)
+    };
+  }
+
+  if (content.__typename === "DraftIssue") {
+    return {
+      id: item.id,
+      type: item.type ?? null,
+      contentId: content.id,
+      contentType: "DraftIssue",
+      title: content.title,
+      body: content.body ?? null,
+      number: null,
+      state: fallbackState,
+      repositoryNameWithOwner: null,
+      htmlUrl: null,
+      createdAt: content.createdAt ?? item.createdAt ?? null,
+      updatedAt: content.updatedAt ?? item.updatedAt ?? null,
+      fieldValues: mapProjectV2ItemFieldValues(item),
+      fieldValuesTruncated: projectItemFieldValuesTruncated(item)
+    };
+  }
+
+  return {
+    id: item.id,
+    type: item.type ?? null,
+    contentId: content.id ?? null,
+    contentType: content.__typename,
+    title: null,
+    body: null,
+    number: null,
+    state: fallbackState,
+    repositoryNameWithOwner: null,
+    htmlUrl: null,
+    createdAt: item.createdAt ?? null,
+    updatedAt: item.updatedAt ?? null,
+    fieldValues: mapProjectV2ItemFieldValues(item),
+    fieldValuesTruncated: projectItemFieldValuesTruncated(item)
+  };
+}
+
+function mapProjectV2Field(field: GitHubProjectV2FieldNode) {
+  return {
+    id: field.id,
+    name: field.name,
+    dataType: field.dataType ?? null,
+    options: (field.options ?? []).map((option) => ({ id: option.id, name: option.name }))
+  };
+}
+
+function projectItemFieldValuesTruncated(item: GitHubProjectV2ItemNode): boolean {
+  return item.fieldValues ? item.fieldValues.totalCount > (item.fieldValues.nodes?.length ?? 0) : false;
+}
+
+function mapProjectV2ItemFieldValues(item: GitHubProjectV2ItemNode) {
+  return (item.fieldValues?.nodes ?? [])
+    .filter(
+      (value): value is NonNullable<typeof value> & { id: string } =>
+        value !== null && typeof value.id === "string"
+    )
+    .map((value) => {
+      const field = value.field ?? null;
+      const fieldMetadata = field ? mapProjectV2Field(field) : null;
+      const base = {
+        id: value.id,
+        fieldId: fieldMetadata?.id ?? null,
+        fieldName: fieldMetadata?.name ?? null,
+        dataType: fieldMetadata?.dataType ?? null,
+        optionId: null,
+        optionName: null,
+        options: fieldMetadata?.options ?? []
+      };
+
+      if (value.__typename === "ProjectV2ItemFieldTextValue") {
+        return { ...base, value: value.text ?? null, editable: Boolean(fieldMetadata?.id) };
+      }
+
+      if (value.__typename === "ProjectV2ItemFieldNumberValue") {
+        return { ...base, value: value.number ?? null, editable: Boolean(fieldMetadata?.id) };
+      }
+
+      if (value.__typename === "ProjectV2ItemFieldDateValue") {
+        return { ...base, value: value.date ?? null, editable: Boolean(fieldMetadata?.id) };
+      }
+
+      if (value.__typename === "ProjectV2ItemFieldSingleSelectValue") {
+        return {
+          ...base,
+          value: value.name ?? null,
+          optionId: value.optionId ?? null,
+          optionName: value.name ?? null,
+          editable: Boolean(fieldMetadata?.id && value.optionId)
+        };
+      }
+
+      if (value.__typename === "ProjectV2ItemFieldIterationValue") {
+        return { ...base, value: value.title ?? null, editable: false };
+      }
+
+      return { ...base, value: null, editable: false };
+    });
 }
 
 function mapProjectV2Owner(owner: GitHubProjectV2OwnerNode | null | undefined) {
@@ -6010,10 +6599,12 @@ function mapPullRequestReview(review: GitHubPullRequestReview): PullRequestRevie
 }
 
 function latestPullRequestReviewState(reviews: PullRequestReviewSummary[]): string | null {
-  return reviews
-    .filter((review) => review.state !== "COMMENTED")
-    .sort((a, b) => (Date.parse(b.submittedAt ?? "") || 0) - (Date.parse(a.submittedAt ?? "") || 0))[0]
-    ?.state ?? null;
+  return (
+    reviews
+      .filter((review) => review.state !== "COMMENTED")
+      .sort((a, b) => (Date.parse(b.submittedAt ?? "") || 0) - (Date.parse(a.submittedAt ?? "") || 0))[0]
+      ?.state ?? null
+  );
 }
 
 function mapPullRequestCheck(run: GitHubCheckRun): PullRequestCheckSummary {
@@ -6657,6 +7248,7 @@ interface GitHubUser {
 
 interface GitHubIssue {
   id: number;
+  node_id?: string | null;
   number: number;
   title: string;
   state: string;
@@ -6693,6 +7285,7 @@ interface GitHubDiscussionCommentNode {
   replies?: {
     totalCount: number;
     nodes?: GitHubDiscussionCommentNode[];
+    pageInfo?: { hasNextPage: boolean; endCursor: string | null };
   } | null;
 }
 
@@ -6708,18 +7301,117 @@ interface GitHubProjectV2Node {
   closedAt?: string | null;
   createdAt?: string | null;
   updatedAt: string | null;
-  items?: { totalCount: number } | null;
+  items?: {
+    totalCount: number;
+    nodes?: Array<GitHubProjectV2ItemNode | null>;
+  } | null;
   fields?: {
     totalCount: number;
-    nodes?: Array<{
-      id: string;
-      name: string;
-      dataType?: string | null;
-    } | null>;
+    nodes?: Array<GitHubProjectV2FieldNode | null>;
   } | null;
   viewerCanUpdate?: boolean | null;
   url: string | null;
 }
+
+interface GitHubProjectV2FieldNode {
+  id: string;
+  name: string;
+  dataType?: string | null;
+  options?: Array<{ id: string; name: string }>;
+}
+
+interface GitHubProjectV2ItemNode {
+  id: string;
+  type?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  content?: GitHubProjectV2ItemContentNode | null;
+  fieldValues?: {
+    totalCount: number;
+    nodes?: Array<GitHubProjectV2ItemFieldValueNode | null>;
+  } | null;
+}
+
+type GitHubProjectV2ItemFieldValueNode =
+  | {
+      __typename: "ProjectV2ItemFieldTextValue";
+      id: string;
+      text?: string | null;
+      field?: GitHubProjectV2FieldNode | null;
+    }
+  | {
+      __typename: "ProjectV2ItemFieldNumberValue";
+      id: string;
+      number?: number | null;
+      field?: GitHubProjectV2FieldNode | null;
+    }
+  | {
+      __typename: "ProjectV2ItemFieldDateValue";
+      id: string;
+      date?: string | null;
+      field?: GitHubProjectV2FieldNode | null;
+    }
+  | {
+      __typename: "ProjectV2ItemFieldSingleSelectValue";
+      id: string;
+      name?: string | null;
+      optionId?: string | null;
+      field?: GitHubProjectV2FieldNode | null;
+    }
+  | {
+      __typename: "ProjectV2ItemFieldIterationValue";
+      id: string;
+      title?: string | null;
+      field?: GitHubProjectV2FieldNode | null;
+    }
+  | {
+      __typename:
+        | "ProjectV2ItemFieldLabelValue"
+        | "ProjectV2ItemFieldMilestoneValue"
+        | "ProjectV2ItemFieldPullRequestValue"
+        | "ProjectV2ItemFieldRepositoryValue"
+        | "ProjectV2ItemFieldReviewerValue"
+        | "ProjectV2ItemFieldUserValue"
+        | "ProjectV2ItemIssueFieldValue";
+      id?: string | null;
+      field?: GitHubProjectV2FieldNode | null;
+    };
+
+type GitHubProjectV2ItemContentNode =
+  | {
+      __typename: "Issue";
+      id: string;
+      number?: number | null;
+      title: string;
+      url?: string | null;
+      state?: string | null;
+      body?: string | null;
+      repository?: { nameWithOwner: string } | null;
+    }
+  | {
+      __typename: "PullRequest";
+      id: string;
+      number?: number | null;
+      title: string;
+      url?: string | null;
+      state?: string | null;
+      merged?: boolean | null;
+      isDraft?: boolean | null;
+      body?: string | null;
+      repository?: { nameWithOwner: string } | null;
+    }
+  | {
+      __typename: "DraftIssue";
+      id: string;
+      title: string;
+      body?: string | null;
+      createdAt?: string | null;
+      updatedAt?: string | null;
+    }
+  | {
+      __typename: "Redacted";
+      id?: string | null;
+    };
 
 type GitHubProjectV2OwnerNode =
   | {
@@ -6765,6 +7457,7 @@ interface GitHubIssueTimelineEvent {
 
 interface GitHubPullRequest {
   id: number;
+  node_id?: string | null;
   number: number;
   title: string;
   state: string;
@@ -6851,11 +7544,13 @@ interface GitHubPullRequestReviewComment {
 }
 
 interface GitHubPullRequestReviewThreadNode {
+  id: string;
   isResolved: boolean;
   isOutdated: boolean;
   path: string;
   comments: {
     nodes: GitHubPullRequestReviewThreadCommentNode[];
+    pageInfo?: { hasNextPage: boolean; endCursor: string | null };
   };
 }
 

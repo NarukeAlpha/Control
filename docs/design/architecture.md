@@ -29,6 +29,12 @@ The V1 credential provider is GitHub OAuth device flow:
 - `src/main/github/octokitProvider.ts` performs privileged GitHub REST and GraphQL calls through Octokit.
 - REST calls use GitHub REST API version `2022-11-28`.
 
+App state startup is intentionally non-blocking when a GitHub token exists. The main process returns an
+authenticated shell immediately, hydrates the viewer from the local `github-viewer` account cache when
+available, and validates the token/viewer in the background. When live validation completes, the main process
+emits a typed `github:auth-updated` event so the renderer can replace the warm cached viewer or surface an auth
+failure without delaying local pins, recents, cached repositories, or offline navigation.
+
 The renderer calls typed methods from `src/shared/ipc.ts` and `src/shared/github.ts`. It never receives the raw token and never constructs Octokit. Operations that open GitHub.com remain explicit fallback actions and still go through the main-process external-link handler.
 
 ## GitHub Management Surfaces
@@ -56,7 +62,7 @@ Secrets:
 
 ## Caching
 
-The main process applies short TTL cache entries for GitHub reads and stores repository summaries/details in SQLite for fast reopens. Repository list and detail reads support a cache-only path so local repository navigation can keep working while signed out or offline. When cached data is returned during an authenticated session, the main process may refresh it in the background. Cache-only reads must not load a GitHub token or start privileged GitHub API work.
+The main process applies domain-specific TTL cache entries for GitHub reads and stores repository summaries/details in SQLite for fast reopens. Fast-moving queues such as notifications, Actions runs, issues, and pull requests expire quickly, while stable metadata such as branches, tags, labels, wiki pages, security policy files, contributors, and workflow definitions can stay warm longer. Repository list and detail reads support a cache-only path so local repository navigation can keep working while signed out or offline. When cached data is returned during an authenticated session, the main process may refresh it in the background. Cache-only reads must not load a GitHub token or start privileged GitHub API work.
 
 Mutations invalidate renderer query caches and, where needed, provider cache prefixes so refreshed data comes from GitHub rather than stale local state.
 

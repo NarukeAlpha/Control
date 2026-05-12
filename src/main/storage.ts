@@ -33,6 +33,7 @@ export interface LocalStore {
   getSettings(): ControlSettings;
   updateSettings(settings: Partial<ControlSettings>): ControlSettings;
   saveAccount(provider: string, login: string, payload: unknown): void;
+  getLastAccount<T>(provider: string): T | null;
   getCache<T>(provider: string, cacheKey: string, options?: CacheReadOptions): T | null;
   setCache(record: CacheRecord): void;
   clearCacheByPrefix(provider: string, cacheKeyPrefix: string): void;
@@ -183,6 +184,14 @@ class SqliteLocalStore implements LocalStore {
          ON CONFLICT(provider, login) DO UPDATE SET payload = excluded.payload, updated_at = CURRENT_TIMESTAMP`
       )
       .run(provider, login, JSON.stringify(payload));
+  }
+
+  getLastAccount<T>(provider: string): T | null {
+    const row = this.db
+      .prepare("SELECT payload FROM accounts WHERE provider = ? ORDER BY updated_at DESC, rowid DESC LIMIT 1")
+      .get(provider) as { payload: string } | undefined;
+
+    return row ? (JSON.parse(row.payload) as T) : null;
   }
 
   getCache<T>(provider: string, cacheKey: string, options: CacheReadOptions = {}): T | null {
@@ -451,7 +460,17 @@ class MemoryLocalStore implements LocalStore {
   }
 
   saveAccount(provider: string, login: string, payload: unknown): void {
-    this.accounts.set(`${provider}:${login}`, payload);
+    const key = `${provider}:${login}`;
+    this.accounts.delete(key);
+    this.accounts.set(key, payload);
+  }
+
+  getLastAccount<T>(provider: string): T | null {
+    const prefix = `${provider}:`;
+    const entry = Array.from(this.accounts.entries())
+      .reverse()
+      .find(([key]) => key.startsWith(prefix));
+    return entry ? (entry[1] as T) : null;
   }
 
   getCache<T>(provider: string, cacheKey: string, options: CacheReadOptions = {}): T | null {

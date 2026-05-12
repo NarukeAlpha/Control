@@ -8,6 +8,7 @@ import type {
   ContributorListResult,
   ContributorSummary,
   DependabotAlertSummary,
+  DiscussionCategorySummary,
   DiscussionDetailResult,
   DiscussionSummary,
   GitHubAccountProfile,
@@ -498,8 +499,10 @@ function mutateMockIssues(input: GitHubMutationInput): void {
     const labels = mockPayloadStringArray(payload, "labels").map(mockLabelForName);
     const assignees = mockPayloadStringArray(payload, "assignees").map(mockAssigneeForLogin);
     const milestoneNumber = typeof payload?.milestone === "number" ? payload.milestone : null;
+    const issueId = Date.now();
     const createdIssue: IssueDetail = {
-      id: Date.now(),
+      id: issueId,
+      nodeId: `I_mock_created_${issueId}`,
       number: nextNumber,
       title,
       state: "open",
@@ -536,7 +539,7 @@ function mutateMockIssues(input: GitHubMutationInput): void {
           milestone:
             milestoneNumber === undefined
               ? issue.milestone
-              : mockMilestones.find((milestone) => milestone.number === milestoneNumber) ?? null,
+              : (mockMilestones.find((milestone) => milestone.number === milestoneNumber) ?? null),
           updatedAt: now
         };
       }
@@ -545,9 +548,7 @@ function mutateMockIssues(input: GitHubMutationInput): void {
           ...issue,
           state: input.action === "closeIssue" ? "closed" : "open",
           stateReason:
-            input.action === "closeIssue"
-              ? mockPayloadString(payload, "stateReason") ?? "completed"
-              : null,
+            input.action === "closeIssue" ? (mockPayloadString(payload, "stateReason") ?? "completed") : null,
           updatedAt: now
         };
       }
@@ -616,7 +617,9 @@ function mutateMockIssues(input: GitHubMutationInput): void {
         };
       }
       if (input.action === "removeAssignees") {
-        const logins = new Set(mockPayloadStringArray(payload, "assignees").map((login) => login.toLowerCase()));
+        const logins = new Set(
+          mockPayloadStringArray(payload, "assignees").map((login) => login.toLowerCase())
+        );
         return {
           ...issue,
           assignees: (issue.assignees ?? []).filter((assignee) => !logins.has(assignee.login.toLowerCase())),
@@ -889,30 +892,35 @@ function writeMockPullRequests(items: PullRequestDetail[]): void {
   writeMockArray(mockPullRequestsKey, items);
 }
 
-function listMockPullRequests(input?: { state?: "open" | "closed" | "all"; limit?: number }): PullRequestSummary[] {
+function listMockPullRequests(input?: {
+  state?: "open" | "closed" | "all";
+  limit?: number;
+}): PullRequestSummary[] {
   const state = input?.state ?? "open";
   const pulls = readMockPullRequests().filter((pull) => state === "all" || pull.state === state);
-  return pulls.slice(0, input?.limit ?? pulls.length).map(
-    ({
-      body: _body,
-      commentsList: _commentsList,
-      files: _files,
-      filesAvailability: _filesAvailability,
-      commitsList: _commitsList,
-      commitsAvailability: _commitsAvailability,
-      requestedReviewers: _requestedReviewers,
-      requestedTeams: _requestedTeams,
-      reviews: _reviews,
-      reviewsAvailability: _reviewsAvailability,
-      latestReviewState: _latestReviewState,
-      checks: _checks,
-      checksAvailability: _checksAvailability,
-      reviewThreads: _reviewThreads,
-      timelineEvents: _timelineEvents,
-      timelineAvailability: _timelineAvailability,
-      ...pull
-    }) => pull
-  );
+  return pulls
+    .slice(0, input?.limit ?? pulls.length)
+    .map(
+      ({
+        body: _body,
+        commentsList: _commentsList,
+        files: _files,
+        filesAvailability: _filesAvailability,
+        commitsList: _commitsList,
+        commitsAvailability: _commitsAvailability,
+        requestedReviewers: _requestedReviewers,
+        requestedTeams: _requestedTeams,
+        reviews: _reviews,
+        reviewsAvailability: _reviewsAvailability,
+        latestReviewState: _latestReviewState,
+        checks: _checks,
+        checksAvailability: _checksAvailability,
+        reviewThreads: _reviewThreads,
+        timelineEvents: _timelineEvents,
+        timelineAvailability: _timelineAvailability,
+        ...pull
+      }) => pull
+    );
 }
 
 function nextMockPullCommentId(pulls: PullRequestDetail[]): number {
@@ -943,8 +951,10 @@ function mutateMockPullRequests(input: GitHubMutationInput): void {
     const pulls = readMockPullRequests();
     const nextNumber = Math.max(...pulls.map((pull) => pull.number), 520) + 1;
     const draft = mockPayloadBoolean(payload, "draft");
+    const pullId = Date.now();
     const createdPull = buildMockPullRequestDetail({
-      id: Date.now(),
+      id: pullId,
+      nodeId: `PR_mock_created_${pullId}`,
       number: nextNumber,
       title,
       state: "open",
@@ -1026,7 +1036,7 @@ function mutateMockPullRequests(input: GitHubMutationInput): void {
         milestone:
           milestoneNumber === undefined
             ? pull.milestone
-            : mockMilestones.find((milestone) => milestone.number === milestoneNumber) ?? null,
+            : (mockMilestones.find((milestone) => milestone.number === milestoneNumber) ?? null),
         updatedAt: now
       };
     }
@@ -1063,7 +1073,9 @@ function mutateMockPullRequests(input: GitHubMutationInput): void {
       };
     }
     if (input.action === "removeAssignees") {
-      const logins = new Set(mockPayloadStringArray(payload, "assignees").map((login) => login.toLowerCase()));
+      const logins = new Set(
+        mockPayloadStringArray(payload, "assignees").map((login) => login.toLowerCase())
+      );
       return {
         ...pull,
         assignees: (pull.assignees ?? []).filter((assignee) => !logins.has(assignee.login.toLowerCase())),
@@ -1073,7 +1085,9 @@ function mutateMockPullRequests(input: GitHubMutationInput): void {
     if (input.action === "requestReviewers") {
       const reviewers = mockPayloadStringArray(payload, "reviewers").map(mockAssigneeForLogin);
       const teams = mockPayloadStringArray(payload, "teamReviewers").map(mockTeamForSlug);
-      const existingReviewers = new Set(pull.requestedReviewers.map((reviewer) => reviewer.login.toLowerCase()));
+      const existingReviewers = new Set(
+        pull.requestedReviewers.map((reviewer) => reviewer.login.toLowerCase())
+      );
       const existingTeams = new Set(pull.requestedTeams.map((team) => team.slug.toLowerCase()));
       return {
         ...pull,
@@ -1081,13 +1095,20 @@ function mutateMockPullRequests(input: GitHubMutationInput): void {
           ...pull.requestedReviewers,
           ...reviewers.filter((reviewer) => !existingReviewers.has(reviewer.login.toLowerCase()))
         ],
-        requestedTeams: [...pull.requestedTeams, ...teams.filter((team) => !existingTeams.has(team.slug.toLowerCase()))],
+        requestedTeams: [
+          ...pull.requestedTeams,
+          ...teams.filter((team) => !existingTeams.has(team.slug.toLowerCase()))
+        ],
         updatedAt: now
       };
     }
     if (input.action === "removeReviewers") {
-      const reviewers = new Set(mockPayloadStringArray(payload, "reviewers").map((login) => login.toLowerCase()));
-      const teams = new Set(mockPayloadStringArray(payload, "teamReviewers").map((slug) => slug.toLowerCase()));
+      const reviewers = new Set(
+        mockPayloadStringArray(payload, "reviewers").map((login) => login.toLowerCase())
+      );
+      const teams = new Set(
+        mockPayloadStringArray(payload, "teamReviewers").map((slug) => slug.toLowerCase())
+      );
       return {
         ...pull,
         requestedReviewers: pull.requestedReviewers.filter(
@@ -1204,7 +1225,7 @@ function mutateMockReleases(input: GitHubMutationInput): void {
             body: mockPayloadString(payload, "body") ?? release.body,
             isDraft: draft,
             isPrerelease: mockPayloadBoolean(payload, "prerelease"),
-            publishedAt: draft ? null : release.publishedAt ?? new Date().toISOString()
+            publishedAt: draft ? null : (release.publishedAt ?? new Date().toISOString())
           }
         : release
     );
@@ -1221,7 +1242,9 @@ function mutateMockReleases(input: GitHubMutationInput): void {
   }
 }
 
-function mockWorkflowActionAvailability(run: WorkflowRunSummary): NonNullable<WorkflowRunSummary["actionAvailability"]> {
+function mockWorkflowActionAvailability(
+  run: WorkflowRunSummary
+): NonNullable<WorkflowRunSummary["actionAvailability"]> {
   const completed = run.status === null ? null : run.status === "completed";
   const failed = run.conclusion === null ? null : run.conclusion === "failure";
   const rerunUrl = `${run.htmlUrl}/rerun`;
@@ -1342,7 +1365,11 @@ function buildMockWorkflowRunDetail(run: WorkflowRunSummary): WorkflowRunDetail 
             appName: "GitHub Actions",
             appSlug: "github-actions",
             appHtmlUrl: "https://github.com/apps/github-actions",
-            outputTitle: failed ? "Swift build failed" : completed ? `${run.name} passed` : `${run.name} running`,
+            outputTitle: failed
+              ? "Swift build failed"
+              : completed
+                ? `${run.name} passed`
+                : `${run.name} running`,
             outputSummary: failed
               ? "Compiler tests failed on macOS."
               : completed
@@ -1424,16 +1451,18 @@ function mockWorkflowJobLogs(jobId: number): WorkflowJobLogsResult {
 }
 
 function listMockWorkflowRuns(input?: { limit?: number }): WorkflowRunSummary[] {
-  return readMockWorkflowRuns().slice(0, input?.limit ?? 20).map(
-    ({
-      jobs: _jobs,
-      artifacts: _artifacts,
-      checkSuites: _checkSuites,
-      checkRuns: _checkRuns,
-      logs: _logs,
-      ...run
-    }) => run
-  );
+  return readMockWorkflowRuns()
+    .slice(0, input?.limit ?? 20)
+    .map(
+      ({
+        jobs: _jobs,
+        artifacts: _artifacts,
+        checkSuites: _checkSuites,
+        checkRuns: _checkRuns,
+        logs: _logs,
+        ...run
+      }) => run
+    );
 }
 
 function updateMockWorkflowRunState(
@@ -1708,8 +1737,9 @@ export const mockRepository: RepositoryDetail = {
 function mockRepositoryDetail(input: { owner: string; repo: string }): RepositoryDetail {
   const nameWithOwner = `${input.owner}/${input.repo}`;
   const summary =
-    mockRepositories.find((repository) => repository.nameWithOwner.toLowerCase() === nameWithOwner.toLowerCase()) ??
-    mockRepositories[0];
+    mockRepositories.find(
+      (repository) => repository.nameWithOwner.toLowerCase() === nameWithOwner.toLowerCase()
+    ) ?? mockRepositories[0];
   const override = readMockRepositorySettings()[nameWithOwner.toLowerCase()] ?? {};
   const isArchived = Object.prototype.hasOwnProperty.call(override, "isArchived")
     ? override.isArchived === true
@@ -1718,20 +1748,19 @@ function mockRepositoryDetail(input: { owner: string; repo: string }): Repositor
   return {
     ...mockRepository,
     ...summary,
-    description:
-      Object.prototype.hasOwnProperty.call(override, "description") ? (override.description ?? null) : summary.description,
-    defaultBranch:
-      Object.prototype.hasOwnProperty.call(override, "defaultBranch")
-        ? (override.defaultBranch ?? null)
-        : summary.defaultBranch,
+    description: Object.prototype.hasOwnProperty.call(override, "description")
+      ? (override.description ?? null)
+      : summary.description,
+    defaultBranch: Object.prototype.hasOwnProperty.call(override, "defaultBranch")
+      ? (override.defaultBranch ?? null)
+      : summary.defaultBranch,
     topics: override.topics ?? mockRepository.topics,
     htmlUrl: `https://github.com/${summary.nameWithOwner}`,
-    homepageUrl:
-      Object.prototype.hasOwnProperty.call(override, "homepageUrl")
-        ? (override.homepageUrl ?? null)
-        : summary.nameWithOwner === "apple/swift"
-          ? "https://swift.org"
-          : null,
+    homepageUrl: Object.prototype.hasOwnProperty.call(override, "homepageUrl")
+      ? (override.homepageUrl ?? null)
+      : summary.nameWithOwner === "apple/swift"
+        ? "https://swift.org"
+        : null,
     permissions: {
       ...mockRepository.permissions,
       isArchived
@@ -2124,8 +2153,41 @@ export const mockRepositoryRulesets: RepositoryRulesetSummary[] = [
     source: "apple/swift",
     htmlUrl: "https://github.com/apple/swift/rules/9001",
     bypassActorCount: 1,
+    bypassActors: [
+      {
+        actorId: 42,
+        actorType: "RepositoryRole",
+        bypassMode: "pull_request"
+      }
+    ],
     conditionCount: 1,
+    conditions: [
+      {
+        type: "ref_name",
+        include: ["refs/heads/main"],
+        exclude: [],
+        parameters: []
+      }
+    ],
     ruleCount: 4,
+    rules: [
+      {
+        type: "deletion",
+        parameters: []
+      },
+      {
+        type: "non_fast_forward",
+        parameters: []
+      },
+      {
+        type: "pull_request",
+        parameters: ["required_approving_review_count: 1", "required_review_thread_resolution: true"]
+      },
+      {
+        type: "required_status_checks",
+        parameters: ["required_check: ci/build"]
+      }
+    ],
     currentUserCanBypass: "never",
     createdAt: "2026-02-01T12:00:00.000Z",
     updatedAt: "2026-05-02T12:00:00.000Z"
@@ -2140,8 +2202,38 @@ export const mockRepositoryRulesets: RepositoryRulesetSummary[] = [
     source: "apple",
     htmlUrl: "https://github.com/organizations/apple/settings/rules/9002",
     bypassActorCount: 2,
+    bypassActors: [
+      {
+        actorId: 7,
+        actorType: "Team",
+        bypassMode: "always"
+      },
+      {
+        actorId: 8,
+        actorType: "Integration",
+        bypassMode: "pull_request"
+      }
+    ],
     conditionCount: 1,
+    conditions: [
+      {
+        type: "ref_name",
+        include: ["refs/tags/v*"],
+        exclude: ["refs/tags/v*-rc"],
+        parameters: []
+      }
+    ],
     ruleCount: 2,
+    rules: [
+      {
+        type: "tag_name_pattern",
+        parameters: ["operator: starts_with", "pattern: v"]
+      },
+      {
+        type: "non_fast_forward",
+        parameters: []
+      }
+    ],
     currentUserCanBypass: "pull_requests_only",
     createdAt: "2026-01-14T12:00:00.000Z",
     updatedAt: "2026-04-27T12:00:00.000Z"
@@ -2360,7 +2452,8 @@ function mockRepositoryWiki(pagePath?: string | null, limit?: number): Repositor
 export const mockCommits: RepositoryCommitSummary[] = [
   {
     sha: "7f3a2c9d0e111111111111111111111111111111",
-    message: "Add Sendable support for @MainActor types\n\nIncludes runtime coverage for actor-isolated values.",
+    message:
+      "Add Sendable support for @MainActor types\n\nIncludes runtime coverage for actor-isolated values.",
     headline: "Add Sendable support for @MainActor types",
     authorLogin: "slightbug",
     authorName: "Slight Bug",
@@ -2462,6 +2555,7 @@ export const mockTree: RepoTreeResult = {
 
 export const mockIssues: IssueSummary[] = Array.from({ length: 18 }, (_, index) => ({
   id: index + 1,
+  nodeId: `I_mock_issue_${index + 1}`,
   number: 1200 - index,
   title:
     index % 3 === 0 ? "Improve Sendable diagnostics for global actors" : "Compiler crash in async closure",
@@ -2593,6 +2687,7 @@ export const mockRepositoryCollaborators: RepositoryCollaboratorSummary[] = [
 
 export const mockPullRequests: PullRequestSummary[] = Array.from({ length: 12 }, (_, index) => ({
   id: index + 1,
+  nodeId: `PR_mock_pull_${index + 1}`,
   number: 520 - index,
   title: index % 2 === 0 ? "Add Sendable support for @MainActor types" : "Update concurrency runtime tests",
   state: index % 4 === 0 ? "closed" : "open",
@@ -2728,6 +2823,23 @@ export const mockDiscussions: DiscussionSummary[] = Array.from({ length: 8 }, (_
   updatedAt: new Date(Date.now() - index * 5_400_000).toISOString(),
   htmlUrl: `https://github.com/apple/swift/discussions/${200 + index}`
 }));
+
+export const mockDiscussionCategories: DiscussionCategorySummary[] = [
+  {
+    id: "DIC_announcements",
+    name: "Announcements",
+    emoji: ":mega:",
+    description: "Project announcements and release notes",
+    isAnswerable: false
+  },
+  {
+    id: "DIC_qna",
+    name: "Q&A",
+    emoji: ":question:",
+    description: "Questions that can have an accepted answer",
+    isAnswerable: true
+  }
+];
 
 export const mockActions: WorkflowRunSummary[] = Array.from({ length: 10 }, (_, index) => ({
   id: 9000 + index,
@@ -2919,11 +3031,105 @@ export const mockProjects: ProjectSummary[] = [
     createdAt: new Date(Date.now() - 14 * 86_400_000).toISOString(),
     updatedAt: new Date(Date.now() - 86_400_000).toISOString(),
     itemsCount: 48,
+    items: [
+      {
+        id: "PVTI_1",
+        type: "ISSUE",
+        contentId: "I_agent",
+        contentType: "Issue",
+        title: "Reduce compiler crash regressions",
+        body: "Track high-priority crash diagnostics.",
+        number: 101,
+        state: "OPEN",
+        repositoryNameWithOwner: "apple/swift",
+        htmlUrl: "https://github.com/apple/swift/issues/101",
+        createdAt: new Date(Date.now() - 9 * 86_400_000).toISOString(),
+        updatedAt: new Date(Date.now() - 86_400_000).toISOString(),
+        fieldValues: [
+          {
+            id: "PVTFV_1",
+            fieldId: "PF_1",
+            fieldName: "Status",
+            dataType: "SINGLE_SELECT",
+            value: "In progress",
+            optionId: "PFO_2",
+            optionName: "In progress",
+            options: [
+              { id: "PFO_1", name: "Backlog" },
+              { id: "PFO_2", name: "In progress" },
+              { id: "PFO_3", name: "Done" }
+            ],
+            editable: true
+          },
+          {
+            id: "PVTFV_2",
+            fieldId: "PF_2",
+            fieldName: "Priority",
+            dataType: "SINGLE_SELECT",
+            value: "High",
+            optionId: "PFO_5",
+            optionName: "High",
+            options: [
+              { id: "PFO_4", name: "Medium" },
+              { id: "PFO_5", name: "High" }
+            ],
+            editable: true
+          }
+        ],
+        fieldValuesTruncated: false
+      },
+      {
+        id: "PVTI_2",
+        type: "PULL_REQUEST",
+        contentId: "PR_1",
+        contentType: "PullRequest",
+        title: "Improve type checker diagnostics",
+        body: "Updates diagnostic presentation.",
+        number: 202,
+        state: "OPEN",
+        repositoryNameWithOwner: "apple/swift",
+        htmlUrl: "https://github.com/apple/swift/pull/202",
+        createdAt: new Date(Date.now() - 6 * 86_400_000).toISOString(),
+        updatedAt: new Date(Date.now() - 2 * 86_400_000).toISOString(),
+        fieldValues: [
+          {
+            id: "PVTFV_3",
+            fieldId: "PF_3",
+            fieldName: "Target",
+            dataType: "TEXT",
+            value: "5.10.1",
+            optionId: null,
+            optionName: null,
+            options: [],
+            editable: true
+          }
+        ],
+        fieldValuesTruncated: false
+      }
+    ],
+    itemsTruncated: true,
     fieldsCount: 7,
     fields: [
-      { id: "PF_1", name: "Status", dataType: "SINGLE_SELECT" },
-      { id: "PF_2", name: "Priority", dataType: "SINGLE_SELECT" },
-      { id: "PF_3", name: "Target", dataType: "TEXT" }
+      {
+        id: "PF_1",
+        name: "Status",
+        dataType: "SINGLE_SELECT",
+        options: [
+          { id: "PFO_1", name: "Backlog" },
+          { id: "PFO_2", name: "In progress" },
+          { id: "PFO_3", name: "Done" }
+        ]
+      },
+      {
+        id: "PF_2",
+        name: "Priority",
+        dataType: "SINGLE_SELECT",
+        options: [
+          { id: "PFO_4", name: "Medium" },
+          { id: "PFO_5", name: "High" }
+        ]
+      },
+      { id: "PF_3", name: "Target", dataType: "TEXT", options: [] }
     ],
     viewerCanUpdate: true,
     htmlUrl: "https://github.com/orgs/apple/projects/1"
@@ -2943,10 +3149,49 @@ export const mockProjects: ProjectSummary[] = [
     createdAt: new Date(Date.now() - 28 * 86_400_000).toISOString(),
     updatedAt: new Date(Date.now() - 172_800_000).toISOString(),
     itemsCount: 31,
+    items: [
+      {
+        id: "PVTI_3",
+        type: "DRAFT_ISSUE",
+        contentId: "DI_1",
+        contentType: "DraftIssue",
+        title: "Actor isolation migration notes",
+        body: "Draft roadmap item for migration blockers.",
+        number: null,
+        state: "DRAFT_ISSUE",
+        repositoryNameWithOwner: null,
+        htmlUrl: null,
+        createdAt: new Date(Date.now() - 12 * 86_400_000).toISOString(),
+        updatedAt: new Date(Date.now() - 172_800_000).toISOString(),
+        fieldValues: [
+          {
+            id: "PVTFV_4",
+            fieldId: "PF_5",
+            fieldName: "Release",
+            dataType: "TEXT",
+            value: "Swift 6",
+            optionId: null,
+            optionName: null,
+            options: [],
+            editable: true
+          }
+        ],
+        fieldValuesTruncated: false
+      }
+    ],
+    itemsTruncated: true,
     fieldsCount: 5,
     fields: [
-      { id: "PF_4", name: "Status", dataType: "SINGLE_SELECT" },
-      { id: "PF_5", name: "Release", dataType: "TEXT" }
+      {
+        id: "PF_4",
+        name: "Status",
+        dataType: "SINGLE_SELECT",
+        options: [
+          { id: "PFO_6", name: "Now" },
+          { id: "PFO_7", name: "Next" }
+        ]
+      },
+      { id: "PF_5", name: "Release", dataType: "TEXT", options: [] }
     ],
     viewerCanUpdate: false,
     htmlUrl: "https://github.com/orgs/apple/projects/2"
@@ -3039,6 +3284,7 @@ export const mockControlApi: ControlApi = {
   listRecentItems: async (input) => listMockRecentItems(input),
   recordRecentItem: async (input) => recordMockRecentItem(input),
   onGitHubRepositoriesUpdated: () => () => undefined,
+  onGitHubAuthUpdated: () => () => undefined,
   github: {
     getViewer: async () => mockViewer,
     getAccountProfile: async () => mockAccountProfile,
@@ -3208,13 +3454,19 @@ export const mockControlApi: ControlApi = {
     getRepositoryWiki: async (input) => mockRepositoryWiki(input.pagePath, input.limit),
     listCommits: async (input) =>
       input.path
-        ? mockCommits.filter((commit) => commit.headline.toLowerCase().includes(input.path!.split("/")[0].toLowerCase()))
+        ? mockCommits
+            .filter((commit) =>
+              commit.headline.toLowerCase().includes(input.path!.split("/")[0].toLowerCase())
+            )
             .concat(mockCommits)
             .slice(0, input.limit ?? 20)
         : mockCommits.slice(0, input.limit ?? 20),
     listCommitsWithStatus: async (input) => ({
       items: input.path
-        ? mockCommits.filter((commit) => commit.headline.toLowerCase().includes(input.path!.split("/")[0].toLowerCase()))
+        ? mockCommits
+            .filter((commit) =>
+              commit.headline.toLowerCase().includes(input.path!.split("/")[0].toLowerCase())
+            )
             .concat(mockCommits)
             .slice(0, input.limit ?? 20)
         : mockCommits.slice(0, input.limit ?? 20),
@@ -3237,9 +3489,13 @@ export const mockControlApi: ControlApi = {
       teamsAvailability: { status: "available", message: null }
     }),
     listMilestones: async (input) =>
-      mockMilestones.filter((milestone) => input.state === "all" || !input.state || milestone.state === input.state),
+      mockMilestones.filter(
+        (milestone) => input.state === "all" || !input.state || milestone.state === input.state
+      ),
     listMilestonesWithStatus: async (input) => ({
-      items: mockMilestones.filter((milestone) => input.state === "all" || !input.state || milestone.state === input.state),
+      items: mockMilestones.filter(
+        (milestone) => input.state === "all" || !input.state || milestone.state === input.state
+      ),
       availability: { status: "available", message: null }
     }),
     listIssues: async (input) => listMockIssues(input),
@@ -3248,10 +3504,15 @@ export const mockControlApi: ControlApi = {
       availability: { status: "available", message: null }
     }),
     getIssueDetail: async (input) => {
-      return readMockIssues().find((item) => item.number === input.issueNumber) ?? buildMockIssueDetail(mockIssues[0]);
+      return (
+        readMockIssues().find((item) => item.number === input.issueNumber) ??
+        buildMockIssueDetail(mockIssues[0])
+      );
     },
     getIssueDetailWithStatus: async (input): Promise<IssueDetailResult> => ({
-      detail: readMockIssues().find((item) => item.number === input.issueNumber) ?? buildMockIssueDetail(mockIssues[0]),
+      detail:
+        readMockIssues().find((item) => item.number === input.issueNumber) ??
+        buildMockIssueDetail(mockIssues[0]),
       availability: { status: "available", message: null }
     }),
     listPullRequests: async (input) => listMockPullRequests(input),
@@ -3274,6 +3535,10 @@ export const mockControlApi: ControlApi = {
     listDiscussions: async () => mockDiscussions,
     listDiscussionsWithStatus: async (input) => ({
       items: mockDiscussions.slice(0, input.limit),
+      availability: { status: "available", message: null }
+    }),
+    listDiscussionCategoriesWithStatus: async (input) => ({
+      items: mockDiscussionCategories.slice(0, input.limit ?? mockDiscussionCategories.length),
       availability: { status: "available", message: null }
     }),
     getDiscussionDetail: async (input): Promise<DiscussionDetailResult> => {
@@ -3346,7 +3611,10 @@ export const mockControlApi: ControlApi = {
       availability: { status: "available", message: null }
     }),
     listRepositorySecurityAdvisories: async (input) => ({
-      items: mockRepositorySecurityAdvisories.slice(0, input.limit ?? mockRepositorySecurityAdvisories.length),
+      items: mockRepositorySecurityAdvisories.slice(
+        0,
+        input.limit ?? mockRepositorySecurityAdvisories.length
+      ),
       availability: { status: "available", message: null }
     }),
     getRepositorySecurityPolicy: async () => mockRepositorySecurityPolicy,

@@ -25,6 +25,13 @@ const controlApi: ControlApi = {
     ipcRenderer.on(ipcChannels.githubRepositoriesUpdated, listener);
     return () => ipcRenderer.removeListener(ipcChannels.githubRepositoriesUpdated, listener);
   },
+  onGitHubAuthUpdated: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: unknown): void => {
+      callback(payload as Parameters<typeof callback>[0]);
+    };
+    ipcRenderer.on(ipcChannels.githubAuthUpdated, listener);
+    return () => ipcRenderer.removeListener(ipcChannels.githubAuthUpdated, listener);
+  },
   github: {
     getViewer: () => ipcRenderer.invoke(ipcChannels.githubViewer),
     getAccountProfile: (input = {}) => ipcRenderer.invoke(ipcChannels.githubAccountProfile, input),
@@ -61,7 +68,8 @@ const controlApi: ControlApi = {
     listNotifications: (input = {}) => ipcRenderer.invoke(ipcChannels.githubNotifications, input),
     listNotificationsWithStatus: (input = {}) =>
       ipcRenderer.invoke(ipcChannels.githubNotificationsWithStatus, input),
-    markNotificationThreadRead: (input) => ipcRenderer.invoke(ipcChannels.githubNotificationThreadRead, input),
+    markNotificationThreadRead: (input) =>
+      ipcRenderer.invoke(ipcChannels.githubNotificationThreadRead, input),
     unsubscribeNotificationThread: (input) =>
       ipcRenderer.invoke(ipcChannels.githubNotificationThreadUnsubscribe, input),
     getRepository: (input) => ipcRenderer.invoke(ipcChannels.githubRepository, input),
@@ -85,7 +93,8 @@ const controlApi: ControlApi = {
     listLabels: (input) => ipcRenderer.invoke(ipcChannels.githubLabels, input),
     listLabelsWithStatus: (input) => ipcRenderer.invoke(ipcChannels.githubLabelsWithStatus, input),
     listAssignableUsers: (input) => ipcRenderer.invoke(ipcChannels.githubAssignableUsers, input),
-    listAssignableUsersWithStatus: (input) => ipcRenderer.invoke(ipcChannels.githubAssignableUsersWithStatus, input),
+    listAssignableUsersWithStatus: (input) =>
+      ipcRenderer.invoke(ipcChannels.githubAssignableUsersWithStatus, input),
     getRepositoryAccess: (input) => ipcRenderer.invoke(ipcChannels.githubRepositoryAccess, input),
     listMilestones: (input) => ipcRenderer.invoke(ipcChannels.githubMilestones, input),
     listMilestonesWithStatus: (input) => ipcRenderer.invoke(ipcChannels.githubMilestonesWithStatus, input),
@@ -94,12 +103,15 @@ const controlApi: ControlApi = {
     getIssueDetail: (input) => ipcRenderer.invoke(ipcChannels.githubIssueDetail, input),
     getIssueDetailWithStatus: (input) => ipcRenderer.invoke(ipcChannels.githubIssueDetailWithStatus, input),
     listPullRequests: (input) => ipcRenderer.invoke(ipcChannels.githubPullRequests, input),
-    listPullRequestsWithStatus: (input) => ipcRenderer.invoke(ipcChannels.githubPullRequestsWithStatus, input),
+    listPullRequestsWithStatus: (input) =>
+      ipcRenderer.invoke(ipcChannels.githubPullRequestsWithStatus, input),
     getPullRequestDetail: (input) => ipcRenderer.invoke(ipcChannels.githubPullRequestDetail, input),
     getPullRequestDetailWithStatus: (input) =>
       ipcRenderer.invoke(ipcChannels.githubPullRequestDetailWithStatus, input),
     listDiscussions: (input) => ipcRenderer.invoke(ipcChannels.githubDiscussions, input),
     listDiscussionsWithStatus: (input) => ipcRenderer.invoke(ipcChannels.githubDiscussionsWithStatus, input),
+    listDiscussionCategoriesWithStatus: (input) =>
+      ipcRenderer.invoke(ipcChannels.githubDiscussionCategoriesWithStatus, input),
     getDiscussionDetail: (input) => ipcRenderer.invoke(ipcChannels.githubDiscussionDetail, input),
     listActions: (input) => ipcRenderer.invoke(ipcChannels.githubActions, input),
     listActionsWithStatus: (input) => ipcRenderer.invoke(ipcChannels.githubActionsWithStatus, input),
@@ -125,7 +137,8 @@ const controlApi: ControlApi = {
     listReleases: (input) => ipcRenderer.invoke(ipcChannels.githubReleases, input),
     listReleasesWithStatus: (input) => ipcRenderer.invoke(ipcChannels.githubReleasesWithStatus, input),
     listContributors: (input) => ipcRenderer.invoke(ipcChannels.githubContributors, input),
-    listContributorsWithStatus: (input) => ipcRenderer.invoke(ipcChannels.githubContributorsWithStatus, input),
+    listContributorsWithStatus: (input) =>
+      ipcRenderer.invoke(ipcChannels.githubContributorsWithStatus, input),
     search: (input) => ipcRenderer.invoke(ipcChannels.githubSearch, input),
     searchWithStatus: (input) => ipcRenderer.invoke(ipcChannels.githubSearchWithStatus, input),
     mutate: (input) => ipcRenderer.invoke(ipcChannels.githubMutate, input)

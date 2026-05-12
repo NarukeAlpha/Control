@@ -436,6 +436,28 @@ body:not(.no-liquid-glass) .setup-panel {
   height: 24px;
 }
 
+.loading-avatar {
+  position: relative;
+  color: transparent;
+}
+
+.loading-avatar::after {
+  position: absolute;
+  width: 58%;
+  height: 58%;
+  border: 2px solid rgba(97, 112, 137, 0.28);
+  border-top-color: #334963;
+  border-radius: 50%;
+  animation: avatar-loading-spin 0.9s linear infinite;
+  content: "";
+}
+
+@keyframes avatar-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .user-footer {
   display: grid;
   grid-template-columns: 38px minmax(0, 1fr) 24px;
@@ -2463,12 +2485,37 @@ p {
   margin: 0;
 }
 
+.security-management-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .branch-protection-checks {
   max-width: none;
 }
 
 .branch-protection-flags {
   justify-content: flex-start;
+}
+
+.ruleset-detail-list {
+  display: grid;
+  width: 100%;
+  gap: 6px;
+  color: #334963;
+  font-size: 12px;
+}
+
+.ruleset-detail-list span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ruleset-detail-list strong {
+  color: #172033;
+  font-weight: 800;
 }
 
 .sidebar-empty-state {
@@ -3389,6 +3436,93 @@ p {
   gap: 12px;
 }
 
+.repository-admin-section {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 16px;
+}
+
+.repository-admin-section header,
+.repository-admin-row,
+.repository-admin-row > div,
+.repository-admin-actions,
+.repository-admin-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.repository-admin-section header,
+.repository-admin-row {
+  justify-content: space-between;
+}
+
+.repository-admin-section h3 {
+  font-size: 16px;
+}
+
+.repository-admin-section small,
+.repository-admin-row small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.repository-admin-form,
+.repository-admin-list {
+  display: grid;
+  gap: 10px;
+}
+
+.repository-admin-form label {
+  display: grid;
+  gap: 6px;
+  color: #334963;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.repository-admin-form label:has(input[type="checkbox"]) {
+  display: inline-flex;
+  align-items: center;
+  font-weight: 600;
+}
+
+.repository-admin-inline-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 160px) auto;
+  gap: 8px;
+}
+
+.repository-admin-row {
+  min-height: 48px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.72);
+  padding: 8px 10px;
+}
+
+.repository-admin-row > span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.repository-admin-row strong,
+.repository-admin-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repository-admin-row-actions {
+  width: 100%;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+}
+
 .settings-access-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -3435,6 +3569,11 @@ p {
 .access-list button:disabled {
   cursor: default;
   opacity: 0.7;
+}
+
+.access-list .repository-admin-row-actions button,
+.access-list .repository-admin-row-actions select {
+  width: auto;
 }
 
 .access-list button > span:not(.mini-avatar) {

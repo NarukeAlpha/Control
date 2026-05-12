@@ -55,6 +55,7 @@ import type {
   ContributorSummary,
   DependabotAlertSummary,
   DependabotAlertsResult,
+  DiscussionCategoryListResult,
   DiscussionDetailResult,
   DiscussionCommentSummary,
   DiscussionListResult,
@@ -80,6 +81,7 @@ import type {
   OrganizationTeamRepositorySummary,
   OrganizationSummary,
   OrganizationTeamsResult,
+  ProjectItemFieldValueSummary,
   ProjectSummary,
   ProjectListResult,
   PullRequestDetail,
@@ -133,11 +135,7 @@ import type {
   WikiPageContent,
   WikiPageSummary
 } from "@shared/github";
-import type {
-  LocalRecentItem,
-  LocalRecentRecordInput,
-  LocalRecentSecurityItemKind
-} from "@shared/local";
+import type { LocalRecentItem, LocalRecentRecordInput, LocalRecentSecurityItemKind } from "@shared/local";
 import { getControlApi } from "./api/controlApi";
 import { useUiStore, type AppRoute, type RepositoryTab } from "./stores/uiStore";
 import { firstMarkdownHeading, formatCompactNumber, formatRelativeDate } from "./utils/format";
@@ -163,6 +161,8 @@ const repoTabs: Array<{ key: RepositoryTab; label: string; icon: typeof Code2 }>
   { key: "securityQuality", label: "Security and Quality", icon: Gauge },
   { key: "settings", label: "Settings", icon: Settings }
 ];
+
+const repositoryWarmPrefetchTabs = new Set<RepositoryTab>(["code", "issues", "pulls", "actions"]);
 
 type MarkdownUrlHandler = (url: string) => void;
 
@@ -378,11 +378,17 @@ interface MarkdownUrlContext {
   repositoryHtmlUrl?: string;
 }
 
-function safeExternalMarkdownUrl(url: string, context?: Pick<MarkdownUrlContext, "linkBaseUrl" | "linkRootUrl">): string | null {
+function safeExternalMarkdownUrl(
+  url: string,
+  context?: Pick<MarkdownUrlContext, "linkBaseUrl" | "linkRootUrl">
+): string | null {
   return safeMarkdownUrl(url, context?.linkBaseUrl, context?.linkRootUrl);
 }
 
-function safeMarkdownImageUrl(url: string, context?: Pick<MarkdownUrlContext, "imageBaseUrl" | "imageRootUrl">): string | null {
+function safeMarkdownImageUrl(
+  url: string,
+  context?: Pick<MarkdownUrlContext, "imageBaseUrl" | "imageRootUrl">
+): string | null {
   return safeMarkdownUrl(url, context?.imageBaseUrl, context?.imageRootUrl);
 }
 
@@ -412,11 +418,7 @@ function trimMarkdownUrlToken(url: string): { url: string; suffix: string } {
 }
 
 function normalizedSearchParts(value: string): string[] {
-  return value
-    .trim()
-    .toLowerCase()
-    .split(/\s+/)
-    .filter(Boolean);
+  return value.trim().toLowerCase().split(/\s+/).filter(Boolean);
 }
 
 function fieldsMatchSearchParts(fields: Array<string | number | null | undefined>, parts: string[]): boolean {
@@ -443,8 +445,11 @@ function markdownReferenceUrl(token: string, context?: MarkdownUrlContext): stri
     return null;
   }
 
-  const repositoryPath = issueReference[1] ?? context?.repositoryHtmlUrl?.replace(/^https:\/\/github\.com\//, "");
-  return repositoryPath ? safeMarkdownUrl(`https://github.com/${repositoryPath}/issues/${issueReference[2]}`) : null;
+  const repositoryPath =
+    issueReference[1] ?? context?.repositoryHtmlUrl?.replace(/^https:\/\/github\.com\//, "");
+  return repositoryPath
+    ? safeMarkdownUrl(`https://github.com/${repositoryPath}/issues/${issueReference[2]}`)
+    : null;
 }
 
 function markdownRepositoryUrlContext(
@@ -452,11 +457,7 @@ function markdownRepositoryUrlContext(
   ref: string,
   directoryPath = ""
 ): MarkdownUrlContext {
-  const normalizedDirectory = directoryPath
-    .split("/")
-    .filter(Boolean)
-    .map(encodeURIComponent)
-    .join("/");
+  const normalizedDirectory = directoryPath.split("/").filter(Boolean).map(encodeURIComponent).join("/");
   const encodedRef = encodeURIComponent(ref);
   const directorySuffix = normalizedDirectory ? `${normalizedDirectory}/` : "";
 
@@ -469,7 +470,10 @@ function markdownRepositoryUrlContext(
   };
 }
 
-function markdownProjectUrlContext(project: ProjectSummary, repository: RepositoryDetail): MarkdownUrlContext {
+function markdownProjectUrlContext(
+  project: ProjectSummary,
+  repository: RepositoryDetail
+): MarkdownUrlContext {
   const contextUrl =
     [project.htmlUrl, project.ownerHtmlUrl, repository.htmlUrl]
       .map((url) => (url ? safeMarkdownUrl(url) : null))
@@ -911,7 +915,10 @@ function MarkdownBody({
       }
       const ListTag = orderedList ? "ol" : "ul";
       blocks.push(
-        <ListTag className={items.some((item) => item.checked !== null) ? "markdown-task-list" : undefined} key={`list-${index}`}>
+        <ListTag
+          className={items.some((item) => item.checked !== null) ? "markdown-task-list" : undefined}
+          key={`list-${index}`}
+        >
           {items.map((item, itemIndex) => (
             <li key={`item-${itemIndex}`}>
               {item.checked !== null && <input checked={item.checked} readOnly type="checkbox" />}
@@ -1019,7 +1026,8 @@ function unknownableCompactNumber(value: number | null | undefined): string {
 
 function repositoryForkMetadataLabel(repository: RepositoryRef): string {
   const visibility =
-    repository.visibility ?? (repository.isPrivate === null || repository.isPrivate === undefined
+    repository.visibility ??
+    (repository.isPrivate === null || repository.isPrivate === undefined
       ? "unknown visibility"
       : repository.isPrivate
         ? "private"
@@ -1286,7 +1294,13 @@ type WorkflowFailureSummaryItem = {
   line?: number | null;
 };
 
-const workflowFailureStates = new Set(["failure", "cancelled", "timed_out", "startup_failure", "action_required"]);
+const workflowFailureStates = new Set([
+  "failure",
+  "cancelled",
+  "timed_out",
+  "startup_failure",
+  "action_required"
+]);
 const workflowAttentionConclusions = new Set(["failure", "timed_out", "action_required", "cancelled"]);
 const workflowAttentionStatuses = new Set(["in_progress", "queued", "waiting", "requested"]);
 
@@ -1371,7 +1385,9 @@ function workflowFailureSummary(detail: WorkflowRunDetail | undefined): Workflow
     }
 
     checkRun.annotations
-      .filter((annotation) => annotation.annotationLevel === "failure" || annotation.annotationLevel === "warning")
+      .filter(
+        (annotation) => annotation.annotationLevel === "failure" || annotation.annotationLevel === "warning"
+      )
       .slice(0, 2)
       .forEach((annotation, index) => {
         addItem({
@@ -1440,13 +1456,13 @@ function readAvailabilityMessage(
       ? `${feature} is disabled or not enabled for this repository.`
       : availability.status === "not_loaded"
         ? `${feature} was not loaded.`
-      : availability.status === "permission_denied"
-        ? `The current GitHub token cannot access ${feature.toLowerCase()}.`
-        : availability.status === "rate_limited"
-          ? `GitHub rate-limited the ${feature.toLowerCase()} request.`
-          : availability.status === "graphql_error"
-            ? `GitHub returned a GraphQL error for ${feature.toLowerCase()}.`
-            : `${feature} could not be loaded.`;
+        : availability.status === "permission_denied"
+          ? `The current GitHub token cannot access ${feature.toLowerCase()}.`
+          : availability.status === "rate_limited"
+            ? `GitHub rate-limited the ${feature.toLowerCase()} request.`
+            : availability.status === "graphql_error"
+              ? `GitHub returned a GraphQL error for ${feature.toLowerCase()}.`
+              : `${feature} could not be loaded.`;
 
   return availability.message ? `${reason} ${availability.message}` : reason;
 }
@@ -1681,6 +1697,19 @@ function mutationAffectsRepositoryCollections(action: GitHubAction): boolean {
     action === "editRelease" ||
     action === "deleteRelease" ||
     action === "deleteReleaseAsset" ||
+    action === "createDiscussion" ||
+    action === "editDiscussion" ||
+    action === "closeDiscussion" ||
+    action === "reopenDiscussion" ||
+    action === "addDiscussionComment" ||
+    action === "editDiscussionComment" ||
+    action === "deleteDiscussionComment" ||
+    action === "createProjectV2" ||
+    action === "updateProjectV2" ||
+    action === "deleteProjectV2" ||
+    action === "addProjectV2Item" ||
+    action === "updateProjectV2Item" ||
+    action === "deleteProjectV2Item" ||
     action === "rerunWorkflow" ||
     action === "rerunFailedWorkflowJobs" ||
     action === "rerunWorkflowJob" ||
@@ -1852,8 +1881,7 @@ function repositoryCollectionMetadataParts(repository: RepositorySummary): strin
   const stars = firstNumber(counts.stars, counts.stargazers, repository.stargazerCount) ?? 0;
   const forks = firstNumber(counts.forks, repository.forkCount) ?? 0;
   const watchers = firstNumber(counts.watchers, repository.watcherCount) ?? 0;
-  const openIssues =
-    firstNumber(counts.openIssues, counts.issues, repository.openIssuesCount) ?? 0;
+  const openIssues = firstNumber(counts.openIssues, counts.issues, repository.openIssuesCount) ?? 0;
   const nameWithOwner = repository.nameWithOwner.includes("/")
     ? repository.nameWithOwner
     : `${repository.owner}/${repository.name}`;
@@ -2108,7 +2136,10 @@ function repositoryRecentInput(
   };
 }
 
-function contributorRecentInput(nameWithOwner: string, contributor: ContributorSummary): LocalRecentRecordInput {
+function contributorRecentInput(
+  nameWithOwner: string,
+  contributor: ContributorSummary
+): LocalRecentRecordInput {
   return {
     kind: "contributor",
     itemKey: `${nameWithOwner}/contributors/${contributor.login}`,
@@ -2232,7 +2263,9 @@ function commitRecentAuthorName(commit: CommitRecentCommit): string | null {
   return "authorName" in commit ? (commit.authorName ?? null) : null;
 }
 
-function workflowRunCommitRecentCommit(run: WorkflowRunSummary | WorkflowRunDetail): SyntheticCommitRecentCommit | null {
+function workflowRunCommitRecentCommit(
+  run: WorkflowRunSummary | WorkflowRunDetail
+): SyntheticCommitRecentCommit | null {
   if (!run.commitSha) {
     return null;
   }
@@ -2266,7 +2299,9 @@ function workflowCheckSuiteCommitRecentCommit(
   };
 }
 
-function pullRequestReviewCommitRecentCommit(review: PullRequestReviewSummary): SyntheticCommitRecentCommit | null {
+function pullRequestReviewCommitRecentCommit(
+  review: PullRequestReviewSummary
+): SyntheticCommitRecentCommit | null {
   if (!review.commitSha) {
     return null;
   }
@@ -2393,7 +2428,11 @@ function issueRecentInput(nameWithOwner: string, issue: IssueSummary): LocalRece
   };
 }
 
-function issueReferenceRecentInput(nameWithOwner: string, number: number, url: string): LocalRecentRecordInput {
+function issueReferenceRecentInput(
+  nameWithOwner: string,
+  number: number,
+  url: string
+): LocalRecentRecordInput {
   return {
     kind: "issue",
     itemKey: `${nameWithOwner}:issue:${number}`,
@@ -2407,7 +2446,10 @@ function issueReferenceRecentInput(nameWithOwner: string, number: number, url: s
   };
 }
 
-function linkedIssueRecentInput(nameWithOwner: string, issue: PullRequestLinkedIssue): LocalRecentRecordInput {
+function linkedIssueRecentInput(
+  nameWithOwner: string,
+  issue: PullRequestLinkedIssue
+): LocalRecentRecordInput {
   return {
     kind: "issue",
     itemKey: `${nameWithOwner}:issue:${issue.number}`,
@@ -2456,7 +2498,11 @@ function pullRequestRecentInput(
   };
 }
 
-function pullRequestReferenceRecentInput(nameWithOwner: string, number: number, url: string): LocalRecentRecordInput {
+function pullRequestReferenceRecentInput(
+  nameWithOwner: string,
+  number: number,
+  url: string
+): LocalRecentRecordInput {
   return {
     kind: "pullRequest",
     itemKey: `${nameWithOwner}:pull:${number}`,
@@ -2493,10 +2539,7 @@ function pullRequestReviewDecisionTone(value: string | null | undefined): string
   return "";
 }
 
-function workflowRunRecentInput(
-  nameWithOwner: string,
-  run: WorkflowRunSummary
-): LocalRecentRecordInput {
+function workflowRunRecentInput(nameWithOwner: string, run: WorkflowRunSummary): LocalRecentRecordInput {
   const sourceRepositoryNameWithOwner =
     run.headRepositoryNameWithOwner && run.headRepositoryNameWithOwner !== nameWithOwner
       ? run.headRepositoryNameWithOwner
@@ -2655,7 +2698,11 @@ function releaseRecentInput(nameWithOwner: string, release: ReleaseSummary): Loc
   };
 }
 
-function releaseTagReferenceRecentInput(nameWithOwner: string, tagName: string, url: string): LocalRecentRecordInput {
+function releaseTagReferenceRecentInput(
+  nameWithOwner: string,
+  tagName: string,
+  url: string
+): LocalRecentRecordInput {
   return {
     kind: "release",
     itemKey: `${nameWithOwner}:release:${tagName}`,
@@ -2715,7 +2762,11 @@ function discussionRecentInput(nameWithOwner: string, discussion: DiscussionSumm
   };
 }
 
-function discussionReferenceRecentInput(nameWithOwner: string, number: number, url: string): LocalRecentRecordInput {
+function discussionReferenceRecentInput(
+  nameWithOwner: string,
+  number: number,
+  url: string
+): LocalRecentRecordInput {
   return {
     kind: "discussion",
     itemKey: `${nameWithOwner}:discussion:${number}`,
@@ -2747,7 +2798,10 @@ function projectRecentInput(nameWithOwner: string, project: ProjectSummary): Loc
   };
 }
 
-function organizationProjectRecentInput(organization: OrganizationSummary, project: ProjectSummary): LocalRecentRecordInput {
+function organizationProjectRecentInput(
+  organization: OrganizationSummary,
+  project: ProjectSummary
+): LocalRecentRecordInput {
   return {
     kind: "project",
     itemKey: `${organization.login}:project:${project.id}`,
@@ -2812,7 +2866,9 @@ const githubNonRepositoryPathRoots = new Set([
   "trending"
 ]);
 
-function parseGitHubRepositoryUrl(url: string): { nameWithOwner: string; segments: string[]; hash: string } | null {
+function parseGitHubRepositoryUrl(
+  url: string
+): { nameWithOwner: string; segments: string[]; hash: string } | null {
   try {
     const parsed = new URL(url);
     if (parsed.hostname !== "github.com") {
@@ -2837,7 +2893,10 @@ function parseGitHubRepositoryUrl(url: string): { nameWithOwner: string; segment
   }
 }
 
-function parseGitHubBlobUrl(url: string | null | undefined, expectedPath?: string | null): GitHubBlobRoute | null {
+function parseGitHubBlobUrl(
+  url: string | null | undefined,
+  expectedPath?: string | null
+): GitHubBlobRoute | null {
   if (!url) {
     return null;
   }
@@ -3071,7 +3130,10 @@ function notificationInAppTarget(notification: NotificationSummary): Notificatio
 
   const releaseTagName = parseNotificationReleaseTagName(notification);
   const releaseId = parseNotificationReleaseId(notification);
-  if ((type === "release" || releaseTagName || releaseId !== null) && (releaseTagName || releaseId !== null)) {
+  if (
+    (type === "release" || releaseTagName || releaseId !== null) &&
+    (releaseTagName || releaseId !== null)
+  ) {
     return {
       kind: "release",
       releaseId: releaseId ?? undefined,
@@ -3085,7 +3147,10 @@ function notificationInAppTarget(notification: NotificationSummary): Notificatio
   }
 
   const workflowRunId = parseNotificationWorkflowRunId(notification);
-  if ((type.includes("workflow") || type.includes("check") || workflowRunId !== null) && workflowRunId !== null) {
+  if (
+    (type.includes("workflow") || type.includes("check") || workflowRunId !== null) &&
+    workflowRunId !== null
+  ) {
     return { kind: "workflowRun", runId: workflowRunId, tab: "actions" };
   }
 
@@ -3655,11 +3720,11 @@ function CommitHistoryPanel({
       ? "Unavailable"
       : availabilityMessage
         ? "Unavailable"
-      : commits.length === 0
-        ? "No commits"
-        : canExpandCommits
-          ? `${commits.length}+ commits`
-          : `${commits.length} commits`;
+        : commits.length === 0
+          ? "No commits"
+          : canExpandCommits
+            ? `${commits.length}+ commits`
+            : `${commits.length} commits`;
 
   return (
     <section className="readme-panel commit-history-panel">
@@ -3892,7 +3957,9 @@ export function App(): JSX.Element {
   const setSettingsOpen = useUiStore((state) => state.setSettingsOpen);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [addRepositoryOpen, setAddRepositoryOpen] = useState(false);
-  const [repositoryRefs, setRepositoryRefs] = useState<Record<string, string | null>>(() => readRepositoryRefs());
+  const [repositoryRefs, setRepositoryRefs] = useState<Record<string, string | null>>(() =>
+    readRepositoryRefs()
+  );
   const [repositoryListLimit, setRepositoryListLimit] = useState(defaultRepositoryListLimit);
   const [commitHistoryLimits, setCommitHistoryLimits] = useState<Record<string, number>>({});
   const [repositoryRefListLimits, setRepositoryRefListLimits] = useState<Record<string, number>>({});
@@ -3907,15 +3974,25 @@ export function App(): JSX.Element {
   const [repositoryReleaseLimits, setRepositoryReleaseLimits] = useState<Record<string, number>>({});
   const [repositoryDiscussionLimits, setRepositoryDiscussionLimits] = useState<Record<string, number>>({});
   const [repositoryIssueListLimits, setRepositoryIssueListLimits] = useState<Record<string, number>>({});
-  const [repositoryPullRequestListLimits, setRepositoryPullRequestListLimits] = useState<Record<string, number>>({});
-  const [repositorySecurityListLimits, setRepositorySecurityListLimits] = useState<Record<string, number>>({});
+  const [repositoryPullRequestListLimits, setRepositoryPullRequestListLimits] = useState<
+    Record<string, number>
+  >({});
+  const [repositorySecurityListLimits, setRepositorySecurityListLimits] = useState<Record<string, number>>(
+    {}
+  );
   const [organizationListLimit, setOrganizationListLimit] = useState(defaultOrganizationListLimit);
-  const [organizationRepositoryLimits, setOrganizationRepositoryLimits] = useState<Record<string, number>>({});
+  const [organizationRepositoryLimits, setOrganizationRepositoryLimits] = useState<Record<string, number>>(
+    {}
+  );
   const [organizationTeamLimits, setOrganizationTeamLimits] = useState<Record<string, number>>({});
   const [organizationMemberLimits, setOrganizationMemberLimits] = useState<Record<string, number>>({});
   const [organizationProjectLimits, setOrganizationProjectLimits] = useState<Record<string, number>>({});
-  const [organizationTeamRepositoryLimits, setOrganizationTeamRepositoryLimits] = useState<Record<string, number>>({});
-  const [organizationTeamMemberLimits, setOrganizationTeamMemberLimits] = useState<Record<string, number>>({});
+  const [organizationTeamRepositoryLimits, setOrganizationTeamRepositoryLimits] = useState<
+    Record<string, number>
+  >({});
+  const [organizationTeamMemberLimits, setOrganizationTeamMemberLimits] = useState<Record<string, number>>(
+    {}
+  );
   const [homeRepositoryActivityLimit, setHomeRepositoryActivityLimit] = useState(
     defaultHomeRepositoryActivityLimit
   );
@@ -3947,7 +4024,8 @@ export function App(): JSX.Element {
 
   const repositories = useQuery({
     queryKey: ["repositories", repositoryListLimit],
-    queryFn: () => api.github.listRepositoriesWithStatus({ limit: repositoryListLimit, cacheOnly: !githubReady }),
+    queryFn: () =>
+      api.github.listRepositoriesWithStatus({ limit: repositoryListLimit, cacheOnly: !githubReady }),
     enabled: appState.isSuccess
   });
   const repositoryItems = useMemo(() => repositories.data?.items ?? [], [repositories.data]);
@@ -3967,10 +4045,7 @@ export function App(): JSX.Element {
     [pinnedRepositoryNames]
   );
   const repositoriesByName = useMemo(
-    () =>
-      new Map(
-        repositoryItems.map((repository) => [repository.nameWithOwner.toLowerCase(), repository])
-      ),
+    () => new Map(repositoryItems.map((repository) => [repository.nameWithOwner.toLowerCase(), repository])),
     [repositoryItems]
   );
 
@@ -3995,7 +4070,11 @@ export function App(): JSX.Element {
   const accountIssues = useQuery({
     queryKey: ["account-issues", accountWorkLimit],
     queryFn: () =>
-      api.github.listAccountIssuesWithStatus({ state: "open", limit: accountWorkLimit, cacheOnly: !githubReady }),
+      api.github.listAccountIssuesWithStatus({
+        state: "open",
+        limit: accountWorkLimit,
+        cacheOnly: !githubReady
+      }),
     enabled: appState.isSuccess && (route.kind === "home" || route.kind === "mailbox")
   });
   const accountIssueItems = accountIssues.data?.items ?? [];
@@ -4004,7 +4083,11 @@ export function App(): JSX.Element {
   const accountPulls = useQuery({
     queryKey: ["account-pulls", accountWorkLimit],
     queryFn: () =>
-      api.github.listAccountPullRequestsWithStatus({ state: "open", limit: accountWorkLimit, cacheOnly: !githubReady }),
+      api.github.listAccountPullRequestsWithStatus({
+        state: "open",
+        limit: accountWorkLimit,
+        cacheOnly: !githubReady
+      }),
     enabled: appState.isSuccess && (route.kind === "home" || route.kind === "mailbox")
   });
   const accountPullItems = accountPulls.data?.items ?? [];
@@ -4143,7 +4226,8 @@ export function App(): JSX.Element {
 
   const organizations = useQuery({
     queryKey: ["organizations", organizationListLimit],
-    queryFn: () => api.github.listOrganizationsWithStatus({ limit: organizationListLimit, cacheOnly: !githubReady }),
+    queryFn: () =>
+      api.github.listOrganizationsWithStatus({ limit: organizationListLimit, cacheOnly: !githubReady }),
     enabled: appState.isSuccess && route.kind === "organizations",
     staleTime: 120_000
   });
@@ -4154,16 +4238,16 @@ export function App(): JSX.Element {
     organizationItems[0] ??
     null;
   const organizationRepositoryLimit = selectedOrganization
-    ? organizationRepositoryLimits[selectedOrganization.login] ?? defaultOrganizationRepositoryLimit
+    ? (organizationRepositoryLimits[selectedOrganization.login] ?? defaultOrganizationRepositoryLimit)
     : defaultOrganizationRepositoryLimit;
   const organizationTeamLimit = selectedOrganization
-    ? organizationTeamLimits[selectedOrganization.login] ?? defaultOrganizationTeamLimit
+    ? (organizationTeamLimits[selectedOrganization.login] ?? defaultOrganizationTeamLimit)
     : defaultOrganizationTeamLimit;
   const organizationMemberLimit = selectedOrganization
-    ? organizationMemberLimits[selectedOrganization.login] ?? defaultOrganizationMemberLimit
+    ? (organizationMemberLimits[selectedOrganization.login] ?? defaultOrganizationMemberLimit)
     : defaultOrganizationMemberLimit;
   const organizationProjectLimit = selectedOrganization
-    ? organizationProjectLimits[selectedOrganization.login] ?? defaultOrganizationProjectLimit
+    ? (organizationProjectLimits[selectedOrganization.login] ?? defaultOrganizationProjectLimit)
     : defaultOrganizationProjectLimit;
   const organizationTeams = useQuery<OrganizationTeamsResult>({
     queryKey: ["organization-teams", selectedOrganization?.login ?? "none", organizationTeamLimit],
@@ -4177,7 +4261,11 @@ export function App(): JSX.Element {
     staleTime: 120_000
   });
   const organizationRepositories = useQuery<OrganizationRepositoriesResult>({
-    queryKey: ["organization-repositories", selectedOrganization?.login ?? "none", organizationRepositoryLimit],
+    queryKey: [
+      "organization-repositories",
+      selectedOrganization?.login ?? "none",
+      organizationRepositoryLimit
+    ],
     queryFn: () =>
       api.github.listOrganizationRepositoriesWithStatus({
         org: selectedOrganization!.login,
@@ -4203,12 +4291,15 @@ export function App(): JSX.Element {
     organizationTeams.data?.items[0] ??
     null;
   const selectedOrganizationTeamLimitKey =
-    selectedOrganization && selectedOrganizationTeam ? `${selectedOrganization.login}/${selectedOrganizationTeam.slug}` : null;
+    selectedOrganization && selectedOrganizationTeam
+      ? `${selectedOrganization.login}/${selectedOrganizationTeam.slug}`
+      : null;
   const organizationTeamRepositoryLimit = selectedOrganizationTeamLimitKey
-    ? organizationTeamRepositoryLimits[selectedOrganizationTeamLimitKey] ?? defaultOrganizationTeamRepositoryLimit
+    ? (organizationTeamRepositoryLimits[selectedOrganizationTeamLimitKey] ??
+      defaultOrganizationTeamRepositoryLimit)
     : defaultOrganizationTeamRepositoryLimit;
   const organizationTeamMemberLimit = selectedOrganizationTeamLimitKey
-    ? organizationTeamMemberLimits[selectedOrganizationTeamLimitKey] ?? defaultOrganizationTeamMemberLimit
+    ? (organizationTeamMemberLimits[selectedOrganizationTeamLimitKey] ?? defaultOrganizationTeamMemberLimit)
     : defaultOrganizationTeamMemberLimit;
   const organizationTeamRepositories = useQuery<OrganizationTeamRepositoriesResult>({
     queryKey: [
@@ -4268,6 +4359,8 @@ export function App(): JSX.Element {
   const isCodeBrowserRoute = route.kind === "codeBrowser";
   const isRepositoryContext = isRepositoryRoute || isCodeBrowserRoute;
   const activeRepositoryTab = isRepositoryRoute ? route.tab : "code";
+  const shouldLoadRepositoryTab = (tab: RepositoryTab): boolean =>
+    activeRepositoryTab === tab || (isRepositoryRoute && repositoryWarmPrefetchTabs.has(tab));
   const effectiveRepository =
     (isRepositoryContext ? route.nameWithOwner : selectedRepository) ??
     repositoryItems[0]?.nameWithOwner ??
@@ -4279,7 +4372,8 @@ export function App(): JSX.Element {
   const codeBrowserRef = isCodeBrowserRoute ? route.ref : null;
   const repositorySelectedRef = repositoryRefs[effectiveRepository] ?? null;
   const repositoryRefListLimit = repositoryRefListLimits[effectiveRepository] ?? defaultRefListLimit;
-  const repositoryContributorLimit = repositoryContributorLimits[effectiveRepository] ?? defaultContributorLimit;
+  const repositoryContributorLimit =
+    repositoryContributorLimits[effectiveRepository] ?? defaultContributorLimit;
   const forksLimit = repositoryForkLimits[effectiveRepository] ?? defaultForksLimit;
   const repositoryAccessLimit = repositoryAccessLimits[effectiveRepository] ?? defaultRepositoryAccessLimit;
   const actionsLimit = repositoryActionsLimits[effectiveRepository] ?? defaultActionsLimit;
@@ -4616,14 +4710,19 @@ export function App(): JSX.Element {
   const branches = useQuery({
     queryKey: ["branches", owner, repo, repositoryRefListLimit],
     queryFn: () =>
-      api.github.listBranchesWithStatus({ owner, repo, limit: repositoryRefListLimit, cacheOnly: !githubReady }),
+      api.github.listBranchesWithStatus({
+        owner,
+        repo,
+        limit: repositoryRefListLimit,
+        cacheOnly: !githubReady
+      }),
     enabled:
       appState.isSuccess &&
       hasRepositoryParts &&
       ((isRepositoryRoute &&
-        (activeRepositoryTab === "code" ||
-          activeRepositoryTab === "actions" ||
-          activeRepositoryTab === "pulls" ||
+        (shouldLoadRepositoryTab("code") ||
+          shouldLoadRepositoryTab("actions") ||
+          shouldLoadRepositoryTab("pulls") ||
           activeRepositoryTab === "releases" ||
           activeRepositoryTab === "securityQuality" ||
           activeRepositoryTab === "settings")) ||
@@ -4639,8 +4738,8 @@ export function App(): JSX.Element {
       appState.isSuccess &&
       hasRepositoryParts &&
       ((isRepositoryRoute &&
-        (activeRepositoryTab === "code" ||
-          activeRepositoryTab === "actions" ||
+        (shouldLoadRepositoryTab("code") ||
+          shouldLoadRepositoryTab("actions") ||
           activeRepositoryTab === "releases")) ||
         isCodeBrowserRoute),
     staleTime: 120_000
@@ -4670,7 +4769,7 @@ export function App(): JSX.Element {
     enabled:
       appState.isSuccess &&
       hasRepositoryParts &&
-      ((isRepositoryRoute && activeRepositoryTab === "code") ||
+      ((isRepositoryRoute && shouldLoadRepositoryTab("code")) ||
         (isCodeBrowserRoute && codeBrowserEntryType === "dir")),
     staleTime: 120_000
   });
@@ -4679,7 +4778,7 @@ export function App(): JSX.Element {
     queryKey: ["readme", owner, repo, contentsRef ?? "default"],
     queryFn: () =>
       api.github.getReadme({ owner, repo, ref: contentsRef ?? undefined, cacheOnly: !githubReady }),
-    enabled: appState.isSuccess && isRepositoryRoute && activeRepositoryTab === "code" && hasRepositoryParts,
+    enabled: appState.isSuccess && isRepositoryRoute && shouldLoadRepositoryTab("code") && hasRepositoryParts,
     staleTime: 120_000
   });
 
@@ -4732,7 +4831,7 @@ export function App(): JSX.Element {
         limit: repositoryCommitHistoryLimit,
         cacheOnly: !githubReady
       }),
-    enabled: appState.isSuccess && isRepositoryRoute && activeRepositoryTab === "code" && hasRepositoryParts,
+    enabled: appState.isSuccess && isRepositoryRoute && shouldLoadRepositoryTab("code") && hasRepositoryParts,
     staleTime: 60_000
   });
 
@@ -4776,25 +4875,30 @@ export function App(): JSX.Element {
         recursive: true,
         cacheOnly: !githubReady
       }),
-    enabled:
-      appState.isSuccess &&
-      fileFinderOpen &&
-      hasRepositoryParts &&
-      Boolean(repositoryDetail),
+    enabled: appState.isSuccess && fileFinderOpen && hasRepositoryParts && Boolean(repositoryDetail),
     staleTime: 120_000
   });
   const repositoryTreeItem = repositoryTree.data?.tree ?? null;
   const repositoryTreeAvailability = repositoryTree.data?.availability ?? null;
-  const repositoryTreeAvailabilityMessage = readAvailabilityMessage("Repository tree", repositoryTreeAvailability);
+  const repositoryTreeAvailabilityMessage = readAvailabilityMessage(
+    "Repository tree",
+    repositoryTreeAvailability
+  );
 
   const issues = useQuery({
     queryKey: ["issues", owner, repo, issueListLimit],
     queryFn: () =>
-      api.github.listIssuesWithStatus({ owner, repo, state: "all", limit: issueListLimit, cacheOnly: !githubReady }),
+      api.github.listIssuesWithStatus({
+        owner,
+        repo,
+        state: "all",
+        limit: issueListLimit,
+        cacheOnly: !githubReady
+      }),
     enabled:
       appState.isSuccess &&
       isRepositoryRoute &&
-      (activeRepositoryTab === "issues" || activeRepositoryTab === "agents") &&
+      (shouldLoadRepositoryTab("issues") || activeRepositoryTab === "agents") &&
       hasRepositoryParts,
     staleTime: 60_000
   });
@@ -4805,18 +4909,19 @@ export function App(): JSX.Element {
     enabled:
       appState.isSuccess &&
       isRepositoryRoute &&
-      (activeRepositoryTab === "issues" || activeRepositoryTab === "pulls") &&
+      (shouldLoadRepositoryTab("issues") || shouldLoadRepositoryTab("pulls")) &&
       hasRepositoryParts,
     staleTime: 120_000
   });
 
   const assignableUsers = useQuery({
     queryKey: ["assignable-users", owner, repo],
-    queryFn: () => api.github.listAssignableUsersWithStatus({ owner, repo, limit: 100, cacheOnly: !githubReady }),
+    queryFn: () =>
+      api.github.listAssignableUsersWithStatus({ owner, repo, limit: 100, cacheOnly: !githubReady }),
     enabled:
       appState.isSuccess &&
       isRepositoryRoute &&
-      (activeRepositoryTab === "issues" || activeRepositoryTab === "pulls") &&
+      (shouldLoadRepositoryTab("issues") || shouldLoadRepositoryTab("pulls")) &&
       hasRepositoryParts,
     staleTime: 120_000
   });
@@ -4828,7 +4933,7 @@ export function App(): JSX.Element {
     enabled:
       appState.isSuccess &&
       isRepositoryRoute &&
-      (activeRepositoryTab === "issues" || activeRepositoryTab === "pulls") &&
+      (shouldLoadRepositoryTab("issues") || shouldLoadRepositoryTab("pulls")) &&
       hasRepositoryParts,
     staleTime: 120_000
   });
@@ -4843,16 +4948,25 @@ export function App(): JSX.Element {
 
   const repositoryAccess = useQuery<RepositoryAccessResult>({
     queryKey: ["repository-access", owner, repo, repositoryAccessLimit],
-    queryFn: () => api.github.getRepositoryAccess({ owner, repo, limit: repositoryAccessLimit, cacheOnly: !githubReady }),
-    enabled: appState.isSuccess && isRepositoryRoute && activeRepositoryTab === "settings" && hasRepositoryParts,
+    queryFn: () =>
+      api.github.getRepositoryAccess({ owner, repo, limit: repositoryAccessLimit, cacheOnly: !githubReady }),
+    enabled:
+      appState.isSuccess && isRepositoryRoute && activeRepositoryTab === "settings" && hasRepositoryParts,
     staleTime: 120_000
   });
 
   const repositoryForks = useQuery<RepositoryForksResult>({
     queryKey: ["repository-forks", owner, repo, forksLimit],
     queryFn: () =>
-      api.github.listRepositoryForks({ owner, repo, sort: "stargazers", limit: forksLimit, cacheOnly: !githubReady }),
-    enabled: appState.isSuccess && isRepositoryRoute && activeRepositoryTab === "settings" && hasRepositoryParts,
+      api.github.listRepositoryForks({
+        owner,
+        repo,
+        sort: "stargazers",
+        limit: forksLimit,
+        cacheOnly: !githubReady
+      }),
+    enabled:
+      appState.isSuccess && isRepositoryRoute && activeRepositoryTab === "settings" && hasRepositoryParts,
     staleTime: 120_000
   });
 
@@ -4869,7 +4983,7 @@ export function App(): JSX.Element {
     enabled:
       appState.isSuccess &&
       isRepositoryRoute &&
-      (activeRepositoryTab === "pulls" || activeRepositoryTab === "agents") &&
+      (shouldLoadRepositoryTab("pulls") || activeRepositoryTab === "agents") &&
       hasRepositoryParts,
     staleTime: 60_000
   });
@@ -4880,25 +4994,29 @@ export function App(): JSX.Element {
     queryKey: ["discussions", owner, repo, discussionsLimit],
     queryFn: () =>
       api.github.listDiscussionsWithStatus({ owner, repo, limit: discussionsLimit, cacheOnly: !githubReady }),
-    enabled: appState.isSuccess && isRepositoryRoute && activeRepositoryTab === "discussions" && hasRepositoryParts,
+    enabled:
+      appState.isSuccess && isRepositoryRoute && activeRepositoryTab === "discussions" && hasRepositoryParts,
     staleTime: 60_000
   });
 
   const actions = useQuery<WorkflowRunListResult>({
     queryKey: ["actions", owner, repo, actionsLimit],
-    queryFn: () => api.github.listActionsWithStatus({ owner, repo, limit: actionsLimit, cacheOnly: !githubReady }),
+    queryFn: () =>
+      api.github.listActionsWithStatus({ owner, repo, limit: actionsLimit, cacheOnly: !githubReady }),
     enabled:
       appState.isSuccess &&
       isRepositoryRoute &&
-      (activeRepositoryTab === "actions" || activeRepositoryTab === "agents") &&
+      (shouldLoadRepositoryTab("actions") || activeRepositoryTab === "agents") &&
       hasRepositoryParts,
     staleTime: 60_000
   });
 
   const projects = useQuery<ProjectListResult>({
     queryKey: ["projects", owner, repo, projectsLimit],
-    queryFn: () => api.github.listProjectsWithStatus({ owner, repo, limit: projectsLimit, cacheOnly: !githubReady }),
-    enabled: appState.isSuccess && isRepositoryRoute && activeRepositoryTab === "projects" && hasRepositoryParts,
+    queryFn: () =>
+      api.github.listProjectsWithStatus({ owner, repo, limit: projectsLimit, cacheOnly: !githubReady }),
+    enabled:
+      appState.isSuccess && isRepositoryRoute && activeRepositoryTab === "projects" && hasRepositoryParts,
     staleTime: 60_000
   });
   const branchProtectionBranch =
@@ -4934,7 +5052,11 @@ export function App(): JSX.Element {
         limit: dependabotAlertsLimit,
         cacheOnly: !githubReady
       }),
-    enabled: appState.isSuccess && isRepositoryRoute && activeRepositoryTab === "securityQuality" && hasRepositoryParts,
+    enabled:
+      appState.isSuccess &&
+      isRepositoryRoute &&
+      activeRepositoryTab === "securityQuality" &&
+      hasRepositoryParts,
     staleTime: 60_000
   });
 
@@ -4948,7 +5070,11 @@ export function App(): JSX.Element {
         limit: codeScanningAlertsLimit,
         cacheOnly: !githubReady
       }),
-    enabled: appState.isSuccess && isRepositoryRoute && activeRepositoryTab === "securityQuality" && hasRepositoryParts,
+    enabled:
+      appState.isSuccess &&
+      isRepositoryRoute &&
+      activeRepositoryTab === "securityQuality" &&
+      hasRepositoryParts,
     staleTime: 60_000
   });
 
@@ -4962,7 +5088,11 @@ export function App(): JSX.Element {
         limit: secretScanningAlertsLimit,
         cacheOnly: !githubReady
       }),
-    enabled: appState.isSuccess && isRepositoryRoute && activeRepositoryTab === "securityQuality" && hasRepositoryParts,
+    enabled:
+      appState.isSuccess &&
+      isRepositoryRoute &&
+      activeRepositoryTab === "securityQuality" &&
+      hasRepositoryParts,
     staleTime: 60_000
   });
 
@@ -4976,7 +5106,11 @@ export function App(): JSX.Element {
         limit: repositoryRulesetsLimit,
         cacheOnly: !githubReady
       }),
-    enabled: appState.isSuccess && isRepositoryRoute && activeRepositoryTab === "securityQuality" && hasRepositoryParts,
+    enabled:
+      appState.isSuccess &&
+      isRepositoryRoute &&
+      activeRepositoryTab === "securityQuality" &&
+      hasRepositoryParts,
     staleTime: 60_000
   });
 
@@ -4989,7 +5123,11 @@ export function App(): JSX.Element {
         limit: repositorySecurityAdvisoriesLimit,
         cacheOnly: !githubReady
       }),
-    enabled: appState.isSuccess && isRepositoryRoute && activeRepositoryTab === "securityQuality" && hasRepositoryParts,
+    enabled:
+      appState.isSuccess &&
+      isRepositoryRoute &&
+      activeRepositoryTab === "securityQuality" &&
+      hasRepositoryParts,
     staleTime: 60_000
   });
 
@@ -5014,13 +5152,18 @@ export function App(): JSX.Element {
   const repositoryCommunityProfile = useQuery<RepositoryCommunityProfileResult>({
     queryKey: ["repository-community-profile", owner, repo],
     queryFn: () => api.github.getRepositoryCommunityProfile({ owner, repo, cacheOnly: !githubReady }),
-    enabled: appState.isSuccess && isRepositoryRoute && activeRepositoryTab === "securityQuality" && hasRepositoryParts,
+    enabled:
+      appState.isSuccess &&
+      isRepositoryRoute &&
+      activeRepositoryTab === "securityQuality" &&
+      hasRepositoryParts,
     staleTime: 120_000
   });
 
   const releases = useQuery({
     queryKey: ["releases", owner, repo, releasesLimit],
-    queryFn: () => api.github.listReleasesWithStatus({ owner, repo, limit: releasesLimit, cacheOnly: !githubReady }),
+    queryFn: () =>
+      api.github.listReleasesWithStatus({ owner, repo, limit: releasesLimit, cacheOnly: !githubReady }),
     enabled: appState.isSuccess && isRepositoryRoute && hasRepositoryParts && repository.isSuccess,
     staleTime: 120_000
   });
@@ -5044,44 +5187,52 @@ export function App(): JSX.Element {
   const actionItems = actions.data?.items ?? [];
   const actionsAvailability = actions.data?.availability ?? null;
 
-  const invalidateRepositoryScopedQueries = useCallback(async (targetOwner: string, targetRepo: string): Promise<void> => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["repository", targetOwner, targetRepo] }),
-      queryClient.invalidateQueries({ queryKey: ["branches", targetOwner, targetRepo] }),
-      queryClient.invalidateQueries({ queryKey: ["tags", targetOwner, targetRepo] }),
-      queryClient.invalidateQueries({ queryKey: ["contents", targetOwner, targetRepo] }),
-      queryClient.invalidateQueries({ queryKey: ["readme", targetOwner, targetRepo] }),
-      queryClient.invalidateQueries({ queryKey: ["file-content", targetOwner, targetRepo] }),
-      queryClient.invalidateQueries({ queryKey: ["file-blame", targetOwner, targetRepo] }),
-      queryClient.invalidateQueries({ queryKey: ["commits", targetOwner, targetRepo] }),
-      queryClient.invalidateQueries({ queryKey: ["tree", targetOwner, targetRepo] }),
-      queryClient.invalidateQueries({ queryKey: ["issues", targetOwner, targetRepo] }),
-      queryClient.invalidateQueries({ queryKey: ["issue-detail", targetOwner, targetRepo] }),
-      queryClient.invalidateQueries({ queryKey: ["labels", targetOwner, targetRepo] }),
-      queryClient.invalidateQueries({ queryKey: ["assignable-users", targetOwner, targetRepo] }),
-      queryClient.invalidateQueries({ queryKey: ["milestones", targetOwner, targetRepo] }),
-      queryClient.invalidateQueries({ queryKey: ["pulls", targetOwner, targetRepo] }),
-      queryClient.invalidateQueries({ queryKey: ["pull-detail", targetOwner, targetRepo] }),
-      queryClient.invalidateQueries({ queryKey: ["discussions", targetOwner, targetRepo] }),
-      queryClient.invalidateQueries({ queryKey: ["projects", targetOwner, targetRepo] }),
-      queryClient.invalidateQueries({ queryKey: ["actions", targetOwner, targetRepo] }),
-      queryClient.invalidateQueries({ queryKey: ["action-detail", targetOwner, targetRepo] }),
-      queryClient.invalidateQueries({ queryKey: ["workflows", targetOwner, targetRepo] }),
-      queryClient.invalidateQueries({ queryKey: ["repository-wiki", targetOwner, targetRepo] }),
-      queryClient.invalidateQueries({ queryKey: ["repository-access", targetOwner, targetRepo] }),
-      queryClient.invalidateQueries({ queryKey: ["repository-forks", targetOwner, targetRepo] }),
-      queryClient.invalidateQueries({ queryKey: ["branch-protection", targetOwner, targetRepo] }),
-      queryClient.invalidateQueries({ queryKey: ["dependabot-alerts", targetOwner, targetRepo] }),
-      queryClient.invalidateQueries({ queryKey: ["code-scanning-alerts", targetOwner, targetRepo] }),
-      queryClient.invalidateQueries({ queryKey: ["secret-scanning-alerts", targetOwner, targetRepo] }),
-      queryClient.invalidateQueries({ queryKey: ["repository-rulesets", targetOwner, targetRepo] }),
-      queryClient.invalidateQueries({ queryKey: ["repository-security-advisories", targetOwner, targetRepo] }),
-      queryClient.invalidateQueries({ queryKey: ["repository-security-policy", targetOwner, targetRepo] }),
-      queryClient.invalidateQueries({ queryKey: ["repository-community-profile", targetOwner, targetRepo] }),
-      queryClient.invalidateQueries({ queryKey: ["releases", targetOwner, targetRepo] }),
-      queryClient.invalidateQueries({ queryKey: ["contributors", targetOwner, targetRepo] })
-    ]);
-  }, [queryClient]);
+  const invalidateRepositoryScopedQueries = useCallback(
+    async (targetOwner: string, targetRepo: string): Promise<void> => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["repository", targetOwner, targetRepo] }),
+        queryClient.invalidateQueries({ queryKey: ["branches", targetOwner, targetRepo] }),
+        queryClient.invalidateQueries({ queryKey: ["tags", targetOwner, targetRepo] }),
+        queryClient.invalidateQueries({ queryKey: ["contents", targetOwner, targetRepo] }),
+        queryClient.invalidateQueries({ queryKey: ["readme", targetOwner, targetRepo] }),
+        queryClient.invalidateQueries({ queryKey: ["file-content", targetOwner, targetRepo] }),
+        queryClient.invalidateQueries({ queryKey: ["file-blame", targetOwner, targetRepo] }),
+        queryClient.invalidateQueries({ queryKey: ["commits", targetOwner, targetRepo] }),
+        queryClient.invalidateQueries({ queryKey: ["tree", targetOwner, targetRepo] }),
+        queryClient.invalidateQueries({ queryKey: ["issues", targetOwner, targetRepo] }),
+        queryClient.invalidateQueries({ queryKey: ["issue-detail", targetOwner, targetRepo] }),
+        queryClient.invalidateQueries({ queryKey: ["labels", targetOwner, targetRepo] }),
+        queryClient.invalidateQueries({ queryKey: ["assignable-users", targetOwner, targetRepo] }),
+        queryClient.invalidateQueries({ queryKey: ["milestones", targetOwner, targetRepo] }),
+        queryClient.invalidateQueries({ queryKey: ["pulls", targetOwner, targetRepo] }),
+        queryClient.invalidateQueries({ queryKey: ["pull-detail", targetOwner, targetRepo] }),
+        queryClient.invalidateQueries({ queryKey: ["discussions", targetOwner, targetRepo] }),
+        queryClient.invalidateQueries({ queryKey: ["discussion-categories", targetOwner, targetRepo] }),
+        queryClient.invalidateQueries({ queryKey: ["projects", targetOwner, targetRepo] }),
+        queryClient.invalidateQueries({ queryKey: ["actions", targetOwner, targetRepo] }),
+        queryClient.invalidateQueries({ queryKey: ["action-detail", targetOwner, targetRepo] }),
+        queryClient.invalidateQueries({ queryKey: ["workflows", targetOwner, targetRepo] }),
+        queryClient.invalidateQueries({ queryKey: ["repository-wiki", targetOwner, targetRepo] }),
+        queryClient.invalidateQueries({ queryKey: ["repository-access", targetOwner, targetRepo] }),
+        queryClient.invalidateQueries({ queryKey: ["repository-forks", targetOwner, targetRepo] }),
+        queryClient.invalidateQueries({ queryKey: ["branch-protection", targetOwner, targetRepo] }),
+        queryClient.invalidateQueries({ queryKey: ["dependabot-alerts", targetOwner, targetRepo] }),
+        queryClient.invalidateQueries({ queryKey: ["code-scanning-alerts", targetOwner, targetRepo] }),
+        queryClient.invalidateQueries({ queryKey: ["secret-scanning-alerts", targetOwner, targetRepo] }),
+        queryClient.invalidateQueries({ queryKey: ["repository-rulesets", targetOwner, targetRepo] }),
+        queryClient.invalidateQueries({
+          queryKey: ["repository-security-advisories", targetOwner, targetRepo]
+        }),
+        queryClient.invalidateQueries({ queryKey: ["repository-security-policy", targetOwner, targetRepo] }),
+        queryClient.invalidateQueries({
+          queryKey: ["repository-community-profile", targetOwner, targetRepo]
+        }),
+        queryClient.invalidateQueries({ queryKey: ["releases", targetOwner, targetRepo] }),
+        queryClient.invalidateQueries({ queryKey: ["contributors", targetOwner, targetRepo] })
+      ]);
+    },
+    [queryClient]
+  );
 
   const invalidateGitHubSessionQueries = useCallback(async (): Promise<void> => {
     const invalidations: Array<Promise<void>> = [
@@ -5125,18 +5276,21 @@ export function App(): JSX.Element {
       }
       if (mutationAffectsRepositoryCollections(input.action)) {
         accountInvalidations.push(queryClient.invalidateQueries({ queryKey: ["repositories"] }));
-        accountInvalidations.push(queryClient.invalidateQueries({ queryKey: ["github-account-repositories"] }));
+        accountInvalidations.push(
+          queryClient.invalidateQueries({ queryKey: ["github-account-repositories"] })
+        );
         accountInvalidations.push(queryClient.invalidateQueries({ queryKey: ["organizations"] }));
         accountInvalidations.push(queryClient.invalidateQueries({ queryKey: ["organization-repositories"] }));
-        accountInvalidations.push(queryClient.invalidateQueries({ queryKey: ["organization-team-repositories"] }));
+        accountInvalidations.push(
+          queryClient.invalidateQueries({ queryKey: ["organization-team-repositories"] })
+        );
       }
 
       await Promise.all([
         invalidateRepositoryScopedQueries(input.owner, input.repo),
-        ...accountInvalidations
+        ...accountInvalidations,
+        refreshRepositorySurface()
       ]);
-
-      await refreshRepositorySurface();
     }
   });
   const pinMutation = useMutation({
@@ -5812,7 +5966,7 @@ export function App(): JSX.Element {
     const keys =
       wikiQueryKeys.length > 0
         ? wikiQueryKeys
-        : ([["repository-wiki", owner, repo, "default", defaultWikiPageLimit] as const]);
+        : [["repository-wiki", owner, repo, "default", defaultWikiPageLimit] as const];
 
     try {
       await Promise.all(
@@ -5847,9 +6001,9 @@ export function App(): JSX.Element {
     try {
       await Promise.all([
         queryClient.fetchQuery({
-        queryKey: ["releases", owner, repo, releasesLimit],
-        staleTime: 0,
-        queryFn: () =>
+          queryKey: ["releases", owner, repo, releasesLimit],
+          staleTime: 0,
+          queryFn: () =>
             api.github.listReleasesWithStatus({
               owner,
               repo,
@@ -5982,9 +6136,9 @@ export function App(): JSX.Element {
     try {
       await Promise.all([
         queryClient.fetchQuery({
-        queryKey: ["issues", owner, repo, issueListLimit],
-        staleTime: 0,
-        queryFn: () =>
+          queryKey: ["issues", owner, repo, issueListLimit],
+          staleTime: 0,
+          queryFn: () =>
             api.github.listIssuesWithStatus({
               owner,
               repo,
@@ -5995,9 +6149,9 @@ export function App(): JSX.Element {
             })
         }),
         queryClient.fetchQuery({
-        queryKey: ["pulls", owner, repo, pullRequestListLimit],
-        staleTime: 0,
-        queryFn: () =>
+          queryKey: ["pulls", owner, repo, pullRequestListLimit],
+          staleTime: 0,
+          queryFn: () =>
             api.github.listPullRequestsWithStatus({
               owner,
               repo,
@@ -6279,8 +6433,7 @@ export function App(): JSX.Element {
 
     if (selectedOrganization) {
       const org = selectedOrganization.login;
-      const orgRepositoryLimit =
-        organizationRepositoryLimits[org] ?? defaultOrganizationRepositoryLimit;
+      const orgRepositoryLimit = organizationRepositoryLimits[org] ?? defaultOrganizationRepositoryLimit;
       const orgTeamLimit = organizationTeamLimits[org] ?? defaultOrganizationTeamLimit;
       const orgMemberLimit = organizationMemberLimits[org] ?? defaultOrganizationMemberLimit;
       const orgProjectLimit = organizationProjectLimits[org] ?? defaultOrganizationProjectLimit;
@@ -6335,10 +6488,16 @@ export function App(): JSX.Element {
         const teamLimitKey = `${org}/${selectedOrganizationTeam.slug}`;
         const teamRepositoryLimit =
           organizationTeamRepositoryLimits[teamLimitKey] ?? defaultOrganizationTeamRepositoryLimit;
-        const teamMemberLimit = organizationTeamMemberLimits[teamLimitKey] ?? defaultOrganizationTeamMemberLimit;
+        const teamMemberLimit =
+          organizationTeamMemberLimits[teamLimitKey] ?? defaultOrganizationTeamMemberLimit;
         refreshes.push(
           queryClient.fetchQuery({
-            queryKey: ["organization-team-repositories", org, selectedOrganizationTeam.slug, teamRepositoryLimit],
+            queryKey: [
+              "organization-team-repositories",
+              org,
+              selectedOrganizationTeam.slug,
+              teamRepositoryLimit
+            ],
             staleTime: 0,
             queryFn: () =>
               api.github.listOrganizationTeamRepositoriesWithStatus({
@@ -6379,7 +6538,9 @@ export function App(): JSX.Element {
 
   function openRepositoryRouteInApp(route: Extract<AppRoute, { kind: "repository" }>): void {
     navigate(route);
-    recordRecent(repositoryRecentInput(route.nameWithOwner, repositoryForRecent(route.nameWithOwner), route.tab));
+    recordRecent(
+      repositoryRecentInput(route.nameWithOwner, repositoryForRecent(route.nameWithOwner), route.tab)
+    );
   }
 
   function selectRepositoryTabInApp(nameWithOwner: string, tab: RepositoryTab): void {
@@ -6438,7 +6599,9 @@ export function App(): JSX.Element {
       [nameWithOwner]: ref
     }));
     if (ref) {
-      recordRecent(repositoryRecentInput(nameWithOwner, repositoryForRecent(nameWithOwner), "code", ref, refKind));
+      recordRecent(
+        repositoryRecentInput(nameWithOwner, repositoryForRecent(nameWithOwner), "code", ref, refKind)
+      );
     }
     if (codeBrowserTarget) {
       openCodeBrowserInApp(
@@ -6458,7 +6621,9 @@ export function App(): JSX.Element {
       ...currentRefs,
       [nameWithOwner]: ref
     }));
-    recordRecent(repositoryRecentInput(nameWithOwner, repositoryDetail ?? undefined, "securityQuality", ref, "branch"));
+    recordRecent(
+      repositoryRecentInput(nameWithOwner, repositoryDetail ?? undefined, "securityQuality", ref, "branch")
+    );
     navigate({ kind: "repository", nameWithOwner, tab: "securityQuality" });
   }
 
@@ -6545,10 +6710,7 @@ export function App(): JSX.Element {
     recordRecent(workflowArtifactRecentInput(nameWithOwner, run, artifact));
   }
 
-  function selectSecurityItemInApp(
-    nameWithOwner: string,
-    securityItem: SecurityItemRecentInput
-  ): void {
+  function selectSecurityItemInApp(nameWithOwner: string, securityItem: SecurityItemRecentInput): void {
     navigate({
       kind: "repository",
       nameWithOwner,
@@ -6602,7 +6764,12 @@ export function App(): JSX.Element {
       return;
     }
 
-    if ((surface === "pull" || surface === "pulls") && number !== null && Number.isInteger(number) && number > 0) {
+    if (
+      (surface === "pull" || surface === "pulls") &&
+      number !== null &&
+      Number.isInteger(number) &&
+      number > 0
+    ) {
       navigate({ kind: "repository", nameWithOwner, tab: "pulls", pullNumber: number });
       recordRecent(pullRequestReferenceRecentInput(nameWithOwner, number, url));
       return;
@@ -7071,7 +7238,11 @@ export function App(): JSX.Element {
     const tabFreshness =
       activeRepositoryTab === "code"
         ? {
-            updatedAt: Math.max(contents.dataUpdatedAt, readme.dataUpdatedAt, repositoryCommits.dataUpdatedAt),
+            updatedAt: Math.max(
+              contents.dataUpdatedAt,
+              readme.dataUpdatedAt,
+              repositoryCommits.dataUpdatedAt
+            ),
             refreshing: contents.isFetching || readme.isFetching || repositoryCommits.isFetching,
             stale: contents.isStale || readme.isStale || repositoryCommits.isStale
           }
@@ -7084,18 +7255,19 @@ export function App(): JSX.Element {
                 milestones.dataUpdatedAt
               ),
               refreshing:
-                issues.isFetching ||
-                labels.isFetching ||
-                assignableUsers.isFetching ||
-                milestones.isFetching,
+                issues.isFetching || labels.isFetching || assignableUsers.isFetching || milestones.isFetching,
               stale: issues.isStale || labels.isStale || assignableUsers.isStale || milestones.isStale
             }
-        : activeRepositoryTab === "pulls"
-          ? {
-              updatedAt: Math.max(pulls.dataUpdatedAt, assignableUsers.dataUpdatedAt, branches.dataUpdatedAt),
-              refreshing: pulls.isFetching || assignableUsers.isFetching || branches.isFetching,
-              stale: pulls.isStale || assignableUsers.isStale || branches.isStale
-            }
+          : activeRepositoryTab === "pulls"
+            ? {
+                updatedAt: Math.max(
+                  pulls.dataUpdatedAt,
+                  assignableUsers.dataUpdatedAt,
+                  branches.dataUpdatedAt
+                ),
+                refreshing: pulls.isFetching || assignableUsers.isFetching || branches.isFetching,
+                stale: pulls.isStale || assignableUsers.isStale || branches.isStale
+              }
             : activeRepositoryTab === "discussions"
               ? {
                   updatedAt: discussions.dataUpdatedAt,
@@ -7114,71 +7286,81 @@ export function App(): JSX.Element {
                       refreshing: releases.isFetching || branches.isFetching || tags.isFetching,
                       stale: releases.isStale || branches.isStale || tags.isStale
                     }
-                : activeRepositoryTab === "contributors"
-                  ? {
-                      updatedAt: contributors.dataUpdatedAt,
-                      refreshing: contributors.isFetching,
-                      stale: contributors.isStale
-                    }
-                  : activeRepositoryTab === "actions"
+                  : activeRepositoryTab === "contributors"
                     ? {
-                        updatedAt: Math.max(actions.dataUpdatedAt, branches.dataUpdatedAt, tags.dataUpdatedAt),
-                        refreshing: actions.isFetching || branches.isFetching || tags.isFetching,
-                        stale: actions.isStale || branches.isStale || tags.isStale
+                        updatedAt: contributors.dataUpdatedAt,
+                        refreshing: contributors.isFetching,
+                        stale: contributors.isStale
                       }
-                    : activeRepositoryTab === "agents"
+                    : activeRepositoryTab === "actions"
                       ? {
-                          updatedAt: Math.max(issues.dataUpdatedAt, pulls.dataUpdatedAt, actions.dataUpdatedAt),
-                          refreshing: issues.isFetching || pulls.isFetching || actions.isFetching,
-                          stale: issues.isStale || pulls.isStale || actions.isStale
+                          updatedAt: Math.max(
+                            actions.dataUpdatedAt,
+                            branches.dataUpdatedAt,
+                            tags.dataUpdatedAt
+                          ),
+                          refreshing: actions.isFetching || branches.isFetching || tags.isFetching,
+                          stale: actions.isStale || branches.isStale || tags.isStale
                         }
-                      : activeRepositoryTab === "securityQuality"
+                      : activeRepositoryTab === "agents"
                         ? {
                             updatedAt: Math.max(
-                              branchProtection.dataUpdatedAt,
-                              dependabotAlerts.dataUpdatedAt,
-                              codeScanningAlerts.dataUpdatedAt,
-                              secretScanningAlerts.dataUpdatedAt,
-                              repositoryRulesets.dataUpdatedAt,
-                              repositorySecurityAdvisories.dataUpdatedAt,
-                              repositorySecurityPolicy.dataUpdatedAt,
-                              repositoryCommunityProfile.dataUpdatedAt
+                              issues.dataUpdatedAt,
+                              pulls.dataUpdatedAt,
+                              actions.dataUpdatedAt
                             ),
-                            refreshing:
-                              branchProtection.isFetching ||
-                              dependabotAlerts.isFetching ||
-                              codeScanningAlerts.isFetching ||
-                              secretScanningAlerts.isFetching ||
-                              repositoryRulesets.isFetching ||
-                              repositorySecurityAdvisories.isFetching ||
-                              repositorySecurityPolicy.isFetching ||
-                              repositoryCommunityProfile.isFetching,
-                            stale:
-                              branchProtection.isStale ||
-                              dependabotAlerts.isStale ||
-                              codeScanningAlerts.isStale ||
-                              secretScanningAlerts.isStale ||
-                              repositoryRulesets.isStale ||
-                              repositorySecurityAdvisories.isStale ||
-                              repositorySecurityPolicy.isStale ||
-                              repositoryCommunityProfile.isStale
+                            refreshing: issues.isFetching || pulls.isFetching || actions.isFetching,
+                            stale: issues.isStale || pulls.isStale || actions.isStale
                           }
-                        : activeRepositoryTab === "settings"
+                        : activeRepositoryTab === "securityQuality"
                           ? {
                               updatedAt: Math.max(
-                                repositoryAccess.dataUpdatedAt,
-                                branches.dataUpdatedAt,
-                                repositoryForks.dataUpdatedAt
+                                branchProtection.dataUpdatedAt,
+                                dependabotAlerts.dataUpdatedAt,
+                                codeScanningAlerts.dataUpdatedAt,
+                                secretScanningAlerts.dataUpdatedAt,
+                                repositoryRulesets.dataUpdatedAt,
+                                repositorySecurityAdvisories.dataUpdatedAt,
+                                repositorySecurityPolicy.dataUpdatedAt,
+                                repositoryCommunityProfile.dataUpdatedAt
                               ),
                               refreshing:
-                                repositoryAccess.isFetching || branches.isFetching || repositoryForks.isFetching,
-                              stale: repositoryAccess.isStale || branches.isStale || repositoryForks.isStale
+                                branchProtection.isFetching ||
+                                dependabotAlerts.isFetching ||
+                                codeScanningAlerts.isFetching ||
+                                secretScanningAlerts.isFetching ||
+                                repositoryRulesets.isFetching ||
+                                repositorySecurityAdvisories.isFetching ||
+                                repositorySecurityPolicy.isFetching ||
+                                repositoryCommunityProfile.isFetching,
+                              stale:
+                                branchProtection.isStale ||
+                                dependabotAlerts.isStale ||
+                                codeScanningAlerts.isStale ||
+                                secretScanningAlerts.isStale ||
+                                repositoryRulesets.isStale ||
+                                repositorySecurityAdvisories.isStale ||
+                                repositorySecurityPolicy.isStale ||
+                                repositoryCommunityProfile.isStale
                             }
-                          : {
-                              updatedAt: 0,
-                              refreshing: false,
-                              stale: false
-                            };
+                          : activeRepositoryTab === "settings"
+                            ? {
+                                updatedAt: Math.max(
+                                  repositoryAccess.dataUpdatedAt,
+                                  branches.dataUpdatedAt,
+                                  repositoryForks.dataUpdatedAt
+                                ),
+                                refreshing:
+                                  repositoryAccess.isFetching ||
+                                  branches.isFetching ||
+                                  repositoryForks.isFetching,
+                                stale: repositoryAccess.isStale || branches.isStale || repositoryForks.isStale
+                              }
+                            : {
+                                updatedAt: 0,
+                                refreshing: false,
+                                stale: false
+                              };
 
     return {
       updatedAt: Math.max(repository.dataUpdatedAt, tabFreshness.updatedAt),
@@ -7243,12 +7425,13 @@ export function App(): JSX.Element {
 
   const commandPaletteItems = (() => {
     const repositoriesRefreshDisabledReason = repositories.isFetching
-        ? "Repositories are already refreshing."
-        : null;
-    const mailboxRefreshInFlight = notifications.isFetching || accountIssues.isFetching || accountPulls.isFetching;
+      ? "Repositories are already refreshing."
+      : null;
+    const mailboxRefreshInFlight =
+      notifications.isFetching || accountIssues.isFetching || accountPulls.isFetching;
     const mailboxRefreshDisabledReason = mailboxRefreshInFlight
-        ? "Mailbox data is already refreshing."
-        : null;
+      ? "Mailbox data is already refreshing."
+      : null;
     const loadedUnreadNotificationIds = notificationItems
       .filter((notification) => notification.unread)
       .map((notification) => notification.id);
@@ -7270,8 +7453,8 @@ export function App(): JSX.Element {
       organizationTeamMembers.isFetching ||
       organizationProjects.isFetching;
     const organizationsRefreshDisabledReason = organizationsRefreshInFlight
-        ? "Organization data is already refreshing."
-        : null;
+      ? "Organization data is already refreshing."
+      : null;
 
     const items: CommandPaletteItem[] = [
       {
@@ -7335,7 +7518,15 @@ export function App(): JSX.Element {
           : "Reload cached organization data",
         group: "Refresh",
         icon: RefreshCw,
-        keywords: ["refresh organizations", "reload orgs", "repositories", "teams", "members", "organization projects", "stale"],
+        keywords: [
+          "refresh organizations",
+          "reload orgs",
+          "repositories",
+          "teams",
+          "members",
+          "organization projects",
+          "stale"
+        ],
         disabledReason: organizationsRefreshDisabledReason,
         run: () => {
           void refreshOrganizationsNow();
@@ -7444,7 +7635,10 @@ export function App(): JSX.Element {
     }
 
     if (organizationRepositories.data?.items && selectedOrganization) {
-      for (const repository of organizationRepositories.data.items.slice(0, commandPaletteGeneralSourceLimit)) {
+      for (const repository of organizationRepositories.data.items.slice(
+        0,
+        commandPaletteGeneralSourceLimit
+      )) {
         items.push({
           id: `organization-repository-${selectedOrganization.login}-${repository.id}`,
           title: repository.name,
@@ -7475,7 +7669,10 @@ export function App(): JSX.Element {
     }
 
     if (organizationTeamRepositories.data?.items && selectedOrganization && selectedOrganizationTeam) {
-      for (const repository of organizationTeamRepositories.data.items.slice(0, commandPaletteGeneralSourceLimit)) {
+      for (const repository of organizationTeamRepositories.data.items.slice(
+        0,
+        commandPaletteGeneralSourceLimit
+      )) {
         items.push({
           id: `organization-team-repository-${selectedOrganization.login}-${selectedOrganizationTeam.slug}-${repository.id}`,
           title: repository.name,
@@ -7649,7 +7846,8 @@ export function App(): JSX.Element {
     }
 
     for (const issue of accountIssueItems.slice(0, commandPaletteGeneralSourceLimit)) {
-      const nameWithOwner = issue.repositoryNameWithOwner ?? repositoryNameWithOwnerFromGitHubUrl(issue.htmlUrl);
+      const nameWithOwner =
+        issue.repositoryNameWithOwner ?? repositoryNameWithOwnerFromGitHubUrl(issue.htmlUrl);
 
       items.push({
         id: `account-issue-${nameWithOwner ?? issue.htmlUrl}-${issue.number}`,
@@ -7734,12 +7932,12 @@ export function App(): JSX.Element {
             ? `Repository details unavailable: ${repository.error.message}`
             : !repositoryDetail && repositoryAvailabilityMessage
               ? repositoryAvailabilityMessage
-            : currentRepositoryMatches
-              ? repositoryMutationDisabledReason(repositoryDetail)
-              : "Open the repository before running mutation commands.";
+              : currentRepositoryMatches
+                ? repositoryMutationDisabledReason(repositoryDetail)
+                : "Open the repository before running mutation commands.";
       const repositoryRefreshDisabledReason = repository.isFetching
-          ? "Repository refresh is already running."
-          : null;
+        ? "Repository refresh is already running."
+        : null;
       const currentRepositoryPinned = pinnedRepositoryNameSet.has(effectiveRepository.toLowerCase());
       const repositoryPinCommandDisabledReason = pinMutation.isPending
         ? "Repository pin update is already running."
@@ -7904,7 +8102,10 @@ export function App(): JSX.Element {
       }
 
       if (repositoryAccess.data?.collaborators) {
-        for (const collaborator of repositoryAccess.data.collaborators.slice(0, commandPaletteDenseSourceLimit)) {
+        for (const collaborator of repositoryAccess.data.collaborators.slice(
+          0,
+          commandPaletteDenseSourceLimit
+        )) {
           const roleLabel = collaboratorRoleLabel(collaborator);
           items.push({
             id: `repository-settings-collaborator-${effectiveRepository}-${collaborator.id}`,
@@ -7933,7 +8134,8 @@ export function App(): JSX.Element {
       if (repositoryAccess.data?.teams) {
         for (const team of repositoryAccess.data.teams.slice(0, commandPaletteDenseSourceLimit)) {
           const permissionLabel = accessRoleLabel(team.permission);
-          const memberCountLabel = team.memberCount !== null ? `${formatCompactNumber(team.memberCount)} members` : null;
+          const memberCountLabel =
+            team.memberCount !== null ? `${formatCompactNumber(team.memberCount)} members` : null;
           const parentTeamLabel = team.parent ? `Parent: ${team.parent.name}` : null;
           const subtitleParts = [
             `${team.organizationLogin}/${team.slug}`,
@@ -8275,7 +8477,8 @@ export function App(): JSX.Element {
 
       if (secretScanningAlerts.data?.items) {
         for (const alert of secretScanningAlerts.data.items.slice(0, commandPaletteSecuritySourceLimit)) {
-          const title = alert.secretTypeDisplayName ?? alert.secretType ?? `Secret scanning alert #${alert.number}`;
+          const title =
+            alert.secretTypeDisplayName ?? alert.secretType ?? `Secret scanning alert #${alert.number}`;
           items.push({
             id: `security-secret-scanning-${effectiveRepository}-${alert.number}`,
             title,
@@ -8348,7 +8551,19 @@ export function App(): JSX.Element {
               ruleset.currentUserCanBypass ?? "",
               ruleset.ruleCount === null ? "" : `${ruleset.ruleCount} rules`,
               ruleset.conditionCount === null ? "" : `${ruleset.conditionCount} conditions`,
-              ruleset.bypassActorCount === null ? "" : `${ruleset.bypassActorCount} bypass actors`
+              ruleset.bypassActorCount === null ? "" : `${ruleset.bypassActorCount} bypass actors`,
+              ...ruleset.rules.flatMap((rule) => [rule.type, ...rule.parameters]),
+              ...ruleset.conditions.flatMap((condition) => [
+                condition.type,
+                ...condition.include,
+                ...condition.exclude,
+                ...condition.parameters
+              ]),
+              ...ruleset.bypassActors.flatMap((actor) => [
+                actor.actorType ?? "",
+                actor.actorId === null ? "" : String(actor.actorId),
+                actor.bypassMode ?? ""
+              ])
             ],
             run: () =>
               selectSecurityItemInApp(effectiveRepository, {
@@ -8366,7 +8581,10 @@ export function App(): JSX.Element {
       }
 
       if (repositorySecurityAdvisories.data?.items) {
-        for (const advisory of repositorySecurityAdvisories.data.items.slice(0, commandPaletteSecuritySourceLimit)) {
+        for (const advisory of repositorySecurityAdvisories.data.items.slice(
+          0,
+          commandPaletteSecuritySourceLimit
+        )) {
           items.push({
             id: `security-advisory-${effectiveRepository}-${advisory.ghsaId}`,
             title: advisory.summary,
@@ -8495,7 +8713,13 @@ export function App(): JSX.Element {
           subtitle: "Open the in-app pull request composer",
           group: "Commands",
           icon: GitPullRequest,
-          keywords: ["new pull request", "create pr", "create pull", "pull request composer", effectiveRepository],
+          keywords: [
+            "new pull request",
+            "create pr",
+            "create pull",
+            "pull request composer",
+            effectiveRepository
+          ],
           disabledReason: repositoryCommandDisabledReason,
           run: () =>
             openRepositoryRouteInApp({
@@ -8606,7 +8830,14 @@ export function App(): JSX.Element {
           subtitle: "Open alerts, scanning, and branch protection",
           group: "Commands",
           icon: Gauge,
-          keywords: ["security", "quality", "security quality", "alerts", "branch protection", effectiveRepository],
+          keywords: [
+            "security",
+            "quality",
+            "security quality",
+            "alerts",
+            "branch protection",
+            effectiveRepository
+          ],
           run: () => openRepositoryInApp(effectiveRepository, "securityQuality")
         },
         {
@@ -8630,10 +8861,7 @@ export function App(): JSX.Element {
       );
     }
 
-    for (const repositoryShortcut of repositoryShortcutsFromPins(
-      pinnedRepositoryNames,
-      repositoryItems
-    )) {
+    for (const repositoryShortcut of repositoryShortcutsFromPins(pinnedRepositoryNames, repositoryItems)) {
       items.push({
         id: `pinned-${repositoryShortcut.nameWithOwner}`,
         title: displayRepositoryShortcutName(repositoryShortcut, appState.data?.viewer?.login ?? null),
@@ -8666,28 +8894,28 @@ export function App(): JSX.Element {
                 : recent.kind === "pullRequest"
                   ? GitPullRequest
                   : recent.kind === "discussion"
-                  ? MessageSquare
-                  : recent.kind === "organization"
-                    ? Building2
-                    : recent.kind === "team"
-                      ? Users
-                      : recent.kind === "contributor"
+                    ? MessageSquare
+                    : recent.kind === "organization"
+                      ? Building2
+                      : recent.kind === "team"
                         ? Users
-                        : recent.kind === "project"
-                          ? SquareKanban
-                          : recent.kind === "release"
-                            ? Tag
-                            : recent.kind === "releaseAsset"
-                              ? Download
-                              : recent.kind === "workflowRun"
-                                ? Workflow
-                                : recent.kind === "workflowArtifact"
-                                  ? Download
-                                  : recent.kind === "securityItem"
-                                    ? ShieldCheck
-                                    : recent.kind === "wikiPage"
-                                      ? BookOpen
-                                      : Code2,
+                        : recent.kind === "contributor"
+                          ? Users
+                          : recent.kind === "project"
+                            ? SquareKanban
+                            : recent.kind === "release"
+                              ? Tag
+                              : recent.kind === "releaseAsset"
+                                ? Download
+                                : recent.kind === "workflowRun"
+                                  ? Workflow
+                                  : recent.kind === "workflowArtifact"
+                                    ? Download
+                                    : recent.kind === "securityItem"
+                                      ? ShieldCheck
+                                      : recent.kind === "wikiPage"
+                                        ? BookOpen
+                                        : Code2,
         keywords: [
           recent.itemKey,
           recent.repositoryNameWithOwner ?? "",
@@ -8784,6 +9012,15 @@ export function App(): JSX.Element {
     [api, invalidateRepositoryScopedQueries, queryClient]
   );
 
+  useEffect(
+    () =>
+      api.onGitHubAuthUpdated((event) => {
+        queryClient.setQueryData(["app-state"], event.appState);
+        void queryClient.invalidateQueries({ queryKey: ["account-profile"] });
+      }),
+    [api, queryClient]
+  );
+
   useEffect(() => {
     function handleCommandPaletteShortcut(event: KeyboardEvent): void {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -8801,846 +9038,885 @@ export function App(): JSX.Element {
   return (
     <MarkdownUrlHandlerContext.Provider value={openMarkdownUrl}>
       <div className={shellClass}>
-      <Sidebar
-        appState={appState.data}
-        profile={accountProfileData ?? undefined}
-        repositories={repositoryItems}
-        repositoriesLoading={repositories.isLoading || repositories.isFetching}
-        repositoriesError={repositories.error}
-        repositoriesAvailabilityMessage={repositoriesAvailabilityMessage}
-        pinnedRepositoryNames={pinnedRepositoryNames}
-        selectedRepository={effectiveRepository}
-        route={route}
-        onSelectRepository={openRepositoryInApp}
-        onOpenRepositorySearch={() => setCommandPaletteOpen(true)}
-        onOpenAddRepository={() => setAddRepositoryOpen(true)}
-        onOpenSettings={() => setSettingsOpen(true)}
-      />
+        <Sidebar
+          appState={appState.data}
+          profile={accountProfileData ?? undefined}
+          repositories={repositoryItems}
+          repositoriesLoading={repositories.isLoading || repositories.isFetching}
+          repositoriesError={repositories.error}
+          repositoriesAvailabilityMessage={repositoriesAvailabilityMessage}
+          pinnedRepositoryNames={pinnedRepositoryNames}
+          selectedRepository={effectiveRepository}
+          route={route}
+          onSelectRepository={openRepositoryInApp}
+          onOpenRepositorySearch={() => setCommandPaletteOpen(true)}
+          onOpenAddRepository={() => setAddRepositoryOpen(true)}
+          onOpenSettings={() => setSettingsOpen(true)}
+        />
 
-      <TopBar
-        viewer={appState.data?.viewer ?? null}
-        selectedRepository={selectedRepository}
-        repositories={repositoryItems}
-        githubReady={githubReady}
-        onGoRepository={() => openRepositoryInApp(effectiveRepository)}
-        onOpenRepository={openRepositoryInApp}
-        onOpenAddRepository={() => setAddRepositoryOpen(true)}
-        onOpenCommandPalette={() => setCommandPaletteOpen(true)}
-        onOpenHome={goHome}
-        onOpenMailbox={goToMailbox}
-        onOpenSettings={() => setSettingsOpen(true)}
-      />
+        <TopBar
+          viewer={appState.data?.viewer ?? null}
+          selectedRepository={selectedRepository}
+          repositories={repositoryItems}
+          githubReady={githubReady}
+          onGoRepository={() => openRepositoryInApp(effectiveRepository)}
+          onOpenRepository={openRepositoryInApp}
+          onOpenAddRepository={() => setAddRepositoryOpen(true)}
+          onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+          onOpenHome={goHome}
+          onOpenMailbox={goToMailbox}
+          onOpenSettings={() => setSettingsOpen(true)}
+        />
 
-      <section className={isRepositoryRoute ? "workspace" : "workspace workspace-wide"}>
-        {!appState.data?.github.authenticated && <SetupPanel appState={appState.data} />}
+        <section className={isRepositoryRoute ? "workspace" : "workspace workspace-wide"}>
+          {!appState.data?.github.authenticated && <SetupPanel appState={appState.data} />}
 
-        <main className="content-scroll">
-          {route.kind === "home" && (
-            <HomeDashboard
-              appState={appState.data}
-              profile={accountProfileData ?? undefined}
-              profileAvailabilityMessage={accountProfileAvailabilityMessage}
-              repositories={repositoryItems}
-              repositoryActivityLimit={homeRepositoryActivityLimit}
-              repositoriesLoading={repositories.isLoading || repositories.isFetching}
-              repositoriesError={repositories.error}
-              repositoriesAvailabilityMessage={repositoriesAvailabilityMessage}
-              pinnedRepositoryNames={pinnedRepositoryNames}
-              recents={recentItems.data ?? []}
-              recentLimit={recentItemLimit}
-              maxRecentLimit={maxRecentItemLimit}
-              issues={accountIssueItems}
-              issuesLoading={accountIssues.isLoading || accountIssues.isFetching}
-              issuesError={accountIssues.error}
-              issuesAvailability={accountIssuesAvailability}
-              pulls={accountPullItems}
-              pullsLoading={accountPulls.isLoading || accountPulls.isFetching}
-              pullsError={accountPulls.error}
-              pullsAvailability={accountPullsAvailability}
-              workLimit={homeWorkLimit}
-              maxWorkLimit={defaultMailboxListLimit}
-              freshness={{
-                updatedAt: Math.max(
-                  accountProfile.dataUpdatedAt,
-                  repositories.dataUpdatedAt,
-                  accountIssues.dataUpdatedAt,
-                  accountPulls.dataUpdatedAt,
-                  recentItems.dataUpdatedAt
-                ),
-                refreshing:
-                  accountProfile.isFetching ||
-                  repositories.isFetching ||
-                  accountIssues.isFetching ||
-                  accountPulls.isFetching ||
-                  recentItems.isFetching,
-                stale:
-                  accountProfile.isStale ||
-                  repositories.isStale ||
-                  accountIssues.isStale ||
-                  accountPulls.isStale ||
-                  recentItems.isStale
-              }}
-              onRefresh={refreshHomeNow}
-              onOpenRepository={openRepositoryInApp}
-              onOpenRecent={openRecentItem}
-              onLoadMoreRepositories={loadMoreHomeRepositoryActivity}
-              onLoadMoreRecents={loadMoreRecentItems}
-              onLoadMoreWork={loadMoreHomeWork}
-              onOpenMailbox={goToMailbox}
-              onOpenIssue={openIssueSummaryInApp}
-              onOpenPullRequest={openPullRequestSummaryInApp}
-              onOpenExternal={(url) => void api.openExternal(url)}
-            />
-          )}
+          <main className="content-scroll">
+            {route.kind === "home" && (
+              <HomeDashboard
+                appState={appState.data}
+                profile={accountProfileData ?? undefined}
+                profileAvailabilityMessage={accountProfileAvailabilityMessage}
+                repositories={repositoryItems}
+                repositoryActivityLimit={homeRepositoryActivityLimit}
+                repositoriesLoading={repositories.isLoading || repositories.isFetching}
+                repositoriesError={repositories.error}
+                repositoriesAvailabilityMessage={repositoriesAvailabilityMessage}
+                pinnedRepositoryNames={pinnedRepositoryNames}
+                recents={recentItems.data ?? []}
+                recentLimit={recentItemLimit}
+                maxRecentLimit={maxRecentItemLimit}
+                issues={accountIssueItems}
+                issuesLoading={accountIssues.isLoading || accountIssues.isFetching}
+                issuesError={accountIssues.error}
+                issuesAvailability={accountIssuesAvailability}
+                pulls={accountPullItems}
+                pullsLoading={accountPulls.isLoading || accountPulls.isFetching}
+                pullsError={accountPulls.error}
+                pullsAvailability={accountPullsAvailability}
+                workLimit={homeWorkLimit}
+                maxWorkLimit={defaultMailboxListLimit}
+                freshness={{
+                  updatedAt: Math.max(
+                    accountProfile.dataUpdatedAt,
+                    repositories.dataUpdatedAt,
+                    accountIssues.dataUpdatedAt,
+                    accountPulls.dataUpdatedAt,
+                    recentItems.dataUpdatedAt
+                  ),
+                  refreshing:
+                    accountProfile.isFetching ||
+                    repositories.isFetching ||
+                    accountIssues.isFetching ||
+                    accountPulls.isFetching ||
+                    recentItems.isFetching,
+                  stale:
+                    accountProfile.isStale ||
+                    repositories.isStale ||
+                    accountIssues.isStale ||
+                    accountPulls.isStale ||
+                    recentItems.isStale
+                }}
+                onRefresh={refreshHomeNow}
+                onOpenRepository={openRepositoryInApp}
+                onOpenRecent={openRecentItem}
+                onLoadMoreRepositories={loadMoreHomeRepositoryActivity}
+                onLoadMoreRecents={loadMoreRecentItems}
+                onLoadMoreWork={loadMoreHomeWork}
+                onOpenMailbox={goToMailbox}
+                onOpenIssue={openIssueSummaryInApp}
+                onOpenPullRequest={openPullRequestSummaryInApp}
+                onOpenExternal={(url) => void api.openExternal(url)}
+              />
+            )}
 
-          {route.kind === "repository" && (
-            <RepositoryPage
-              key={effectiveRepository}
-              repository={repositoryDetail ?? undefined}
-              availabilityMessage={repositoryAvailabilityMessage}
-              githubReady={githubReady}
-              selectedRef={contentsRef}
-              branches={branchItems}
-              tags={tagItems}
-              refListLimit={repositoryRefListLimit}
-              refsLoading={branches.isLoading || branches.isFetching || tags.isLoading || tags.isFetching}
-              refsError={refsError}
-              refsAvailabilityMessage={refsAvailabilityMessage || null}
-              branchesError={branches.error}
-              contents={contentItems}
-              contentsLoading={contents.isLoading || contents.isFetching}
-              contentsError={contents.error}
-              contentsAvailability={contentsAvailability}
-              readmeMarkdown={readme.data?.markdown ?? repositoryDetail?.readmeMarkdown ?? null}
-              readmeAvailability={readme.data?.availability ?? null}
-              readmeLoading={readme.isLoading || readme.isFetching}
-              readmeError={readme.error}
-              commits={repositoryCommitItems}
-              commitsLimit={repositoryCommitHistoryLimit}
-              commitsLoading={repositoryCommits.isLoading || repositoryCommits.isFetching}
-              commitsError={repositoryCommits.error}
-              commitsAvailability={repositoryCommitsAvailability}
-              issues={issueItems}
-              issueListLimit={issueListLimit}
-              issuesLoading={issues.isLoading || issues.isFetching}
-              issuesError={issues.error}
-              issuesAvailability={issuesAvailability}
-              labels={labelItems}
-              labelsLoading={labels.isLoading || labels.isFetching}
-              labelsError={labels.error}
-              labelsAvailability={labelAvailability}
-              assignableUsers={assignableUserItems}
-              assignableUsersLoading={assignableUsers.isLoading || assignableUsers.isFetching}
-              assignableUsersError={assignableUsers.error}
-              assignableUsersAvailability={assignableUsersAvailability}
-              milestones={milestoneItems}
-              milestonesLoading={milestones.isLoading || milestones.isFetching}
-              milestonesError={milestones.error}
-              milestonesAvailability={milestonesAvailability}
-              repositoryAccess={repositoryAccess.data ?? null}
-              repositoryAccessLimit={repositoryAccessLimit}
-              repositoryAccessLoading={repositoryAccess.isLoading || repositoryAccess.isFetching}
-              repositoryAccessError={repositoryAccess.error}
-              repositoryForks={repositoryForks.data ?? null}
-              forksLimit={forksLimit}
-              repositoryForksLoading={repositoryForks.isLoading || repositoryForks.isFetching}
-              repositoryForksError={repositoryForks.error}
-              pulls={pullItems}
-              pullRequestListLimit={pullRequestListLimit}
-              pullsLoading={pulls.isLoading || pulls.isFetching}
-              pullsError={pulls.error}
-              pullsAvailability={pullsAvailability}
-              discussions={discussions.data?.items ?? []}
-              discussionsLimit={discussionsLimit}
-              discussionsLoading={discussions.isLoading || discussions.isFetching}
-              discussionsAvailability={discussions.data?.availability ?? null}
-              discussionsError={discussions.error}
-              actions={actionItems}
-              actionsLimit={actionsLimit}
-              workflowDefinitionLimit={workflowDefinitionLimit}
-              actionsLoading={actions.isLoading || actions.isFetching}
-              actionsAvailability={actionsAvailability}
-              actionsError={actions.error}
-              projects={projects.data?.items ?? []}
-              projectsLimit={projectsLimit}
-              projectsLoading={projects.isLoading || projects.isFetching}
-              projectsAvailability={projects.data?.availability ?? null}
-              projectsError={projects.error}
-              branchProtectionBranch={branchProtectionBranch}
-              branchProtectionBranches={branchItems}
-              branchProtectionBranchesLoading={branches.isLoading || branches.isFetching}
-              branchProtectionBranchesError={branches.error}
-              branchProtection={branchProtection.data ?? null}
-              branchProtectionLoading={branchProtection.isLoading || branchProtection.isFetching}
-              branchProtectionError={branchProtection.error}
-              dependabotAlerts={dependabotAlerts.data?.items ?? []}
-              dependabotAlertsLimit={dependabotAlertsLimit}
-              dependabotAlertsLoading={dependabotAlerts.isLoading || dependabotAlerts.isFetching}
-              dependabotAlertsAvailability={dependabotAlerts.data?.availability ?? null}
-              dependabotAlertsError={dependabotAlerts.error}
-              codeScanningAlerts={codeScanningAlerts.data?.items ?? []}
-              codeScanningAlertsLimit={codeScanningAlertsLimit}
-              codeScanningAlertsLoading={codeScanningAlerts.isLoading || codeScanningAlerts.isFetching}
-              codeScanningAlertsAvailability={codeScanningAlerts.data?.availability ?? null}
-              codeScanningAlertsError={codeScanningAlerts.error}
-              secretScanningAlerts={secretScanningAlerts.data?.items ?? []}
-              secretScanningAlertsLimit={secretScanningAlertsLimit}
-              secretScanningAlertsLoading={secretScanningAlerts.isLoading || secretScanningAlerts.isFetching}
-              secretScanningAlertsAvailability={secretScanningAlerts.data?.availability ?? null}
-              secretScanningAlertsError={secretScanningAlerts.error}
-              repositoryRulesets={repositoryRulesets.data?.items ?? []}
-              repositoryRulesetsLimit={repositoryRulesetsLimit}
-              repositoryRulesetsLoading={repositoryRulesets.isLoading || repositoryRulesets.isFetching}
-              repositoryRulesetsAvailability={repositoryRulesets.data?.availability ?? null}
-              repositoryRulesetsError={repositoryRulesets.error}
-              repositorySecurityAdvisories={repositorySecurityAdvisories.data?.items ?? []}
-              repositorySecurityAdvisoriesLimit={repositorySecurityAdvisoriesLimit}
-              repositorySecurityAdvisoriesLoading={
-                repositorySecurityAdvisories.isLoading || repositorySecurityAdvisories.isFetching
-              }
-              repositorySecurityAdvisoriesAvailability={repositorySecurityAdvisories.data?.availability ?? null}
-              repositorySecurityAdvisoriesError={repositorySecurityAdvisories.error}
-              repositorySecurityPolicy={repositorySecurityPolicy.data ?? null}
-              repositorySecurityPolicyLoading={
-                repositorySecurityPolicy.isLoading || repositorySecurityPolicy.isFetching
-              }
-              repositorySecurityPolicyError={repositorySecurityPolicy.error}
-              repositoryCommunityProfile={repositoryCommunityProfile.data?.profile ?? null}
-              repositoryCommunityProfileLoading={
-                repositoryCommunityProfile.isLoading || repositoryCommunityProfile.isFetching
-              }
-              repositoryCommunityProfileAvailability={repositoryCommunityProfile.data?.availability ?? null}
-              repositoryCommunityProfileError={repositoryCommunityProfile.error}
-              releases={releaseItems}
-              releasesLimit={releasesLimit}
-              releasesLoading={releases.isLoading || releases.isFetching}
-              releasesAvailability={releasesAvailability}
-              releasesError={releases.error}
-              contributors={contributorItems}
-              contributorLimit={repositoryContributorLimit}
-              contributorsLoading={contributors.isLoading || contributors.isFetching}
-              contributorsAvailability={contributorsAvailability}
-              contributorsError={contributors.error}
-              loading={repository.isLoading}
-              freshness={repositoryTabFreshness()}
-              pinned={pinnedRepositoryNameSet.has(effectiveRepository.toLowerCase())}
-              pinBusy={pinMutation.isPending}
-              pinError={pinMutation.error instanceof Error ? pinMutation.error : null}
-              error={
-                repository.error ??
-                (activeRepositoryTab === "code" ? contents.error : null) ??
-                (activeRepositoryTab === "issues" ? issues.error : null) ??
-                (activeRepositoryTab === "pulls" ? pulls.error : null) ??
-                (activeRepositoryTab === "discussions" ? discussions.error : null) ??
-                (activeRepositoryTab === "projects" ? projects.error : null) ??
-                (activeRepositoryTab === "releases" ? releases.error : null) ??
-                (activeRepositoryTab === "contributors" ? contributors.error : null) ??
-                (activeRepositoryTab === "actions" ? actions.error : null) ??
-                (activeRepositoryTab === "securityQuality"
-                  ? branchProtection.error ??
-                    dependabotAlerts.error ??
-                    codeScanningAlerts.error ??
-                    secretScanningAlerts.error ??
-                    repositoryRulesets.error ??
-                    repositorySecurityAdvisories.error ??
-                    repositorySecurityPolicy.error ??
-                    repositoryCommunityProfile.error
-                  : null) ??
-                (activeRepositoryTab === "settings" ? repositoryAccess.error ?? repositoryForks.error : null)
-              }
-              onOpenCodeBrowser={(entry) =>
-                openCodeBrowserInApp(
-                  effectiveRepository,
-                  entry.path,
-                  entry.type === "dir" ? "dir" : "file",
-                  contentsRef ?? repositoryDetail?.defaultBranch ?? null
-                )
-              }
-              onOpenReleaseTarget={(ref) =>
-                selectRepositoryRefInApp(effectiveRepository, ref, repositoryRefKindForName(ref), {
-                  path: "",
-                  entryType: "dir"
-                })
-              }
-              onOpenRepositoryCommit={(commit, targetRepositoryNameWithOwner) =>
-                openCommitInApp({
-                  nameWithOwner: targetRepositoryNameWithOwner ?? effectiveRepository,
-                  commit,
-                  path: "",
-                  entryType: "dir"
-                })
-              }
-              onOpenPullRequestCommit={(commit, targetRepositoryNameWithOwner) =>
-                openCommitInApp({
-                  nameWithOwner: targetRepositoryNameWithOwner ?? effectiveRepository,
-                  commit,
-                  path: "",
-                  entryType: "dir"
-                })
-              }
-              onOpenPullRequestReviewCommit={(review, targetRepositoryNameWithOwner) => {
-                const commit = pullRequestReviewCommitRecentCommit(review);
-
-                if (commit) {
-                  openCommitInApp({
-                    nameWithOwner: targetRepositoryNameWithOwner ?? effectiveRepository,
-                    commit,
-                    path: "",
-                    entryType: "dir"
-                  });
+            {route.kind === "repository" && (
+              <RepositoryPage
+                key={effectiveRepository}
+                repository={repositoryDetail ?? undefined}
+                availabilityMessage={repositoryAvailabilityMessage}
+                githubReady={githubReady}
+                selectedRef={contentsRef}
+                branches={branchItems}
+                tags={tagItems}
+                refListLimit={repositoryRefListLimit}
+                refsLoading={branches.isLoading || branches.isFetching || tags.isLoading || tags.isFetching}
+                refsError={refsError}
+                refsAvailabilityMessage={refsAvailabilityMessage || null}
+                branchesError={branches.error}
+                contents={contentItems}
+                contentsLoading={contents.isLoading || contents.isFetching}
+                contentsError={contents.error}
+                contentsAvailability={contentsAvailability}
+                readmeMarkdown={readme.data?.markdown ?? repositoryDetail?.readmeMarkdown ?? null}
+                readmeAvailability={readme.data?.availability ?? null}
+                readmeLoading={readme.isLoading || readme.isFetching}
+                readmeError={readme.error}
+                commits={repositoryCommitItems}
+                commitsLimit={repositoryCommitHistoryLimit}
+                commitsLoading={repositoryCommits.isLoading || repositoryCommits.isFetching}
+                commitsError={repositoryCommits.error}
+                commitsAvailability={repositoryCommitsAvailability}
+                issues={issueItems}
+                issueListLimit={issueListLimit}
+                issuesLoading={issues.isLoading || issues.isFetching}
+                issuesError={issues.error}
+                issuesAvailability={issuesAvailability}
+                labels={labelItems}
+                labelsLoading={labels.isLoading || labels.isFetching}
+                labelsError={labels.error}
+                labelsAvailability={labelAvailability}
+                assignableUsers={assignableUserItems}
+                assignableUsersLoading={assignableUsers.isLoading || assignableUsers.isFetching}
+                assignableUsersError={assignableUsers.error}
+                assignableUsersAvailability={assignableUsersAvailability}
+                milestones={milestoneItems}
+                milestonesLoading={milestones.isLoading || milestones.isFetching}
+                milestonesError={milestones.error}
+                milestonesAvailability={milestonesAvailability}
+                repositoryAccess={repositoryAccess.data ?? null}
+                repositoryAccessLimit={repositoryAccessLimit}
+                repositoryAccessLoading={repositoryAccess.isLoading || repositoryAccess.isFetching}
+                repositoryAccessError={repositoryAccess.error}
+                repositoryForks={repositoryForks.data ?? null}
+                forksLimit={forksLimit}
+                repositoryForksLoading={repositoryForks.isLoading || repositoryForks.isFetching}
+                repositoryForksError={repositoryForks.error}
+                pulls={pullItems}
+                pullRequestListLimit={pullRequestListLimit}
+                pullsLoading={pulls.isLoading || pulls.isFetching}
+                pullsError={pulls.error}
+                pullsAvailability={pullsAvailability}
+                discussions={discussions.data?.items ?? []}
+                discussionsLimit={discussionsLimit}
+                discussionsLoading={discussions.isLoading || discussions.isFetching}
+                discussionsAvailability={discussions.data?.availability ?? null}
+                discussionsError={discussions.error}
+                actions={actionItems}
+                actionsLimit={actionsLimit}
+                workflowDefinitionLimit={workflowDefinitionLimit}
+                actionsLoading={actions.isLoading || actions.isFetching}
+                actionsAvailability={actionsAvailability}
+                actionsError={actions.error}
+                projects={projects.data?.items ?? []}
+                projectsLimit={projectsLimit}
+                projectsLoading={projects.isLoading || projects.isFetching}
+                projectsAvailability={projects.data?.availability ?? null}
+                projectsError={projects.error}
+                branchProtectionBranch={branchProtectionBranch}
+                branchProtectionBranches={branchItems}
+                branchProtectionBranchesLoading={branches.isLoading || branches.isFetching}
+                branchProtectionBranchesError={branches.error}
+                branchProtection={branchProtection.data ?? null}
+                branchProtectionLoading={branchProtection.isLoading || branchProtection.isFetching}
+                branchProtectionError={branchProtection.error}
+                dependabotAlerts={dependabotAlerts.data?.items ?? []}
+                dependabotAlertsLimit={dependabotAlertsLimit}
+                dependabotAlertsLoading={dependabotAlerts.isLoading || dependabotAlerts.isFetching}
+                dependabotAlertsAvailability={dependabotAlerts.data?.availability ?? null}
+                dependabotAlertsError={dependabotAlerts.error}
+                codeScanningAlerts={codeScanningAlerts.data?.items ?? []}
+                codeScanningAlertsLimit={codeScanningAlertsLimit}
+                codeScanningAlertsLoading={codeScanningAlerts.isLoading || codeScanningAlerts.isFetching}
+                codeScanningAlertsAvailability={codeScanningAlerts.data?.availability ?? null}
+                codeScanningAlertsError={codeScanningAlerts.error}
+                secretScanningAlerts={secretScanningAlerts.data?.items ?? []}
+                secretScanningAlertsLimit={secretScanningAlertsLimit}
+                secretScanningAlertsLoading={
+                  secretScanningAlerts.isLoading || secretScanningAlerts.isFetching
                 }
-              }}
-              onOpenPullRequestTimelineEventCommit={(event, targetRepositoryNameWithOwner) => {
-                const commit = pullRequestTimelineEventCommitRecentCommit(event);
-
-                if (commit) {
-                  openCommitInApp({
-                    nameWithOwner: targetRepositoryNameWithOwner ?? effectiveRepository,
-                    commit,
-                    path: "",
-                    entryType: "dir"
-                  });
+                secretScanningAlertsAvailability={secretScanningAlerts.data?.availability ?? null}
+                secretScanningAlertsError={secretScanningAlerts.error}
+                repositoryRulesets={repositoryRulesets.data?.items ?? []}
+                repositoryRulesetsLimit={repositoryRulesetsLimit}
+                repositoryRulesetsLoading={repositoryRulesets.isLoading || repositoryRulesets.isFetching}
+                repositoryRulesetsAvailability={repositoryRulesets.data?.availability ?? null}
+                repositoryRulesetsError={repositoryRulesets.error}
+                repositorySecurityAdvisories={repositorySecurityAdvisories.data?.items ?? []}
+                repositorySecurityAdvisoriesLimit={repositorySecurityAdvisoriesLimit}
+                repositorySecurityAdvisoriesLoading={
+                  repositorySecurityAdvisories.isLoading || repositorySecurityAdvisories.isFetching
                 }
-              }}
-              onOpenWorkflowRunCommit={(run, targetRepositoryNameWithOwner) => {
-                const commit = workflowRunCommitRecentCommit(run);
-
-                if (commit) {
-                  openCommitInApp({
-                    nameWithOwner: targetRepositoryNameWithOwner ?? effectiveRepository,
-                    commit,
-                    path: "",
-                    entryType: "dir"
-                  });
+                repositorySecurityAdvisoriesAvailability={
+                  repositorySecurityAdvisories.data?.availability ?? null
                 }
-              }}
-              onOpenWorkflowCheckSuiteCommit={(suite, targetRepositoryNameWithOwner) => {
-                const commit = workflowCheckSuiteCommitRecentCommit(suite);
-
-                if (commit) {
-                  openCommitInApp({
-                    nameWithOwner: targetRepositoryNameWithOwner ?? effectiveRepository,
-                    commit,
-                    path: "",
-                    entryType: "dir"
-                  });
+                repositorySecurityAdvisoriesError={repositorySecurityAdvisories.error}
+                repositorySecurityPolicy={repositorySecurityPolicy.data ?? null}
+                repositorySecurityPolicyLoading={
+                  repositorySecurityPolicy.isLoading || repositorySecurityPolicy.isFetching
                 }
-              }}
-              onOpenCodePath={(path, entryType, ref, blobUrl, line, targetRepositoryNameWithOwner) => {
-                const parsedBlob = parseGitHubBlobUrl(blobUrl, path);
-                if (parsedBlob) {
+                repositorySecurityPolicyError={repositorySecurityPolicy.error}
+                repositoryCommunityProfile={repositoryCommunityProfile.data?.profile ?? null}
+                repositoryCommunityProfileLoading={
+                  repositoryCommunityProfile.isLoading || repositoryCommunityProfile.isFetching
+                }
+                repositoryCommunityProfileAvailability={repositoryCommunityProfile.data?.availability ?? null}
+                repositoryCommunityProfileError={repositoryCommunityProfile.error}
+                releases={releaseItems}
+                releasesLimit={releasesLimit}
+                releasesLoading={releases.isLoading || releases.isFetching}
+                releasesAvailability={releasesAvailability}
+                releasesError={releases.error}
+                contributors={contributorItems}
+                contributorLimit={repositoryContributorLimit}
+                contributorsLoading={contributors.isLoading || contributors.isFetching}
+                contributorsAvailability={contributorsAvailability}
+                contributorsError={contributors.error}
+                loading={repository.isLoading}
+                freshness={repositoryTabFreshness()}
+                pinned={pinnedRepositoryNameSet.has(effectiveRepository.toLowerCase())}
+                pinBusy={pinMutation.isPending}
+                pinError={pinMutation.error instanceof Error ? pinMutation.error : null}
+                error={
+                  repository.error ??
+                  (activeRepositoryTab === "code" ? contents.error : null) ??
+                  (activeRepositoryTab === "issues" ? issues.error : null) ??
+                  (activeRepositoryTab === "pulls" ? pulls.error : null) ??
+                  (activeRepositoryTab === "discussions" ? discussions.error : null) ??
+                  (activeRepositoryTab === "projects" ? projects.error : null) ??
+                  (activeRepositoryTab === "releases" ? releases.error : null) ??
+                  (activeRepositoryTab === "contributors" ? contributors.error : null) ??
+                  (activeRepositoryTab === "actions" ? actions.error : null) ??
+                  (activeRepositoryTab === "securityQuality"
+                    ? (branchProtection.error ??
+                      dependabotAlerts.error ??
+                      codeScanningAlerts.error ??
+                      secretScanningAlerts.error ??
+                      repositoryRulesets.error ??
+                      repositorySecurityAdvisories.error ??
+                      repositorySecurityPolicy.error ??
+                      repositoryCommunityProfile.error)
+                    : null) ??
+                  (activeRepositoryTab === "settings"
+                    ? (repositoryAccess.error ?? repositoryForks.error)
+                    : null)
+                }
+                onOpenCodeBrowser={(entry) =>
                   openCodeBrowserInApp(
-                    parsedBlob.nameWithOwner,
-                    parsedBlob.path,
-                    "file",
-                    parsedBlob.ref,
-                    line ?? parsedBlob.line
+                    effectiveRepository,
+                    entry.path,
+                    entry.type === "dir" ? "dir" : "file",
+                    contentsRef ?? repositoryDetail?.defaultBranch ?? null
+                  )
+                }
+                onOpenReleaseTarget={(ref) =>
+                  selectRepositoryRefInApp(effectiveRepository, ref, repositoryRefKindForName(ref), {
+                    path: "",
+                    entryType: "dir"
+                  })
+                }
+                onOpenRepositoryCommit={(commit, targetRepositoryNameWithOwner) =>
+                  openCommitInApp({
+                    nameWithOwner: targetRepositoryNameWithOwner ?? effectiveRepository,
+                    commit,
+                    path: "",
+                    entryType: "dir"
+                  })
+                }
+                onOpenPullRequestCommit={(commit, targetRepositoryNameWithOwner) =>
+                  openCommitInApp({
+                    nameWithOwner: targetRepositoryNameWithOwner ?? effectiveRepository,
+                    commit,
+                    path: "",
+                    entryType: "dir"
+                  })
+                }
+                onOpenPullRequestReviewCommit={(review, targetRepositoryNameWithOwner) => {
+                  const commit = pullRequestReviewCommitRecentCommit(review);
+
+                  if (commit) {
+                    openCommitInApp({
+                      nameWithOwner: targetRepositoryNameWithOwner ?? effectiveRepository,
+                      commit,
+                      path: "",
+                      entryType: "dir"
+                    });
+                  }
+                }}
+                onOpenPullRequestTimelineEventCommit={(event, targetRepositoryNameWithOwner) => {
+                  const commit = pullRequestTimelineEventCommitRecentCommit(event);
+
+                  if (commit) {
+                    openCommitInApp({
+                      nameWithOwner: targetRepositoryNameWithOwner ?? effectiveRepository,
+                      commit,
+                      path: "",
+                      entryType: "dir"
+                    });
+                  }
+                }}
+                onOpenWorkflowRunCommit={(run, targetRepositoryNameWithOwner) => {
+                  const commit = workflowRunCommitRecentCommit(run);
+
+                  if (commit) {
+                    openCommitInApp({
+                      nameWithOwner: targetRepositoryNameWithOwner ?? effectiveRepository,
+                      commit,
+                      path: "",
+                      entryType: "dir"
+                    });
+                  }
+                }}
+                onOpenWorkflowCheckSuiteCommit={(suite, targetRepositoryNameWithOwner) => {
+                  const commit = workflowCheckSuiteCommitRecentCommit(suite);
+
+                  if (commit) {
+                    openCommitInApp({
+                      nameWithOwner: targetRepositoryNameWithOwner ?? effectiveRepository,
+                      commit,
+                      path: "",
+                      entryType: "dir"
+                    });
+                  }
+                }}
+                onOpenCodePath={(path, entryType, ref, blobUrl, line, targetRepositoryNameWithOwner) => {
+                  const parsedBlob = parseGitHubBlobUrl(blobUrl, path);
+                  if (parsedBlob) {
+                    openCodeBrowserInApp(
+                      parsedBlob.nameWithOwner,
+                      parsedBlob.path,
+                      "file",
+                      parsedBlob.ref,
+                      line ?? parsedBlob.line
+                    );
+                    return;
+                  }
+
+                  openCodeBrowserInApp(
+                    targetRepositoryNameWithOwner ?? effectiveRepository,
+                    path,
+                    entryType,
+                    ref,
+                    line
                   );
-                  return;
+                }}
+                onOpenExternal={(url) => void api.openExternal(url)}
+                onOpenRepository={openRepositoryInApp}
+                onOpenTeam={(team) => {
+                  recordRecent(teamRecentInput(team));
+                  setSelectedOrganizationLogin(team.organizationLogin);
+                  setSelectedOrganizationTeamSlug(team.slug);
+                  setSelectedOrganizationMemberLogin(null);
+                  setSelectedOrganizationProjectId(null);
+                  goToOrganizations();
+                }}
+                onRefresh={() => refreshRepositorySurface()}
+                onOpenFileFinder={() => setFileFinderOpen(true)}
+                onSelectTab={(tab) => selectRepositoryTabInApp(effectiveRepository, tab)}
+                onOpenFilteredSurface={(tab, filter) =>
+                  openFilteredRepositorySurfaceInApp(effectiveRepository, tab, filter)
                 }
+                onSelectIssue={(issue) => selectIssueInApp(effectiveRepository, issue)}
+                onSelectPullRequest={(pullRequest) =>
+                  selectPullRequestInApp(effectiveRepository, pullRequest)
+                }
+                onOpenIssueReference={openLinkedIssueInApp}
+                onSelectDiscussion={(discussion) => selectDiscussionInApp(effectiveRepository, discussion)}
+                onSelectProject={(project) => selectProjectInApp(effectiveRepository, project)}
+                onSelectRelease={(release) => selectReleaseInApp(effectiveRepository, release)}
+                onSelectReleaseAsset={(release, asset) =>
+                  selectReleaseAssetInApp(effectiveRepository, release, asset)
+                }
+                onSelectWorkflowRun={(run) => selectWorkflowRunInApp(effectiveRepository, run)}
+                onSelectWorkflowArtifact={(run, artifact) =>
+                  selectWorkflowArtifactInApp(effectiveRepository, run, artifact)
+                }
+                onSelectSecurityItem={(securityItem) =>
+                  selectSecurityItemInApp(effectiveRepository, securityItem)
+                }
+                onSelectWikiPage={(page) => selectWikiPageInApp(effectiveRepository, page)}
+                onOpenWorkflowRun={(runId, url) =>
+                  openWorkflowRunReferenceInApp(effectiveRepository, runId, url)
+                }
+                onSelectContributor={(contributor) =>
+                  selectContributorInApp(effectiveRepository, contributor)
+                }
+                onSelectSecurityQualityBranch={(ref) =>
+                  selectSecurityQualityBranchInApp(effectiveRepository, ref)
+                }
+                onSelectSettingsCollaborator={(collaborator) =>
+                  selectRepositorySettingsCollaboratorInApp(effectiveRepository, collaborator)
+                }
+                onSelectRef={(ref) =>
+                  selectRepositoryRefInApp(
+                    effectiveRepository,
+                    ref,
+                    ref ? repositoryRefKindForName(ref) : "ref"
+                  )
+                }
+                onExpandRefs={expandActiveRepositoryRefs}
+                onExpandCommits={expandRepositoryCommitHistory}
+                onExpandIssues={expandActiveRepositoryIssues}
+                onExpandPullRequests={expandActiveRepositoryPullRequests}
+                onExpandContributors={expandActiveRepositoryContributors}
+                onExpandForks={expandActiveRepositoryForks}
+                onExpandRepositoryAccess={expandActiveRepositoryAccess}
+                onExpandActions={expandActiveRepositoryActions}
+                onExpandWorkflowDefinitions={expandActiveRepositoryWorkflowDefinitions}
+                onExpandProjects={expandActiveRepositoryProjects}
+                onExpandReleases={expandActiveRepositoryReleases}
+                onExpandDiscussions={expandActiveRepositoryDiscussions}
+                onExpandDependabotAlerts={() => expandActiveRepositorySecurityList("dependabot")}
+                onExpandCodeScanningAlerts={() => expandActiveRepositorySecurityList("codeScanning")}
+                onExpandSecretScanningAlerts={() => expandActiveRepositorySecurityList("secretScanning")}
+                onExpandRepositoryRulesets={() => expandActiveRepositorySecurityList("rulesets")}
+                onExpandRepositorySecurityAdvisories={() => expandActiveRepositorySecurityList("advisories")}
+                onTogglePin={() => toggleRepositoryPin(effectiveRepository)}
+                mutationAction={mutation.variables?.action ?? null}
+                mutationPending={mutation.isPending}
+                mutationSucceeded={mutation.isSuccess}
+                mutationError={mutation.error instanceof Error ? mutation.error : null}
+                onMutate={(action, dangerous, payload = {}) => {
+                  if (dangerous && !window.confirm(`Run ${githubActionLabel(action)} on ${owner}/${repo}?`)) {
+                    return;
+                  }
+                  mutation.reset();
+                  mutation.mutate({ action, owner, repo, payload });
+                }}
+              />
+            )}
 
-                openCodeBrowserInApp(targetRepositoryNameWithOwner ?? effectiveRepository, path, entryType, ref, line);
-              }}
-              onOpenExternal={(url) => void api.openExternal(url)}
-              onOpenRepository={openRepositoryInApp}
-              onOpenTeam={(team) => {
-                recordRecent(teamRecentInput(team));
-                setSelectedOrganizationLogin(team.organizationLogin);
-                setSelectedOrganizationTeamSlug(team.slug);
-                setSelectedOrganizationMemberLogin(null);
-                setSelectedOrganizationProjectId(null);
-                goToOrganizations();
-              }}
-              onRefresh={() => refreshRepositorySurface()}
-              onOpenFileFinder={() => setFileFinderOpen(true)}
-              onSelectTab={(tab) => selectRepositoryTabInApp(effectiveRepository, tab)}
-              onOpenFilteredSurface={(tab, filter) =>
-                openFilteredRepositorySurfaceInApp(effectiveRepository, tab, filter)
-              }
-              onSelectIssue={(issue) => selectIssueInApp(effectiveRepository, issue)}
-              onSelectPullRequest={(pullRequest) =>
-                selectPullRequestInApp(effectiveRepository, pullRequest)
-              }
-              onOpenIssueReference={openLinkedIssueInApp}
-              onSelectDiscussion={(discussion) => selectDiscussionInApp(effectiveRepository, discussion)}
-              onSelectProject={(project) => selectProjectInApp(effectiveRepository, project)}
-              onSelectRelease={(release) => selectReleaseInApp(effectiveRepository, release)}
-              onSelectReleaseAsset={(release, asset) =>
-                selectReleaseAssetInApp(effectiveRepository, release, asset)
-              }
-              onSelectWorkflowRun={(run) => selectWorkflowRunInApp(effectiveRepository, run)}
-              onSelectWorkflowArtifact={(run, artifact) =>
-                selectWorkflowArtifactInApp(effectiveRepository, run, artifact)
-              }
-              onSelectSecurityItem={(securityItem) =>
-                selectSecurityItemInApp(effectiveRepository, securityItem)
-              }
-              onSelectWikiPage={(page) => selectWikiPageInApp(effectiveRepository, page)}
-              onOpenWorkflowRun={(runId, url) => openWorkflowRunReferenceInApp(effectiveRepository, runId, url)}
-              onSelectContributor={(contributor) => selectContributorInApp(effectiveRepository, contributor)}
-              onSelectSecurityQualityBranch={(ref) => selectSecurityQualityBranchInApp(effectiveRepository, ref)}
-              onSelectSettingsCollaborator={(collaborator) =>
-                selectRepositorySettingsCollaboratorInApp(effectiveRepository, collaborator)
-              }
-              onSelectRef={(ref) =>
-                selectRepositoryRefInApp(effectiveRepository, ref, ref ? repositoryRefKindForName(ref) : "ref")
-              }
-              onExpandRefs={expandActiveRepositoryRefs}
-              onExpandCommits={expandRepositoryCommitHistory}
-              onExpandIssues={expandActiveRepositoryIssues}
-              onExpandPullRequests={expandActiveRepositoryPullRequests}
-              onExpandContributors={expandActiveRepositoryContributors}
-              onExpandForks={expandActiveRepositoryForks}
-              onExpandRepositoryAccess={expandActiveRepositoryAccess}
-              onExpandActions={expandActiveRepositoryActions}
-              onExpandWorkflowDefinitions={expandActiveRepositoryWorkflowDefinitions}
-              onExpandProjects={expandActiveRepositoryProjects}
-              onExpandReleases={expandActiveRepositoryReleases}
-              onExpandDiscussions={expandActiveRepositoryDiscussions}
-              onExpandDependabotAlerts={() => expandActiveRepositorySecurityList("dependabot")}
-              onExpandCodeScanningAlerts={() => expandActiveRepositorySecurityList("codeScanning")}
-              onExpandSecretScanningAlerts={() => expandActiveRepositorySecurityList("secretScanning")}
-              onExpandRepositoryRulesets={() => expandActiveRepositorySecurityList("rulesets")}
-              onExpandRepositorySecurityAdvisories={() => expandActiveRepositorySecurityList("advisories")}
-              onTogglePin={() => toggleRepositoryPin(effectiveRepository)}
-              mutationAction={mutation.variables?.action ?? null}
-              mutationPending={mutation.isPending}
-              mutationSucceeded={mutation.isSuccess}
-              mutationError={mutation.error instanceof Error ? mutation.error : null}
-              onMutate={(action, dangerous, payload = {}) => {
-                if (dangerous && !window.confirm(`Run ${githubActionLabel(action)} on ${owner}/${repo}?`)) {
-                  return;
+            {route.kind === "codeBrowser" && (
+              <CodeBrowserPage
+                repository={repositoryDetail ?? undefined}
+                availabilityMessage={repositoryAvailabilityMessage}
+                githubReady={githubReady}
+                route={route}
+                branches={branchItems}
+                tags={tagItems}
+                refsLoading={branches.isLoading || branches.isFetching || tags.isLoading || tags.isFetching}
+                refsError={refsError}
+                refsAvailabilityMessage={refsAvailabilityMessage || null}
+                contents={contentItems}
+                contentsLoading={contents.isLoading || contents.isFetching}
+                contentsError={contents.error}
+                contentsAvailability={contentsAvailability}
+                fileContent={fileContentItem ?? undefined}
+                fileLoading={fileContent.isLoading || fileContent.isFetching}
+                fileError={fileContent.error}
+                fileAvailabilityMessage={fileContentAvailabilityMessage}
+                fileBlame={fileBlame.data}
+                fileBlameRangeLimit={fileBlameRangeLimit}
+                fileBlameLoading={fileBlame.isLoading || fileBlame.isFetching}
+                fileBlameError={fileBlame.error}
+                commits={fileCommitItems}
+                commitsLimit={fileCommitHistoryLimit}
+                commitsLoading={fileCommits.isLoading || fileCommits.isFetching}
+                commitsError={fileCommits.error}
+                commitsAvailability={fileCommitsAvailability}
+                freshness={{
+                  updatedAt: Math.max(
+                    repository.dataUpdatedAt,
+                    codeBrowserEntryType === "dir" ? contents.dataUpdatedAt : 0,
+                    codeBrowserEntryType === "file" ? fileContent.dataUpdatedAt : 0,
+                    codeBrowserEntryType === "file" ? fileBlame.dataUpdatedAt : 0,
+                    codeBrowserEntryType === "file" ? fileCommits.dataUpdatedAt : 0
+                  ),
+                  refreshing:
+                    repository.isFetching ||
+                    (codeBrowserEntryType === "dir" ? contents.isFetching : false) ||
+                    (codeBrowserEntryType === "file" ? fileContent.isFetching : false) ||
+                    (codeBrowserEntryType === "file" ? fileBlame.isFetching : false) ||
+                    (codeBrowserEntryType === "file" ? fileCommits.isFetching : false),
+                  stale:
+                    repository.isStale ||
+                    (codeBrowserEntryType === "dir" ? contents.isStale : false) ||
+                    (codeBrowserEntryType === "file" ? fileContent.isStale : false) ||
+                    (codeBrowserEntryType === "file" ? fileBlame.isStale : false) ||
+                    (codeBrowserEntryType === "file" ? fileCommits.isStale : false)
+                }}
+                error={
+                  repository.error ??
+                  contents.error ??
+                  fileContent.error ??
+                  fileBlame.error ??
+                  fileCommits.error
                 }
-                mutation.reset();
-                mutation.mutate({ action, owner, repo, payload });
-              }}
-            />
-          )}
+                onRefresh={() => {
+                  return Promise.all([refreshRepositoryDetailNow(), refreshCodeBrowserNow()]);
+                }}
+                onBackToRepository={() => {
+                  if (codeBrowserRef) {
+                    selectRepositoryRefInApp(
+                      effectiveRepository,
+                      codeBrowserRef,
+                      repositoryRefKindForName(codeBrowserRef)
+                    );
+                    return;
+                  }
+                  openRepositoryInApp(effectiveRepository, "code");
+                }}
+                onOpenCodeBrowser={(path, entryType, refOverride, line) =>
+                  openCodeBrowserInApp(
+                    effectiveRepository,
+                    path,
+                    entryType,
+                    refOverride ?? codeBrowserRef ?? repositoryDetail?.defaultBranch ?? null,
+                    line ?? route.line
+                  )
+                }
+                onOpenCommit={(commit, path, entryType, line) =>
+                  openCommitInApp({
+                    nameWithOwner: effectiveRepository,
+                    commit,
+                    path,
+                    entryType,
+                    line
+                  })
+                }
+                onSelectRef={(ref) =>
+                  selectRepositoryRefInApp(effectiveRepository, ref, repositoryRefKindForName(ref), {
+                    path: route.path,
+                    entryType: route.entryType,
+                    line: route.line
+                  })
+                }
+                onExpandFileBlamePreview={() =>
+                  setExpandedFileBlameRange({
+                    key: fileBlameRangeKey,
+                    limit: expandedFileBlameRangeLimit
+                  })
+                }
+                onExpandCommits={expandFileCommitHistory}
+                onOpenExternal={(url) => void api.openExternal(url)}
+              />
+            )}
 
-          {route.kind === "codeBrowser" && (
-            <CodeBrowserPage
-              repository={repositoryDetail ?? undefined}
-              availabilityMessage={repositoryAvailabilityMessage}
-              githubReady={githubReady}
-              route={route}
-              branches={branchItems}
-              tags={tagItems}
-              refsLoading={branches.isLoading || branches.isFetching || tags.isLoading || tags.isFetching}
-              refsError={refsError}
-              refsAvailabilityMessage={refsAvailabilityMessage || null}
-              contents={contentItems}
-              contentsLoading={contents.isLoading || contents.isFetching}
-              contentsError={contents.error}
-              contentsAvailability={contentsAvailability}
-              fileContent={fileContentItem ?? undefined}
-              fileLoading={fileContent.isLoading || fileContent.isFetching}
-              fileError={fileContent.error}
-              fileAvailabilityMessage={fileContentAvailabilityMessage}
-              fileBlame={fileBlame.data}
-              fileBlameRangeLimit={fileBlameRangeLimit}
-              fileBlameLoading={fileBlame.isLoading || fileBlame.isFetching}
-              fileBlameError={fileBlame.error}
-              commits={fileCommitItems}
-              commitsLimit={fileCommitHistoryLimit}
-              commitsLoading={fileCommits.isLoading || fileCommits.isFetching}
-              commitsError={fileCommits.error}
-              commitsAvailability={fileCommitsAvailability}
-              freshness={{
-                updatedAt: Math.max(
-                  repository.dataUpdatedAt,
-                  codeBrowserEntryType === "dir" ? contents.dataUpdatedAt : 0,
-                  codeBrowserEntryType === "file" ? fileContent.dataUpdatedAt : 0,
-                  codeBrowserEntryType === "file" ? fileBlame.dataUpdatedAt : 0,
-                  codeBrowserEntryType === "file" ? fileCommits.dataUpdatedAt : 0
-                ),
-                refreshing:
-                  repository.isFetching ||
-                  (codeBrowserEntryType === "dir" ? contents.isFetching : false) ||
-                  (codeBrowserEntryType === "file" ? fileContent.isFetching : false) ||
-                  (codeBrowserEntryType === "file" ? fileBlame.isFetching : false) ||
-                  (codeBrowserEntryType === "file" ? fileCommits.isFetching : false),
-                stale:
-                  repository.isStale ||
-                  (codeBrowserEntryType === "dir" ? contents.isStale : false) ||
-                  (codeBrowserEntryType === "file" ? fileContent.isStale : false) ||
-                  (codeBrowserEntryType === "file" ? fileBlame.isStale : false) ||
-                  (codeBrowserEntryType === "file" ? fileCommits.isStale : false)
-              }}
-              error={repository.error ?? contents.error ?? fileContent.error ?? fileBlame.error ?? fileCommits.error}
-              onRefresh={() => {
-                return Promise.all([refreshRepositoryDetailNow(), refreshCodeBrowserNow()]);
-              }}
-              onBackToRepository={() => {
-                if (codeBrowserRef) {
-                  selectRepositoryRefInApp(effectiveRepository, codeBrowserRef, repositoryRefKindForName(codeBrowserRef));
-                  return;
+            {route.kind !== "home" && route.kind !== "repository" && route.kind !== "codeBrowser" && (
+              <CollectionView
+                title={routeTitle(route)}
+                routeKind={route.kind}
+                githubReady={githubReady}
+                issues={accountIssueItems}
+                issuesLoading={accountIssues.isLoading || accountIssues.isFetching}
+                issuesError={accountIssues.error}
+                issuesAvailability={accountIssuesAvailability}
+                pulls={accountPullItems}
+                pullsLoading={accountPulls.isLoading || accountPulls.isFetching}
+                pullsError={accountPulls.error}
+                pullsAvailability={accountPullsAvailability}
+                accountWorkLimit={accountWorkLimit}
+                notifications={notificationItems}
+                notificationsAvailability={notificationsAvailability}
+                notificationFilter={notificationFilter}
+                notificationLimit={notificationLimit}
+                notificationsLoading={notifications.isLoading || notifications.isFetching}
+                notificationsError={notifications.error}
+                notificationMarkingReadId={
+                  markNotificationRead.isPending ? (markNotificationRead.variables?.threadId ?? null) : null
                 }
-                openRepositoryInApp(effectiveRepository, "code");
-              }}
-              onOpenCodeBrowser={(path, entryType, refOverride, line) =>
-                openCodeBrowserInApp(
-                  effectiveRepository,
-                  path,
-                  entryType,
-                  refOverride ?? codeBrowserRef ?? repositoryDetail?.defaultBranch ?? null,
-                  line ?? route.line
-                )
-              }
-              onOpenCommit={(commit, path, entryType, line) =>
-                openCommitInApp({
-                  nameWithOwner: effectiveRepository,
-                  commit,
-                  path,
-                  entryType,
-                  line
-                })
-              }
-              onSelectRef={(ref) =>
+                notificationUnsubscribingId={
+                  unsubscribeNotification.isPending
+                    ? (unsubscribeNotification.variables?.threadId ?? null)
+                    : null
+                }
+                notificationActionError={
+                  (markNotificationRead.error instanceof Error ? markNotificationRead.error : null) ??
+                  (markVisibleNotificationsRead.error instanceof Error
+                    ? markVisibleNotificationsRead.error
+                    : null) ??
+                  (unsubscribeNotification.error instanceof Error ? unsubscribeNotification.error : null)
+                }
+                notificationBulkMarkingRead={markVisibleNotificationsRead.isPending}
+                notificationsFreshness={{
+                  updatedAt: Math.max(
+                    notifications.dataUpdatedAt,
+                    accountIssues.dataUpdatedAt,
+                    accountPulls.dataUpdatedAt
+                  ),
+                  refreshing: notifications.isFetching || accountIssues.isFetching || accountPulls.isFetching,
+                  stale: notifications.isStale || accountIssues.isStale || accountPulls.isStale
+                }}
+                organizations={organizationItems}
+                selectedOrganizationLogin={selectedOrganization?.login ?? null}
+                organizationListLimit={organizationListLimit}
+                organizationsAvailability={organizationsAvailability}
+                organizationsLoading={organizations.isLoading || organizations.isFetching}
+                organizationsError={organizations.error}
+                organizationsFreshness={{
+                  updatedAt: Math.max(
+                    organizations.dataUpdatedAt,
+                    selectedOrganization ? organizationTeams.dataUpdatedAt : 0,
+                    selectedOrganization ? organizationRepositories.dataUpdatedAt : 0,
+                    selectedOrganization ? organizationMembers.dataUpdatedAt : 0,
+                    selectedOrganizationTeam ? organizationTeamRepositories.dataUpdatedAt : 0,
+                    selectedOrganizationTeam ? organizationTeamMembers.dataUpdatedAt : 0,
+                    selectedOrganization ? organizationProjects.dataUpdatedAt : 0,
+                    repositories.dataUpdatedAt
+                  ),
+                  refreshing:
+                    organizations.isFetching ||
+                    (selectedOrganization ? organizationTeams.isFetching : false) ||
+                    (selectedOrganization ? organizationRepositories.isFetching : false) ||
+                    (selectedOrganization ? organizationMembers.isFetching : false) ||
+                    (selectedOrganizationTeam ? organizationTeamRepositories.isFetching : false) ||
+                    (selectedOrganizationTeam ? organizationTeamMembers.isFetching : false) ||
+                    (selectedOrganization ? organizationProjects.isFetching : false) ||
+                    repositories.isFetching,
+                  stale:
+                    organizations.isStale ||
+                    (selectedOrganization ? organizationTeams.isStale : false) ||
+                    (selectedOrganization ? organizationRepositories.isStale : false) ||
+                    (selectedOrganization ? organizationMembers.isStale : false) ||
+                    (selectedOrganizationTeam ? organizationTeamRepositories.isStale : false) ||
+                    (selectedOrganizationTeam ? organizationTeamMembers.isStale : false) ||
+                    (selectedOrganization ? organizationProjects.isStale : false) ||
+                    repositories.isStale
+                }}
+                organizationTeams={organizationTeams.data?.items ?? []}
+                organizationTeamsAvailability={organizationTeams.data?.availability ?? null}
+                organizationTeamLimit={organizationTeamLimit}
+                organizationTeamsLoading={organizationTeams.isLoading || organizationTeams.isFetching}
+                organizationTeamsError={organizationTeams.error}
+                organizationRepositories={organizationRepositories.data?.items ?? []}
+                organizationRepositoriesAvailability={organizationRepositories.data?.availability ?? null}
+                organizationRepositoryLimit={organizationRepositoryLimit}
+                organizationRepositoriesLoading={
+                  organizationRepositories.isLoading || organizationRepositories.isFetching
+                }
+                organizationRepositoriesError={organizationRepositories.error}
+                organizationMembers={organizationMembers.data?.items ?? []}
+                organizationMembersAvailability={organizationMembers.data?.availability ?? null}
+                organizationMemberLimit={organizationMemberLimit}
+                organizationMembersLoading={organizationMembers.isLoading || organizationMembers.isFetching}
+                organizationMembersError={organizationMembers.error}
+                selectedOrganizationMemberLogin={selectedOrganizationMemberLogin}
+                selectedOrganizationTeamSlug={selectedOrganizationTeam?.slug ?? null}
+                organizationTeamRepositories={organizationTeamRepositories.data?.items ?? []}
+                organizationTeamRepositoriesAvailability={
+                  organizationTeamRepositories.data?.availability ?? null
+                }
+                organizationTeamRepositoryLimit={organizationTeamRepositoryLimit}
+                organizationTeamRepositoriesLoading={
+                  organizationTeamRepositories.isLoading || organizationTeamRepositories.isFetching
+                }
+                organizationTeamRepositoriesError={organizationTeamRepositories.error}
+                organizationTeamMembers={organizationTeamMembers.data?.items ?? []}
+                organizationTeamMembersAvailability={organizationTeamMembers.data?.availability ?? null}
+                organizationTeamMemberLimit={organizationTeamMemberLimit}
+                organizationTeamMembersLoading={
+                  organizationTeamMembers.isLoading || organizationTeamMembers.isFetching
+                }
+                organizationTeamMembersError={organizationTeamMembers.error}
+                organizationProjects={organizationProjects.data?.items ?? []}
+                organizationProjectsAvailability={organizationProjects.data?.availability ?? null}
+                organizationProjectLimit={organizationProjectLimit}
+                organizationProjectsLoading={
+                  organizationProjects.isLoading || organizationProjects.isFetching
+                }
+                organizationProjectsError={organizationProjects.error}
+                selectedOrganizationProjectId={selectedOrganizationProjectId}
+                repositories={repositoryItems}
+                repositoryListLimit={repositoryListLimit}
+                repositoriesLoading={repositories.isLoading || repositories.isFetching}
+                repositoriesError={repositories.error}
+                repositoriesAvailabilityMessage={repositoriesAvailabilityMessage}
+                pinnedRepositoryNames={pinnedRepositoryNames}
+                repositoryPinBusy={pinMutation.isPending}
+                repositoryPinError={pinMutation.error instanceof Error ? pinMutation.error : null}
+                repositoriesFreshness={{
+                  updatedAt: repositories.dataUpdatedAt,
+                  refreshing: repositories.isFetching,
+                  stale: repositories.isStale
+                }}
+                viewerLogin={appState.data?.viewer?.login ?? accountProfileData?.login ?? null}
+                onOpenExternal={(url) => void api.openExternal(url)}
+                onOpenRepository={openRepositoryInApp}
+                onOpenAddRepository={() => setAddRepositoryOpen(true)}
+                onOpenIssue={openIssueSummaryInApp}
+                onOpenPullRequest={openPullRequestSummaryInApp}
+                onOpenNotification={openNotificationInApp}
+                onNotificationFilterChange={setNotificationFilter}
+                onMarkNotificationRead={(threadId) => {
+                  if (githubReady) {
+                    markNotificationRead.mutate({ threadId });
+                  }
+                }}
+                onMarkVisibleNotificationsRead={(threadIds) => {
+                  if (githubReady) {
+                    markVisibleNotificationsRead.mutate({ threadIds });
+                  }
+                }}
+                onUnsubscribeNotification={(threadId) => {
+                  if (githubReady && window.confirm("Unsubscribe from this GitHub notification thread?")) {
+                    unsubscribeNotification.mutate({ threadId });
+                  }
+                }}
+                onSelectOrganization={(login) => {
+                  const organization = organizationItems.find((item) => item.login === login);
+                  if (organization) {
+                    recordRecent(organizationRecentInput(organization));
+                  }
+                  setSelectedOrganizationLogin(login);
+                  setSelectedOrganizationTeamSlug(null);
+                  setSelectedOrganizationMemberLogin(null);
+                  setSelectedOrganizationProjectId(null);
+                }}
+                onSelectOrganizationTeam={(slug) => {
+                  const team = organizationTeams.data?.items.find((item) => item.slug === slug);
+                  if (team) {
+                    recordRecent(teamRecentInput(team));
+                  }
+                  setSelectedOrganizationTeamSlug(slug);
+                  setSelectedOrganizationMemberLogin(null);
+                  setSelectedOrganizationProjectId(null);
+                }}
+                onSelectOrganizationMember={(login) => {
+                  setSelectedOrganizationMemberLogin(login);
+                  setSelectedOrganizationProjectId(null);
+                }}
+                onSelectOrganizationProject={(project) => {
+                  if (selectedOrganization) {
+                    selectOrganizationProjectInApp(selectedOrganization, project);
+                  }
+                }}
+                onExpandOrganizations={expandOrganizationList}
+                onExpandOrganizationRepositories={expandSelectedOrganizationRepositories}
+                onExpandOrganizationTeams={expandSelectedOrganizationTeams}
+                onExpandOrganizationMembers={expandSelectedOrganizationMembers}
+                onExpandOrganizationProjects={expandSelectedOrganizationProjects}
+                onExpandOrganizationTeamRepositories={expandSelectedOrganizationTeamRepositories}
+                onExpandOrganizationTeamMembers={expandSelectedOrganizationTeamMembers}
+                onExpandMailboxWork={expandMailboxWork}
+                onExpandMailboxNotifications={expandMailboxNotifications}
+                onExpandRepositories={expandRepositoryList}
+                onRefreshNotifications={() => refreshMailboxNow()}
+                onRefreshRepositories={() => refreshRepositoriesNow()}
+                onRefreshOrganizations={() => refreshOrganizationsNow()}
+                onToggleRepositoryPin={toggleRepositoryPin}
+              />
+            )}
+          </main>
+        </section>
+
+        {isRepositoryRoute && (
+          <RightRail
+            repository={repositoryDetail ?? undefined}
+            releases={releaseItems}
+            releasesLoading={releases.isLoading || releases.isFetching}
+            releasesAvailability={releasesAvailability}
+            releasesError={releases.error}
+            releasesFreshness={{
+              updatedAt: releases.dataUpdatedAt,
+              refreshing: releases.isFetching,
+              stale: releases.isStale
+            }}
+            contributors={contributorItems}
+            contributorsLoading={contributors.isLoading || contributors.isFetching}
+            contributorsAvailability={contributorsAvailability}
+            contributorsError={contributors.error}
+            contributorsFreshness={{
+              updatedAt: contributors.dataUpdatedAt,
+              refreshing: contributors.isFetching,
+              stale: contributors.isStale
+            }}
+            onRefreshReleases={() => refreshReleasesNow()}
+            onRefreshContributors={() => refreshContributorsNow()}
+            onOpenReleasesTab={() => selectRepositoryTabInApp(effectiveRepository, "releases")}
+            onOpenContributorsTab={() => selectRepositoryTabInApp(effectiveRepository, "contributors")}
+            onOpenSettingsTab={() => selectRepositoryTabInApp(effectiveRepository, "settings")}
+            onOpenRelease={(release) => selectReleaseInApp(effectiveRepository, release)}
+            onOpenContributor={(contributor) => selectContributorInApp(effectiveRepository, contributor)}
+            onOpenExternal={(url) => void api.openExternal(url)}
+          />
+        )}
+
+        {commandPaletteOpen && (
+          <CommandPalette
+            items={commandPaletteItems}
+            fileSearch={
+              repositoryDetail && isRepositoryContext
+                ? {
+                    repository: repositoryDetail,
+                    selectedRef: contentsRef ?? repositoryDetail.defaultBranch ?? "HEAD",
+                    githubReady,
+                    onOpenEntry: (entry) =>
+                      openCodeBrowserInApp(
+                        effectiveRepository,
+                        entry.path,
+                        entry.type === "dir" ? "dir" : "file",
+                        contentsRef ?? repositoryDetail.defaultBranch ?? null
+                      )
+                  }
+                : null
+            }
+            onOpenRepository={openRepositoryInApp}
+            onClose={() => setCommandPaletteOpen(false)}
+          />
+        )}
+
+        {addRepositoryOpen && (
+          <AddRepositoryDialog
+            repositories={repositoryItems}
+            viewerLogin={appState.data?.viewer?.login ?? accountProfileData?.login ?? null}
+            githubReady={githubReady}
+            onClose={() => setAddRepositoryOpen(false)}
+            onOpenRepository={openRepositoryInApp}
+          />
+        )}
+
+        {fileFinderOpen && repositoryDetail && (
+          <FileFinder
+            repository={repositoryDetail}
+            tree={repositoryTreeItem}
+            githubReady={githubReady}
+            loading={repositoryTree.isLoading || repositoryTree.isFetching}
+            error={repositoryTree.error}
+            availabilityMessage={repositoryTreeAvailabilityMessage}
+            branches={branchItems}
+            tags={tagItems}
+            refListLimit={repositoryRefListLimit}
+            refsLoading={branches.isLoading || branches.isFetching || tags.isLoading || tags.isFetching}
+            refsError={refsError}
+            refsAvailabilityMessage={refsAvailabilityMessage || null}
+            selectedRef={contentsRef ?? repositoryDetail.defaultBranch ?? "HEAD"}
+            onClose={() => setFileFinderOpen(false)}
+            onSelectRef={(ref) => {
+              if (route.kind === "codeBrowser") {
                 selectRepositoryRefInApp(effectiveRepository, ref, repositoryRefKindForName(ref), {
                   path: route.path,
                   entryType: route.entryType,
                   line: route.line
-                })
+                });
+                return;
               }
-              onExpandFileBlamePreview={() =>
-                setExpandedFileBlameRange({
-                  key: fileBlameRangeKey,
-                  limit: expandedFileBlameRangeLimit
-                })
-              }
-              onExpandCommits={expandFileCommitHistory}
-              onOpenExternal={(url) => void api.openExternal(url)}
-            />
-          )}
+              selectRepositoryRefInApp(effectiveRepository, ref, repositoryRefKindForName(ref));
+            }}
+            onExpandRefs={expandActiveRepositoryRefs}
+            onOpenEntry={(entry) => {
+              setFileFinderOpen(false);
+              openCodeBrowserInApp(
+                effectiveRepository,
+                entry.path,
+                entry.type === "dir" ? "dir" : "file",
+                contentsRef ?? repositoryDetail.defaultBranch ?? null
+              );
+            }}
+          />
+        )}
 
-          {route.kind !== "home" && route.kind !== "repository" && route.kind !== "codeBrowser" && (
-            <CollectionView
-              title={routeTitle(route)}
-              routeKind={route.kind}
-              githubReady={githubReady}
-              issues={accountIssueItems}
-              issuesLoading={accountIssues.isLoading || accountIssues.isFetching}
-              issuesError={accountIssues.error}
-              issuesAvailability={accountIssuesAvailability}
-              pulls={accountPullItems}
-              pullsLoading={accountPulls.isLoading || accountPulls.isFetching}
-              pullsError={accountPulls.error}
-              pullsAvailability={accountPullsAvailability}
-              accountWorkLimit={accountWorkLimit}
-              notifications={notificationItems}
-              notificationsAvailability={notificationsAvailability}
-              notificationFilter={notificationFilter}
-              notificationLimit={notificationLimit}
-              notificationsLoading={notifications.isLoading || notifications.isFetching}
-              notificationsError={notifications.error}
-              notificationMarkingReadId={
-                markNotificationRead.isPending ? markNotificationRead.variables?.threadId ?? null : null
-              }
-              notificationUnsubscribingId={
-                unsubscribeNotification.isPending ? unsubscribeNotification.variables?.threadId ?? null : null
-              }
-              notificationActionError={
-                (markNotificationRead.error instanceof Error ? markNotificationRead.error : null) ??
-                (markVisibleNotificationsRead.error instanceof Error
-                  ? markVisibleNotificationsRead.error
-                  : null) ??
-                (unsubscribeNotification.error instanceof Error ? unsubscribeNotification.error : null)
-              }
-              notificationBulkMarkingRead={markVisibleNotificationsRead.isPending}
-              notificationsFreshness={{
-                updatedAt: Math.max(
-                  notifications.dataUpdatedAt,
-                  accountIssues.dataUpdatedAt,
-                  accountPulls.dataUpdatedAt
-                ),
-                refreshing: notifications.isFetching || accountIssues.isFetching || accountPulls.isFetching,
-                stale: notifications.isStale || accountIssues.isStale || accountPulls.isStale
-              }}
-              organizations={organizationItems}
-              selectedOrganizationLogin={selectedOrganization?.login ?? null}
-              organizationListLimit={organizationListLimit}
-              organizationsAvailability={organizationsAvailability}
-              organizationsLoading={organizations.isLoading || organizations.isFetching}
-              organizationsError={organizations.error}
-              organizationsFreshness={{
-                updatedAt: Math.max(
-                  organizations.dataUpdatedAt,
-                  selectedOrganization ? organizationTeams.dataUpdatedAt : 0,
-                  selectedOrganization ? organizationRepositories.dataUpdatedAt : 0,
-                  selectedOrganization ? organizationMembers.dataUpdatedAt : 0,
-                  selectedOrganizationTeam ? organizationTeamRepositories.dataUpdatedAt : 0,
-                  selectedOrganizationTeam ? organizationTeamMembers.dataUpdatedAt : 0,
-                  selectedOrganization ? organizationProjects.dataUpdatedAt : 0,
-                  repositories.dataUpdatedAt
-                ),
-                refreshing:
-                  organizations.isFetching ||
-                  (selectedOrganization ? organizationTeams.isFetching : false) ||
-                  (selectedOrganization ? organizationRepositories.isFetching : false) ||
-                  (selectedOrganization ? organizationMembers.isFetching : false) ||
-                  (selectedOrganizationTeam ? organizationTeamRepositories.isFetching : false) ||
-                  (selectedOrganizationTeam ? organizationTeamMembers.isFetching : false) ||
-                  (selectedOrganization ? organizationProjects.isFetching : false) ||
-                  repositories.isFetching,
-                stale:
-                  organizations.isStale ||
-                  (selectedOrganization ? organizationTeams.isStale : false) ||
-                  (selectedOrganization ? organizationRepositories.isStale : false) ||
-                  (selectedOrganization ? organizationMembers.isStale : false) ||
-                  (selectedOrganizationTeam ? organizationTeamRepositories.isStale : false) ||
-                  (selectedOrganizationTeam ? organizationTeamMembers.isStale : false) ||
-                  (selectedOrganization ? organizationProjects.isStale : false) ||
-                  repositories.isStale
-              }}
-              organizationTeams={organizationTeams.data?.items ?? []}
-              organizationTeamsAvailability={organizationTeams.data?.availability ?? null}
-              organizationTeamLimit={organizationTeamLimit}
-              organizationTeamsLoading={organizationTeams.isLoading || organizationTeams.isFetching}
-              organizationTeamsError={organizationTeams.error}
-              organizationRepositories={organizationRepositories.data?.items ?? []}
-              organizationRepositoriesAvailability={organizationRepositories.data?.availability ?? null}
-              organizationRepositoryLimit={organizationRepositoryLimit}
-              organizationRepositoriesLoading={organizationRepositories.isLoading || organizationRepositories.isFetching}
-              organizationRepositoriesError={organizationRepositories.error}
-              organizationMembers={organizationMembers.data?.items ?? []}
-              organizationMembersAvailability={organizationMembers.data?.availability ?? null}
-              organizationMemberLimit={organizationMemberLimit}
-              organizationMembersLoading={organizationMembers.isLoading || organizationMembers.isFetching}
-              organizationMembersError={organizationMembers.error}
-              selectedOrganizationMemberLogin={selectedOrganizationMemberLogin}
-              selectedOrganizationTeamSlug={selectedOrganizationTeam?.slug ?? null}
-              organizationTeamRepositories={organizationTeamRepositories.data?.items ?? []}
-              organizationTeamRepositoriesAvailability={organizationTeamRepositories.data?.availability ?? null}
-              organizationTeamRepositoryLimit={organizationTeamRepositoryLimit}
-              organizationTeamRepositoriesLoading={
-                organizationTeamRepositories.isLoading || organizationTeamRepositories.isFetching
-              }
-              organizationTeamRepositoriesError={organizationTeamRepositories.error}
-              organizationTeamMembers={organizationTeamMembers.data?.items ?? []}
-              organizationTeamMembersAvailability={organizationTeamMembers.data?.availability ?? null}
-              organizationTeamMemberLimit={organizationTeamMemberLimit}
-              organizationTeamMembersLoading={organizationTeamMembers.isLoading || organizationTeamMembers.isFetching}
-              organizationTeamMembersError={organizationTeamMembers.error}
-              organizationProjects={organizationProjects.data?.items ?? []}
-              organizationProjectsAvailability={organizationProjects.data?.availability ?? null}
-              organizationProjectLimit={organizationProjectLimit}
-              organizationProjectsLoading={organizationProjects.isLoading || organizationProjects.isFetching}
-              organizationProjectsError={organizationProjects.error}
-              selectedOrganizationProjectId={selectedOrganizationProjectId}
-              repositories={repositoryItems}
-              repositoryListLimit={repositoryListLimit}
-              repositoriesLoading={repositories.isLoading || repositories.isFetching}
-              repositoriesError={repositories.error}
-              repositoriesAvailabilityMessage={repositoriesAvailabilityMessage}
-              pinnedRepositoryNames={pinnedRepositoryNames}
-              repositoryPinBusy={pinMutation.isPending}
-              repositoryPinError={pinMutation.error instanceof Error ? pinMutation.error : null}
-              repositoriesFreshness={{
-                updatedAt: repositories.dataUpdatedAt,
-                refreshing: repositories.isFetching,
-                stale: repositories.isStale
-              }}
-              viewerLogin={appState.data?.viewer?.login ?? accountProfileData?.login ?? null}
-              onOpenExternal={(url) => void api.openExternal(url)}
-              onOpenRepository={openRepositoryInApp}
-              onOpenAddRepository={() => setAddRepositoryOpen(true)}
-              onOpenIssue={openIssueSummaryInApp}
-              onOpenPullRequest={openPullRequestSummaryInApp}
-              onOpenNotification={openNotificationInApp}
-              onNotificationFilterChange={setNotificationFilter}
-              onMarkNotificationRead={(threadId) => {
-                if (githubReady) {
-                  markNotificationRead.mutate({ threadId });
-                }
-              }}
-              onMarkVisibleNotificationsRead={(threadIds) => {
-                if (githubReady) {
-                  markVisibleNotificationsRead.mutate({ threadIds });
-                }
-              }}
-              onUnsubscribeNotification={(threadId) => {
-                if (
-                  githubReady &&
-                  window.confirm("Unsubscribe from this GitHub notification thread?")
-                ) {
-                  unsubscribeNotification.mutate({ threadId });
-                }
-              }}
-              onSelectOrganization={(login) => {
-                const organization = organizationItems.find((item) => item.login === login);
-                if (organization) {
-                  recordRecent(organizationRecentInput(organization));
-                }
-                setSelectedOrganizationLogin(login);
-                setSelectedOrganizationTeamSlug(null);
-                setSelectedOrganizationMemberLogin(null);
-                setSelectedOrganizationProjectId(null);
-              }}
-              onSelectOrganizationTeam={(slug) => {
-                const team = organizationTeams.data?.items.find((item) => item.slug === slug);
-                if (team) {
-                  recordRecent(teamRecentInput(team));
-                }
-                setSelectedOrganizationTeamSlug(slug);
-                setSelectedOrganizationMemberLogin(null);
-                setSelectedOrganizationProjectId(null);
-              }}
-              onSelectOrganizationMember={(login) => {
-                setSelectedOrganizationMemberLogin(login);
-                setSelectedOrganizationProjectId(null);
-              }}
-              onSelectOrganizationProject={(project) => {
-                if (selectedOrganization) {
-                  selectOrganizationProjectInApp(selectedOrganization, project);
-                }
-              }}
-              onExpandOrganizations={expandOrganizationList}
-              onExpandOrganizationRepositories={expandSelectedOrganizationRepositories}
-              onExpandOrganizationTeams={expandSelectedOrganizationTeams}
-              onExpandOrganizationMembers={expandSelectedOrganizationMembers}
-              onExpandOrganizationProjects={expandSelectedOrganizationProjects}
-              onExpandOrganizationTeamRepositories={expandSelectedOrganizationTeamRepositories}
-              onExpandOrganizationTeamMembers={expandSelectedOrganizationTeamMembers}
-              onExpandMailboxWork={expandMailboxWork}
-              onExpandMailboxNotifications={expandMailboxNotifications}
-              onExpandRepositories={expandRepositoryList}
-              onRefreshNotifications={() => refreshMailboxNow()}
-              onRefreshRepositories={() => refreshRepositoriesNow()}
-              onRefreshOrganizations={() => refreshOrganizationsNow()}
-              onToggleRepositoryPin={toggleRepositoryPin}
-            />
-          )}
-        </main>
-      </section>
-
-      {isRepositoryRoute && (
-        <RightRail
-          repository={repositoryDetail ?? undefined}
-          releases={releaseItems}
-          releasesLoading={releases.isLoading || releases.isFetching}
-          releasesAvailability={releasesAvailability}
-          releasesError={releases.error}
-          releasesFreshness={{
-            updatedAt: releases.dataUpdatedAt,
-            refreshing: releases.isFetching,
-            stale: releases.isStale
-          }}
-          contributors={contributorItems}
-          contributorsLoading={contributors.isLoading || contributors.isFetching}
-          contributorsAvailability={contributorsAvailability}
-          contributorsError={contributors.error}
-          contributorsFreshness={{
-            updatedAt: contributors.dataUpdatedAt,
-            refreshing: contributors.isFetching,
-            stale: contributors.isStale
-          }}
-          onRefreshReleases={() => refreshReleasesNow()}
-          onRefreshContributors={() => refreshContributorsNow()}
-          onOpenReleasesTab={() => selectRepositoryTabInApp(effectiveRepository, "releases")}
-          onOpenContributorsTab={() => selectRepositoryTabInApp(effectiveRepository, "contributors")}
-          onOpenSettingsTab={() => selectRepositoryTabInApp(effectiveRepository, "settings")}
-          onOpenRelease={(release) => selectReleaseInApp(effectiveRepository, release)}
-          onOpenContributor={(contributor) => selectContributorInApp(effectiveRepository, contributor)}
-          onOpenExternal={(url) => void api.openExternal(url)}
-        />
-      )}
-
-      {commandPaletteOpen && (
-        <CommandPalette
-          items={commandPaletteItems}
-          fileSearch={
-            repositoryDetail && isRepositoryContext
-              ? {
-                  repository: repositoryDetail,
-                  selectedRef: contentsRef ?? repositoryDetail.defaultBranch ?? "HEAD",
-                  githubReady,
-                  onOpenEntry: (entry) =>
-                    openCodeBrowserInApp(
-                      effectiveRepository,
-                      entry.path,
-                      entry.type === "dir" ? "dir" : "file",
-                      contentsRef ?? repositoryDetail.defaultBranch ?? null
-                    )
-                }
-              : null
-          }
-          onOpenRepository={openRepositoryInApp}
-          onClose={() => setCommandPaletteOpen(false)}
-        />
-      )}
-
-      {addRepositoryOpen && (
-        <AddRepositoryDialog
-          repositories={repositoryItems}
-          viewerLogin={appState.data?.viewer?.login ?? accountProfileData?.login ?? null}
-          githubReady={githubReady}
-          onClose={() => setAddRepositoryOpen(false)}
-          onOpenRepository={openRepositoryInApp}
-        />
-      )}
-
-      {fileFinderOpen && repositoryDetail && (
-        <FileFinder
-          repository={repositoryDetail}
-          tree={repositoryTreeItem}
-          githubReady={githubReady}
-          loading={repositoryTree.isLoading || repositoryTree.isFetching}
-          error={repositoryTree.error}
-          availabilityMessage={repositoryTreeAvailabilityMessage}
-          branches={branchItems}
-          tags={tagItems}
-          refListLimit={repositoryRefListLimit}
-          refsLoading={branches.isLoading || branches.isFetching || tags.isLoading || tags.isFetching}
-          refsError={refsError}
-          refsAvailabilityMessage={refsAvailabilityMessage || null}
-          selectedRef={contentsRef ?? repositoryDetail.defaultBranch ?? "HEAD"}
-          onClose={() => setFileFinderOpen(false)}
-          onSelectRef={(ref) => {
-            if (route.kind === "codeBrowser") {
-              selectRepositoryRefInApp(effectiveRepository, ref, repositoryRefKindForName(ref), {
-                path: route.path,
-                entryType: route.entryType,
-                line: route.line
-              });
-              return;
-            }
-            selectRepositoryRefInApp(effectiveRepository, ref, repositoryRefKindForName(ref));
-          }}
-          onExpandRefs={expandActiveRepositoryRefs}
-          onOpenEntry={(entry) => {
-            setFileFinderOpen(false);
-            openCodeBrowserInApp(
-              effectiveRepository,
-              entry.path,
-              entry.type === "dir" ? "dir" : "file",
-              contentsRef ?? repositoryDetail.defaultBranch ?? null
-            );
-          }}
-        />
-      )}
-
-      {settingsOpen && (
-        <SettingsPanel
-          appState={appState.data}
-          onClose={() => setSettingsOpen(false)}
-          onOpenExternal={(url) => void api.openExternal(url)}
-          onSave={async (settings) => {
-            await api.updateSettings(settings);
-            await queryClient.invalidateQueries({ queryKey: ["app-state"] });
-          }}
-          onSignInWithGitHub={() => api.signInWithGitHub()}
-          onGetGitHubSignIn={() => api.getGitHubSignIn()}
-          onCompleteGitHubSignIn={async () => {
-            await invalidateGitHubSessionQueries();
-            setSettingsOpen(false);
-          }}
-          onCancelGitHubSignIn={() => api.cancelGitHubSignIn()}
-          onClearToken={async () => {
-            await api.clearGitHubToken();
-            await invalidateGitHubSessionQueries();
-          }}
-        />
-      )}
+        {settingsOpen && (
+          <SettingsPanel
+            appState={appState.data}
+            onClose={() => setSettingsOpen(false)}
+            onOpenExternal={(url) => void api.openExternal(url)}
+            onSave={async (settings) => {
+              await api.updateSettings(settings);
+              await queryClient.invalidateQueries({ queryKey: ["app-state"] });
+            }}
+            onSignInWithGitHub={() => api.signInWithGitHub()}
+            onGetGitHubSignIn={() => api.getGitHubSignIn()}
+            onCompleteGitHubSignIn={async () => {
+              await invalidateGitHubSessionQueries();
+              setSettingsOpen(false);
+            }}
+            onCancelGitHubSignIn={() => api.cancelGitHubSignIn()}
+            onClearToken={async () => {
+              await api.clearGitHubToken();
+              await invalidateGitHubSessionQueries();
+            }}
+          />
+        )}
       </div>
     </MarkdownUrlHandlerContext.Provider>
   );
@@ -9703,6 +9979,10 @@ function Sidebar({
   const [remoteRepositorySearchLimit, setRemoteRepositorySearchLimit] = useState(8);
   const viewerLogin = appState?.viewer?.login ?? profile?.login ?? null;
   const githubReady = Boolean(appState?.github.authenticated);
+  const viewerLoading = Boolean(appState?.github.authenticated && !appState.viewer && !profile);
+  const footerAvatarUrl = appState?.viewer?.avatarUrl ?? profile?.avatarUrl ?? null;
+  const footerLogin = appState?.viewer?.login ?? profile?.login ?? null;
+  const footerName = appState?.viewer?.name ?? profile?.name ?? footerLogin;
   const localPinnedRepositories = repositoryShortcutsFromPins(pinnedRepositoryNames, repositories);
   const trimmedRepositoryFilter = repositoryFilter.trim();
   const normalizedRepositoryFilter = trimmedRepositoryFilter.toLowerCase();
@@ -9745,7 +10025,9 @@ function Sidebar({
     "Repository search",
     remoteSearch.data?.availability ?? null
   );
-  const remoteSearchUnavailable = remoteSearch.data ? remoteSearch.data.availability.status !== "available" : false;
+  const remoteSearchUnavailable = remoteSearch.data
+    ? remoteSearch.data.availability.status !== "available"
+    : false;
   const remoteRepositories = remoteSearchItems.filter((repository) => {
     const repositoryName = repository.nameWithOwner.toLowerCase();
     return !localRepositoryNames.has(repositoryName) && !localMatchNames.has(repositoryName);
@@ -9811,7 +10093,8 @@ function Sidebar({
     !remoteSearch.isFetching &&
     !remoteSearch.isError &&
     remoteSearchItems.length >= remoteRepositorySearchLimit;
-  const canLoadMoreRemoteSearchResults = remoteSearchMayBeCapped && remoteRepositorySearchLimit < maxRepositoryListLimit;
+  const canLoadMoreRemoteSearchResults =
+    remoteSearchMayBeCapped && remoteRepositorySearchLimit < maxRepositoryListLimit;
   const virtualizer = useVirtualizer({
     count: sidebarRepositories.length,
     getScrollElement: () => parentRef.current,
@@ -9929,7 +10212,9 @@ function Sidebar({
             <div className="error-state sidebar-empty-state">{remoteSearchAvailabilityMessage}</div>
           )}
           {showCachedRepositorySearchStatus && (
-            <div className="muted-row sidebar-empty-state">Cached mode: searching local repositories only.</div>
+            <div className="muted-row sidebar-empty-state">
+              Cached mode: searching local repositories only.
+            </div>
           )}
           {remoteSearchMayBeCapped && (
             <div className="muted-row sidebar-empty-state">GitHub results may be capped.</div>
@@ -9943,7 +10228,9 @@ function Sidebar({
             sidebarRepositories.length === 0 &&
             !directRepositoryVisible && (
               <div className="empty-state sidebar-empty-state">
-                {normalizedRepositoryFilter ? "No repositories match this filter." : "Pin repositories from a repository list."}
+                {normalizedRepositoryFilter
+                  ? "No repositories match this filter."
+                  : "Pin repositories from a repository list."}
               </div>
             )}
           {directRepositoryVisible && exactRepositoryTarget && (
@@ -9974,7 +10261,11 @@ function Sidebar({
               {virtualizer.getVirtualItems().map((virtualRow) => {
                 const { repository, source } = sidebarRepositories[virtualRow.index];
                 const displayName = displayRepositoryShortcutName(repository, viewerLogin);
-                const metadataParts = sidebarRepositoryMetadataParts(repository, source, Boolean(normalizedRepositoryFilter));
+                const metadataParts = sidebarRepositoryMetadataParts(
+                  repository,
+                  source,
+                  Boolean(normalizedRepositoryFilter)
+                );
                 const metadata = metadataParts.join(" · ");
                 const rowLabel = metadata ? `${displayName}, ${metadata}` : displayName;
                 return (
@@ -10009,7 +10300,9 @@ function Sidebar({
               className="show-more"
               type="button"
               onClick={() =>
-                setLocalRepositoryDisplayLimit((currentLimit) => Math.min(currentLimit + 6, localRepositoryLimit))
+                setLocalRepositoryDisplayLimit((currentLimit) =>
+                  Math.min(currentLimit + 6, localRepositoryLimit)
+                )
               }
             >
               Load more repositories
@@ -10045,7 +10338,9 @@ function Sidebar({
               className="show-more"
               type="button"
               onClick={() =>
-                setRemoteRepositorySearchLimit((currentLimit) => Math.min(currentLimit + 8, maxRepositoryListLimit))
+                setRemoteRepositorySearchLimit((currentLimit) =>
+                  Math.min(currentLimit + 8, maxRepositoryListLimit)
+                )
               }
             >
               Load more GitHub results
@@ -10059,14 +10354,14 @@ function Sidebar({
       </section>
 
       <button className="user-footer" type="button" onClick={onOpenSettings}>
-        {appState?.viewer?.avatarUrl ? (
-          <img src={appState.viewer.avatarUrl} alt="" />
+        {footerAvatarUrl ? (
+          <img src={footerAvatarUrl} alt="" />
         ) : (
-          <span className="avatar-placeholder">C</span>
+          <span className={`avatar-placeholder ${viewerLoading ? "loading-avatar" : ""}`}>C</span>
         )}
         <span>
-          <strong>{appState?.viewer?.name ?? appState?.viewer?.login ?? "Set up Control"}</strong>
-          <small>@{appState?.viewer?.login ?? "github"}</small>
+          <strong>{viewerLoading ? "Loading GitHub profile" : (footerName ?? "Set up Control")}</strong>
+          <small>@{footerLogin ?? "github"}</small>
         </span>
         <MoreHorizontal size={18} />
       </button>
@@ -10109,7 +10404,10 @@ function TopBar({
     () => repositories.filter((repository) => repositoryMatchesQuery(repository, normalizedQuery)),
     [normalizedQuery, repositories]
   );
-  const localResults = useMemo(() => localMatches.slice(0, localResultLimit), [localMatches, localResultLimit]);
+  const localResults = useMemo(
+    () => localMatches.slice(0, localResultLimit),
+    [localMatches, localResultLimit]
+  );
   const canLoadMoreLocalResults = localResults.length < localMatches.length;
   const loadedRepositoryNames = useMemo(
     () => new Set(repositories.map((repository) => repository.nameWithOwner.toLowerCase())),
@@ -10121,7 +10419,10 @@ function TopBar({
     enabled: githubReady && normalizedQuery.length > 1
   });
   const searchItems = search.data?.items ?? [];
-  const searchAvailabilityMessage = readAvailabilityMessage("Repository search", search.data?.availability ?? null);
+  const searchAvailabilityMessage = readAvailabilityMessage(
+    "Repository search",
+    search.data?.availability ?? null
+  );
   const searchUnavailable = search.data ? search.data.availability.status !== "available" : false;
   const remoteResults = searchItems.filter(
     (repository) => !loadedRepositoryNames.has(repository.nameWithOwner.toLowerCase())
@@ -10147,6 +10448,7 @@ function TopBar({
   const boundedSearchIndex = Math.max(0, Math.min(activeSearchIndex, Math.max(searchResultCount - 1, 0)));
   const directSearchResultActive = directRepositoryVisible && boundedSearchIndex === 0;
   const activeSearchResult = searchResults[boundedSearchIndex - directSearchResultCount] ?? null;
+  const viewerLoading = githubReady && !viewer;
 
   function openSearchResult(nameWithOwner: string): void {
     onOpenRepository(nameWithOwner);
@@ -10157,11 +10459,7 @@ function TopBar({
   return (
     <header className="topbar">
       <div className="titlebar-left">
-        <button
-          className="titlebar-provider-button"
-          type="button"
-          onClick={onOpenHome}
-        >
+        <button className="titlebar-provider-button" type="button" onClick={onOpenHome}>
           <span className="brand-mark">GH</span>
           GitHub
           <ChevronDown size={14} />
@@ -10233,9 +10531,7 @@ function TopBar({
             {localResults.length > 0 && <div className="palette-section-title">Local repositories</div>}
             {localResults.map((result, index) => (
               <button
-                className={
-                  boundedSearchIndex === directSearchResultCount + index ? "active-finder-row" : ""
-                }
+                className={boundedSearchIndex === directSearchResultCount + index ? "active-finder-row" : ""}
                 key={result.id}
                 type="button"
                 onMouseEnter={() => setActiveSearchIndex(directSearchResultCount + index)}
@@ -10255,7 +10551,9 @@ function TopBar({
                 }
                 key={result.id}
                 type="button"
-                onMouseEnter={() => setActiveSearchIndex(directSearchResultCount + localResults.length + index)}
+                onMouseEnter={() =>
+                  setActiveSearchIndex(directSearchResultCount + localResults.length + index)
+                }
                 onClick={() => openSearchResult(result.nameWithOwner)}
               >
                 <span>{result.nameWithOwner}</span>
@@ -10335,7 +10633,11 @@ function TopBar({
           </button>
         )}
         <button className="avatar-button" type="button" onClick={onOpenSettings} title="Account settings">
-          {viewer?.avatarUrl ? <img src={viewer.avatarUrl} alt="" /> : <span>C</span>}
+          {viewer?.avatarUrl ? (
+            <img src={viewer.avatarUrl} alt="" />
+          ) : (
+            <span className={`avatar-placeholder ${viewerLoading ? "loading-avatar" : ""}`}>C</span>
+          )}
         </button>
       </div>
     </header>
@@ -10386,11 +10688,7 @@ function enabledCommandPaletteResultIndex(
   }
 
   const boundedIndex = Math.min(Math.max(activeIndex, 0), Math.max(results.length - 1, 0));
-  for (
-    let index = boundedIndex + direction;
-    index >= 0 && index < results.length;
-    index += direction
-  ) {
+  for (let index = boundedIndex + direction; index >= 0 && index < results.length; index += direction) {
     if (!commandPaletteResultDisabled(results[index])) {
       return index;
     }
@@ -10516,21 +10814,32 @@ function CommandPalette({
     ],
     [commandResults, directRepositoryItem, fileResults]
   );
-  const fileSearchUnavailableReason = fileSearch && normalizedQuery && !fileSearch.githubReady && fileSearchTree.error
-    ? "No cached repository tree is available. Sign in with GitHub to search files from the command palette."
-    : null;
+  const fileSearchUnavailableReason =
+    fileSearch && normalizedQuery && !fileSearch.githubReady && fileSearchTree.error
+      ? "No cached repository tree is available. Sign in with GitHub to search files from the command palette."
+      : null;
   const fileSearchTypedUnavailableReason =
-    fileSearch && normalizedQuery && !fileSearchTree.error && fileSearchAvailabilityMessage && fileSearchEntries.length === 0
+    fileSearch &&
+    normalizedQuery &&
+    !fileSearchTree.error &&
+    fileSearchAvailabilityMessage &&
+    fileSearchEntries.length === 0
       ? fileSearchAvailabilityMessage
       : null;
-  const fileSearchLoading =
-    Boolean(fileSearch && normalizedQuery && fileSearchTree.isFetching && fileSearchEntries.length === 0);
+  const fileSearchLoading = Boolean(
+    fileSearch && normalizedQuery && fileSearchTree.isFetching && fileSearchEntries.length === 0
+  );
   const fileSearchError =
-    fileSearch && normalizedQuery && fileSearch.githubReady && fileSearchTree.error && fileSearchEntries.length === 0
-    ? fileSearchTree.error
-    : null;
-  const showCachedFileResultsNotice =
-    Boolean(fileSearch && normalizedQuery && !fileSearch.githubReady && fileSearchEntries.length > 0);
+    fileSearch &&
+    normalizedQuery &&
+    fileSearch.githubReady &&
+    fileSearchTree.error &&
+    fileSearchEntries.length === 0
+      ? fileSearchTree.error
+      : null;
+  const showCachedFileResultsNotice = Boolean(
+    fileSearch && normalizedQuery && !fileSearch.githubReady && fileSearchEntries.length > 0
+  );
   const showTruncatedFileTreeNotice = Boolean(fileSearch && normalizedQuery && fileSearchTreeItem?.truncated);
   const hiddenCommandResultCount = Math.max(matchingCommandItems.length - commandResults.length, 0);
   const hiddenFileResultCount = Math.max(matchingFileEntries.length - fileResults.length, 0);
@@ -10672,12 +10981,16 @@ function CommandPalette({
             <button
               className={index === boundedActiveIndex ? "active-finder-row" : ""}
               id={`command-palette-result-${index}`}
-              key={result.kind === "command" ? result.item.id : `file-${result.entry.type}-${result.entry.path}`}
+              key={
+                result.kind === "command" ? result.item.id : `file-${result.entry.type}-${result.entry.path}`
+              }
               role="option"
               aria-selected={index === boundedActiveIndex}
               type="button"
               disabled={resultDisabled(result)}
-              title={result.kind === "command" ? result.item.disabledReason ?? undefined : result.entry.path}
+              title={
+                result.kind === "command" ? (result.item.disabledReason ?? undefined) : result.entry.path
+              }
               onMouseEnter={() => setActiveIndex(index)}
               onClick={() => runResult(result)}
             >
@@ -10695,7 +11008,9 @@ function CommandPalette({
                 className="muted-row"
                 type="button"
                 onClick={() =>
-                  setVisibleCommandResultLimit(effectiveCommandResultLimit + COMMAND_PALETTE_COMMAND_RESULT_LIMIT)
+                  setVisibleCommandResultLimit(
+                    effectiveCommandResultLimit + COMMAND_PALETTE_COMMAND_RESULT_LIMIT
+                  )
                 }
               >
                 <ChevronDown size={16} /> Load more commands
@@ -10710,7 +11025,9 @@ function CommandPalette({
               <button
                 className="muted-row"
                 type="button"
-                onClick={() => setVisibleFileResultLimit((limit) => limit + COMMAND_PALETTE_FILE_RESULT_LIMIT)}
+                onClick={() =>
+                  setVisibleFileResultLimit((limit) => limit + COMMAND_PALETTE_FILE_RESULT_LIMIT)
+                }
               >
                 <ChevronDown size={16} /> Load more files
               </button>
@@ -10806,12 +11123,16 @@ function AddRepositoryDialog({
     "Repository search",
     remoteSearch.data?.availability ?? null
   );
-  const remoteSearchUnavailable = remoteSearch.data ? remoteSearch.data.availability.status !== "available" : false;
+  const remoteSearchUnavailable = remoteSearch.data
+    ? remoteSearch.data.availability.status !== "available"
+    : false;
   const remoteResults = remoteSearchItems.filter(
     (repository) => !localNames.has(repository.nameWithOwner.toLowerCase())
   );
   const canLoadMoreRemoteResults =
-    githubReady && remoteSearchLimit < maxRepositoryListLimit && remoteSearchItems.length >= remoteSearchLimit;
+    githubReady &&
+    remoteSearchLimit < maxRepositoryListLimit &&
+    remoteSearchItems.length >= remoteSearchLimit;
   const exactRepositoryResultVisible =
     exactRepositoryTarget !== null &&
     [...localMatches, ...remoteResults].some(
@@ -10834,8 +11155,7 @@ function AddRepositoryDialog({
   const boundedActiveIndex = Math.min(Math.max(activeIndex, 0), Math.max(resultCount - 1, 0));
   const directResultActive = directRepositoryVisible && boundedActiveIndex === 0;
   const activeResult = resultItems[boundedActiveIndex - directResultCount] ?? null;
-  const activeResultId =
-    resultCount > 0 ? `add-repository-result-${boundedActiveIndex}` : undefined;
+  const activeResultId = resultCount > 0 ? `add-repository-result-${boundedActiveIndex}` : undefined;
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -10972,7 +11292,9 @@ function AddRepositoryDialog({
               <Code2 size={17} />
               <span>
                 <strong>{exactRepositoryTarget}</strong>
-                <small>Open directly. Control will show missing repository or permission errors in-app.</small>
+                <small>
+                  Open directly. Control will show missing repository or permission errors in-app.
+                </small>
               </span>
               <em>Direct</em>
             </button>
@@ -11016,9 +11338,13 @@ function AddRepositoryDialog({
           )}
           {githubReady && remoteSearch.isFetching && <div className="muted-row">Searching GitHub...</div>}
           {remoteSearch.error && (
-            <div className="error-state">GitHub repository search unavailable: {remoteSearch.error.message}</div>
+            <div className="error-state">
+              GitHub repository search unavailable: {remoteSearch.error.message}
+            </div>
           )}
-          {remoteSearchAvailabilityMessage && <div className="error-state">{remoteSearchAvailabilityMessage}</div>}
+          {remoteSearchAvailabilityMessage && (
+            <div className="error-state">{remoteSearchAvailabilityMessage}</div>
+          )}
           {normalizedQuery.length > 1 &&
             githubReady &&
             !remoteSearch.isFetching &&
@@ -11154,9 +11480,10 @@ function FileFinder({
     totalMatchCount > defaultFileFinderResultLimit
       ? `Showing ${displayedMatchCount} of ${totalMatchCount} local matches.`
       : null;
-  const treeUnavailableReason = !githubReady && entries.length === 0
-    ? "No cached repository tree is available. Sign in with GitHub to load Go to file results."
-    : null;
+  const treeUnavailableReason =
+    !githubReady && entries.length === 0
+      ? "No cached repository tree is available. Sign in with GitHub to load Go to file results."
+      : null;
   const cachedTreeNotice =
     !githubReady && entries.length > 0
       ? "Showing cached tree results. Sign in with GitHub to refresh this repository tree."
@@ -11169,7 +11496,8 @@ function FileFinder({
     ...tags.map((tag) => ({ kind: "tag" as const, name: tag.name }))
   ];
   const hasSelectedRefOption = refOptions.some((option) => option.name === selectedRef);
-  const refsExceedLoadedCounts = branches.length < repository.branchCount || tags.length < repository.tagCount;
+  const refsExceedLoadedCounts =
+    branches.length < repository.branchCount || tags.length < repository.tagCount;
   const canExpandRefs = refsExceedLoadedCounts && refListLimit < expandedRefListLimit;
   const refsLimitNote =
     refsExceedLoadedCounts && refListLimit >= expandedRefListLimit
@@ -11287,9 +11615,7 @@ function FileFinder({
           {refsError && (
             <span className="action-disabled-note">Branch and tag list unavailable: {refsError.message}</span>
           )}
-          {refsAvailabilityMessage && (
-            <span className="action-disabled-note">{refsAvailabilityMessage}</span>
-          )}
+          {refsAvailabilityMessage && <span className="action-disabled-note">{refsAvailabilityMessage}</span>}
           {canExpandRefs && (
             <button type="button" onClick={onExpandRefs}>
               Load more refs
@@ -11325,9 +11651,7 @@ function FileFinder({
             !error &&
             !availabilityMessage &&
             entries.length > 0 &&
-            filteredEntries.length === 0 && (
-            <div className="empty-state">No files match this search.</div>
-          )}
+            filteredEntries.length === 0 && <div className="empty-state">No files match this search.</div>}
           {!loading &&
             filteredEntries.map((entry, index) => (
               <button
@@ -11493,9 +11817,16 @@ function HomeDashboard({
   onOpenExternal(url: string): void;
 }): JSX.Element {
   const login = profile?.login ?? appState?.viewer?.login ?? "github";
-  const displayName = profile?.name ?? appState?.viewer?.name ?? login;
+  const viewerLoading = Boolean(appState?.github.authenticated && !appState.viewer && !profile);
+  const displayName = viewerLoading
+    ? "Loading GitHub profile"
+    : (profile?.name ?? appState?.viewer?.name ?? login);
   const sortedRepositories = sortRepositoriesByActivity(repositories);
-  const visibleRepositoryLimit = Math.min(repositoryActivityLimit, sortedRepositories.length, maxRepositoryListLimit);
+  const visibleRepositoryLimit = Math.min(
+    repositoryActivityLimit,
+    sortedRepositories.length,
+    maxRepositoryListLimit
+  );
   const latestRepositories = sortedRepositories.slice(0, visibleRepositoryLimit);
   const canLoadMoreRepositories =
     sortedRepositories.length > latestRepositories.length && repositoryActivityLimit < maxRepositoryListLimit;
@@ -11535,7 +11866,9 @@ function HomeDashboard({
         {(profile?.avatarUrl ?? appState?.viewer?.avatarUrl) ? (
           <img src={profile?.avatarUrl ?? appState?.viewer?.avatarUrl ?? ""} alt="" />
         ) : (
-          <span className="avatar-placeholder">{login.slice(0, 1).toUpperCase()}</span>
+          <span className={`avatar-placeholder ${viewerLoading ? "loading-avatar" : ""}`}>
+            {login.slice(0, 1).toUpperCase()}
+          </span>
         )}
         <div>
           <h1>{displayName}</h1>
@@ -11591,10 +11924,7 @@ function HomeDashboard({
                     {metadataParts.length > 0 && <span>{metadataParts.join(" · ")}</span>}
                     <span className="home-repo-card-chips">
                       {chips.map((chip) => (
-                        <span
-                          key={chip}
-                          className={`state-chip ${chip === "pinned" ? "success" : ""}`}
-                        >
+                        <span key={chip} className={`state-chip ${chip === "pinned" ? "success" : ""}`}>
                           {chip}
                         </span>
                       ))}
@@ -11677,9 +12007,10 @@ function HomeDashboard({
                 </button>
               );
             })}
-            {!repositoriesLoading && !repositoriesError && !repositoriesAvailabilityMessage && latestRepositories.length === 0 && (
-              <div className="empty-state">No repositories loaded.</div>
-            )}
+            {!repositoriesLoading &&
+              !repositoriesError &&
+              !repositoriesAvailabilityMessage &&
+              latestRepositories.length === 0 && <div className="empty-state">No repositories loaded.</div>}
             {canLoadMoreRepositories && (
               <div className="table-action-row">
                 <button type="button" onClick={onLoadMoreRepositories}>
@@ -11722,13 +12053,13 @@ function HomeDashboard({
                 item.kind === "pull" ? pullRequestMergeableStateLabel(item.mergeableState) : null;
               const isCrossRepository =
                 item.kind === "pull"
-                  ? item.isCrossRepository ??
+                  ? (item.isCrossRepository ??
                     Boolean(
                       (item.headRepositoryNameWithOwner &&
                         item.headRepositoryNameWithOwner !== item.repositoryNameWithOwner) ||
-                        (item.baseRepositoryNameWithOwner &&
-                          item.baseRepositoryNameWithOwner !== item.repositoryNameWithOwner)
-                    )
+                      (item.baseRepositoryNameWithOwner &&
+                        item.baseRepositoryNameWithOwner !== item.repositoryNameWithOwner)
+                    ))
                   : false;
               const sourceRepositoryLabel =
                 item.kind === "pull" && item.headRepositoryNameWithOwner
@@ -11747,9 +12078,7 @@ function HomeDashboard({
                   <button
                     className="mailbox-work-row-main"
                     type="button"
-                    onClick={() =>
-                      item.kind === "pull" ? onOpenPullRequest(item) : onOpenIssue(item)
-                    }
+                    onClick={() => (item.kind === "pull" ? onOpenPullRequest(item) : onOpenIssue(item))}
                   >
                     {item.kind === "pull" ? <GitPullRequest size={17} /> : <CircleDot size={17} />}
                     <div>
@@ -11758,9 +12087,7 @@ function HomeDashboard({
                         {item.repositoryNameWithOwner ?? "GitHub"} #{item.number} · updated{" "}
                         {formatRelativeDate(item.updatedAt)}
                       </small>
-                      <small className="notification-detail-line">
-                        {metadataParts.join(" · ")}
-                      </small>
+                      <small className="notification-detail-line">{metadataParts.join(" · ")}</small>
                     </div>
                   </button>
                   <span className={`state-chip ${item.state === "open" ? "success" : "attention"}`}>
@@ -11773,9 +12100,7 @@ function HomeDashboard({
                     <span className="state-chip attention">{mergeableStateLabel}</span>
                   )}
                   {reviewDecisionLabel && (
-                    <span className={`state-chip ${reviewDecisionChipTone}`}>
-                      {reviewDecisionLabel}
-                    </span>
+                    <span className={`state-chip ${reviewDecisionChipTone}`}>{reviewDecisionLabel}</span>
                   )}
                   {isCrossRepository && (
                     <span className="state-chip attention" title={sourceRepositoryLabel}>
@@ -11795,9 +12120,12 @@ function HomeDashboard({
                 </div>
               );
             })}
-            {!workLoading && workErrors.length === 0 && workAvailabilityMessages.length === 0 && workItems.length === 0 && (
-              <div className="empty-state">No open assigned issues or pull requests.</div>
-            )}
+            {!workLoading &&
+              workErrors.length === 0 &&
+              workAvailabilityMessages.length === 0 &&
+              workItems.length === 0 && (
+                <div className="empty-state">No open assigned issues or pull requests.</div>
+              )}
             {canLoadMoreWork && (
               <div className="table-action-row">
                 <button type="button" onClick={onLoadMoreWork}>
@@ -12131,7 +12459,10 @@ function RepositoryPage({
   error: Error | null;
   onOpenCodeBrowser(entry: RepoEntry): void;
   onOpenReleaseTarget(ref: string): void;
-  onOpenRepositoryCommit(commit: RepositoryCommitSummary, targetRepositoryNameWithOwner?: string | null): void;
+  onOpenRepositoryCommit(
+    commit: RepositoryCommitSummary,
+    targetRepositoryNameWithOwner?: string | null
+  ): void;
   onOpenPullRequestCommit(
     commit: PullRequestCommitSummary,
     targetRepositoryNameWithOwner?: string | null
@@ -12175,7 +12506,10 @@ function RepositoryPage({
   onSelectRelease(release: ReleaseSummary): void;
   onSelectReleaseAsset(release: ReleaseSummary, asset: ReleaseAssetSummary): void;
   onSelectWorkflowRun(run: WorkflowRunSummary): void;
-  onSelectWorkflowArtifact(run: WorkflowRunSummary | WorkflowRunDetail, artifact: WorkflowRunArtifactSummary): void;
+  onSelectWorkflowArtifact(
+    run: WorkflowRunSummary | WorkflowRunDetail,
+    artifact: WorkflowRunArtifactSummary
+  ): void;
   onSelectSecurityItem(securityItem: SecurityItemRecentInput): void;
   onSelectWikiPage(page: WikiPageSummary | WikiPageContent): void;
   onOpenWorkflowRun(runId: number, url?: string | null): void;
@@ -12268,24 +12602,15 @@ function RepositoryPage({
   const liveMutationDisabledReason = !githubReady ? "Sign in with GitHub to run GitHub actions." : null;
   const starAction: GitHubAction = viewerState.isStarred ? "unstar" : "star";
   const watchAction: GitHubAction = viewerState.isWatching ? "unwatch" : "watch";
-  const watchDisabledReason = liveMutationDisabledReason ?? repositoryHeroMutationDisabledReason(
-    repo,
-    viewerState,
-    "watch",
-    mutationPending
-  );
-  const forkDisabledReason = liveMutationDisabledReason ?? repositoryHeroMutationDisabledReason(
-    repo,
-    viewerState,
-    "fork",
-    mutationPending
-  );
-  const starDisabledReason = liveMutationDisabledReason ?? repositoryHeroMutationDisabledReason(
-    repo,
-    viewerState,
-    "star",
-    mutationPending
-  );
+  const watchDisabledReason =
+    liveMutationDisabledReason ??
+    repositoryHeroMutationDisabledReason(repo, viewerState, "watch", mutationPending);
+  const forkDisabledReason =
+    liveMutationDisabledReason ??
+    repositoryHeroMutationDisabledReason(repo, viewerState, "fork", mutationPending);
+  const starDisabledReason =
+    liveMutationDisabledReason ??
+    repositoryHeroMutationDisabledReason(repo, viewerState, "star", mutationPending);
   const pinDisabledReason = pinBusy ? "Repository pin update is still running." : null;
   const tabCounts: Partial<Record<RepositoryTab, number>> = {
     issues: counts.issues,
@@ -12438,19 +12763,16 @@ function RepositoryPage({
           <button type="button" onClick={() => onOpenExternal(repo.htmlUrl)} title="Open on GitHub fallback">
             <ExternalLink size={16} /> GitHub fallback
           </button>
-          <button
-            type="button"
-            onClick={() => onSelectTab("settings")}
-            title="Repository settings"
-          >
+          <button type="button" onClick={() => onSelectTab("settings")} title="Repository settings">
             <Settings size={16} /> Settings
           </button>
         </div>
         {(pinDisabledReason || watchDisabledReason || forkDisabledReason || starDisabledReason) && (
           <small className="action-disabled-note hero-action-disabled-note">
             {[pinDisabledReason, watchDisabledReason, forkDisabledReason, starDisabledReason]
-              .filter((reason, index, reasons): reason is string =>
-                Boolean(reason) && reasons.indexOf(reason) === index
+              .filter(
+                (reason, index, reasons): reason is string =>
+                  Boolean(reason) && reasons.indexOf(reason) === index
               )
               .join(" ")}
           </small>
@@ -12461,8 +12783,8 @@ function RepositoryPage({
         <div className="cached-mode-banner" role="status">
           <Lock size={16} />
           <span>
-            Cached mode. Repository code and file inspection use local GitHub data when available; live refreshes and
-            GitHub mutations require sign-in.
+            Cached mode. Repository code and file inspection use local GitHub data when available; live
+            refreshes and GitHub mutations require sign-in.
           </span>
         </div>
       )}
@@ -12633,12 +12955,20 @@ function RepositoryPage({
           onOpenExternal={onOpenExternal}
           onSelectDiscussion={onSelectDiscussion}
           onExpandDiscussions={onExpandDiscussions}
+          mutationAction={mutationAction}
+          mutationPending={mutationPending}
+          mutationSucceeded={mutationSucceeded}
+          mutationError={mutationError}
+          onMutate={onMutate}
         />
       )}
       {tab === "projects" && (
         <ProjectsTab
           key={`projects-${focusedProjectId ?? "default"}`}
           repository={repo}
+          githubReady={githubReady}
+          issues={issues}
+          pulls={pulls}
           projects={projects}
           projectsLimit={projectsLimit}
           focusedProjectId={focusedProjectId}
@@ -12648,6 +12978,11 @@ function RepositoryPage({
           onOpenExternal={onOpenExternal}
           onSelectProject={onSelectProject}
           onExpandProjects={onExpandProjects}
+          mutationAction={mutationAction}
+          mutationPending={mutationPending}
+          mutationSucceeded={mutationSucceeded}
+          mutationError={mutationError}
+          onMutate={onMutate}
         />
       )}
       {tab === "releases" && (
@@ -12764,6 +13099,11 @@ function RepositoryPage({
           repository={repo}
           githubReady={githubReady}
           focusedPagePath={focusedWikiPagePath}
+          mutationAction={mutationAction}
+          mutationPending={mutationPending}
+          mutationSucceeded={mutationSucceeded}
+          mutationError={mutationError}
+          onMutate={onMutate}
           onOpenExternal={onOpenExternal}
           onSelectWikiPage={onSelectWikiPage}
         />
@@ -12811,6 +13151,11 @@ function RepositoryPage({
           repositoryCommunityProfileLoading={repositoryCommunityProfileLoading}
           repositoryCommunityProfileAvailability={repositoryCommunityProfileAvailability}
           repositoryCommunityProfileError={repositoryCommunityProfileError}
+          githubReady={githubReady}
+          mutationAction={mutationAction}
+          mutationPending={mutationPending}
+          mutationSucceeded={mutationSucceeded}
+          mutationError={mutationError}
           focusedSecurityItemKind={focusedSecurityItemKind}
           focusedSecurityItemId={focusedSecurityItemId}
           onOpenExternal={onOpenExternal}
@@ -12822,6 +13167,7 @@ function RepositoryPage({
           onExpandSecretScanningAlerts={onExpandSecretScanningAlerts}
           onExpandRepositoryRulesets={onExpandRepositoryRulesets}
           onExpandRepositorySecurityAdvisories={onExpandRepositorySecurityAdvisories}
+          onMutate={onMutate}
         />
       )}
       {tab === "settings" && (
@@ -12835,6 +13181,15 @@ function RepositoryPage({
           githubReady={githubReady}
           branches={branches}
           branchesError={branchesError}
+          branchProtectionBranch={branchProtectionBranch}
+          branchProtection={branchProtection}
+          branchProtectionLoading={branchProtectionLoading}
+          branchProtectionError={branchProtectionError}
+          repositoryRulesets={repositoryRulesets}
+          repositoryRulesetsLimit={repositoryRulesetsLimit}
+          repositoryRulesetsLoading={repositoryRulesetsLoading}
+          repositoryRulesetsAvailability={repositoryRulesetsAvailability}
+          repositoryRulesetsError={repositoryRulesetsError}
           repositoryAccess={repositoryAccess}
           repositoryAccessLimit={repositoryAccessLimit}
           repositoryAccessLoading={repositoryAccessLoading}
@@ -12847,6 +13202,10 @@ function RepositoryPage({
           saving={mutationPending && mutationAction === "editRepository"}
           saveSucceeded={mutationSucceeded && mutationAction === "editRepository"}
           saveError={mutationAction === "editRepository" ? mutationError : null}
+          mutationAction={mutationAction}
+          mutationPending={mutationPending}
+          mutationSucceeded={mutationSucceeded}
+          mutationError={mutationError}
           onMutate={onMutate}
           onOpenExternal={onOpenExternal}
           onOpenRepository={onOpenRepository}
@@ -12889,7 +13248,9 @@ function ContributorsTab({
 }): JSX.Element {
   const api = useMemo(() => getControlApi(), []);
   const [filter, setFilter] = useState("");
-  const [selectedContributorLogin, setSelectedContributorLogin] = useState<string | null>(focusedContributorLogin);
+  const [selectedContributorLogin, setSelectedContributorLogin] = useState<string | null>(
+    focusedContributorLogin
+  );
   const [profileRepositoryLimits, setProfileRepositoryLimits] = useState<Record<string, number>>({});
   const filterParts = useMemo(() => normalizedSearchParts(filter), [filter]);
   const filteredContributors = useMemo(
@@ -12907,13 +13268,15 @@ function ContributorsTab({
       filteredContributors.some((contributor) => contributor.login === requestedContributorLogin));
   const effectiveSelectedContributorLogin = requestedContributorVisible
     ? requestedContributorLogin
-    : (filteredContributors[0]?.login ?? (filterParts.length === 0 ? (contributors[0]?.login ?? null) : null));
+    : (filteredContributors[0]?.login ??
+      (filterParts.length === 0 ? (contributors[0]?.login ?? null) : null));
   const selectedContributor =
     contributors.find((contributor) => contributor.login === effectiveSelectedContributorLogin) ?? null;
   const selectedContributorFromFilter =
-    filteredContributors.find((contributor) => contributor.login === effectiveSelectedContributorLogin) ?? null;
+    filteredContributors.find((contributor) => contributor.login === effectiveSelectedContributorLogin) ??
+    null;
   const selectedProfileRepositoryLimit = effectiveSelectedContributorLogin
-    ? profileRepositoryLimits[effectiveSelectedContributorLogin] ?? defaultContributorProfileRepositoryLimit
+    ? (profileRepositoryLimits[effectiveSelectedContributorLogin] ?? defaultContributorProfileRepositoryLimit)
     : defaultContributorProfileRepositoryLimit;
   const selectedProfile = useQuery<AccountProfileResult>({
     queryKey: ["github-account-profile", effectiveSelectedContributorLogin],
@@ -12925,7 +13288,11 @@ function ContributorsTab({
     enabled: Boolean(effectiveSelectedContributorLogin)
   });
   const selectedRepositories = useQuery<AccountRepositoryListResult>({
-    queryKey: ["github-account-repositories", effectiveSelectedContributorLogin, selectedProfileRepositoryLimit],
+    queryKey: [
+      "github-account-repositories",
+      effectiveSelectedContributorLogin,
+      selectedProfileRepositoryLimit
+    ],
     queryFn: () =>
       api.github.listAccountRepositoriesWithStatus({
         login: effectiveSelectedContributorLogin ?? undefined,
@@ -12939,7 +13306,8 @@ function ContributorsTab({
     "Account repositories",
     selectedRepositories.data?.availability ?? null
   );
-  const selectedProfileRepositoriesLimitHit = selectedRepositoryItems.length >= selectedProfileRepositoryLimit;
+  const selectedProfileRepositoriesLimitHit =
+    selectedRepositoryItems.length >= selectedProfileRepositoryLimit;
   const canExpandSelectedProfileRepositories =
     selectedProfileRepositoriesLimitHit && selectedProfileRepositoryLimit < maxProfileRepositoryLimit;
   const profile = selectedProfile.data?.profile ?? null;
@@ -12951,7 +13319,8 @@ function ContributorsTab({
     profile?.htmlUrl ??
     selectedContributor?.htmlUrl ??
     (effectiveSelectedContributorLogin ? `https://github.com/${effectiveSelectedContributorLogin}` : null);
-  const selectedContributionCount = selectedContributor?.contributions ?? selectedContributorFromFilter?.contributions ?? null;
+  const selectedContributionCount =
+    selectedContributor?.contributions ?? selectedContributorFromFilter?.contributions ?? null;
   const contributorsLimitHit = contributors.length >= contributorLimit;
   const canExpandContributors = contributorsLimitHit && contributorLimit < maxContributorLimit;
   const availabilityMessage = readAvailabilityMessage("Contributors", availability);
@@ -12983,7 +13352,10 @@ function ContributorsTab({
             placeholder="Filter contributors"
           />
         </label>
-        <button type="button" onClick={() => onOpenExternal(repositoryPath(repository, "/graphs/contributors"))}>
+        <button
+          type="button"
+          onClick={() => onOpenExternal(repositoryPath(repository, "/graphs/contributors"))}
+        >
           <ExternalLink size={16} /> Insights
         </button>
         {canExpandContributors && (
@@ -12993,9 +13365,7 @@ function ContributorsTab({
         )}
       </div>
 
-      {error && (
-        <div className="error-state">Contributors unavailable: {error.message}</div>
-      )}
+      {error && <div className="error-state">Contributors unavailable: {error.message}</div>}
       {availabilityMessage && <div className="error-state">{availabilityMessage}</div>}
       {loading && contributors.length === 0 && <div className="loading-state">Loading contributors...</div>}
       {!loading && !error && !availabilityMessage && contributors.length === 0 && (
@@ -13005,7 +13375,9 @@ function ContributorsTab({
         <div className="empty-state">No contributors match this filter.</div>
       )}
       {!canExpandContributors && contributorsLimitHit && (
-        <div className="muted-row">Showing the first {contributors.length} contributors returned by GitHub.</div>
+        <div className="muted-row">
+          Showing the first {contributors.length} contributors returned by GitHub.
+        </div>
       )}
 
       {filteredContributors.length > 0 && (
@@ -13027,7 +13399,11 @@ function ContributorsTab({
                     title={`View @${contributor.login} in Control`}
                   >
                     {contributor.avatarUrl ? (
-                      <img src={contributor.avatarUrl} alt="" onError={(event) => event.currentTarget.remove()} />
+                      <img
+                        src={contributor.avatarUrl}
+                        alt=""
+                        onError={(event) => event.currentTarget.remove()}
+                      />
                     ) : (
                       <span className="mini-avatar">{contributor.login.slice(0, 1).toUpperCase()}</span>
                     )}
@@ -13051,18 +13427,22 @@ function ContributorsTab({
           </div>
 
           <aside className="contributor-detail-panel">
-            {!effectiveSelectedContributorLogin && <div className="empty-state">Select a contributor to inspect their profile.</div>}
+            {!effectiveSelectedContributorLogin && (
+              <div className="empty-state">Select a contributor to inspect their profile.</div>
+            )}
             {effectiveSelectedContributorLogin && (
               <>
                 <div className="contributor-detail-header">
-                  {profile?.avatarUrl ?? selectedContributor?.avatarUrl ? (
+                  {(profile?.avatarUrl ?? selectedContributor?.avatarUrl) ? (
                     <img
                       src={profile?.avatarUrl ?? selectedContributor?.avatarUrl ?? undefined}
                       alt=""
                       onError={(event) => event.currentTarget.remove()}
                     />
                   ) : (
-                    <span className="mini-avatar">{effectiveSelectedContributorLogin.slice(0, 1).toUpperCase()}</span>
+                    <span className="mini-avatar">
+                      {effectiveSelectedContributorLogin.slice(0, 1).toUpperCase()}
+                    </span>
                   )}
                   <div>
                     <strong>{profile?.name ?? `@${effectiveSelectedContributorLogin}`}</strong>
@@ -13082,9 +13462,13 @@ function ContributorsTab({
                 </div>
 
                 {!githubReady && (
-                  <div className="muted-row">Cached mode: showing stored contributor details when available.</div>
+                  <div className="muted-row">
+                    Cached mode: showing stored contributor details when available.
+                  </div>
                 )}
-                {selectedProfile.isFetching && !profile && <div className="loading-state">Loading profile...</div>}
+                {selectedProfile.isFetching && !profile && (
+                  <div className="loading-state">Loading profile...</div>
+                )}
                 {selectedProfile.error instanceof Error && (
                   <div className="error-state">Profile unavailable: {selectedProfile.error.message}</div>
                 )}
@@ -13111,7 +13495,9 @@ function ContributorsTab({
                     <small>Contributions</small>
                   </span>
                   <span>
-                    <strong>{formatCompactNumber(profile?.repositoryCount ?? selectedRepositoryItems.length)}</strong>
+                    <strong>
+                      {formatCompactNumber(profile?.repositoryCount ?? selectedRepositoryItems.length)}
+                    </strong>
                     <small>Repositories</small>
                   </span>
                   <span>
@@ -13132,7 +13518,9 @@ function ContributorsTab({
                     <div className="loading-state">Loading repositories...</div>
                   )}
                   {selectedRepositories.error instanceof Error && (
-                    <div className="error-state">Repositories unavailable: {selectedRepositories.error.message}</div>
+                    <div className="error-state">
+                      Repositories unavailable: {selectedRepositories.error.message}
+                    </div>
                   )}
                   {selectedRepositoriesAvailabilityMessage && (
                     <div className="error-state">{selectedRepositoriesAvailabilityMessage}</div>
@@ -13148,8 +13536,7 @@ function ContributorsTab({
                   {selectedRepositoryItems.map((contributorRepository) => {
                     const metadataParts = repositoryCollectionMetadataParts(contributorRepository);
                     const visibilityLabel = contributorRepository.visibility.toLowerCase();
-                    const showPrivateChip =
-                      contributorRepository.isPrivate && visibilityLabel !== "private";
+                    const showPrivateChip = contributorRepository.isPrivate && visibilityLabel !== "private";
 
                     return (
                       <button
@@ -13245,7 +13632,10 @@ function CodeTab({
   commitsError: Error | null;
   commitsAvailability: GitHubReadAvailability | null;
   onOpenCodeBrowser(entry: RepoEntry): void;
-  onOpenRepositoryCommit(commit: RepositoryCommitSummary, targetRepositoryNameWithOwner?: string | null): void;
+  onOpenRepositoryCommit(
+    commit: RepositoryCommitSummary,
+    targetRepositoryNameWithOwner?: string | null
+  ): void;
   onOpenExternal(url: string): void;
   onOpenFileFinder(): void;
   onSelectRef(ref: string | null): void;
@@ -13267,7 +13657,8 @@ function CodeTab({
     ...tags.map((tag) => ({ kind: "tag" as const, name: tag.name }))
   ];
   const hasCurrentRefOption = refOptions.some((option) => option.name === currentRef);
-  const refsExceedLoadedCounts = branches.length < repository.branchCount || tags.length < repository.tagCount;
+  const refsExceedLoadedCounts =
+    branches.length < repository.branchCount || tags.length < repository.tagCount;
   const canExpandRefs = refsExceedLoadedCounts && refListLimit < expandedRefListLimit;
   const refsLimitNote =
     refsExceedLoadedCounts && refListLimit >= expandedRefListLimit
@@ -13329,11 +13720,7 @@ function CodeTab({
           </button>
         )}
         {refsLimitNote && <span>{refsLimitNote}</span>}
-        <button
-          className="go-to-file-button"
-          type="button"
-          onClick={onOpenFileFinder}
-        >
+        <button className="go-to-file-button" type="button" onClick={onOpenFileFinder}>
           <Search size={16} />
           <span>Go to file</span>
         </button>
@@ -13341,9 +13728,7 @@ function CodeTab({
           <ExternalLink size={16} /> GitHub fallback
         </button>
       </div>
-      {refsError && (
-        <div className="error-state">Branch and tag list unavailable: {refsError.message}</div>
-      )}
+      {refsError && <div className="error-state">Branch and tag list unavailable: {refsError.message}</div>}
       {refsAvailabilityMessage && <div className="error-state">{refsAvailabilityMessage}</div>}
 
       <div className="file-table">
@@ -13371,7 +13756,9 @@ function CodeTab({
                 <div className="error-state">Repository files refresh failed: {contentsError.message}</div>
               )}
               {contentsAvailabilityMessage && (
-                <div className="error-state">Repository files refresh failed: {contentsAvailabilityMessage}</div>
+                <div className="error-state">
+                  Repository files refresh failed: {contentsAvailabilityMessage}
+                </div>
               )}
               {visibleFileRows.map((virtualRow) => {
                 const item = contents[virtualRow.index];
@@ -13429,9 +13816,7 @@ function CodeTab({
             <div className="error-state">{readmeAvailabilityMessage}</div>
           ) : (
             <>
-              {readmeError && (
-                <div className="error-state">README refresh failed: {readmeError.message}</div>
-              )}
+              {readmeError && <div className="error-state">README refresh failed: {readmeError.message}</div>}
               {readmeAvailabilityMessage && (
                 <div className="error-state">README refresh failed: {readmeAvailabilityMessage}</div>
               )}
@@ -13582,17 +13967,17 @@ function CodeBrowserPage({
   const visibleCopyStatus = copyStatus?.key === fileStatusKey ? copyStatus.label : null;
   const hasFileContent = Boolean(fileContent) && !fileLoading;
   const canOpenRaw = Boolean(fileContent?.downloadUrl) && !fileLoading;
-  const previewAsImage = Boolean(fileContent?.downloadUrl) && isPreviewableImagePath(fileContent?.path ?? route.path);
-  const previewAsMarkdown = !previewAsImage && !fileLoading && isMarkdownPath(fileContent?.path ?? route.path);
+  const previewAsImage =
+    Boolean(fileContent?.downloadUrl) && isPreviewableImagePath(fileContent?.path ?? route.path);
+  const previewAsMarkdown =
+    !previewAsImage && !fileLoading && isMarkdownPath(fileContent?.path ?? route.path);
   const renderBinaryFallback =
-    !previewAsImage && !fileLoading && isLikelyBinaryFile(fileContent?.path ?? route.path, fileContent?.content);
+    !previewAsImage &&
+    !fileLoading &&
+    isLikelyBinaryFile(fileContent?.path ?? route.path, fileContent?.content);
   const canCopyRaw = hasFileContent && !previewAsImage && !renderBinaryFallback;
   const filePath = fileContent?.path ?? route.path;
-  const markdownUrlContext = markdownRepositoryUrlContext(
-    repository,
-    currentRef,
-    parentDirectory(filePath)
-  );
+  const markdownUrlContext = markdownRepositoryUrlContext(repository, currentRef, parentDirectory(filePath));
   const historyUrl = filePath
     ? repositoryPath(
         repository,
@@ -13600,10 +13985,7 @@ function CodeBrowserPage({
       )
     : null;
   const blameUrl = filePath
-    ? repositoryPath(
-        repository,
-        `/blame/${encodeURIComponent(currentRef)}/${encodeRepositoryPath(filePath)}`
-      )
+    ? repositoryPath(repository, `/blame/${encodeURIComponent(currentRef)}/${encodeRepositoryPath(filePath)}`)
     : null;
   const fileChangeSummary = fileCommitChangeSummary(fileContent);
   const sourceLines = (fileContent?.content ?? "").split("\n");
@@ -13709,14 +14091,13 @@ function CodeBrowserPage({
         <div className="cached-mode-banner" role="status">
           <Lock size={16} />
           <span>
-            Cached mode. File content, blame, commits, and tree data are loaded from local cache when available.
+            Cached mode. File content, blame, commits, and tree data are loaded from local cache when
+            available.
           </span>
         </div>
       )}
 
-      {refsError && (
-        <div className="error-state">Branch and tag list unavailable: {refsError.message}</div>
-      )}
+      {refsError && <div className="error-state">Branch and tag list unavailable: {refsError.message}</div>}
       {refsAvailabilityMessage && <div className="error-state">{refsAvailabilityMessage}</div>}
       {error && <div className="error-state">{error.message}</div>}
 
@@ -13767,7 +14148,9 @@ function CodeBrowserPage({
               <button
                 type="button"
                 title="Jump to in-app file history"
-                onClick={() => historyPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                onClick={() =>
+                  historyPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+                }
               >
                 <GitBranch size={14} /> History
               </button>
@@ -14039,8 +14422,7 @@ function TimelineComment({
   const [editing, setEditing] = useState(false);
   const [editBody, setEditBody] = useState(body);
   const hasActions = Boolean(onEdit || onDelete);
-  const editSubmitDisabledReason =
-    disabledReason ?? (!editBody.trim() ? "Comment body is required." : null);
+  const editSubmitDisabledReason = disabledReason ?? (!editBody.trim() ? "Comment body is required." : null);
 
   return (
     <article className="timeline-comment">
@@ -14250,7 +14632,10 @@ function IssuesTab({
   const [showAllIssueAssignableUsers, setShowAllIssueAssignableUsers] = useState(false);
   const [showAllIssueMilestones, setShowAllIssueMilestones] = useState(false);
   const labelsAvailabilityMessage = readAvailabilityMessage("Labels", labelsAvailability);
-  const assignableUsersAvailabilityMessage = readAvailabilityMessage("Assignable users", assignableUsersAvailability);
+  const assignableUsersAvailabilityMessage = readAvailabilityMessage(
+    "Assignable users",
+    assignableUsersAvailability
+  );
   const milestonesAvailabilityMessage = readAvailabilityMessage("Milestones", milestonesAvailability);
   const issuesAvailabilityMessage = readAvailabilityMessage("Issues", availability);
   const filterParts = normalizedSearchParts(filter);
@@ -14311,13 +14696,16 @@ function IssuesTab({
       ? mutationAction
       : null;
   const issueActionPendingReason =
-    mutationPending && issueMutationAction ? `${githubActionLabel(issueMutationAction)} is still running.` : null;
+    mutationPending && issueMutationAction
+      ? `${githubActionLabel(issueMutationAction)} is still running.`
+      : null;
   const liveIssueDisabledReason = !githubReady ? "Sign in with GitHub to change issues." : null;
   const issueActionDisabledReason =
     issueActionPendingReason ?? liveIssueDisabledReason ?? repositoryMutationDisabledReason(repository);
   const createIssueDisabledReason =
     issueActionPendingReason ?? liveIssueDisabledReason ?? repositoryMutationDisabledReason(repository);
-  const createIssueMutationActive = submittedIssueAction === "createIssue" && mutationAction === "createIssue";
+  const createIssueMutationActive =
+    submittedIssueAction === "createIssue" && mutationAction === "createIssue";
   const editIssueMutationActive = submittedIssueAction === "editIssue" && mutationAction === "editIssue";
   const issueCommentMutationActive = submittedIssueAction === "addComment" && mutationAction === "addComment";
   const createIssueSubmitDisabledReason =
@@ -14325,9 +14713,9 @@ function IssuesTab({
   const editIssueSubmitDisabledReason =
     issueActionDisabledReason ?? (!editTitle.trim() ? "Issue title is required." : null);
   const issueCommentDisabledReason = selectedIssue
-    ? issueActionPendingReason ??
+    ? (issueActionPendingReason ??
       liveIssueDisabledReason ??
-      conversationCommentDisabledReason(repository, selectedIssue.locked)
+      conversationCommentDisabledReason(repository, selectedIssue.locked))
     : null;
   const parsedLabels = commaSeparatedValues(labelEntry);
   const parsedAssignees = commaSeparatedValues(assigneeEntry);
@@ -14338,9 +14726,7 @@ function IssuesTab({
   const parsedCreateLabels = commaSeparatedValues(createLabelEntry);
   const parsedCreateAssignees = commaSeparatedValues(createAssigneeEntry);
   const visibleLabels = showAllIssueLabels ? labels : labels.slice(0, 10);
-  const visibleAssignableUsers = showAllIssueAssignableUsers
-    ? assignableUsers
-    : assignableUsers.slice(0, 10);
+  const visibleAssignableUsers = showAllIssueAssignableUsers ? assignableUsers : assignableUsers.slice(0, 10);
   const visibleMilestones = showAllIssueMilestones ? milestones : milestones.slice(0, 10);
   const hiddenIssueLabelCount = labels.length - visibleLabels.length;
   const hiddenIssueAssignableUserCount = assignableUsers.length - visibleAssignableUsers.length;
@@ -14395,7 +14781,9 @@ function IssuesTab({
       <div className="github-split">
         <div className="thread-list">
           {loading && issues.length === 0 && <div className="loading-state">Loading issues...</div>}
-          {!loading && issuesAvailabilityMessage && <div className="error-state">{issuesAvailabilityMessage}</div>}
+          {!loading && issuesAvailabilityMessage && (
+            <div className="error-state">{issuesAvailabilityMessage}</div>
+          )}
           {filteredIssues.map((issue) => {
             const visibleLabels = issue.labels.slice(0, 2);
             const hiddenLabels = issue.labels.slice(2);
@@ -14639,7 +15027,9 @@ function IssuesTab({
               </label>
               {milestonesLoading && <small className="action-disabled-note">Loading milestones...</small>}
               {milestonesError && (
-                <small className="action-disabled-note">Could not load milestones: {milestonesError.message}</small>
+                <small className="action-disabled-note">
+                  Could not load milestones: {milestonesError.message}
+                </small>
               )}
               {!milestonesError && milestonesAvailabilityMessage && (
                 <small className="action-disabled-note">{milestonesAvailabilityMessage}</small>
@@ -14717,7 +15107,9 @@ function IssuesTab({
                 )}
               </header>
               {issueDetail.error && <div className="error-state">{issueDetail.error.message}</div>}
-              {issueDetailAvailabilityMessage && <div className="error-state">{issueDetailAvailabilityMessage}</div>}
+              {issueDetailAvailabilityMessage && (
+                <div className="error-state">{issueDetailAvailabilityMessage}</div>
+              )}
               {editingIssue ? (
                 <form
                   className="compose-form"
@@ -14828,7 +15220,10 @@ function IssuesTab({
                   body={detail?.body}
                   comments={detail?.commentsList ?? []}
                   loading={issueDetail.isLoading || issueDetail.isFetching}
-                  availabilityMessage={readAvailabilityMessage("Issue comments", detail?.commentsAvailability ?? null)}
+                  availabilityMessage={readAvailabilityMessage(
+                    "Issue comments",
+                    detail?.commentsAvailability ?? null
+                  )}
                   emptyBody="No description provided."
                   markdownUrlContext={issueMarkdownUrlContext}
                   onOpenExternal={onOpenExternal}
@@ -15044,7 +15439,8 @@ function IssuesTab({
               >
                 {issueCommentMutationActive && mutationPending && (
                   <div className="loading-state">
-                    {githubActionLabel("addComment")} is running. The comment draft is locked until GitHub responds.
+                    {githubActionLabel("addComment")} is running. The comment draft is locked until GitHub
+                    responds.
                   </div>
                 )}
                 {issueCommentMutationActive && !mutationPending && mutationSucceeded && (
@@ -15067,7 +15463,10 @@ function IssuesTab({
                   className="dark-action"
                   type="submit"
                   disabled={!commentBody.trim() || Boolean(issueCommentDisabledReason)}
-                  title={issueCommentDisabledReason ?? (!commentBody.trim() ? "Comment body is required." : undefined)}
+                  title={
+                    issueCommentDisabledReason ??
+                    (!commentBody.trim() ? "Comment body is required." : undefined)
+                  }
                 >
                   Comment
                 </button>
@@ -15249,7 +15648,10 @@ function PullRequestsTab({
   const [showAllPullReviewers, setShowAllPullReviewers] = useState(false);
   const [showAllPullMilestones, setShowAllPullMilestones] = useState(false);
   const labelsAvailabilityMessage = readAvailabilityMessage("Labels", labelsAvailability);
-  const assignableUsersAvailabilityMessage = readAvailabilityMessage("Assignable users", assignableUsersAvailability);
+  const assignableUsersAvailabilityMessage = readAvailabilityMessage(
+    "Assignable users",
+    assignableUsersAvailability
+  );
   const milestonesAvailabilityMessage = readAvailabilityMessage("Milestones", milestonesAvailability);
   const pullsAvailabilityMessage = readAvailabilityMessage("Pull requests", availability);
   const filterParts = normalizedSearchParts(filter);
@@ -15345,23 +15747,27 @@ function PullRequestsTab({
       ? mutationAction
       : null;
   const pullActionPendingReason =
-    mutationPending && pullMutationAction ? `${githubActionLabel(pullMutationAction)} is still running.` : null;
+    mutationPending && pullMutationAction
+      ? `${githubActionLabel(pullMutationAction)} is still running.`
+      : null;
   const livePullDisabledReason = !githubReady ? "Sign in with GitHub to change pull requests." : null;
   const pullActionDisabledReason = selectedPullForActions
-    ? pullActionPendingReason ??
+    ? (pullActionPendingReason ??
       livePullDisabledReason ??
-      pullStateMutationDisabledReason(repository, selectedPullForActions)
+      pullStateMutationDisabledReason(repository, selectedPullForActions))
     : null;
   const selectedMergeDisabledReason = selectedPullForActions
-    ? pullActionPendingReason ?? livePullDisabledReason ?? mergeDisabledReason(repository, selectedPullForActions)
+    ? (pullActionPendingReason ??
+      livePullDisabledReason ??
+      mergeDisabledReason(repository, selectedPullForActions))
     : null;
   const selectedReviewDisabledReason = selectedPull
-    ? pullActionPendingReason ?? livePullDisabledReason ?? reviewDisabledReason(repository, selectedPull)
+    ? (pullActionPendingReason ?? livePullDisabledReason ?? reviewDisabledReason(repository, selectedPull))
     : null;
   const reviewCommentDisabledReason =
     selectedReviewDisabledReason ?? (!reviewBody.trim() ? "A review comment requires a note." : null);
   const selectedMetadataDisabledReason = selectedPull
-    ? pullActionPendingReason ?? livePullDisabledReason ?? repositoryMutationDisabledReason(repository)
+    ? (pullActionPendingReason ?? livePullDisabledReason ?? repositoryMutationDisabledReason(repository))
     : null;
   const createPullDisabledReason =
     pullActionPendingReason ?? livePullDisabledReason ?? repositoryMutationDisabledReason(repository);
@@ -15385,9 +15791,9 @@ function PullRequestsTab({
           ? "Compare and base branches must differ."
           : null);
   const pullCommentDisabledReason = selectedPull
-    ? pullActionPendingReason ??
+    ? (pullActionPendingReason ??
       livePullDisabledReason ??
-      conversationCommentDisabledReason(repository, selectedPull.locked)
+      conversationCommentDisabledReason(repository, selectedPull.locked))
     : null;
   const selectedLabels = detail?.labels ?? [];
   const selectedAssignees = detail?.assignees ?? [];
@@ -15422,9 +15828,7 @@ function PullRequestsTab({
       : null);
   const requestedReviewers = detail?.requestedReviewers ?? [];
   const requestedTeams = detail?.requestedTeams ?? [];
-  const requestedReviewerLogins = new Set(
-    requestedReviewers.map((reviewer) => reviewer.login.toLowerCase())
-  );
+  const requestedReviewerLogins = new Set(requestedReviewers.map((reviewer) => reviewer.login.toLowerCase()));
   const typedReviewerLogins = new Set(parsedReviewers.map((login) => login.toLowerCase()));
   const allReviewerSuggestions = assignableUsers
     .filter((user) => !requestedReviewerLogins.has(user.login.toLowerCase()))
@@ -15435,10 +15839,10 @@ function PullRequestsTab({
   const hiddenPullReviewerCount = allReviewerSuggestions.length - reviewerSuggestions.length;
   const branchOptions = branches.map((branch) => branch.name);
   const selectedBaseBranch = selectedPull
-    ? branches.find((branch) => branch.name === selectedPull.baseRefName) ?? null
+    ? (branches.find((branch) => branch.name === selectedPull.baseRefName) ?? null)
     : null;
   const selectedHeadBranch = selectedPull
-    ? branches.find((branch) => branch.name === selectedPull.headRefName) ?? null
+    ? (branches.find((branch) => branch.name === selectedPull.headRefName) ?? null)
     : null;
   const selectedBranchSignals = [
     selectedBaseBranch
@@ -15484,10 +15888,13 @@ function PullRequestsTab({
     "Pull request review decision",
     detail?.reviewDecisionAvailability ?? null
   );
-  const selectedHeadRepository = detail?.headRepositoryNameWithOwner ?? selectedPull?.headRepositoryNameWithOwner ?? null;
-  const selectedBaseRepository = detail?.baseRepositoryNameWithOwner ?? selectedPull?.baseRepositoryNameWithOwner ?? null;
+  const selectedHeadRepository =
+    detail?.headRepositoryNameWithOwner ?? selectedPull?.headRepositoryNameWithOwner ?? null;
+  const selectedBaseRepository =
+    detail?.baseRepositoryNameWithOwner ?? selectedPull?.baseRepositoryNameWithOwner ?? null;
   const selectedIsCrossRepository = detail?.isCrossRepository ?? selectedPull?.isCrossRepository ?? null;
-  const selectedMaintainerCanModify = detail?.maintainerCanModify ?? selectedPull?.maintainerCanModify ?? null;
+  const selectedMaintainerCanModify =
+    detail?.maintainerCanModify ?? selectedPull?.maintainerCanModify ?? null;
   const selectedMergeCommitSha = detail?.mergeCommitSha ?? selectedPull?.mergeCommitSha ?? null;
   const selectedMerged = selectedPullForActions?.merged ?? null;
   const selectedMergedAt = selectedPullForActions?.mergedAt ?? null;
@@ -15541,18 +15948,22 @@ function PullRequestsTab({
         >
           <Plus size={16} /> New pull request
         </button>
-        </div>
-        <div className="github-split">
-          <div className="thread-list">
-            {loading && pulls.length === 0 && <div className="loading-state">Loading pull requests...</div>}
-            {!loading && pullsAvailabilityMessage && <div className="error-state">{pullsAvailabilityMessage}</div>}
+      </div>
+      <div className="github-split">
+        <div className="thread-list">
+          {loading && pulls.length === 0 && <div className="loading-state">Loading pull requests...</div>}
+          {!loading && pullsAvailabilityMessage && (
+            <div className="error-state">{pullsAvailabilityMessage}</div>
+          )}
           {filteredPulls.map((pull) => {
             const headRepositoryNameWithOwner = pull.headRepositoryNameWithOwner ?? null;
             const baseRepositoryNameWithOwner = pull.baseRepositoryNameWithOwner ?? null;
             const headRepositoryDiffers =
-              Boolean(headRepositoryNameWithOwner) && headRepositoryNameWithOwner !== repository.nameWithOwner;
+              Boolean(headRepositoryNameWithOwner) &&
+              headRepositoryNameWithOwner !== repository.nameWithOwner;
             const baseRepositoryDiffers =
-              Boolean(baseRepositoryNameWithOwner) && baseRepositoryNameWithOwner !== repository.nameWithOwner;
+              Boolean(baseRepositoryNameWithOwner) &&
+              baseRepositoryNameWithOwner !== repository.nameWithOwner;
             const isCrossRepository =
               pull.isCrossRepository ?? (headRepositoryDiffers || baseRepositoryDiffers);
             const sourceRepositoryLabel = headRepositoryNameWithOwner ?? "external source";
@@ -15595,7 +16006,10 @@ function PullRequestsTab({
                     </small>
                   </div>
                   {isCrossRepository && (
-                    <span className="state-chip attention" title={`Source repository: ${sourceRepositoryLabel}`}>
+                    <span
+                      className="state-chip attention"
+                      title={`Source repository: ${sourceRepositoryLabel}`}
+                    >
                       {headRepositoryNameWithOwner ? `fork: ${headRepositoryNameWithOwner}` : "fork"}
                     </span>
                   )}
@@ -15663,7 +16077,8 @@ function PullRequestsTab({
               <h2>Open a pull request</h2>
               {createPullMutationActive && mutationPending && (
                 <div className="loading-state">
-                  {githubActionLabel("createPullRequest")} is running. The draft is locked until GitHub responds.
+                  {githubActionLabel("createPullRequest")} is running. The draft is locked until GitHub
+                  responds.
                 </div>
               )}
               {createPullMutationActive && !mutationPending && mutationSucceeded && (
@@ -15811,7 +16226,9 @@ function PullRequestsTab({
                   </span>
                 )}
                 {selectedMaintainerCanModify !== null && (
-                  <span>{selectedMaintainerCanModify ? "Maintainer edits allowed" : "Maintainer edits disabled"}</span>
+                  <span>
+                    {selectedMaintainerCanModify ? "Maintainer edits allowed" : "Maintainer edits disabled"}
+                  </span>
                 )}
                 {selectedMergeCommitSha && <span>Merge {selectedMergeCommitSha.slice(0, 7)}</span>}
                 {selectedMergedAt && <span>Merged {formatRelativeDate(selectedMergedAt)}</span>}
@@ -15829,8 +16246,7 @@ function PullRequestsTab({
                         : ""
                   }`}
                 >
-                  {selectedBaseProtectionBranchLabel}:{" "}
-                  <strong>{selectedBaseProtectionStatusLabel}</strong>
+                  {selectedBaseProtectionBranchLabel}: <strong>{selectedBaseProtectionStatusLabel}</strong>
                 </span>
                 {selectedBaseBranchProtection.isLoading && !selectedBaseBranchProtection.data && (
                   <span>Loading branch protection...</span>
@@ -15849,20 +16265,27 @@ function PullRequestsTab({
                 {selectedBaseProtection && (
                   <>
                     <span>
-                      Required checks: {formatCompactNumber(selectedBaseProtection.requiredStatusCheckContexts.length)}
+                      Required checks:{" "}
+                      {formatCompactNumber(selectedBaseProtection.requiredStatusCheckContexts.length)}
                     </span>
                     <span>Approvals: {selectedBaseProtection.requiredApprovingReviewCount ?? 0}</span>
-                    <span>Code owners: {settingStateLabel(selectedBaseProtection.requireCodeOwnerReviews)}</span>
+                    <span>
+                      Code owners: {settingStateLabel(selectedBaseProtection.requireCodeOwnerReviews)}
+                    </span>
                     <span>
                       Conversation resolution:{" "}
                       {settingStateLabel(selectedBaseProtection.requiredConversationResolution)}
                     </span>
-                    <span>Linear history: {settingStateLabel(selectedBaseProtection.requiredLinearHistory)}</span>
+                    <span>
+                      Linear history: {settingStateLabel(selectedBaseProtection.requiredLinearHistory)}
+                    </span>
                   </>
                 )}
               </div>
               {pullDetail.error && <div className="error-state">{pullDetail.error.message}</div>}
-              {pullDetailAvailabilityMessage && <div className="error-state">{pullDetailAvailabilityMessage}</div>}
+              {pullDetailAvailabilityMessage && (
+                <div className="error-state">{pullDetailAvailabilityMessage}</div>
+              )}
               <PullRequestInspection
                 repository={repository}
                 detail={detail}
@@ -15993,7 +16416,9 @@ function PullRequestsTab({
                         type="button"
                         disabled={Boolean(selectedMetadataDisabledReason)}
                         title={selectedMetadataDisabledReason ?? label.description ?? `Add ${label.name}`}
-                        onClick={() => setLabelEntry((current) => appendCommaSeparatedValue(current, label.name))}
+                        onClick={() =>
+                          setLabelEntry((current) => appendCommaSeparatedValue(current, label.name))
+                        }
                       >
                         <span style={{ backgroundColor: `#${label.color}` }} />
                         {label.name}
@@ -16021,7 +16446,9 @@ function PullRequestsTab({
                         type="button"
                         disabled={Boolean(selectedMetadataDisabledReason)}
                         title={selectedMetadataDisabledReason ?? `Assign ${user.login}`}
-                        onClick={() => setAssigneeEntry((current) => appendCommaSeparatedValue(current, user.login))}
+                        onClick={() =>
+                          setAssigneeEntry((current) => appendCommaSeparatedValue(current, user.login))
+                        }
                       >
                         {user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : null}
                         {user.login}
@@ -16271,7 +16698,8 @@ function PullRequestsTab({
               >
                 {pullCommentMutationActive && mutationPending && (
                   <div className="loading-state">
-                    {githubActionLabel("addComment")} is running. The comment draft is locked until GitHub responds.
+                    {githubActionLabel("addComment")} is running. The comment draft is locked until GitHub
+                    responds.
                   </div>
                 )}
                 {pullCommentMutationActive && !mutationPending && mutationSucceeded && (
@@ -16294,7 +16722,10 @@ function PullRequestsTab({
                   className="dark-action"
                   type="submit"
                   disabled={!commentBody.trim() || Boolean(pullCommentDisabledReason)}
-                  title={pullCommentDisabledReason ?? (!commentBody.trim() ? "Comment body is required." : undefined)}
+                  title={
+                    pullCommentDisabledReason ??
+                    (!commentBody.trim() ? "Comment body is required." : undefined)
+                  }
                 >
                   Comment
                 </button>
@@ -16307,7 +16738,8 @@ function PullRequestsTab({
               <div className="comment-composer">
                 {pullReviewMutationActive && mutationPending && (
                   <div className="loading-state">
-                    {githubActionLabel(submittedPullAction!)} is running. The review note is locked until GitHub responds.
+                    {githubActionLabel(submittedPullAction!)} is running. The review note is locked until
+                    GitHub responds.
                   </div>
                 )}
                 {pullReviewMutationActive && !mutationPending && mutationSucceeded && (
@@ -16459,8 +16891,9 @@ function PullRequestInspection({
   const reviewThreads = detail?.reviewThreads ?? [];
   const timelineEvents = detail?.timelineEvents ?? [];
   const linkedIssues = detail?.linkedIssues ?? [];
-  const detailKey =
-    detail ? `${detail.repositoryNameWithOwner ?? repository.nameWithOwner}#${detail.number}` : null;
+  const detailKey = detail
+    ? `${detail.repositoryNameWithOwner ?? repository.nameWithOwner}#${detail.number}`
+    : null;
   const initialExpandedSections = {
     reviews: false,
     timelineEvents: false,
@@ -16474,9 +16907,7 @@ function PullRequestInspection({
     sections: initialExpandedSections
   });
   const expandedSections =
-    expandedSectionState.detailKey === detailKey
-      ? expandedSectionState.sections
-      : initialExpandedSections;
+    expandedSectionState.detailKey === detailKey ? expandedSectionState.sections : initialExpandedSections;
   const visibleReviews = expandedSections.reviews ? reviews : reviews.slice(0, reviewLimit);
   const visibleTimelineEvents = expandedSections.timelineEvents
     ? timelineEvents
@@ -16501,10 +16932,9 @@ function PullRequestInspection({
             detailKey,
             sections: {
               ...(current.detailKey === detailKey ? current.sections : initialExpandedSections),
-              [section]:
-                !(current.detailKey === detailKey ? current.sections : initialExpandedSections)[
-                  section
-                ]
+              [section]: !(current.detailKey === detailKey ? current.sections : initialExpandedSections)[
+                section
+              ]
             }
           }))
         }
@@ -16611,13 +17041,16 @@ function PullRequestInspection({
         <div className="pr-inspection-list">
           {loading && !detail && <div className="loading-state">Loading linked issues...</div>}
           {linkedIssues.map((issue) => {
-            const repositoryNameWithOwner = issue.repositoryNameWithOwner ?? detail?.repositoryNameWithOwner ?? null;
+            const repositoryNameWithOwner =
+              issue.repositoryNameWithOwner ?? detail?.repositoryNameWithOwner ?? null;
 
             return (
               <div className="pr-file-row" key={`${repositoryNameWithOwner ?? "unknown"}#${issue.number}`}>
                 <div>
                   <strong>
-                    {repositoryNameWithOwner ? `${repositoryNameWithOwner}#${issue.number}` : `#${issue.number}`}{" "}
+                    {repositoryNameWithOwner
+                      ? `${repositoryNameWithOwner}#${issue.number}`
+                      : `#${issue.number}`}{" "}
                     {issue.title ?? "Untitled issue"}
                   </strong>
                   <small>
@@ -16718,7 +17151,11 @@ function PullRequestInspection({
             const diffHunk = pullRequestReviewThreadDiffHunk(richThread);
             const diffPreview = pullRequestReviewThreadDiffPreview(diffHunk);
             const openLine =
-              richThread.line ?? firstComment?.line ?? richThread.startLine ?? firstComment?.startLine ?? null;
+              richThread.line ??
+              firstComment?.line ??
+              richThread.startLine ??
+              firstComment?.startLine ??
+              null;
 
             return (
               <div className="timeline-thread" key={thread.id}>
@@ -16745,8 +17182,7 @@ function PullRequestInspection({
                       {location.startSide && location.startSide !== location.side
                         ? ` · starts on ${location.startSide.toLowerCase()} side`
                         : ""}{" "}
-                      ·{" "}
-                      {thread.comments.length} comments
+                      · {thread.comments.length} comments
                     </small>
                   </div>
                   <button
@@ -16793,7 +17229,9 @@ function PullRequestInspection({
                     disabledReason={reviewCommentActions?.getDisabledReason(comment) ?? null}
                     markdownUrlContext={markdownUrlContext}
                     onOpenExternal={onOpenExternal}
-                    onEdit={reviewCommentActions ? (body) => reviewCommentActions.onEdit(comment, body) : undefined}
+                    onEdit={
+                      reviewCommentActions ? (body) => reviewCommentActions.onEdit(comment, body) : undefined
+                    }
                     onDelete={reviewCommentActions ? () => reviewCommentActions.onDelete(comment) : undefined}
                   />
                 ))}
@@ -16927,8 +17365,8 @@ function PullRequestInspection({
               <div>
                 <strong>{file.filename}</strong>
                 <small>
-                  {file.status} · +{formatCompactNumber(file.additions)} -{formatCompactNumber(file.deletions)}{" "}
-                  · {formatCompactNumber(file.changes)} changes
+                  {file.status} · +{formatCompactNumber(file.additions)} -
+                  {formatCompactNumber(file.deletions)} · {formatCompactNumber(file.changes)} changes
                 </small>
               </div>
               <button
@@ -16936,7 +17374,13 @@ function PullRequestInspection({
                 disabled={!changedFilesRef}
                 title={changedFilesRef ? undefined : "File reference unavailable."}
                 onClick={() =>
-                  onOpenCodePath(file.filename, changedFilesRef, file.blobUrl, null, changedFilesRepositoryNameWithOwner)
+                  onOpenCodePath(
+                    file.filename,
+                    changedFilesRef,
+                    file.blobUrl,
+                    null,
+                    changedFilesRepositoryNameWithOwner
+                  )
                 }
               >
                 Open in Control
@@ -17042,7 +17486,12 @@ function DiscussionsTab({
   error,
   onOpenExternal,
   onSelectDiscussion,
-  onExpandDiscussions
+  onExpandDiscussions,
+  mutationAction,
+  mutationPending,
+  mutationSucceeded,
+  mutationError,
+  onMutate
 }: {
   repository: RepositoryDetail;
   discussions: DiscussionSummary[];
@@ -17055,9 +17504,21 @@ function DiscussionsTab({
   onOpenExternal(url: string): void;
   onSelectDiscussion(discussion: DiscussionSummary): void;
   onExpandDiscussions(): void;
+  mutationAction: GitHubAction | null;
+  mutationPending: boolean;
+  mutationSucceeded: boolean;
+  mutationError: Error | null;
+  onMutate(action: GitHubAction, dangerous: boolean, payload?: Record<string, unknown>): void;
 }): JSX.Element {
   const api = useMemo(() => getControlApi(), []);
   const [filter, setFilter] = useState("");
+  const [composingDiscussion, setComposingDiscussion] = useState(false);
+  const [editingDiscussion, setEditingDiscussion] = useState(false);
+  const [discussionTitle, setDiscussionTitle] = useState("");
+  const [discussionBody, setDiscussionBody] = useState("");
+  const [discussionCategoryId, setDiscussionCategoryId] = useState("");
+  const [discussionCommentBody, setDiscussionCommentBody] = useState("");
+  const [submittedDiscussionAction, setSubmittedDiscussionAction] = useState<GitHubAction | null>(null);
   const defaultDiscussionRepliesLimit = 20;
   const expandedDiscussionRepliesLimit = 100;
   const [discussionSelection, setDiscussionSelection] = useState<{
@@ -17103,7 +17564,8 @@ function DiscussionsTab({
       ? discussionSelection.repliesLimit
       : defaultDiscussionRepliesLimit;
   const selectedPreviewComments =
-    selectedDiscussion?.previewComments.filter((comment) => comment.id !== selectedDiscussion.answer?.id) ?? [];
+    selectedDiscussion?.previewComments.filter((comment) => comment.id !== selectedDiscussion.answer?.id) ??
+    [];
   const availabilityMessage = readAvailabilityMessage("Discussions", availability);
   const disabledFeatureMessage =
     !availabilityMessage && repository.administration.features.discussions === false
@@ -17131,12 +17593,29 @@ function DiscussionsTab({
       }),
     enabled: Boolean(selectedDiscussion)
   });
+  const categories = useQuery<DiscussionCategoryListResult>({
+    queryKey: ["discussion-categories", repository.owner, repository.name],
+    queryFn: () =>
+      api.github.listDiscussionCategoriesWithStatus({
+        owner: repository.owner,
+        repo: repository.name,
+        limit: 100,
+        cacheOnly: !githubReady
+      })
+  });
   const selectedDiscussionDetail =
     detail.data?.item && detail.data.item.number === selectedDiscussion?.number ? detail.data.item : null;
   const detailAvailabilityMessage = readAvailabilityMessage(
     "Discussion detail",
     detail.data?.availability ?? null
   );
+  const categoriesAvailabilityMessage = readAvailabilityMessage(
+    "Discussion categories",
+    categories.data?.availability ?? null
+  );
+  const categoryOptions = categories.data?.items ?? [];
+  const selectedCategory =
+    categoryOptions.find((category) => category.id === discussionCategoryId) ?? categoryOptions[0] ?? null;
   const acceptedAnswer = selectedDiscussionDetail?.answer ?? selectedDiscussion?.answer ?? null;
   const selectedComments =
     selectedDiscussionDetail?.commentsList.filter((comment) => comment.id !== acceptedAnswer?.id) ??
@@ -17155,6 +17634,89 @@ function DiscussionsTab({
     repository,
     repository.defaultBranch ?? "HEAD"
   );
+  const discussionMutationAction =
+    mutationAction === "createDiscussion" ||
+    mutationAction === "editDiscussion" ||
+    mutationAction === "closeDiscussion" ||
+    mutationAction === "reopenDiscussion" ||
+    mutationAction === "addDiscussionComment" ||
+    mutationAction === "editDiscussionComment" ||
+    mutationAction === "deleteDiscussionComment"
+      ? mutationAction
+      : null;
+  const discussionActionPendingReason =
+    mutationPending && discussionMutationAction
+      ? `${githubActionLabel(discussionMutationAction)} is still running.`
+      : null;
+  const discussionMutationDisabledReason =
+    discussionActionPendingReason ??
+    (!githubReady ? "Sign in with GitHub to change discussions." : null) ??
+    (repository.administration.features.discussions === false
+      ? "Discussions are disabled for this repository."
+      : null) ??
+    repositoryMutationDisabledReason(repository);
+  const selectedDiscussionDisabledReason =
+    discussionMutationDisabledReason ??
+    (!selectedDiscussion ? "Select a discussion first." : null) ??
+    (selectedDiscussion?.locked ? "Discussion is locked." : null);
+  const createDiscussionDisabledReason =
+    discussionMutationDisabledReason ??
+    categoriesAvailabilityMessage ??
+    (categories.isLoading && categoryOptions.length === 0 ? "Loading discussion categories." : null) ??
+    (!selectedCategory ? "No discussion category is available." : null) ??
+    (!discussionTitle.trim() ? "Discussion title is required." : null) ??
+    (!discussionBody.trim() ? "Discussion body is required." : null);
+  const editDiscussionDisabledReason =
+    selectedDiscussionDisabledReason ??
+    (!discussionTitle.trim() ? "Discussion title is required." : null) ??
+    (!discussionBody.trim() ? "Discussion body is required." : null) ??
+    (selectedDiscussion &&
+    discussionTitle === selectedDiscussion.title &&
+    discussionBody === (selectedDiscussionDetail?.body ?? selectedDiscussion.body ?? "")
+      ? "No discussion changes to save."
+      : null);
+  const discussionCommentDisabledReason =
+    selectedDiscussionDisabledReason ?? (!discussionCommentBody.trim() ? "Comment body is required." : null);
+  const discussionMutationStatusActive =
+    submittedDiscussionAction !== null && discussionMutationAction === submittedDiscussionAction;
+
+  function submitDiscussionMutation(
+    action: GitHubAction,
+    dangerous: boolean,
+    payload?: Record<string, unknown>
+  ): void {
+    setSubmittedDiscussionAction(action);
+    onMutate(action, dangerous, payload);
+  }
+
+  function beginDiscussionCreate(): void {
+    setSubmittedDiscussionAction(null);
+    setComposingDiscussion(true);
+    setEditingDiscussion(false);
+    setDiscussionTitle("");
+    setDiscussionBody("");
+    setDiscussionCategoryId(selectedCategory?.id ?? "");
+  }
+
+  function beginDiscussionEdit(): void {
+    if (!selectedDiscussion) {
+      return;
+    }
+    setSubmittedDiscussionAction(null);
+    setComposingDiscussion(false);
+    setEditingDiscussion(true);
+    setDiscussionTitle(selectedDiscussion.title);
+    setDiscussionBody(selectedDiscussionDetail?.body ?? selectedDiscussion.body ?? "");
+  }
+
+  function resetDiscussionForms(): void {
+    setComposingDiscussion(false);
+    setEditingDiscussion(false);
+    setDiscussionTitle("");
+    setDiscussionBody("");
+    setDiscussionCommentBody("");
+    setSubmittedDiscussionAction(null);
+  }
 
   return (
     <section className="table-panel github-surface">
@@ -17168,6 +17730,14 @@ function DiscussionsTab({
             placeholder="Filter discussions"
           />
         </label>
+        <button
+          type="button"
+          disabled={Boolean(discussionMutationDisabledReason)}
+          title={discussionMutationDisabledReason ?? undefined}
+          onClick={beginDiscussionCreate}
+        >
+          <Plus size={16} /> New discussion
+        </button>
         <button type="button" onClick={() => onOpenExternal(repositoryPath(repository, "/discussions"))}>
           <ExternalLink size={16} /> GitHub fallback
         </button>
@@ -17201,6 +17771,8 @@ function DiscussionsTab({
                 className="thread-list-row-main"
                 type="button"
                 onClick={() => {
+                  setComposingDiscussion(false);
+                  setEditingDiscussion(false);
                   setDiscussionSelection({
                     repositoryKey: repository.nameWithOwner,
                     discussionNumber: discussion.number,
@@ -17214,15 +17786,14 @@ function DiscussionsTab({
                   <strong>{discussion.title}</strong>
                   <small>
                     #{discussion.number} · {discussion.authorLogin ?? "unknown"} · updated{" "}
-                    {formatRelativeDate(discussion.updatedAt)} · {formatCompactNumber(discussion.comments)} comments ·{" "}
-                    {formatCompactNumber(discussion.upvotes)} upvotes
+                    {formatRelativeDate(discussion.updatedAt)} · {formatCompactNumber(discussion.comments)}{" "}
+                    comments · {formatCompactNumber(discussion.upvotes)} upvotes
                   </small>
                 </div>
                 {discussion.category && <span className="state-chip">{discussion.category}</span>}
                 {discussion.isAnswered && <span className="state-chip success">answered</span>}
                 {discussion.closed && <span className="state-chip">closed</span>}
                 {discussion.locked && <span className="state-chip">locked</span>}
-
               </button>
               <button
                 className="pin-row-button"
@@ -17235,15 +17806,131 @@ function DiscussionsTab({
               </button>
             </div>
           ))}
-          {!loading && !error && !availabilityMessage && !disabledFeatureMessage && filteredDiscussions.length === 0 && (
-            <div className="empty-state">
-              {filter.trim() ? "No discussions match this filter." : "No discussions returned."}
-            </div>
-          )}
+          {!loading &&
+            !error &&
+            !availabilityMessage &&
+            !disabledFeatureMessage &&
+            filteredDiscussions.length === 0 && (
+              <div className="empty-state">
+                {filter.trim() ? "No discussions match this filter." : "No discussions returned."}
+              </div>
+            )}
         </div>
 
         <div className="thread-detail">
-          {selectedDiscussion ? (
+          {composingDiscussion || editingDiscussion ? (
+            <form
+              className="compose-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (composingDiscussion) {
+                  if (createDiscussionDisabledReason || !selectedCategory) {
+                    return;
+                  }
+                  submitDiscussionMutation("createDiscussion", false, {
+                    categoryId: selectedCategory.id,
+                    title: discussionTitle.trim(),
+                    body: discussionBody
+                  });
+                  return;
+                }
+
+                if (editDiscussionDisabledReason || !selectedDiscussion) {
+                  return;
+                }
+                submitDiscussionMutation("editDiscussion", false, {
+                  discussionId: selectedDiscussion.id,
+                  title: discussionTitle.trim(),
+                  body: discussionBody
+                });
+              }}
+            >
+              <h2>{composingDiscussion ? "Create discussion" : "Edit discussion"}</h2>
+              {discussionMutationStatusActive && mutationPending && (
+                <div className="loading-state">
+                  {githubActionLabel(submittedDiscussionAction)} is running. The form is locked until GitHub
+                  responds.
+                </div>
+              )}
+              {discussionMutationStatusActive && !mutationPending && mutationSucceeded && (
+                <div className="success-state">
+                  {githubActionLabel(submittedDiscussionAction)} completed. Discussion data is refreshing.
+                </div>
+              )}
+              {discussionMutationStatusActive && !mutationPending && mutationError && (
+                <div className="error-state">
+                  {githubActionLabel(submittedDiscussionAction)} failed: {mutationError.message}
+                </div>
+              )}
+              {composingDiscussion && (
+                <select
+                  disabled={Boolean(discussionMutationDisabledReason ?? categoriesAvailabilityMessage)}
+                  title={discussionMutationDisabledReason ?? categoriesAvailabilityMessage ?? undefined}
+                  value={selectedCategory?.id ?? ""}
+                  onChange={(event) => setDiscussionCategoryId(event.target.value)}
+                >
+                  {categoryOptions.length === 0 ? (
+                    <option value="">No discussion categories returned</option>
+                  ) : (
+                    categoryOptions.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {[category.emoji, category.name, category.isAnswerable ? "answerable" : null]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </option>
+                    ))
+                  )}
+                </select>
+              )}
+              {categories.isLoading && composingDiscussion && (
+                <small className="action-disabled-note">Loading discussion categories...</small>
+              )}
+              {categories.error instanceof Error && composingDiscussion && (
+                <small className="action-disabled-note">
+                  Discussion categories unavailable: {categories.error.message}
+                </small>
+              )}
+              {categoriesAvailabilityMessage && composingDiscussion && (
+                <small className="action-disabled-note">{categoriesAvailabilityMessage}</small>
+              )}
+              <input
+                value={discussionTitle}
+                disabled={Boolean(discussionMutationDisabledReason)}
+                title={discussionMutationDisabledReason ?? undefined}
+                onChange={(event) => setDiscussionTitle(event.target.value)}
+                placeholder="Discussion title"
+              />
+              <textarea
+                value={discussionBody}
+                disabled={Boolean(discussionMutationDisabledReason)}
+                title={discussionMutationDisabledReason ?? undefined}
+                onChange={(event) => setDiscussionBody(event.target.value)}
+                placeholder="Discussion body"
+              />
+              <div className="thread-actions">
+                <button
+                  type="submit"
+                  disabled={Boolean(
+                    composingDiscussion ? createDiscussionDisabledReason : editDiscussionDisabledReason
+                  )}
+                  title={
+                    (composingDiscussion ? createDiscussionDisabledReason : editDiscussionDisabledReason) ??
+                    undefined
+                  }
+                >
+                  <MessageSquare size={16} /> {composingDiscussion ? "Create discussion" : "Save discussion"}
+                </button>
+                <button type="button" onClick={resetDiscussionForms}>
+                  Cancel
+                </button>
+              </div>
+              {(composingDiscussion ? createDiscussionDisabledReason : editDiscussionDisabledReason) && (
+                <small className="action-disabled-note">
+                  {composingDiscussion ? createDiscussionDisabledReason : editDiscussionDisabledReason}
+                </small>
+              )}
+            </form>
+          ) : selectedDiscussion ? (
             <>
               <header className="thread-header">
                 <h2>{selectedDiscussion.title}</h2>
@@ -17261,7 +17948,7 @@ function DiscussionsTab({
                 {selectedDiscussion.isAnswered && <span>Answered</span>}
                 {selectedDiscussion.closed && <span>Closed</span>}
                 {selectedDiscussion.locked && <span>Locked</span>}
-                <span>Read-only in Control</span>
+                <span>Managed in Control</span>
               </div>
               <div className="timeline-thread">
                 <TimelineComment
@@ -17273,6 +17960,98 @@ function DiscussionsTab({
                   onOpenExternal={onOpenExternal}
                 />
               </div>
+              <div className="thread-actions">
+                <button
+                  type="button"
+                  disabled={Boolean(selectedDiscussionDisabledReason)}
+                  title={selectedDiscussionDisabledReason ?? undefined}
+                  onClick={beginDiscussionEdit}
+                >
+                  <MessageSquare size={16} /> Edit discussion
+                </button>
+                <button
+                  type="button"
+                  disabled={Boolean(selectedDiscussionDisabledReason)}
+                  title={selectedDiscussionDisabledReason ?? undefined}
+                  onClick={() =>
+                    submitDiscussionMutation(
+                      selectedDiscussion.closed ? "reopenDiscussion" : "closeDiscussion",
+                      selectedDiscussion.closed ? false : true,
+                      { discussionId: selectedDiscussion.id }
+                    )
+                  }
+                >
+                  {selectedDiscussion.closed ? "Reopen discussion" : "Close discussion"}
+                </button>
+                <button type="button" onClick={() => onOpenExternal(selectedDiscussion.htmlUrl)}>
+                  <ExternalLink size={16} /> GitHub fallback
+                </button>
+                {selectedDiscussionDisabledReason && (
+                  <small className="action-disabled-note">{selectedDiscussionDisabledReason}</small>
+                )}
+              </div>
+              <form
+                className="compose-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (discussionCommentDisabledReason) {
+                    return;
+                  }
+                  submitDiscussionMutation("addDiscussionComment", false, {
+                    discussionId: selectedDiscussion.id,
+                    body: discussionCommentBody
+                  });
+                  setDiscussionCommentBody("");
+                }}
+              >
+                <h2>Add comment</h2>
+                <textarea
+                  value={discussionCommentBody}
+                  disabled={Boolean(selectedDiscussionDisabledReason)}
+                  title={selectedDiscussionDisabledReason ?? undefined}
+                  onChange={(event) => setDiscussionCommentBody(event.target.value)}
+                  placeholder="Add a discussion comment"
+                />
+                <div className="thread-actions">
+                  <button
+                    type="submit"
+                    disabled={Boolean(discussionCommentDisabledReason)}
+                    title={discussionCommentDisabledReason ?? undefined}
+                  >
+                    <Plus size={16} /> Add comment
+                  </button>
+                </div>
+                {discussionCommentDisabledReason && (
+                  <small className="action-disabled-note">{discussionCommentDisabledReason}</small>
+                )}
+              </form>
+              {discussionMutationStatusActive &&
+                !composingDiscussion &&
+                !editingDiscussion &&
+                mutationPending && (
+                  <div className="loading-state">
+                    {githubActionLabel(submittedDiscussionAction)} is running. Discussion data will refresh
+                    after GitHub responds.
+                  </div>
+                )}
+              {discussionMutationStatusActive &&
+                !composingDiscussion &&
+                !editingDiscussion &&
+                !mutationPending &&
+                mutationSucceeded && (
+                  <div className="success-state">
+                    {githubActionLabel(submittedDiscussionAction)} completed. Discussion data is refreshing.
+                  </div>
+                )}
+              {discussionMutationStatusActive &&
+                !composingDiscussion &&
+                !editingDiscussion &&
+                !mutationPending &&
+                mutationError && (
+                  <div className="error-state">
+                    {githubActionLabel(submittedDiscussionAction)} failed: {mutationError.message}
+                  </div>
+                )}
               {acceptedAnswer && (
                 <div className="discussion-detail-section">
                   <h3>Accepted answer</h3>
@@ -17302,8 +18081,7 @@ function DiscussionsTab({
                   <small className="action-disabled-note">
                     Showing {formatCompactNumber(selectedComments.length)} of{" "}
                     {formatCompactNumber(selectedDiscussion.comments)} comments
-                    {selectedCommentsArePreview ? " from the list preview" : ""}
-                    .
+                    {selectedCommentsArePreview ? " from the list preview" : ""}.
                   </small>
                 )}
                 {canLoadMoreReplies && (
@@ -17334,8 +18112,20 @@ function DiscussionsTab({
                             authorAvatarUrl={comment.authorAvatarUrl}
                             createdAt={comment.createdAt}
                             body={comment.body?.trim() || "No comment body returned."}
+                            disabledReason={selectedDiscussionDisabledReason}
                             markdownUrlContext={discussionMarkdownUrlContext}
                             onOpenExternal={onOpenExternal}
+                            onEdit={(body) =>
+                              submitDiscussionMutation("editDiscussionComment", false, {
+                                commentId: comment.id,
+                                body
+                              })
+                            }
+                            onDelete={() =>
+                              submitDiscussionMutation("deleteDiscussionComment", true, {
+                                commentId: comment.id
+                              })
+                            }
                           />
                           {replies.length > 0 && (
                             <div className="timeline-thread">
@@ -17346,8 +18136,20 @@ function DiscussionsTab({
                                   authorAvatarUrl={reply.authorAvatarUrl}
                                   createdAt={reply.createdAt}
                                   body={reply.body?.trim() || "No reply body returned."}
+                                  disabledReason={selectedDiscussionDisabledReason}
                                   markdownUrlContext={discussionMarkdownUrlContext}
                                   onOpenExternal={onOpenExternal}
+                                  onEdit={(body) =>
+                                    submitDiscussionMutation("editDiscussionComment", false, {
+                                      commentId: reply.id,
+                                      body
+                                    })
+                                  }
+                                  onDelete={() =>
+                                    submitDiscussionMutation("deleteDiscussionComment", true, {
+                                      commentId: reply.id
+                                    })
+                                  }
                                 />
                               ))}
                             </div>
@@ -17368,11 +18170,6 @@ function DiscussionsTab({
                   <div className="empty-state">No discussion comments returned.</div>
                 )}
               </div>
-              <div className="thread-actions">
-                <button type="button" onClick={() => onOpenExternal(selectedDiscussion.htmlUrl)}>
-                  <ExternalLink size={16} /> Open GitHub fallback
-                </button>
-              </div>
             </>
           ) : (
             <div className="empty-state">
@@ -17387,6 +18184,9 @@ function DiscussionsTab({
 
 function ProjectsTab({
   repository,
+  githubReady,
+  issues,
+  pulls,
   projects,
   projectsLimit,
   focusedProjectId,
@@ -17395,9 +18195,17 @@ function ProjectsTab({
   error,
   onOpenExternal,
   onSelectProject,
-  onExpandProjects
+  onExpandProjects,
+  mutationAction,
+  mutationPending,
+  mutationSucceeded,
+  mutationError,
+  onMutate
 }: {
   repository: RepositoryDetail;
+  githubReady: boolean;
+  issues: IssueSummary[];
+  pulls: PullRequestSummary[];
   projects: ProjectSummary[];
   projectsLimit: number;
   focusedProjectId: string | null;
@@ -17407,11 +18215,25 @@ function ProjectsTab({
   onOpenExternal(url: string): void;
   onSelectProject(project: ProjectSummary): void;
   onExpandProjects(): void;
+  mutationAction: GitHubAction | null;
+  mutationPending: boolean;
+  mutationSucceeded: boolean;
+  mutationError: Error | null;
+  onMutate(action: GitHubAction, dangerous: boolean, payload?: Record<string, unknown>): void;
 }): JSX.Element {
   const [filter, setFilter] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
     focusedProjectId ?? projects[0]?.id ?? null
   );
+  const [creatingProject, setCreatingProject] = useState(false);
+  const [editingProject, setEditingProject] = useState(false);
+  const [projectTitle, setProjectTitle] = useState("");
+  const [projectShortDescription, setProjectShortDescription] = useState("");
+  const [projectReadme, setProjectReadme] = useState("");
+  const [projectItemContentId, setProjectItemContentId] = useState("");
+  const [projectFieldEditKey, setProjectFieldEditKey] = useState<string | null>(null);
+  const [projectFieldEditValue, setProjectFieldEditValue] = useState("");
+  const [submittedProjectAction, setSubmittedProjectAction] = useState<GitHubAction | null>(null);
   const normalizedFilter = filter.trim().toLowerCase();
   const filteredProjects = normalizedFilter
     ? projects.filter((project) =>
@@ -17423,6 +18245,9 @@ function ProjectsTab({
           project.number ? `#${project.number}` : null,
           project.closed ? "closed" : "open",
           project.isPublic === null ? null : project.isPublic ? "public" : "private",
+          ...project.items.map((item) =>
+            [item.title, item.contentType, item.state, item.repositoryNameWithOwner, item.number].join(" ")
+          ),
           ...project.fields.map((field) => `${field.name} ${field.dataType ?? ""}`)
         ]
           .filter(Boolean)
@@ -17440,6 +18265,171 @@ function ProjectsTab({
       : null;
   const projectsLimitHit = projects.length >= projectsLimit;
   const canExpandProjects = !disabledFeatureMessage && projectsLimitHit && projectsLimit < maxProjectsLimit;
+  const projectItemOptions = useMemo(
+    () =>
+      [
+        ...issues.map((issue) => ({
+          id: issue.nodeId,
+          label: `Issue #${issue.number}: ${issue.title}`,
+          state: issue.state
+        })),
+        ...pulls.map((pull) => ({
+          id: pull.nodeId,
+          label: `PR #${pull.number}: ${pull.title}`,
+          state: pull.merged ? "merged" : pull.state
+        }))
+      ].filter((item): item is { id: string; label: string; state: string } => Boolean(item.id)),
+    [issues, pulls]
+  );
+  const selectedProjectItem =
+    projectItemOptions.find((item) => item.id === projectItemContentId) ?? projectItemOptions[0] ?? null;
+  const liveProjectDisabledReason = !githubReady ? "Sign in with GitHub to change projects." : null;
+  const projectFeatureDisabledReason =
+    repository.administration.features.projects === false
+      ? "Projects are disabled for this repository."
+      : null;
+  const projectMutationDisabledReason =
+    liveProjectDisabledReason ?? projectFeatureDisabledReason ?? repositoryMutationDisabledReason(repository);
+  const selectedProjectMutationDisabledReason =
+    projectMutationDisabledReason ??
+    (selectedProject?.viewerCanUpdate === false ? "Your token cannot update this project." : null);
+  const projectMutationAction =
+    mutationAction === "createProjectV2" ||
+    mutationAction === "updateProjectV2" ||
+    mutationAction === "deleteProjectV2" ||
+    mutationAction === "addProjectV2Item" ||
+    mutationAction === "updateProjectV2Item" ||
+    mutationAction === "deleteProjectV2Item"
+      ? mutationAction
+      : null;
+  const projectActionPendingReason =
+    mutationPending && projectMutationAction
+      ? `${githubActionLabel(projectMutationAction)} is still running.`
+      : null;
+  const projectFormMode = creatingProject ? "create" : editingProject && selectedProject ? "edit" : null;
+  const projectFormAction: GitHubAction =
+    projectFormMode === "create" ? "createProjectV2" : "updateProjectV2";
+  const projectFormSubmitDisabledReason =
+    projectActionPendingReason ??
+    projectMutationDisabledReason ??
+    (!projectTitle.trim() ? "Project title is required." : null);
+  const projectEditDisabledReason =
+    projectActionPendingReason ??
+    selectedProjectMutationDisabledReason ??
+    (!selectedProject ? "Select a project first." : null);
+  const projectDeleteDisabledReason =
+    projectActionPendingReason ??
+    selectedProjectMutationDisabledReason ??
+    (!selectedProject ? "Select a project first." : null);
+  const projectAddItemDisabledReason =
+    projectActionPendingReason ??
+    selectedProjectMutationDisabledReason ??
+    (!selectedProject ? "Select a project first." : null) ??
+    (!selectedProjectItem ? "No loaded issue or pull request has a GitHub node ID." : null);
+  const projectDeleteItemDisabledReason =
+    projectActionPendingReason ??
+    selectedProjectMutationDisabledReason ??
+    (!selectedProject ? "Select a project first." : null);
+  const projectMutationStatusActive =
+    submittedProjectAction !== null && projectMutationAction === submittedProjectAction;
+
+  function projectFieldForValue(fieldValue: ProjectItemFieldValueSummary) {
+    return selectedProject?.fields.find((field) => field.id === fieldValue.fieldId) ?? null;
+  }
+
+  function projectFieldEditInputType(fieldValue: ProjectItemFieldValueSummary): string {
+    if (fieldValue.dataType === "NUMBER") {
+      return "number";
+    }
+    if (fieldValue.dataType === "DATE") {
+      return "date";
+    }
+    return "text";
+  }
+
+  function projectFieldEditDisabledReasonFor(fieldValue: ProjectItemFieldValueSummary): string | null {
+    const field = projectFieldForValue(fieldValue);
+    const fieldOptions = field?.options ?? fieldValue.options;
+    const normalizedValue = projectFieldEditValue.trim();
+
+    return (
+      projectActionPendingReason ??
+      selectedProjectMutationDisabledReason ??
+      (!fieldValue.editable ? "This field value is read-only in Control." : null) ??
+      (!fieldValue.fieldId ? "GitHub did not return a field ID for this value." : null) ??
+      (!selectedProject ? "Select a project first." : null) ??
+      (!["TEXT", "NUMBER", "DATE", "SINGLE_SELECT"].includes(fieldValue.dataType ?? "")
+        ? "Control can edit text, number, date, and single-select project fields only."
+        : null) ??
+      (fieldValue.dataType === "NUMBER" && !normalizedValue ? "Number fields require a value." : null) ??
+      (fieldValue.dataType === "NUMBER" && Number.isNaN(Number(normalizedValue))
+        ? "Number fields require a numeric value."
+        : null) ??
+      (fieldValue.dataType === "DATE" && !normalizedValue ? "Date fields require a value." : null) ??
+      (fieldValue.dataType === "DATE" && normalizedValue && !/^\d{4}-\d{2}-\d{2}$/.test(normalizedValue)
+        ? "Date fields require YYYY-MM-DD."
+        : null) ??
+      (fieldValue.dataType === "SINGLE_SELECT" && fieldOptions.length === 0
+        ? "GitHub did not return selectable options for this field."
+        : null) ??
+      (fieldValue.dataType === "SINGLE_SELECT" && !normalizedValue
+        ? "Choose a single-select option."
+        : null) ??
+      (String(fieldValue.optionId ?? fieldValue.value ?? "") === projectFieldEditValue
+        ? "No field value changes to save."
+        : null)
+    );
+  }
+
+  function projectFieldMutationValue(fieldValue: ProjectItemFieldValueSummary): Record<string, unknown> {
+    const normalizedValue = projectFieldEditValue.trim();
+    if (fieldValue.dataType === "NUMBER") {
+      return { number: Number(normalizedValue) };
+    }
+    if (fieldValue.dataType === "DATE") {
+      return { date: normalizedValue };
+    }
+    if (fieldValue.dataType === "SINGLE_SELECT") {
+      return { singleSelectOptionId: normalizedValue };
+    }
+    return { text: projectFieldEditValue };
+  }
+
+  function beginCreatingProject(): void {
+    setSubmittedProjectAction(null);
+    setCreatingProject(true);
+    setEditingProject(false);
+    setProjectFieldEditKey(null);
+    setProjectTitle("");
+    setProjectShortDescription("");
+    setProjectReadme("");
+  }
+
+  function beginEditingProject(project: ProjectSummary): void {
+    setSubmittedProjectAction(null);
+    setCreatingProject(false);
+    setEditingProject(true);
+    setProjectFieldEditKey(null);
+    setSelectedProjectId(project.id);
+    setProjectTitle(project.title);
+    setProjectShortDescription(project.shortDescription ?? "");
+    setProjectReadme(project.readme ?? "");
+  }
+
+  function beginEditingProjectField(itemId: string, fieldValue: ProjectItemFieldValueSummary): void {
+    setSubmittedProjectAction(null);
+    setProjectFieldEditKey(`${itemId}:${fieldValue.id}`);
+    setProjectFieldEditValue(String(fieldValue.optionId ?? fieldValue.value ?? ""));
+  }
+
+  function submitProjectMutation(
+    action: GitHubAction,
+    dangerous: boolean,
+    payload?: Record<string, unknown>
+  ): void {
+    setSubmittedProjectAction(action);
+    onMutate(action, dangerous, payload);
+  }
 
   return (
     <section className="table-panel github-surface">
@@ -17453,6 +18443,14 @@ function ProjectsTab({
             placeholder="Filter projects"
           />
         </label>
+        <button
+          type="button"
+          disabled={Boolean(projectActionPendingReason ?? projectMutationDisabledReason)}
+          title={projectActionPendingReason ?? projectMutationDisabledReason ?? undefined}
+          onClick={beginCreatingProject}
+        >
+          <Plus size={16} /> New project
+        </button>
         <button type="button" onClick={() => onOpenExternal(repositoryPath(repository, "/projects"))}>
           <ExternalLink size={16} /> GitHub fallback
         </button>
@@ -17482,6 +18480,8 @@ function ProjectsTab({
                 className="thread-list-row-main"
                 type="button"
                 onClick={() => {
+                  setCreatingProject(false);
+                  setEditingProject(false);
                   setSelectedProjectId(project.id);
                   onSelectProject(project);
                 }}
@@ -17492,11 +18492,15 @@ function ProjectsTab({
                   <small>
                     {[
                       project.ownerLogin ?? "Repository project",
-                      project.itemsCount === null ? "items unavailable" : `${formatCompactNumber(project.itemsCount)} items`,
+                      project.itemsCount === null
+                        ? "items unavailable"
+                        : `${formatCompactNumber(project.itemsCount)} items`,
                       project.fieldsCount === null
                         ? "fields unavailable"
                         : `${formatCompactNumber(project.fieldsCount)} fields`,
-                      project.updatedAt ? `updated ${formatRelativeDate(project.updatedAt)}` : "no update timestamp"
+                      project.updatedAt
+                        ? `updated ${formatRelativeDate(project.updatedAt)}`
+                        : "no update timestamp"
                     ].join(" · ")}
                   </small>
                 </div>
@@ -17507,9 +18511,7 @@ function ProjectsTab({
                   <span className="state-chip">{project.isPublic ? "public" : "private"}</span>
                 )}
                 {project.viewerCanUpdate !== null && (
-                  <span className="state-chip">
-                    {project.viewerCanUpdate ? "can update" : "read-only"}
-                  </span>
+                  <span className="state-chip">{project.viewerCanUpdate ? "can update" : "read-only"}</span>
                 )}
               </button>
               <button
@@ -17517,7 +18519,9 @@ function ProjectsTab({
                 type="button"
                 aria-label={`Open GitHub fallback for ${project.title}`}
                 disabled={!project.htmlUrl}
-                title={project.htmlUrl ? `Open GitHub fallback for ${project.title}` : "Project URL unavailable."}
+                title={
+                  project.htmlUrl ? `Open GitHub fallback for ${project.title}` : "Project URL unavailable."
+                }
                 onClick={() => {
                   if (project.htmlUrl) {
                     onOpenExternal(project.htmlUrl);
@@ -17528,15 +18532,108 @@ function ProjectsTab({
               </button>
             </div>
           ))}
-          {!loading && !error && !availabilityMessage && !disabledFeatureMessage && filteredProjects.length === 0 && (
-            <div className="empty-state">
-              {filter.trim() ? "No projects match this filter." : "No projects returned."}
-            </div>
-          )}
+          {!loading &&
+            !error &&
+            !availabilityMessage &&
+            !disabledFeatureMessage &&
+            filteredProjects.length === 0 && (
+              <div className="empty-state">
+                {filter.trim() ? "No projects match this filter." : "No projects returned."}
+              </div>
+            )}
         </div>
 
         <div className="thread-detail">
-          {selectedProject ? (
+          {projectFormMode ? (
+            <form
+              className="compose-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (projectFormSubmitDisabledReason) {
+                  return;
+                }
+
+                if (projectFormMode === "create") {
+                  submitProjectMutation("createProjectV2", false, { title: projectTitle.trim() });
+                  return;
+                }
+
+                if (selectedProject) {
+                  submitProjectMutation("updateProjectV2", false, {
+                    projectId: selectedProject.id,
+                    title: projectTitle.trim(),
+                    shortDescription: projectShortDescription.trim() || null,
+                    readme: projectReadme
+                  });
+                }
+              }}
+            >
+              <h2>{projectFormMode === "create" ? "Create project" : "Edit project"}</h2>
+              {projectMutationStatusActive && mutationPending && (
+                <div className="loading-state">
+                  {githubActionLabel(projectFormAction)} is running. The form is locked until GitHub responds.
+                </div>
+              )}
+              {projectMutationStatusActive && !mutationPending && mutationSucceeded && (
+                <div className="success-state">
+                  {githubActionLabel(projectFormAction)} completed. Project data is refreshing.
+                </div>
+              )}
+              {projectMutationStatusActive && !mutationPending && mutationError && (
+                <div className="error-state">
+                  {githubActionLabel(projectFormAction)} failed: {mutationError.message}
+                </div>
+              )}
+              <input
+                disabled={Boolean(projectActionPendingReason ?? projectMutationDisabledReason)}
+                title={projectActionPendingReason ?? projectMutationDisabledReason ?? undefined}
+                value={projectTitle}
+                onChange={(event) => setProjectTitle(event.target.value)}
+                placeholder="Project title"
+              />
+              {projectFormMode === "edit" && (
+                <>
+                  <input
+                    disabled={Boolean(projectActionPendingReason ?? projectMutationDisabledReason)}
+                    title={projectActionPendingReason ?? projectMutationDisabledReason ?? undefined}
+                    value={projectShortDescription}
+                    onChange={(event) => setProjectShortDescription(event.target.value)}
+                    placeholder="Short description"
+                  />
+                  <textarea
+                    disabled={Boolean(projectActionPendingReason ?? projectMutationDisabledReason)}
+                    title={projectActionPendingReason ?? projectMutationDisabledReason ?? undefined}
+                    value={projectReadme}
+                    onChange={(event) => setProjectReadme(event.target.value)}
+                    placeholder="Project README"
+                  />
+                </>
+              )}
+              <div className="thread-actions">
+                <button
+                  type="submit"
+                  disabled={Boolean(projectFormSubmitDisabledReason)}
+                  title={projectFormSubmitDisabledReason ?? undefined}
+                >
+                  <SquareKanban size={16} />{" "}
+                  {projectFormMode === "create" ? "Create project" : "Save project"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCreatingProject(false);
+                    setEditingProject(false);
+                    setSubmittedProjectAction(null);
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+              {projectFormSubmitDisabledReason && (
+                <small className="action-disabled-note">{projectFormSubmitDisabledReason}</small>
+              )}
+            </form>
+          ) : selectedProject ? (
             <>
               <header className="thread-header">
                 <h2>{selectedProject.title}</h2>
@@ -17544,7 +18641,9 @@ function ProjectsTab({
                   {[
                     selectedProject.number ? `#${selectedProject.number}` : null,
                     selectedProject.ownerLogin,
-                    selectedProject.createdAt ? `created ${formatRelativeDate(selectedProject.createdAt)}` : null,
+                    selectedProject.createdAt
+                      ? `created ${formatRelativeDate(selectedProject.createdAt)}`
+                      : null,
                     selectedProject.updatedAt
                       ? `updated ${formatRelativeDate(selectedProject.updatedAt)}`
                       : "no update timestamp"
@@ -17573,7 +18672,7 @@ function ProjectsTab({
                 {selectedProject.viewerCanUpdate !== null && (
                   <span>{selectedProject.viewerCanUpdate ? "Viewer can update" : "Viewer read-only"}</span>
                 )}
-                <span>Read-only summary</span>
+                <span>Managed in Control</span>
               </div>
               {selectedProject.shortDescription && (
                 <p className="project-description">{selectedProject.shortDescription}</p>
@@ -17601,7 +18700,204 @@ function ProjectsTab({
                   <span className="action-disabled-note">No project fields returned.</span>
                 )}
               </div>
+              <section className="workflow-detail-grid">
+                <div>
+                  <h3>Project items</h3>
+                  {selectedProject.items.length > 0 ? (
+                    selectedProject.items.map((item) => (
+                      <article className="workflow-artifact-row" key={item.id}>
+                        <div>
+                          <strong>{item.title ?? item.contentType ?? item.type ?? "Project item"}</strong>
+                          <small>
+                            {[
+                              item.contentType ?? item.type,
+                              item.number === null ? null : `#${item.number}`,
+                              item.state,
+                              item.repositoryNameWithOwner,
+                              item.updatedAt ? `updated ${formatRelativeDate(item.updatedAt)}` : null
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </small>
+                        </div>
+                        {item.state && <span className="state-chip">{item.state.toLowerCase()}</span>}
+                        {item.fieldValues.length > 0 && (
+                          <div className="project-field-list" aria-label={`${item.title ?? item.id} fields`}>
+                            {item.fieldValues.map((fieldValue) => {
+                              const editKey = `${item.id}:${fieldValue.id}`;
+                              const editingFieldValue = projectFieldEditKey === editKey;
+                              const field = projectFieldForValue(fieldValue);
+                              const fieldOptions = field?.options ?? fieldValue.options;
+                              const fieldLabel = fieldValue.fieldName ?? "Project field";
+                              const fieldDisplayValue =
+                                fieldValue.optionName ?? fieldValue.value ?? "No value returned";
+                              const fieldEditDisabledReason = editingFieldValue
+                                ? projectFieldEditDisabledReasonFor(fieldValue)
+                                : (projectActionPendingReason ?? selectedProjectMutationDisabledReason);
+
+                              return (
+                                <div className="project-field-value-row" key={fieldValue.id}>
+                                  {editingFieldValue ? (
+                                    <form
+                                      className="repository-admin-form repository-admin-inline-form"
+                                      onSubmit={(event) => {
+                                        event.preventDefault();
+                                        if (
+                                          fieldEditDisabledReason ||
+                                          !fieldValue.fieldId ||
+                                          !selectedProject
+                                        ) {
+                                          return;
+                                        }
+                                        submitProjectMutation("updateProjectV2Item", false, {
+                                          projectId: selectedProject.id,
+                                          itemId: item.id,
+                                          fieldId: fieldValue.fieldId,
+                                          value: projectFieldMutationValue(fieldValue)
+                                        });
+                                      }}
+                                    >
+                                      <label>
+                                        {fieldLabel}
+                                        {fieldValue.dataType === "SINGLE_SELECT" ? (
+                                          <select
+                                            value={projectFieldEditValue}
+                                            disabled={Boolean(projectActionPendingReason)}
+                                            title={projectActionPendingReason ?? undefined}
+                                            onChange={(event) => setProjectFieldEditValue(event.target.value)}
+                                          >
+                                            {!projectFieldEditValue && (
+                                              <option value="">Choose option</option>
+                                            )}
+                                            {fieldOptions.map((option) => (
+                                              <option key={option.id} value={option.id}>
+                                                {option.name}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        ) : (
+                                          <input
+                                            type={projectFieldEditInputType(fieldValue)}
+                                            value={projectFieldEditValue}
+                                            disabled={Boolean(projectActionPendingReason)}
+                                            title={projectActionPendingReason ?? undefined}
+                                            onChange={(event) => setProjectFieldEditValue(event.target.value)}
+                                          />
+                                        )}
+                                      </label>
+                                      <button
+                                        type="submit"
+                                        disabled={Boolean(fieldEditDisabledReason)}
+                                        title={fieldEditDisabledReason ?? undefined}
+                                      >
+                                        Save field
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setProjectFieldEditKey(null);
+                                          setProjectFieldEditValue("");
+                                        }}
+                                      >
+                                        Cancel
+                                      </button>
+                                      {fieldEditDisabledReason && (
+                                        <small className="action-disabled-note">
+                                          {fieldEditDisabledReason}
+                                        </small>
+                                      )}
+                                    </form>
+                                  ) : (
+                                    <>
+                                      <span className="state-chip">
+                                        {fieldLabel}: {String(fieldDisplayValue)}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        disabled={Boolean(fieldEditDisabledReason) || !fieldValue.editable}
+                                        title={
+                                          !fieldValue.editable
+                                            ? "This project field value is read-only in Control."
+                                            : (fieldEditDisabledReason ?? undefined)
+                                        }
+                                        onClick={() => beginEditingProjectField(item.id, fieldValue)}
+                                      >
+                                        Edit field
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              );
+                            })}
+                            {item.fieldValuesTruncated && (
+                              <small className="action-disabled-note">
+                                Some project field values are not shown.
+                              </small>
+                            )}
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          disabled={!item.htmlUrl}
+                          title={
+                            item.htmlUrl ? "Open project item on GitHub" : "Project item URL unavailable."
+                          }
+                          onClick={() => {
+                            if (item.htmlUrl) {
+                              onOpenExternal(item.htmlUrl);
+                            }
+                          }}
+                        >
+                          <ExternalLink size={15} /> Open
+                        </button>
+                        <button
+                          type="button"
+                          disabled={Boolean(projectDeleteItemDisabledReason)}
+                          title={projectDeleteItemDisabledReason ?? undefined}
+                          onClick={() =>
+                            submitProjectMutation("deleteProjectV2Item", true, {
+                              projectId: selectedProject.id,
+                              itemId: item.id
+                            })
+                          }
+                        >
+                          Remove item
+                        </button>
+                      </article>
+                    ))
+                  ) : (
+                    <div className="empty-state">No project items returned.</div>
+                  )}
+                  {selectedProject.itemsTruncated && (
+                    <small className="action-disabled-note">
+                      Showing the first {formatCompactNumber(selectedProject.items.length)} of{" "}
+                      {selectedProject.itemsCount === null
+                        ? "the returned"
+                        : formatCompactNumber(selectedProject.itemsCount)}{" "}
+                      project items.
+                    </small>
+                  )}
+                </div>
+              </section>
               <div className="thread-actions">
+                <button
+                  type="button"
+                  disabled={Boolean(projectEditDisabledReason)}
+                  title={projectEditDisabledReason ?? undefined}
+                  onClick={() => beginEditingProject(selectedProject)}
+                >
+                  <SquareKanban size={16} /> Edit project
+                </button>
+                <button
+                  type="button"
+                  disabled={Boolean(projectDeleteDisabledReason)}
+                  title={projectDeleteDisabledReason ?? undefined}
+                  onClick={() =>
+                    submitProjectMutation("deleteProjectV2", true, { projectId: selectedProject.id })
+                  }
+                >
+                  <X size={16} /> Delete project
+                </button>
                 <button
                   type="button"
                   disabled={Boolean(projectExternalReason)}
@@ -17632,6 +18928,94 @@ function ProjectsTab({
                   </small>
                 )}
               </div>
+              <form
+                className="compose-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (projectAddItemDisabledReason || !selectedProjectItem) {
+                    return;
+                  }
+                  submitProjectMutation("addProjectV2Item", false, {
+                    projectId: selectedProject.id,
+                    contentId: selectedProjectItem.id
+                  });
+                }}
+              >
+                <h2>Add issue or pull request</h2>
+                {projectMutationStatusActive &&
+                  submittedProjectAction === "addProjectV2Item" &&
+                  mutationPending && <div className="loading-state">Adding project item...</div>}
+                {projectMutationStatusActive &&
+                  submittedProjectAction === "addProjectV2Item" &&
+                  !mutationPending &&
+                  mutationSucceeded && (
+                    <div className="success-state">Project item added. Project data is refreshing.</div>
+                  )}
+                {projectMutationStatusActive &&
+                  submittedProjectAction === "addProjectV2Item" &&
+                  !mutationPending &&
+                  mutationError && (
+                    <div className="error-state">Add project item failed: {mutationError.message}</div>
+                  )}
+                <select
+                  disabled={Boolean(projectAddItemDisabledReason)}
+                  title={projectAddItemDisabledReason ?? undefined}
+                  value={selectedProjectItem?.id ?? ""}
+                  onChange={(event) => setProjectItemContentId(event.target.value)}
+                >
+                  {projectItemOptions.length === 0 ? (
+                    <option value="">No loaded issue or pull request node IDs</option>
+                  ) : (
+                    projectItemOptions.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.label} · {item.state}
+                      </option>
+                    ))
+                  )}
+                </select>
+                <div className="thread-actions">
+                  <button
+                    type="submit"
+                    disabled={Boolean(projectAddItemDisabledReason)}
+                    title={projectAddItemDisabledReason ?? undefined}
+                  >
+                    <Plus size={16} /> Add to project
+                  </button>
+                </div>
+                {projectAddItemDisabledReason && (
+                  <small className="action-disabled-note">{projectAddItemDisabledReason}</small>
+                )}
+                <small className="action-disabled-note">
+                  Field edits support text, number, date, and single-select values returned by GitHub.
+                </small>
+              </form>
+              {projectMutationStatusActive &&
+                submittedProjectAction !== "addProjectV2Item" &&
+                !projectFormMode &&
+                mutationPending && (
+                  <div className="loading-state">
+                    {githubActionLabel(submittedProjectAction)} is running. Project data will refresh after
+                    GitHub responds.
+                  </div>
+                )}
+              {projectMutationStatusActive &&
+                submittedProjectAction !== "addProjectV2Item" &&
+                !projectFormMode &&
+                !mutationPending &&
+                mutationSucceeded && (
+                  <div className="success-state">
+                    {githubActionLabel(submittedProjectAction)} completed. Project data is refreshing.
+                  </div>
+                )}
+              {projectMutationStatusActive &&
+                submittedProjectAction !== "addProjectV2Item" &&
+                !projectFormMode &&
+                !mutationPending &&
+                mutationError && (
+                  <div className="error-state">
+                    {githubActionLabel(submittedProjectAction)} failed: {mutationError.message}
+                  </div>
+                )}
             </>
           ) : (
             <div className="empty-state">
@@ -17700,9 +19084,7 @@ function ReleasesTab({
   onMutate(action: GitHubAction, dangerous: boolean, payload?: Record<string, unknown>): void;
 }): JSX.Element {
   const focusedRelease =
-    (focusedReleaseId !== null
-      ? releases.find((release) => release.id === focusedReleaseId)
-      : null) ??
+    (focusedReleaseId !== null ? releases.find((release) => release.id === focusedReleaseId) : null) ??
     (focusedReleaseTagName ? releases.find((release) => release.tagName === focusedReleaseTagName) : null);
   const [selectedReleaseId, setSelectedReleaseId] = useState<number | null>(
     focusedRelease?.id ?? releases[0]?.id ?? null
@@ -17719,16 +19101,14 @@ function ReleasesTab({
   const [makeLatest, setMakeLatest] = useState<ReleaseMakeLatestOption>("unchanged");
   const [submittedReleaseAction, setSubmittedReleaseAction] = useState<GitHubAction | null>(null);
   const selectedRelease =
-    releases.find((release) => release.id === selectedReleaseId) ??
-    focusedRelease ??
-    releases[0] ??
-    null;
+    releases.find((release) => release.id === selectedReleaseId) ?? focusedRelease ?? releases[0] ?? null;
   const selectedReleaseAsset =
     selectedRelease && focusedReleaseAssetId !== null
-      ? selectedRelease.assets.find((asset) => asset.id === focusedReleaseAssetId) ?? null
+      ? (selectedRelease.assets.find((asset) => asset.id === focusedReleaseAssetId) ?? null)
       : null;
   const liveReleaseDisabledReason = !githubReady ? "Sign in with GitHub to change releases." : null;
-  const releaseMutationDisabledReason = liveReleaseDisabledReason ?? repositoryMutationDisabledReason(repository);
+  const releaseMutationDisabledReason =
+    liveReleaseDisabledReason ?? repositoryMutationDisabledReason(repository);
   const releaseMutationAction =
     mutationAction === "createRelease" ||
     mutationAction === "editRelease" ||
@@ -17737,13 +19117,18 @@ function ReleasesTab({
       ? mutationAction
       : null;
   const releaseActionPendingReason =
-    mutationPending && releaseMutationAction ? `${githubActionLabel(releaseMutationAction)} is still running.` : null;
+    mutationPending && releaseMutationAction
+      ? `${githubActionLabel(releaseMutationAction)} is still running.`
+      : null;
   const releaseControlDisabledReason = releaseActionPendingReason ?? releaseMutationDisabledReason;
   const releaseFormMode = creating ? "create" : editingRelease && selectedRelease ? "edit" : null;
   const releaseFormAction = releaseFormMode === "create" ? "createRelease" : "editRelease";
-  const releaseFormMutationActive = submittedReleaseAction === releaseFormAction && mutationAction === releaseFormAction;
+  const releaseFormMutationActive =
+    submittedReleaseAction === releaseFormAction && mutationAction === releaseFormAction;
   const releaseFormSubmitDisabledReason =
-    releaseActionPendingReason ?? releaseMutationDisabledReason ?? (!tagName.trim() ? "Release tag is required." : null);
+    releaseActionPendingReason ??
+    releaseMutationDisabledReason ??
+    (!tagName.trim() ? "Release tag is required." : null);
   const releaseFormControlDisabledReason = releaseActionPendingReason ?? releaseMutationDisabledReason;
   const releaseTargetOptions = [
     ...branches.map((branch) => ({ label: branch.name, group: "Branches" })),
@@ -17851,8 +19236,7 @@ function ReleasesTab({
                   <div>
                     <strong>{release.name || release.tagName}</strong>
                     <small>
-                      {release.tagName} ·{" "}
-                      {release.targetCommitish ? `${release.targetCommitish} · ` : ""}
+                      {release.tagName} · {release.targetCommitish ? `${release.targetCommitish} · ` : ""}
                       {release.publishedAt
                         ? `published ${formatRelativeDate(release.publishedAt)}`
                         : "not published"}{" "}
@@ -17903,7 +19287,9 @@ function ReleasesTab({
                   payload.make_latest = makeLatest;
                 }
                 const releaseFormDangerous =
-                  releaseFormMode === "create" ? !draft : Boolean(selectedRelease && selectedRelease.isDraft !== draft);
+                  releaseFormMode === "create"
+                    ? !draft
+                    : Boolean(selectedRelease && selectedRelease.isDraft !== draft);
 
                 if (releaseFormMode === "create") {
                   setSubmittedReleaseAction("createRelease");
@@ -18057,7 +19443,8 @@ function ReleasesTab({
               </header>
               {releaseMutationStatusActive && mutationPending && (
                 <div className="loading-state">
-                  {githubActionLabel(submittedReleaseAction)} is running. Release data is locked until GitHub responds.
+                  {githubActionLabel(submittedReleaseAction)} is running. Release data is locked until GitHub
+                  responds.
                 </div>
               )}
               {releaseMutationStatusActive && !mutationPending && mutationSucceeded && (
@@ -18126,10 +19513,7 @@ function ReleasesTab({
                         </small>
                       </div>
                       <span className="state-chip">{asset.state ?? "asset"}</span>
-                      <button
-                        type="button"
-                        onClick={() => onSelectReleaseAsset(selectedRelease, asset)}
-                      >
+                      <button type="button" onClick={() => onSelectReleaseAsset(selectedRelease, asset)}>
                         <Download size={15} /> Inspect
                       </button>
                       <button
@@ -18205,7 +19589,9 @@ function ReleasesTab({
                   type="button"
                   disabled={Boolean(releaseControlDisabledReason)}
                   title={releaseControlDisabledReason ?? undefined}
-                  onClick={() => submitReleaseMutation("deleteRelease", true, { releaseId: selectedRelease.id })}
+                  onClick={() =>
+                    submitReleaseMutation("deleteRelease", true, { releaseId: selectedRelease.id })
+                  }
                 >
                   Delete release
                 </button>
@@ -18295,7 +19681,10 @@ function ActionsTab({
     targetRepositoryNameWithOwner?: string | null
   ): void;
   onSelectWorkflowRun(run: WorkflowRunSummary): void;
-  onSelectWorkflowArtifact(run: WorkflowRunSummary | WorkflowRunDetail, artifact: WorkflowRunArtifactSummary): void;
+  onSelectWorkflowArtifact(
+    run: WorkflowRunSummary | WorkflowRunDetail,
+    artifact: WorkflowRunArtifactSummary
+  ): void;
   onExpandActions(): void;
   onExpandWorkflowDefinitions(): void;
   onMutate(action: GitHubAction, dangerous: boolean, payload?: Record<string, unknown>): void;
@@ -18318,7 +19707,8 @@ function ActionsTab({
   } | null>(null);
   const [submittedWorkflowAction, setSubmittedWorkflowAction] = useState<GitHubAction | null>(null);
   const liveWorkflowDisabledReason = !githubReady ? "Sign in with GitHub to run workflow actions." : null;
-  const repositoryDispatchDisabledReason = liveWorkflowDisabledReason ?? repositoryMutationDisabledReason(repository);
+  const repositoryDispatchDisabledReason =
+    liveWorkflowDisabledReason ?? repositoryMutationDisabledReason(repository);
   const workflowMutationAction =
     mutationAction === "dispatchWorkflow" ||
     mutationAction === "rerunWorkflow" ||
@@ -18328,7 +19718,9 @@ function ActionsTab({
       ? mutationAction
       : null;
   const workflowActionPendingReason =
-    mutationPending && workflowMutationAction ? `${githubActionLabel(workflowMutationAction)} is still running.` : null;
+    mutationPending && workflowMutationAction
+      ? `${githubActionLabel(workflowMutationAction)} is still running.`
+      : null;
   const workflowRefOptions = [
     ...branches.map((branch) => ({ label: branch.name, group: "Branches" })),
     ...tags.map((tag) => ({ label: tag.name, group: "Tags" }))
@@ -18360,14 +19752,14 @@ function ActionsTab({
         ],
         actionSearchParts
       )
-    )
+    );
   });
   const selectedRunMatchesFilter =
     selectedRunId !== null && filteredActions.some((run) => run.id === selectedRunId);
   const effectiveSelectedRunId = selectedRunMatchesFilter ? selectedRunId : (filteredActions[0]?.id ?? null);
   const selectedRunFromList =
     effectiveSelectedRunId !== null
-      ? filteredActions.find((run) => run.id === effectiveSelectedRunId) ?? null
+      ? (filteredActions.find((run) => run.id === effectiveSelectedRunId) ?? null)
       : null;
   const initialExpandedWorkflowDetailItems = {
     jobStepIds: new Set<number>(),
@@ -18418,11 +19810,14 @@ function ActionsTab({
   );
   const detail = runDetail.data?.detail ?? null;
   const workflowRunDetailAvailability = runDetail.data?.availability ?? null;
-  const workflowRunDetailAvailabilityMessage = readAvailabilityMessage("Run detail", workflowRunDetailAvailability);
+  const workflowRunDetailAvailabilityMessage = readAvailabilityMessage(
+    "Run detail",
+    workflowRunDetailAvailability
+  );
   const selectedRun = selectedRunFromList ?? detail ?? null;
   const selectedWorkflowArtifact =
     detail && focusedWorkflowArtifactId !== null
-      ? detail.artifacts.find((artifact) => artifact.id === focusedWorkflowArtifactId) ?? null
+      ? (detail.artifacts.find((artifact) => artifact.id === focusedWorkflowArtifactId) ?? null)
       : null;
   const selectedRunTargetRepositoryNameWithOwner =
     selectedRun?.headRepositoryNameWithOwner ?? repository.nameWithOwner;
@@ -18433,12 +19828,14 @@ function ActionsTab({
       : null;
   const selectedLogJob =
     selectedLogJobSelection && selectedRun && selectedLogJobSelection.runId === selectedRun.id
-      ? detail?.jobs.find((job) => job.id === selectedLogJobSelection.jobId) ?? null
+      ? (detail?.jobs.find((job) => job.id === selectedLogJobSelection.jobId) ?? null)
       : null;
   const defaultJobLogPreviewCharacters = 12_000;
   const largeJobLogPreviewCharacters = 50_000;
   const selectedLogJobKey =
-    selectedRun && selectedLogJob ? `${repository.nameWithOwner}#${selectedRun.id}#${selectedLogJob.id}` : null;
+    selectedRun && selectedLogJob
+      ? `${repository.nameWithOwner}#${selectedRun.id}#${selectedLogJob.id}`
+      : null;
   const jobLogPreviewCharacters =
     selectedLogJobKey && jobLogPreviewSizeSelection?.key === selectedLogJobKey
       ? jobLogPreviewSizeSelection.maxCharacters
@@ -18464,18 +19861,21 @@ function ActionsTab({
     staleTime: 30_000
   });
   const selectedRerunDisabledReason = selectedRun
-    ? workflowActionPendingReason ?? liveWorkflowDisabledReason ?? workflowRerunDisabledReason(repository, selectedRun)
+    ? (workflowActionPendingReason ??
+      liveWorkflowDisabledReason ??
+      workflowRerunDisabledReason(repository, selectedRun))
     : null;
   const selectedFailedJobsRerunDisabledReason = selectedRun
-    ? workflowActionPendingReason ??
+    ? (workflowActionPendingReason ??
       liveWorkflowDisabledReason ??
-      workflowFailedJobsRerunDisabledReason(repository, selectedRun)
+      workflowFailedJobsRerunDisabledReason(repository, selectedRun))
     : null;
   const selectedCancelDisabledReason = selectedRun
-    ? workflowActionPendingReason ?? liveWorkflowDisabledReason ?? workflowCancelDisabledReason(repository, selectedRun)
+    ? (workflowActionPendingReason ??
+      liveWorkflowDisabledReason ??
+      workflowCancelDisabledReason(repository, selectedRun))
     : null;
-  const firstWorkflow =
-    workflowItems.find((workflow) => workflow.dispatchable) ?? workflowItems[0] ?? null;
+  const firstWorkflow = workflowItems.find((workflow) => workflow.dispatchable) ?? workflowItems[0] ?? null;
   const effectiveWorkflowId = workflowId || firstWorkflow?.path || "";
   const selectedWorkflow =
     workflowItems.find(
@@ -18491,8 +19891,11 @@ function ActionsTab({
     workflowActionPendingReason ??
     repositoryDispatchDisabledReason ??
     workflowDispatchDisabledReason(selectedWorkflow, effectiveWorkflowId, ref, workflowInputValues);
-  const dispatchConfigurationDisabled = Boolean(workflowActionPendingReason ?? repositoryDispatchDisabledReason);
-  const dispatchMutationActive = submittedWorkflowAction === "dispatchWorkflow" && mutationAction === "dispatchWorkflow";
+  const dispatchConfigurationDisabled = Boolean(
+    workflowActionPendingReason ?? repositoryDispatchDisabledReason
+  );
+  const dispatchMutationActive =
+    submittedWorkflowAction === "dispatchWorkflow" && mutationAction === "dispatchWorkflow";
   const workflowRunMutationActive =
     submittedWorkflowAction !== null &&
     submittedWorkflowAction !== "dispatchWorkflow" &&
@@ -18507,7 +19910,10 @@ function ActionsTab({
   const failureSummary = workflowFailureSummary(detail ?? undefined);
   const actionsAvailabilityMessage = readAvailabilityMessage("Workflow runs", availability);
   const jobLogsAvailabilityMessage = readAvailabilityMessage("Job logs", jobLogs.data?.availability ?? null);
-  const workflowJobsAvailabilityMessage = readAvailabilityMessage("Workflow jobs", detail?.jobsAvailability ?? null);
+  const workflowJobsAvailabilityMessage = readAvailabilityMessage(
+    "Workflow jobs",
+    detail?.jobsAvailability ?? null
+  );
   const workflowArtifactsAvailabilityMessage = readAvailabilityMessage(
     "Workflow artifacts",
     detail?.artifactsAvailability ?? null
@@ -18567,7 +19973,9 @@ function ActionsTab({
             </div>
           )}
           {!canExpandActions && actionsLimitHit && (
-            <div className="muted-row">Showing the first {actions.length} workflow runs returned by GitHub.</div>
+            <div className="muted-row">
+              Showing the first {actions.length} workflow runs returned by GitHub.
+            </div>
           )}
           {filteredActions.map((run) => {
             const sourceRepositoryNameWithOwner =
@@ -18584,7 +19992,9 @@ function ActionsTab({
                 ? `triggered by ${run.triggeringActorLogin}`
                 : null,
               run.runAttempt ? `attempt ${run.runAttempt}` : null,
-              run.runStartedAt ? `started ${formatRelativeDate(run.runStartedAt)}` : formatRelativeDate(run.updatedAt)
+              run.runStartedAt
+                ? `started ${formatRelativeDate(run.runStartedAt)}`
+                : formatRelativeDate(run.updatedAt)
             ].filter(Boolean);
 
             return (
@@ -18662,7 +20072,8 @@ function ActionsTab({
               <h2>Run workflow</h2>
               {dispatchMutationActive && mutationPending && (
                 <div className="loading-state">
-                  {githubActionLabel("dispatchWorkflow")} is running. Workflow inputs are locked until GitHub responds.
+                  {githubActionLabel("dispatchWorkflow")} is running. Workflow inputs are locked until GitHub
+                  responds.
                 </div>
               )}
               {dispatchMutationActive && !mutationPending && mutationSucceeded && (
@@ -18723,8 +20134,8 @@ function ActionsTab({
               )}
               {!canExpandWorkflowDefinitions && workflowDefinitionsLimitHit && (
                 <small className="action-disabled-note">
-                  Showing the first {workflowItems.length || workflowDefinitionLimit} workflow definitions returned by
-                  GitHub.
+                  Showing the first {workflowItems.length || workflowDefinitionLimit} workflow definitions
+                  returned by GitHub.
                 </small>
               )}
               {manualWorkflowInputMetadataUnavailable && (
@@ -18760,7 +20171,7 @@ function ActionsTab({
                   <small>
                     {selectedWorkflow.dispatchable
                       ? `${selectedWorkflow.inputs.length} dispatch inputs`
-                      : selectedWorkflow.inputsUnavailableMessage ?? "Workflow dispatch is not enabled."}
+                      : (selectedWorkflow.inputsUnavailableMessage ?? "Workflow dispatch is not enabled.")}
                   </small>
                   {selectedWorkflow.inputs.map((input) => (
                     <label key={input.name}>
@@ -18883,7 +20294,8 @@ function ActionsTab({
               )}
               {workflowRunMutationActive && mutationPending && (
                 <div className="loading-state">
-                  {githubActionLabel(submittedWorkflowAction)} is running. Workflow run data is locked until GitHub responds.
+                  {githubActionLabel(submittedWorkflowAction)} is running. Workflow run data is locked until
+                  GitHub responds.
                 </div>
               )}
               {workflowRunMutationActive && !mutationPending && mutationSucceeded && (
@@ -18930,7 +20342,10 @@ function ActionsTab({
                                   } else if (item.path) {
                                     onOpenCodePath(
                                       item.path,
-                                      selectedRun.branch ?? selectedRun.commitSha ?? repository.defaultBranch ?? null,
+                                      selectedRun.branch ??
+                                        selectedRun.commitSha ??
+                                        repository.defaultBranch ??
+                                        null,
                                       item.url,
                                       item.line ?? null,
                                       selectedRunTargetRepositoryNameWithOwner
@@ -19017,7 +20432,9 @@ function ActionsTab({
                               type="button"
                               disabled={Boolean(jobRerunDisabledReason)}
                               title={jobRerunDisabledReason ?? undefined}
-                              onClick={() => submitWorkflowMutation("rerunWorkflowJob", true, { jobId: job.id })}
+                              onClick={() =>
+                                submitWorkflowMutation("rerunWorkflowJob", true, { jobId: job.id })
+                              }
                             >
                               Rerun job
                             </button>
@@ -19025,7 +20442,9 @@ function ActionsTab({
                               type="button"
                               disabled={Boolean(jobLogsDisabledReason)}
                               title={jobLogsDisabledReason ?? undefined}
-                              onClick={() => setSelectedLogJobSelection({ runId: selectedRun.id, jobId: job.id })}
+                              onClick={() =>
+                                setSelectedLogJobSelection({ runId: selectedRun.id, jobId: job.id })
+                              }
                             >
                               View logs
                             </button>
@@ -19106,7 +20525,9 @@ function ActionsTab({
                       <article className="workflow-job-card">
                         <header>
                           <strong>{selectedLogJob.name}</strong>
-                          <span className={`state-chip ${selectedLogJob.conclusion === "success" ? "success" : ""}`}>
+                          <span
+                            className={`state-chip ${selectedLogJob.conclusion === "success" ? "success" : ""}`}
+                          >
                             {selectedLogJob.conclusion ?? selectedLogJob.status ?? "queued"}
                           </span>
                         </header>
@@ -19114,7 +20535,9 @@ function ActionsTab({
                         {jobLogs.error && (
                           <div className="error-state">Job logs unavailable: {jobLogs.error.message}</div>
                         )}
-                        {jobLogsAvailabilityMessage && <div className="error-state">{jobLogsAvailabilityMessage}</div>}
+                        {jobLogsAvailabilityMessage && (
+                          <div className="error-state">{jobLogsAvailabilityMessage}</div>
+                        )}
                         {jobLogs.data?.text && (
                           <pre className="workflow-log-preview">
                             <code>{jobLogs.data.text}</code>
@@ -19132,25 +20555,30 @@ function ActionsTab({
                         )}
                         {jobLogs.data && (
                           <div className="workflow-card-actions">
-                            {jobLogs.data.truncated && jobLogPreviewCharacters < largeJobLogPreviewCharacters && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (selectedLogJobKey) {
-                                    setJobLogPreviewSizeSelection({
-                                      key: selectedLogJobKey,
-                                      maxCharacters: largeJobLogPreviewCharacters
-                                    });
-                                  }
-                                }}
-                              >
-                                Load larger preview
-                              </button>
-                            )}
+                            {jobLogs.data.truncated &&
+                              jobLogPreviewCharacters < largeJobLogPreviewCharacters && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (selectedLogJobKey) {
+                                      setJobLogPreviewSizeSelection({
+                                        key: selectedLogJobKey,
+                                        maxCharacters: largeJobLogPreviewCharacters
+                                      });
+                                    }
+                                  }}
+                                >
+                                  Load larger preview
+                                </button>
+                              )}
                             <button
                               type="button"
                               disabled={!jobLogs.data.downloadUrl}
-                              title={jobLogs.data.downloadUrl ? undefined : jobLogsAvailabilityMessage ?? "Full job log download URL unavailable."}
+                              title={
+                                jobLogs.data.downloadUrl
+                                  ? undefined
+                                  : (jobLogsAvailabilityMessage ?? "Full job log download URL unavailable.")
+                              }
                               onClick={() => {
                                 if (jobLogs.data?.downloadUrl) {
                                   onOpenExternal(jobLogs.data.downloadUrl);
@@ -19268,9 +20696,11 @@ function ActionsTab({
                         </article>
                       );
                     })}
-                    {!runDetail.isLoading && !workflowArtifactsAvailabilityMessage && detail.artifacts.length === 0 && (
-                      <div className="empty-state">No artifacts returned for this run.</div>
-                    )}
+                    {!runDetail.isLoading &&
+                      !workflowArtifactsAvailabilityMessage &&
+                      detail.artifacts.length === 0 && (
+                        <div className="empty-state">No artifacts returned for this run.</div>
+                      )}
                   </section>
                   <section>
                     <h3>Checks</h3>
@@ -19281,7 +20711,9 @@ function ActionsTab({
                       <article className="workflow-job-card" key={checkRun.id}>
                         <header>
                           <strong>{checkRun.name}</strong>
-                          <span className={`state-chip ${checkRun.conclusion === "success" ? "success" : ""}`}>
+                          <span
+                            className={`state-chip ${checkRun.conclusion === "success" ? "success" : ""}`}
+                          >
                             {checkRun.conclusion ?? checkRun.status ?? "queued"}
                           </span>
                         </header>
@@ -19338,7 +20770,10 @@ function ActionsTab({
                               ? checkRun.annotations
                               : checkRun.annotations.slice(0, workflowListLimit)
                             ).map((annotation, index) => (
-                              <div className="workflow-annotation-row" key={`${checkRun.id}-${annotation.path}-${index}`}>
+                              <div
+                                className="workflow-annotation-row"
+                                key={`${checkRun.id}-${annotation.path}-${index}`}
+                              >
                                 <div>
                                   <strong>{annotation.title ?? annotation.message}</strong>
                                   <small>
@@ -19349,15 +20784,22 @@ function ActionsTab({
                                       : ""}
                                   </small>
                                   {annotation.rawDetails && <small>{annotation.rawDetails}</small>}
-                                  {!annotation.rawDetails && annotation.title && <small>{annotation.message}</small>}
+                                  {!annotation.rawDetails && annotation.title && (
+                                    <small>{annotation.message}</small>
+                                  )}
                                 </div>
-                                <span className="state-chip">{annotation.annotationLevel ?? "annotation"}</span>
+                                <span className="state-chip">
+                                  {annotation.annotationLevel ?? "annotation"}
+                                </span>
                                 <button
                                   type="button"
                                   onClick={() =>
                                     onOpenCodePath(
                                       annotation.path,
-                                      selectedRun.branch ?? selectedRun.commitSha ?? repository.defaultBranch ?? null,
+                                      selectedRun.branch ??
+                                        selectedRun.commitSha ??
+                                        repository.defaultBranch ??
+                                        null,
                                       annotation.blobHref,
                                       annotation.startLine ?? null,
                                       selectedRunTargetRepositoryNameWithOwner
@@ -19418,9 +20860,11 @@ function ActionsTab({
                         )}
                       </article>
                     ))}
-                    {!runDetail.isLoading && !workflowCheckRunsAvailabilityMessage && detail.checkRuns.length === 0 && (
-                      <div className="empty-state">No check runs returned for this commit.</div>
-                    )}
+                    {!runDetail.isLoading &&
+                      !workflowCheckRunsAvailabilityMessage &&
+                      detail.checkRuns.length === 0 && (
+                        <div className="empty-state">No check runs returned for this commit.</div>
+                      )}
                     {workflowCheckSuitesAvailabilityMessage && (
                       <div className="error-state">{workflowCheckSuitesAvailabilityMessage}</div>
                     )}
@@ -19438,7 +20882,9 @@ function ActionsTab({
                                 {suite.headSha ? ` · ${suite.headSha.slice(0, 7)}` : ""}
                               </small>
                               <small>
-                                {suite.updatedAt ? `Updated ${formatRelativeDate(suite.updatedAt)}` : "No update time"}
+                                {suite.updatedAt
+                                  ? `Updated ${formatRelativeDate(suite.updatedAt)}`
+                                  : "No update time"}
                               </small>
                             </div>
                             <span className={`state-chip ${suite.conclusion === "success" ? "success" : ""}`}>
@@ -19506,7 +20952,9 @@ function ActionsTab({
                   type="button"
                   disabled={Boolean(selectedFailedJobsRerunDisabledReason)}
                   title={selectedFailedJobsRerunDisabledReason ?? undefined}
-                  onClick={() => submitWorkflowMutation("rerunFailedWorkflowJobs", true, { runId: selectedRun.id })}
+                  onClick={() =>
+                    submitWorkflowMutation("rerunFailedWorkflowJobs", true, { runId: selectedRun.id })
+                  }
                 >
                   Rerun failed jobs
                 </button>
@@ -19612,8 +21060,8 @@ function AgentsTab({
       detail: issuesError
         ? `Agent issues unavailable: ${issuesError.message}`
         : issuesLoading
-        ? "Loading issue labels from the repository cache."
-        : `${agentIssues.length} open issue${agentIssues.length === 1 ? "" : "s"} currently carries the agent label.`,
+          ? "Loading issue labels from the repository cache."
+          : `${agentIssues.length} open issue${agentIssues.length === 1 ? "" : "s"} currently carries the agent label.`,
       icon: Bot,
       tab: "issues" as const,
       filter: "label:agent",
@@ -19630,8 +21078,8 @@ function AgentsTab({
       detail: actionsError
         ? `Automation runs unavailable: ${actionsError.message}`
         : actionsLoading
-        ? "Loading workflow run status from the repository cache."
-        : `${automationRuns.length} run${automationRuns.length === 1 ? "" : "s"} failed, need action, or are still active.`,
+          ? "Loading workflow run status from the repository cache."
+          : `${automationRuns.length} run${automationRuns.length === 1 ? "" : "s"} failed, need action, or are still active.`,
       icon: Workflow,
       tab: "actions" as const,
       filter: "attention",
@@ -19648,8 +21096,8 @@ function AgentsTab({
       detail: pullsError
         ? `PR queue unavailable: ${pullsError.message}`
         : pullsLoading
-        ? "Loading pull request state from the repository cache."
-        : `${openPulls.length} open pull request${openPulls.length === 1 ? "" : "s"} are in the queue.`,
+          ? "Loading pull request state from the repository cache."
+          : `${openPulls.length} open pull request${openPulls.length === 1 ? "" : "s"} are in the queue.`,
       icon: GitPullRequest,
       tab: "pulls" as const,
       filter: "open",
@@ -19666,8 +21114,8 @@ function AgentsTab({
         <div>
           <h2>Agent workflows open in Control</h2>
           <p>
-            Control routes common agent triage paths to the existing Issues, Actions, and Pull requests surfaces.
-            GitHub remains available for unsupported filtered views.
+            Control routes common agent triage paths to the existing Issues, Actions, and Pull requests
+            surfaces. GitHub remains available for unsupported filtered views.
           </p>
         </div>
       </div>
@@ -19700,7 +21148,9 @@ function AgentsTab({
                       </button>
                     ))
                   : !item.errored &&
-                    item.chip !== "loading" && <small className="agent-preview-empty">{item.emptyPreview}</small>}
+                    item.chip !== "loading" && (
+                      <small className="agent-preview-empty">{item.emptyPreview}</small>
+                    )}
               </div>
               <div className="tile-actions">
                 <button type="button" onClick={() => onOpenFilteredSurface(item.tab, item.filter)}>
@@ -19731,12 +21181,22 @@ function WikiTab({
   githubReady,
   repository,
   focusedPagePath,
+  mutationAction,
+  mutationPending,
+  mutationSucceeded,
+  mutationError,
+  onMutate,
   onOpenExternal,
   onSelectWikiPage
 }: {
   githubReady: boolean;
   repository: RepositoryDetail;
   focusedPagePath: string | null;
+  mutationAction: GitHubAction | null;
+  mutationPending: boolean;
+  mutationSucceeded: boolean;
+  mutationError: Error | null;
+  onMutate(action: GitHubAction, dangerous: boolean, payload?: Record<string, unknown>): void;
   onOpenExternal(url: string): void;
   onSelectWikiPage(page: WikiPageSummary | WikiPageContent): void;
 }): JSX.Element {
@@ -19744,11 +21204,20 @@ function WikiTab({
   const [wikiRefreshPending, setWikiRefreshPending] = useState(false);
   const [wikiRefreshError, setWikiRefreshError] = useState<Error | null>(null);
   const [wikiPageLimit, setWikiPageLimit] = useState(defaultWikiPageLimit);
+  const [wikiFormMode, setWikiFormMode] = useState<"create" | "edit">("create");
+  const [wikiPageTitle, setWikiPageTitle] = useState("");
+  const [wikiPageContent, setWikiPageContent] = useState("");
   const wikiFeature = repository.administration?.features.wiki ?? null;
   const api = useMemo(() => getControlApi(), []);
   const queryClient = useQueryClient();
   const wiki = useQuery<RepositoryWikiResult>({
-    queryKey: ["repository-wiki", repository.owner, repository.name, focusedPagePath ?? "default", wikiPageLimit],
+    queryKey: [
+      "repository-wiki",
+      repository.owner,
+      repository.name,
+      focusedPagePath ?? "default",
+      wikiPageLimit
+    ],
     queryFn: () =>
       api.github.getRepositoryWiki({
         owner: repository.owner,
@@ -19768,28 +21237,29 @@ function WikiTab({
     : wikiAvailabilityStatus
       ? wikiAvailabilityStatus === "available"
       : wikiFeature === true;
-  const wikiUnavailableReason = wikiAvailabilityMessage ?? "Wiki availability is unknown for this repository.";
+  const wikiUnavailableReason =
+    wikiAvailabilityMessage ?? "Wiki availability is unknown for this repository.";
   const wikiStatus =
     wikiFeature === false
-        ? "Wiki is disabled for this repository."
-        : wikiErrorMessage
-          ? wikiErrorMessage
+      ? "Wiki is disabled for this repository."
+      : wikiErrorMessage
+        ? wikiErrorMessage
         : wikiAvailable
           ? "Wiki is available for this repository."
           : wikiAvailabilityStatus
             ? wikiUnavailableReason
-          : wiki.isLoading
-            ? "Checking wiki availability for this repository."
-            : "Wiki availability is unknown for this repository.";
+            : wiki.isLoading
+              ? "Checking wiki availability for this repository."
+              : "Wiki availability is unknown for this repository.";
   const wikiCloneUrl = `${repository.htmlUrl}.wiki.git`;
   const wikiActionDisabledReason =
     wikiFeature === false
       ? "Wiki is disabled for this repository."
       : wikiErrorMessage
         ? wikiErrorMessage
-      : !wikiAvailable
-        ? wikiUnavailableReason
-        : null;
+        : !wikiAvailable
+          ? wikiUnavailableReason
+          : null;
 
   async function copyWikiCloneUrl(): Promise<void> {
     if (wikiActionDisabledReason) {
@@ -19816,7 +21286,13 @@ function WikiTab({
 
     try {
       await queryClient.fetchQuery({
-        queryKey: ["repository-wiki", repository.owner, repository.name, focusedPagePath ?? "default", wikiPageLimit],
+        queryKey: [
+          "repository-wiki",
+          repository.owner,
+          repository.name,
+          focusedPagePath ?? "default",
+          wikiPageLimit
+        ],
         staleTime: 0,
         queryFn: () =>
           api.github.getRepositoryWiki({
@@ -19842,6 +21318,87 @@ function WikiTab({
   const wikiMarkdownUrlContext = selectedPage
     ? markdownWikiUrlContext(repository, selectedPage.path, selectedPage.htmlUrl)
     : undefined;
+  const wikiMutationAction =
+    mutationAction === "createWikiPage" ||
+    mutationAction === "editWikiPage" ||
+    mutationAction === "deleteWikiPage"
+      ? mutationAction
+      : null;
+  const wikiMutationBusy = mutationPending && Boolean(wikiMutationAction);
+  const wikiFormDisabledReason = !githubReady
+    ? "Sign in with GitHub to change wiki pages."
+    : wikiActionDisabledReason
+      ? wikiActionDisabledReason
+      : wikiMutationBusy
+        ? "A wiki mutation is still running."
+        : null;
+  const wikiEditDisabledReason =
+    wikiFormDisabledReason ?? (!selectedPage ? "Select a wiki page to edit." : null);
+  const wikiCreateDisabledReason =
+    wikiFormDisabledReason ??
+    (!wikiPageTitle.trim()
+      ? "Enter a wiki page title."
+      : !wikiPageContent.trim()
+        ? "Enter wiki page content."
+        : null);
+  const wikiUpdateDisabledReason =
+    wikiEditDisabledReason ??
+    (!wikiPageContent.trim()
+      ? "Enter wiki page content."
+      : selectedPage && wikiPageContent === (selectedPage.markdown ?? "")
+        ? "No wiki page changes to save."
+        : null);
+  const wikiDeleteDisabledReason = wikiEditDisabledReason;
+  const wikiSubmitDisabledReason =
+    wikiFormMode === "create" ? wikiCreateDisabledReason : wikiUpdateDisabledReason;
+
+  function resetWikiCreateForm(): void {
+    setWikiFormMode("create");
+    setWikiPageTitle("");
+    setWikiPageContent("");
+  }
+
+  function startWikiEdit(): void {
+    if (!selectedPage) {
+      return;
+    }
+
+    setWikiFormMode("edit");
+    setWikiPageTitle(selectedPage.title);
+    setWikiPageContent(selectedPage.markdown ?? "");
+  }
+
+  function submitWikiForm(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    if (wikiSubmitDisabledReason) {
+      return;
+    }
+
+    if (wikiFormMode === "create") {
+      onMutate("createWikiPage", false, {
+        title: wikiPageTitle.trim(),
+        content: wikiPageContent
+      });
+      return;
+    }
+
+    if (!selectedPage) {
+      return;
+    }
+
+    onMutate("editWikiPage", false, {
+      pagePath: selectedPage.path,
+      content: wikiPageContent
+    });
+  }
+
+  function deleteSelectedWikiPage(): void {
+    if (wikiDeleteDisabledReason || !selectedPage) {
+      return;
+    }
+
+    onMutate("deleteWikiPage", true, { pagePath: selectedPage.path });
+  }
 
   return (
     <section className="repository-settings-panel">
@@ -19879,8 +21436,25 @@ function WikiTab({
       {wikiFeature === null && !wiki.isLoading && !wiki.error && !wikiAvailabilityMessage && !wiki.data && (
         <div className="empty-state">Wiki availability is unknown for this repository.</div>
       )}
-      {wikiFeature !== false && !wiki.isLoading && !wiki.error && !wikiAvailabilityMessage && pages.length === 0 && (
-        <div className="empty-state">GitHub returned no wiki pages.</div>
+      {wikiFeature !== false &&
+        !wiki.isLoading &&
+        !wiki.error &&
+        !wikiAvailabilityMessage &&
+        pages.length === 0 && <div className="empty-state">GitHub returned no wiki pages.</div>}
+      {wikiMutationBusy && wikiMutationAction && (
+        <div className="mutation-feedback loading-state" role="status">
+          Wiki action running: {githubActionLabel(wikiMutationAction)}.
+        </div>
+      )}
+      {!mutationPending && mutationSucceeded && wikiMutationAction && (
+        <div className="mutation-feedback success-state" role="status">
+          Wiki action completed: {githubActionLabel(wikiMutationAction)}.
+        </div>
+      )}
+      {!mutationPending && mutationError && wikiMutationAction && (
+        <div className="mutation-feedback error-state" role="alert">
+          Wiki action failed: {githubActionLabel(wikiMutationAction)}. {mutationError.message}
+        </div>
       )}
       {pages.length > 0 && (
         <div className="wiki-browser">
@@ -19913,18 +21487,36 @@ function WikiTab({
           <article className="wiki-page-preview">
             <header>
               <h3>{selectedPage?.title ?? "Wiki page"}</h3>
-              <button
-                type="button"
-                disabled={!selectedPage?.htmlUrl}
-                title={selectedPage?.htmlUrl ? undefined : "Wiki page URL unavailable."}
-                onClick={() => {
-                  if (selectedPage?.htmlUrl) {
-                    onOpenExternal(selectedPage.htmlUrl);
-                  }
-                }}
-              >
-                <ExternalLink size={15} /> GitHub fallback
-              </button>
+              <div className="table-action-row">
+                <button
+                  type="button"
+                  disabled={Boolean(wikiEditDisabledReason)}
+                  title={wikiEditDisabledReason ?? undefined}
+                  onClick={startWikiEdit}
+                >
+                  <BookOpen size={15} /> Edit
+                </button>
+                <button
+                  type="button"
+                  disabled={Boolean(wikiDeleteDisabledReason)}
+                  title={wikiDeleteDisabledReason ?? undefined}
+                  onClick={deleteSelectedWikiPage}
+                >
+                  <X size={15} /> Delete
+                </button>
+                <button
+                  type="button"
+                  disabled={!selectedPage?.htmlUrl}
+                  title={selectedPage?.htmlUrl ? undefined : "Wiki page URL unavailable."}
+                  onClick={() => {
+                    if (selectedPage?.htmlUrl) {
+                      onOpenExternal(selectedPage.htmlUrl);
+                    }
+                  }}
+                >
+                  <ExternalLink size={15} /> GitHub fallback
+                </button>
+              </div>
             </header>
             <MarkdownBody
               markdown={selectedPage?.markdown}
@@ -19935,6 +21527,82 @@ function WikiTab({
           </article>
         </div>
       )}
+      <form className="compose-form wiki-editor-form" onSubmit={submitWikiForm}>
+        <div className="form-section-heading">
+          <div>
+            <h3>{wikiFormMode === "create" ? "Create wiki page" : "Edit wiki page"}</h3>
+            <p>{wikiFormMode === "create" ? "Create a page in the repository wiki." : selectedPage?.path}</p>
+          </div>
+          <div className="table-action-row">
+            <button
+              className={wikiFormMode === "create" ? "selected-action" : ""}
+              type="button"
+              disabled={Boolean(wikiFormDisabledReason)}
+              title={wikiFormDisabledReason ?? undefined}
+              onClick={resetWikiCreateForm}
+            >
+              <Plus size={15} /> New
+            </button>
+            <button
+              className={wikiFormMode === "edit" ? "selected-action" : ""}
+              type="button"
+              disabled={Boolean(wikiEditDisabledReason)}
+              title={wikiEditDisabledReason ?? undefined}
+              onClick={startWikiEdit}
+            >
+              <BookOpen size={15} /> Edit selected
+            </button>
+          </div>
+        </div>
+        <label>
+          Title
+          <input
+            type="text"
+            value={wikiPageTitle}
+            disabled={wikiFormMode === "edit" || Boolean(wikiFormDisabledReason)}
+            title={
+              wikiFormMode === "edit"
+                ? "Rename wiki pages on GitHub fallback."
+                : (wikiFormDisabledReason ?? undefined)
+            }
+            onChange={(event) => setWikiPageTitle(event.target.value)}
+            placeholder="Home"
+          />
+        </label>
+        <label>
+          Markdown
+          <textarea
+            value={wikiPageContent}
+            disabled={Boolean(wikiFormDisabledReason)}
+            title={wikiFormDisabledReason ?? undefined}
+            onChange={(event) => setWikiPageContent(event.target.value)}
+            placeholder="Write the wiki page markdown."
+            rows={10}
+          />
+        </label>
+        {wikiSubmitDisabledReason && (
+          <small className="action-disabled-note">{wikiSubmitDisabledReason}</small>
+        )}
+        <div className="form-actions">
+          <button
+            type="submit"
+            disabled={Boolean(wikiSubmitDisabledReason)}
+            title={wikiSubmitDisabledReason ?? undefined}
+          >
+            <CheckCircle2 size={16} /> {wikiFormMode === "create" ? "Create page" : "Save page"}
+          </button>
+          {wikiFormMode === "edit" && (
+            <button
+              type="button"
+              disabled={Boolean(wikiDeleteDisabledReason)}
+              title={wikiDeleteDisabledReason ?? undefined}
+              onClick={deleteSelectedWikiPage}
+            >
+              <X size={16} /> Delete page
+            </button>
+          )}
+        </div>
+      </form>
       <div className="tile-grid">
         <button
           className="project-tile"
@@ -20014,6 +21682,11 @@ function SecurityQualityTab({
   repositoryCommunityProfileLoading,
   repositoryCommunityProfileAvailability,
   repositoryCommunityProfileError,
+  githubReady,
+  mutationAction,
+  mutationPending,
+  mutationSucceeded,
+  mutationError,
   focusedSecurityItemKind,
   focusedSecurityItemId,
   onOpenExternal,
@@ -20024,7 +21697,8 @@ function SecurityQualityTab({
   onExpandCodeScanningAlerts,
   onExpandSecretScanningAlerts,
   onExpandRepositoryRulesets,
-  onExpandRepositorySecurityAdvisories
+  onExpandRepositorySecurityAdvisories,
+  onMutate
 }: {
   repository: RepositoryDetail;
   branchProtectionBranch: string | null;
@@ -20066,6 +21740,11 @@ function SecurityQualityTab({
   repositoryCommunityProfileLoading: boolean;
   repositoryCommunityProfileAvailability: GitHubReadAvailability | null;
   repositoryCommunityProfileError: Error | null;
+  githubReady: boolean;
+  mutationAction: GitHubAction | null;
+  mutationPending: boolean;
+  mutationSucceeded: boolean;
+  mutationError: Error | null;
   focusedSecurityItemKind: LocalRecentSecurityItemKind | null;
   focusedSecurityItemId: string | null;
   onOpenExternal(url: string): void;
@@ -20077,6 +21756,7 @@ function SecurityQualityTab({
   onExpandSecretScanningAlerts(): void;
   onExpandRepositoryRulesets(): void;
   onExpandRepositorySecurityAdvisories(): void;
+  onMutate(action: GitHubAction, dangerous: boolean, payload?: Record<string, unknown>): void;
 }): JSX.Element {
   const protection = branchProtection?.protection ?? null;
   const availabilityMessage = readAvailabilityMessage(
@@ -20188,13 +21868,15 @@ function SecurityQualityTab({
         ? "unavailable"
         : repositorySecurityPolicyAvailabilityLabel
           ? repositorySecurityPolicyAvailabilityLabel
-        : securityPolicy
-          ? "found"
-          : repositorySecurityPolicy
-            ? "not configured"
-            : "unknown";
-  const presentCommunityFiles = repositoryCommunityProfile?.files.filter((file) => file.path || file.htmlUrl) ?? [];
-  const missingCommunityFiles = repositoryCommunityProfile?.files.filter((file) => !file.path && !file.htmlUrl) ?? [];
+          : securityPolicy
+            ? "found"
+            : repositorySecurityPolicy
+              ? "not configured"
+              : "unknown";
+  const presentCommunityFiles =
+    repositoryCommunityProfile?.files.filter((file) => file.path || file.htmlUrl) ?? [];
+  const missingCommunityFiles =
+    repositoryCommunityProfile?.files.filter((file) => !file.path && !file.htmlUrl) ?? [];
   const repositoryCommunityProfileStatusLabel =
     repositoryCommunityProfileLoading && !repositoryCommunityProfile
       ? "loading"
@@ -20252,6 +21934,26 @@ function SecurityQualityTab({
       : branchProtectionBranches.length === 0
         ? "No branch options available."
         : null;
+  const securityMutationActionSet = new Set<GitHubAction>([
+    "updateBranchProtection",
+    "deleteBranchProtection",
+    "createRepositoryRuleset",
+    "updateRepositoryRuleset",
+    "deleteRepositoryRuleset"
+  ]);
+  const securityMutationRelevant = mutationAction ? securityMutationActionSet.has(mutationAction) : false;
+  const securityMutationDisabledReason =
+    (!githubReady ? "Sign in with GitHub to change security settings." : null) ??
+    (repository.permissions.isArchived ? "Repository is archived." : null) ??
+    (repository.permissions.isDisabled ? "Repository is disabled." : null);
+  const branchProtectionMutationDisabledReason =
+    (mutationPending && securityMutationRelevant ? "A security setting update is still running." : null) ??
+    securityMutationDisabledReason ??
+    (!branchProtectionBranch ? "Select a branch before changing branch protection." : null);
+  const createRulesetDisabledReason =
+    (mutationPending && securityMutationRelevant ? "A security setting update is still running." : null) ??
+    securityMutationDisabledReason ??
+    (!defaultSecurityRef ? "Repository default branch is unavailable." : null);
 
   function openSecurityPath(path: string | null, ref: string | null | undefined, line?: number | null): void {
     if (!path) {
@@ -20267,6 +21969,75 @@ function SecurityQualityTab({
 
   function securityItemActive(kind: LocalRecentSecurityItemKind, id: string | number): boolean {
     return focusedSecurityItemKind === kind && focusedSecurityItemId === String(id);
+  }
+
+  function baselineBranchProtectionPayload(branch: string): Record<string, unknown> {
+    return {
+      branch,
+      required_status_checks: null,
+      enforce_admins: true,
+      required_pull_request_reviews: {
+        dismiss_stale_reviews: true,
+        require_code_owner_reviews: false,
+        required_approving_review_count: 1
+      },
+      restrictions: null,
+      required_linear_history: true,
+      allow_force_pushes: false,
+      allow_deletions: false,
+      block_creations: false,
+      required_conversation_resolution: true,
+      lock_branch: false,
+      allow_fork_syncing: false
+    };
+  }
+
+  function baselineRepositoryRulesetPayload(
+    name: string,
+    enforcement: "active" | "evaluate",
+    rulesetId?: number
+  ): Record<string, unknown> {
+    const ref = defaultSecurityRef ?? branchProtectionBranch;
+    return {
+      ...(rulesetId === undefined ? {} : { rulesetId }),
+      name,
+      target: "branch",
+      enforcement,
+      bypass_actors: [],
+      conditions: {
+        ref_name: {
+          include: ref ? [`refs/heads/${ref}`] : ["~DEFAULT_BRANCH"],
+          exclude: []
+        }
+      },
+      rules: [
+        { type: "deletion" },
+        { type: "non_fast_forward" },
+        {
+          type: "pull_request",
+          parameters: {
+            required_approving_review_count: 1,
+            dismiss_stale_reviews_on_push: true,
+            require_code_owner_review: false,
+            require_last_push_approval: false,
+            required_review_thread_resolution: true
+          }
+        }
+      ]
+    };
+  }
+
+  function rulesetMutationDisabledReason(ruleset: RepositoryRulesetSummary): string | null {
+    if (mutationPending && securityMutationRelevant) {
+      return "A security setting update is still running.";
+    }
+    if (securityMutationDisabledReason) {
+      return securityMutationDisabledReason;
+    }
+    if (ruleset.sourceType && ruleset.sourceType.toLowerCase() !== "repository") {
+      return "Inherited rulesets must be changed in their source repository or organization.";
+    }
+    return null;
   }
 
   function renderSecurityListDepthControl(
@@ -20322,7 +22093,10 @@ function SecurityQualityTab({
           </select>
           <ChevronDown size={14} />
         </label>
-        <button type="button" onClick={() => onOpenExternal(repositoryPath(repository, "/settings/branches"))}>
+        <button
+          type="button"
+          onClick={() => onOpenExternal(repositoryPath(repository, "/settings/branches"))}
+        >
           <ExternalLink size={16} /> Branch rules fallback
         </button>
         {branchProtectionBranchesNote && (
@@ -20350,6 +22124,60 @@ function SecurityQualityTab({
           <div className="error-state">Branch protection unavailable: {branchProtectionError.message}</div>
         )}
         {availabilityMessage && <div className="error-state">{availabilityMessage}</div>}
+        {securityMutationRelevant && mutationPending && (
+          <div className="loading-state" role="status">
+            Running security action: {githubActionLabel(mutationAction)}.
+          </div>
+        )}
+        {securityMutationRelevant && !mutationPending && mutationSucceeded && (
+          <div className="success-state" role="status">
+            Security action completed: {githubActionLabel(mutationAction)}.
+          </div>
+        )}
+        {securityMutationRelevant && !mutationPending && mutationError && (
+          <div className="error-state" role="alert">
+            Security action failed: {githubActionLabel(mutationAction)}. {mutationError.message}
+          </div>
+        )}
+        <div className="security-management-actions">
+          <button
+            type="button"
+            disabled={Boolean(branchProtectionMutationDisabledReason)}
+            title={branchProtectionMutationDisabledReason ?? undefined}
+            onClick={() => {
+              if (branchProtectionBranch) {
+                onMutate(
+                  "updateBranchProtection",
+                  false,
+                  baselineBranchProtectionPayload(branchProtectionBranch)
+                );
+              }
+            }}
+          >
+            <ShieldCheck size={15} /> Apply baseline protection
+          </button>
+          <button
+            type="button"
+            disabled={Boolean(branchProtectionMutationDisabledReason) || !protection}
+            title={
+              branchProtectionMutationDisabledReason ??
+              (!protection ? "No branch protection is configured for this branch." : undefined)
+            }
+            onClick={() => {
+              if (branchProtectionBranch) {
+                onMutate("deleteBranchProtection", true, { branch: branchProtectionBranch });
+              }
+            }}
+          >
+            <X size={15} /> Delete protection
+          </button>
+          <button
+            type="button"
+            onClick={() => onOpenExternal(repositoryPath(repository, "/settings/branches"))}
+          >
+            <ExternalLink size={15} /> GitHub fallback
+          </button>
+        </div>
         {protection && (
           <div className="insight-grid">
             <article className="metric-tile">
@@ -20360,7 +22188,9 @@ function SecurityQualityTab({
             <article className="metric-tile">
               <strong>{protection.requiredApprovingReviewCount ?? 0}</strong>
               <small>Required approvals</small>
-              <span>{protection.requireCodeOwnerReviews ? "Code owners required" : "Code owners optional"}</span>
+              <span>
+                {protection.requireCodeOwnerReviews ? "Code owners required" : "Code owners optional"}
+              </span>
             </article>
             <article className="metric-tile">
               <strong>{settingStateLabel(protection.enforceAdmins)}</strong>
@@ -20390,13 +22220,17 @@ function SecurityQualityTab({
         {protection && (
           <div className="workflow-summary branch-protection-flags">
             <span>Linear history: {settingStateLabel(protection.requiredLinearHistory)}</span>
-            <span>Conversation resolution: {settingStateLabel(protection.requiredConversationResolution)}</span>
+            <span>
+              Conversation resolution: {settingStateLabel(protection.requiredConversationResolution)}
+            </span>
             <span>Force pushes: {settingStateLabel(protection.allowForcePushes)}</span>
             <span>Branch deletion: {settingStateLabel(protection.allowDeletions)}</span>
             {protection.requireLastPushApproval !== null && (
               <span>Last push approval: {settingStateLabel(protection.requireLastPushApproval)}</span>
             )}
-            {protection.lockBranch !== null && <span>Lock branch: {settingStateLabel(protection.lockBranch)}</span>}
+            {protection.lockBranch !== null && (
+              <span>Lock branch: {settingStateLabel(protection.lockBranch)}</span>
+            )}
             {protection.allowForkSyncing !== null && (
               <span>Fork syncing: {settingStateLabel(protection.allowForkSyncing)}</span>
             )}
@@ -20428,15 +22262,52 @@ function SecurityQualityTab({
           <div className="loading-state">Loading repository rulesets...</div>
         )}
         {repositoryRulesetsError && (
-          <div className="error-state">Repository rulesets unavailable: {repositoryRulesetsError.message}</div>
+          <div className="error-state">
+            Repository rulesets unavailable: {repositoryRulesetsError.message}
+          </div>
         )}
         {repositoryRulesetsAvailabilityMessage && (
           <div className="error-state">{repositoryRulesetsAvailabilityMessage}</div>
         )}
+        <div className="security-management-actions">
+          <button
+            type="button"
+            disabled={Boolean(createRulesetDisabledReason)}
+            title={createRulesetDisabledReason ?? undefined}
+            onClick={() =>
+              onMutate(
+                "createRepositoryRuleset",
+                false,
+                baselineRepositoryRulesetPayload("Baseline branch rules", "active")
+              )
+            }
+          >
+            <Plus size={15} /> Create baseline ruleset
+          </button>
+          <button
+            type="button"
+            disabled={Boolean(createRulesetDisabledReason)}
+            title={createRulesetDisabledReason ?? undefined}
+            onClick={() =>
+              onMutate(
+                "createRepositoryRuleset",
+                false,
+                baselineRepositoryRulesetPayload("Evaluate baseline branch rules", "evaluate")
+              )
+            }
+          >
+            <ShieldCheck size={15} /> Create evaluate ruleset
+          </button>
+          <button type="button" onClick={() => onOpenExternal(repositoryPath(repository, "/rules"))}>
+            <ExternalLink size={15} /> Rulesets fallback
+          </button>
+        </div>
         {!repositoryRulesetsLoading &&
           !repositoryRulesetsError &&
           !repositoryRulesetsAvailabilityMessage &&
-          repositoryRulesets.length === 0 && <div className="empty-state">No repository rulesets returned.</div>}
+          repositoryRulesets.length === 0 && (
+            <div className="empty-state">No repository rulesets returned.</div>
+          )}
         {renderSecurityListDepthControl(
           repositoryRulesets.length,
           repositoryRulesetsLimit,
@@ -20465,10 +22336,60 @@ function SecurityQualityTab({
                   <span>{formatCompactNumber(ruleset.bypassActorCount ?? 0)} bypass actors</span>
                   <span>Bypass: {accessRoleLabel(ruleset.currentUserCanBypass)}</span>
                 </div>
+                {(ruleset.rules.length > 0 ||
+                  ruleset.conditions.length > 0 ||
+                  ruleset.bypassActors.length > 0) && (
+                  <div className="ruleset-detail-list" aria-label={`${ruleset.name} ruleset details`}>
+                    {ruleset.rules.slice(0, 4).map((rule, index) => (
+                      <span key={`rule-${rule.type}-${index}`}>
+                        <strong>Rule</strong> {rulesetRuleLabel(rule)}
+                      </span>
+                    ))}
+                    {ruleset.conditions.slice(0, 3).map((condition, index) => (
+                      <span key={`condition-${condition.type}-${index}`}>
+                        <strong>Condition</strong> {rulesetConditionLabel(condition)}
+                      </span>
+                    ))}
+                    {ruleset.bypassActors.slice(0, 3).map((actor, index) => (
+                      <span key={`bypass-${actor.actorType ?? "actor"}-${actor.actorId ?? index}`}>
+                        <strong>Bypass</strong> {rulesetBypassActorLabel(actor)}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <small>
                   {ruleset.updatedAt ? `Updated ${formatRelativeDate(ruleset.updatedAt)}` : "No update time"}
                 </small>
                 <div>
+                  {(() => {
+                    const rulesetDisabledReason = rulesetMutationDisabledReason(ruleset);
+                    return (
+                      <>
+                        <button
+                          type="button"
+                          disabled={Boolean(rulesetDisabledReason)}
+                          title={rulesetDisabledReason ?? undefined}
+                          onClick={() =>
+                            onMutate(
+                              "updateRepositoryRuleset",
+                              false,
+                              baselineRepositoryRulesetPayload(ruleset.name, "active", ruleset.id)
+                            )
+                          }
+                        >
+                          <ShieldCheck size={15} /> Reapply baseline
+                        </button>
+                        <button
+                          type="button"
+                          disabled={Boolean(rulesetDisabledReason)}
+                          title={rulesetDisabledReason ?? undefined}
+                          onClick={() => onMutate("deleteRepositoryRuleset", true, { rulesetId: ruleset.id })}
+                        >
+                          <X size={15} /> Delete
+                        </button>
+                      </>
+                    );
+                  })()}
                   <button
                     type="button"
                     onClick={() =>
@@ -20515,8 +22436,8 @@ function SecurityQualityTab({
               repositorySecurityAdvisoriesLoading && repositorySecurityAdvisories.length === 0
                 ? ""
                 : repositorySecurityAdvisoriesStatusUnavailable || repositorySecurityAdvisories.length > 0
-                ? "attention"
-                : "success"
+                  ? "attention"
+                  : "success"
             }`}
           >
             {repositorySecurityAdvisoriesStatusLabel}
@@ -20629,7 +22550,9 @@ function SecurityQualityTab({
           <div className="loading-state">Loading security policy...</div>
         )}
         {repositorySecurityPolicyError && (
-          <div className="error-state">Security policy unavailable: {repositorySecurityPolicyError.message}</div>
+          <div className="error-state">
+            Security policy unavailable: {repositorySecurityPolicyError.message}
+          </div>
         )}
         {repositorySecurityPolicyAvailabilityMessage && (
           <div className="error-state">{repositorySecurityPolicyAvailabilityMessage}</div>
@@ -20647,7 +22570,9 @@ function SecurityQualityTab({
           <article className="workflow-job-card">
             <header>
               <strong>{securityPolicy.path}</strong>
-              <span className="state-chip success">{formatCompactNumber(securityPolicy.size ?? 0)} bytes</span>
+              <span className="state-chip success">
+                {formatCompactNumber(securityPolicy.size ?? 0)} bytes
+              </span>
             </header>
             <small>
               {securityPolicy.sha ? `SHA ${securityPolicy.sha.slice(0, 12)}` : "SHA unavailable"} ·{" "}
@@ -20662,8 +22587,7 @@ function SecurityQualityTab({
                     onClick={() =>
                       setExpandedSecurityPolicyState((current) => ({
                         policyKey: securityPolicyKey,
-                        expanded:
-                          current.policyKey === securityPolicyKey ? !current.expanded : true
+                        expanded: current.policyKey === securityPolicyKey ? !current.expanded : true
                       }))
                     }
                   >
@@ -20694,7 +22618,10 @@ function SecurityQualityTab({
           </article>
         )}
         <div className="table-action-row">
-          <button type="button" onClick={() => onOpenExternal(repositoryPath(repository, "/security/policy"))}>
+          <button
+            type="button"
+            onClick={() => onOpenExternal(repositoryPath(repository, "/security/policy"))}
+          >
             <ExternalLink size={16} /> GitHub fallback
           </button>
         </div>
@@ -20705,7 +22632,9 @@ function SecurityQualityTab({
             <h2>Community profile</h2>
             <small>Repository community standards returned by GitHub.</small>
           </div>
-          <span className={`state-chip ${repositoryCommunityProfileStatusUnavailable ? "attention" : "success"}`}>
+          <span
+            className={`state-chip ${repositoryCommunityProfileStatusUnavailable ? "attention" : "success"}`}
+          >
             {repositoryCommunityProfileStatusLabel}
           </span>
         </header>
@@ -20790,7 +22719,10 @@ function SecurityQualityTab({
         )}
         <div className="table-action-row">
           {repositoryCommunityProfile?.documentationUrl && (
-            <button type="button" onClick={() => onOpenExternal(repositoryCommunityProfile.documentationUrl!)}>
+            <button
+              type="button"
+              onClick={() => onOpenExternal(repositoryCommunityProfile.documentationUrl!)}
+            >
               <ExternalLink size={16} /> GitHub fallback
             </button>
           )}
@@ -20948,7 +22880,9 @@ function SecurityQualityTab({
           <div className="loading-state">Loading code scanning alerts...</div>
         )}
         {codeScanningAlertsError && (
-          <div className="error-state">Code scanning alerts unavailable: {codeScanningAlertsError.message}</div>
+          <div className="error-state">
+            Code scanning alerts unavailable: {codeScanningAlertsError.message}
+          </div>
         )}
         {codeScanningAvailabilityMessage && (
           <div className="error-state">{codeScanningAvailabilityMessage}</div>
@@ -21057,7 +22991,9 @@ function SecurityQualityTab({
           <div className="loading-state">Loading secret scanning alerts...</div>
         )}
         {secretScanningAlertsError && (
-          <div className="error-state">Secret scanning alerts unavailable: {secretScanningAlertsError.message}</div>
+          <div className="error-state">
+            Secret scanning alerts unavailable: {secretScanningAlertsError.message}
+          </div>
         )}
         {secretScanningAvailabilityMessage && (
           <div className="error-state">{secretScanningAvailabilityMessage}</div>
@@ -21085,7 +23021,9 @@ function SecurityQualityTab({
                 key={alert.number}
               >
                 <header>
-                  <strong>{alert.secretTypeDisplayName ?? alert.secretType ?? `Alert ${alert.number}`}</strong>
+                  <strong>
+                    {alert.secretTypeDisplayName ?? alert.secretType ?? `Alert ${alert.number}`}
+                  </strong>
                   <span className="state-chip attention">{alert.validity ?? alert.state}</span>
                 </header>
                 <small>
@@ -21106,7 +23044,10 @@ function SecurityQualityTab({
                       onSelectSecurityItem({
                         kind: "secretScanning",
                         id: String(alert.number),
-                        title: alert.secretTypeDisplayName ?? alert.secretType ?? `Secret scanning alert #${alert.number}`,
+                        title:
+                          alert.secretTypeDisplayName ??
+                          alert.secretType ??
+                          `Secret scanning alert #${alert.number}`,
                         subtitle: `${repository.nameWithOwner} secret scanning alert #${alert.number}`,
                         url: alert.htmlUrl,
                         state: alert.state,
@@ -21122,9 +23063,15 @@ function SecurityQualityTab({
                   <button
                     type="button"
                     disabled={Boolean(securityPathDisabledReason(alert.firstLocationPath, "Secret location"))}
-                    title={securityPathDisabledReason(alert.firstLocationPath, "Secret location") ?? undefined}
+                    title={
+                      securityPathDisabledReason(alert.firstLocationPath, "Secret location") ?? undefined
+                    }
                     onClick={() =>
-                      openSecurityPath(alert.firstLocationPath, defaultSecurityRef, alert.firstLocationStartLine)
+                      openSecurityPath(
+                        alert.firstLocationPath,
+                        defaultSecurityRef,
+                        alert.firstLocationStartLine
+                      )
                     }
                   >
                     Open location in Control
@@ -21217,6 +23164,41 @@ function accessRoleLabel(role: string | null): string {
   return role ? role.replace(/[_-]/g, " ") : "access";
 }
 
+function rulesetConditionLabel(condition: RepositoryRulesetSummary["conditions"][number]): string {
+  const refDetails = [
+    ...condition.include.map((ref) => `include ${ref}`),
+    ...condition.exclude.map((ref) => `exclude ${ref}`)
+  ];
+  return rulesetPartLabel(condition.type, [...refDetails, ...condition.parameters]);
+}
+
+function rulesetRuleLabel(rule: RepositoryRulesetSummary["rules"][number]): string {
+  return rulesetPartLabel(rule.type, rule.parameters);
+}
+
+function rulesetBypassActorLabel(actor: RepositoryRulesetSummary["bypassActors"][number]): string {
+  const actorName = [actor.actorType, actor.actorId === null ? null : `#${actor.actorId}`]
+    .filter(Boolean)
+    .join(" ");
+  const bypassMode = actor.bypassMode ? `via ${accessRoleLabel(actor.bypassMode)}` : null;
+  return [actorName || "Unknown bypass actor", bypassMode].filter(Boolean).join(" ");
+}
+
+function rulesetPartLabel(name: string, details: string[]): string {
+  const label = accessRoleLabel(name);
+  const visibleDetails = details.filter(Boolean).slice(0, 3);
+  return visibleDetails.length > 0 ? `${label}: ${visibleDetails.join(", ")}` : label;
+}
+
+function rulesetCompactSummary(ruleset: RepositoryRulesetSummary): string {
+  const parts = [
+    ...ruleset.rules.slice(0, 2).map((rule) => `Rule ${rulesetRuleLabel(rule)}`),
+    ...ruleset.conditions.slice(0, 1).map((condition) => `Condition ${rulesetConditionLabel(condition)}`),
+    ...ruleset.bypassActors.slice(0, 1).map((actor) => `Bypass ${rulesetBypassActorLabel(actor)}`)
+  ];
+  return parts.length > 0 ? parts.join(" · ") : "No detailed ruleset payload returned.";
+}
+
 function collaboratorRoleLabel(collaborator: RepositoryCollaboratorSummary): string {
   if (collaborator.roleName) {
     return accessRoleLabel(collaborator.roleName);
@@ -21240,11 +23222,46 @@ function collaboratorRoleLabel(collaborator: RepositoryCollaboratorSummary): str
   return "access";
 }
 
+function collaboratorPermissionForMutation(collaborator: RepositoryCollaboratorSummary): string {
+  const role = collaborator.roleName?.toLowerCase();
+  if (role === "admin" || role === "maintain" || role === "triage" || role === "pull") {
+    return role;
+  }
+  if (role === "write" || role === "push") {
+    return "push";
+  }
+  if (collaborator.permissions.admin) {
+    return "admin";
+  }
+  if (collaborator.permissions.maintain) {
+    return "maintain";
+  }
+  if (collaborator.permissions.push) {
+    return "push";
+  }
+  if (collaborator.permissions.triage) {
+    return "triage";
+  }
+  if (collaborator.permissions.pull) {
+    return "pull";
+  }
+  return "push";
+}
+
 function RepositorySettingsTab({
   repository,
   githubReady,
   branches,
   branchesError,
+  branchProtectionBranch,
+  branchProtection,
+  branchProtectionLoading,
+  branchProtectionError,
+  repositoryRulesets,
+  repositoryRulesetsLimit,
+  repositoryRulesetsLoading,
+  repositoryRulesetsAvailability,
+  repositoryRulesetsError,
   repositoryAccess,
   repositoryAccessLimit,
   repositoryAccessLoading,
@@ -21257,6 +23274,10 @@ function RepositorySettingsTab({
   saving,
   saveSucceeded,
   saveError,
+  mutationAction,
+  mutationPending,
+  mutationSucceeded,
+  mutationError,
   onMutate,
   onOpenExternal,
   onOpenRepository,
@@ -21269,6 +23290,15 @@ function RepositorySettingsTab({
   githubReady: boolean;
   branches: BranchSummary[];
   branchesError: Error | null;
+  branchProtectionBranch: string | null;
+  branchProtection: BranchProtectionResult | null;
+  branchProtectionLoading: boolean;
+  branchProtectionError: Error | null;
+  repositoryRulesets: RepositoryRulesetSummary[];
+  repositoryRulesetsLimit: number;
+  repositoryRulesetsLoading: boolean;
+  repositoryRulesetsAvailability: GitHubReadAvailability | null;
+  repositoryRulesetsError: Error | null;
   repositoryAccess: RepositoryAccessResult | null;
   repositoryAccessLimit: number;
   repositoryAccessLoading: boolean;
@@ -21281,6 +23311,10 @@ function RepositorySettingsTab({
   saving: boolean;
   saveSucceeded: boolean;
   saveError: Error | null;
+  mutationAction: GitHubAction | null;
+  mutationPending: boolean;
+  mutationSucceeded: boolean;
+  mutationError: Error | null;
   onMutate(action: GitHubAction, dangerous: boolean, payload?: Record<string, unknown>): void;
   onOpenExternal(url: string): void;
   onOpenRepository(nameWithOwner: string, tab?: RepositoryTab): void;
@@ -21293,7 +23327,9 @@ function RepositorySettingsTab({
   const administration = repository.administration;
   const [description, setDescription] = useState(repository.description ?? "");
   const [homepage, setHomepage] = useState(repository.homepageUrl ?? "");
-  const [defaultBranch, setDefaultBranch] = useState(administration.defaultBranch ?? repository.defaultBranch ?? "");
+  const [defaultBranch, setDefaultBranch] = useState(
+    administration.defaultBranch ?? repository.defaultBranch ?? ""
+  );
   const [topics, setTopics] = useState(repository.topics.join(", "));
   const [webCommitSignoffRequired, setWebCommitSignoffRequired] = useState(
     administration.webCommitSignoffRequired === true
@@ -21314,9 +23350,33 @@ function RepositorySettingsTab({
     deleteBranchOnMerge: administration.mergeSettings.deleteBranchOnMerge === true,
     allowUpdateBranch: administration.mergeSettings.allowUpdateBranch === true
   });
-  const liveSettingsDisabledReason = !githubReady ? "Sign in with GitHub to change repository settings." : null;
+  const [collaboratorLogin, setCollaboratorLogin] = useState("");
+  const [collaboratorPermission, setCollaboratorPermission] = useState("push");
+  const [teamSlug, setTeamSlug] = useState("");
+  const [teamPermission, setTeamPermission] = useState("push");
+  const [branchRequiresReviews, setBranchRequiresReviews] = useState(
+    branchProtection?.protection?.requiresPullRequestReviews === true
+  );
+  const [branchRequiredApprovals, setBranchRequiredApprovals] = useState(
+    String(branchProtection?.protection?.requiredApprovingReviewCount ?? 1)
+  );
+  const [branchEnforceAdmins, setBranchEnforceAdmins] = useState(
+    branchProtection?.protection?.enforceAdmins === true
+  );
+  const [branchRequireLinearHistory, setBranchRequireLinearHistory] = useState(
+    branchProtection?.protection?.requiredLinearHistory === true
+  );
+  const [branchRequireConversationResolution, setBranchRequireConversationResolution] = useState(
+    branchProtection?.protection?.requiredConversationResolution === true
+  );
+  const [rulesetName, setRulesetName] = useState("");
+  const [rulesetEnforcement, setRulesetEnforcement] = useState("active");
+  const liveSettingsDisabledReason = !githubReady
+    ? "Sign in with GitHub to change repository settings."
+    : null;
   const liveStatusDisabledReason = !githubReady ? "Sign in with GitHub to change repository status." : null;
-  const settingsDisabledReason = liveSettingsDisabledReason ?? repositorySettingsMutationDisabledReason(repository);
+  const settingsDisabledReason =
+    liveSettingsDisabledReason ?? repositorySettingsMutationDisabledReason(repository);
   const statusDisabledReason = liveStatusDisabledReason ?? repositoryStatusMutationDisabledReason(repository);
   const formDisabledReason = saving ? "Repository settings save is still running." : settingsDisabledReason;
   const statusActionDisabledReason = saving
@@ -21350,11 +23410,9 @@ function RepositorySettingsTab({
   const collaborators = repositoryAccess?.collaborators ?? [];
   const accessTeams = repositoryAccess?.teams ?? [];
   const collaboratorsLimitHit = collaborators.length >= repositoryAccessLimit;
-  const canExpandCollaborators =
-    collaboratorsLimitHit && repositoryAccessLimit < maxRepositoryAccessLimit;
+  const canExpandCollaborators = collaboratorsLimitHit && repositoryAccessLimit < maxRepositoryAccessLimit;
   const accessTeamsLimitHit = accessTeams.length >= repositoryAccessLimit;
-  const canExpandAccessTeams =
-    accessTeamsLimitHit && repositoryAccessLimit < maxRepositoryAccessLimit;
+  const canExpandAccessTeams = accessTeamsLimitHit && repositoryAccessLimit < maxRepositoryAccessLimit;
   const collaboratorsAvailabilityMessage = readAvailabilityMessage(
     "Repository collaborators",
     repositoryAccess?.collaboratorsAvailability ?? null
@@ -21399,7 +23457,7 @@ function RepositorySettingsTab({
   const selectedCollaborator =
     collaborators.find((collaborator) => collaborator.login === focusedCollaboratorLogin) ?? null;
   const selectedCollaboratorRepositoryLimit = selectedCollaborator
-    ? profileRepositoryLimits[selectedCollaborator.login] ?? defaultMemberProfileRepositoryLimit
+    ? (profileRepositoryLimits[selectedCollaborator.login] ?? defaultMemberProfileRepositoryLimit)
     : defaultMemberProfileRepositoryLimit;
   const selectedCollaboratorProfile = useQuery<AccountProfileResult>({
     queryKey: ["github-account-profile", selectedCollaborator?.login ?? null],
@@ -21411,7 +23469,11 @@ function RepositorySettingsTab({
     enabled: Boolean(selectedCollaborator)
   });
   const selectedCollaboratorRepositories = useQuery<AccountRepositoryListResult>({
-    queryKey: ["github-account-repositories", selectedCollaborator?.login ?? null, selectedCollaboratorRepositoryLimit],
+    queryKey: [
+      "github-account-repositories",
+      selectedCollaborator?.login ?? null,
+      selectedCollaboratorRepositoryLimit
+    ],
     queryFn: () =>
       api.github.listAccountRepositoriesWithStatus({
         login: selectedCollaborator?.login ?? undefined,
@@ -21428,7 +23490,8 @@ function RepositorySettingsTab({
   const selectedCollaboratorRepositoriesLimitHit =
     selectedCollaboratorRepositoryItems.length >= selectedCollaboratorRepositoryLimit;
   const canExpandSelectedCollaboratorRepositories =
-    selectedCollaboratorRepositoriesLimitHit && selectedCollaboratorRepositoryLimit < maxProfileRepositoryLimit;
+    selectedCollaboratorRepositoriesLimitHit &&
+    selectedCollaboratorRepositoryLimit < maxProfileRepositoryLimit;
   const selectedCollaboratorProfileData = selectedCollaboratorProfile.data?.profile ?? null;
   const selectedCollaboratorProfileAvailabilityMessage = readAvailabilityMessage(
     "Profile",
@@ -21450,6 +23513,44 @@ function RepositorySettingsTab({
         .filter(Boolean)
         .join(" · ")
     : null;
+  const repositoryAdminActions: GitHubAction[] = [
+    "addRepositoryCollaborator",
+    "removeRepositoryCollaborator",
+    "updateCollaboratorPermission",
+    "addRepositoryTeam",
+    "removeRepositoryTeam",
+    "updateTeamPermission",
+    "updateBranchProtection",
+    "deleteBranchProtection",
+    "createRepositoryRuleset",
+    "updateRepositoryRuleset",
+    "deleteRepositoryRuleset"
+  ];
+  const repositoryAdminMutationActive =
+    mutationPending && mutationAction !== null && repositoryAdminActions.includes(mutationAction);
+  const repositoryAdminMutationSucceeded =
+    mutationSucceeded && mutationAction !== null && repositoryAdminActions.includes(mutationAction);
+  const repositoryAdminMutationError =
+    mutationAction !== null && repositoryAdminActions.includes(mutationAction) ? mutationError : null;
+  const adminDisabledReason = repositoryAdminMutationActive
+    ? `${githubActionLabel(mutationAction)} is still running.`
+    : settingsDisabledReason;
+  const adminDisabled = Boolean(adminDisabledReason);
+  const branchProtectionAvailabilityMessage = readAvailabilityMessage(
+    "Branch protection",
+    branchProtection?.availability ?? null
+  );
+  const repositoryRulesetsAvailabilityMessage = readAvailabilityMessage(
+    "Repository rulesets",
+    repositoryRulesetsAvailability
+  );
+  const branchProtectionExists = Boolean(branchProtection?.protection);
+  const branchProtectionDisabledReason =
+    adminDisabledReason ??
+    (branchProtectionBranch ? null : "Select a branch before changing branch protection.");
+  const branchProtectionDisabled = Boolean(branchProtectionDisabledReason);
+  const rulesetDisabledReason = adminDisabledReason;
+  const rulesetDisabled = Boolean(rulesetDisabledReason);
 
   function updateFeature(name: keyof typeof features, value: boolean): void {
     setFeatures((current) => ({ ...current, [name]: value }));
@@ -21480,7 +23581,11 @@ function RepositorySettingsTab({
   function repositorySettingsSaveRequiresConfirmation(): boolean {
     const currentDefaultBranch = administration.defaultBranch ?? repository.defaultBranch ?? null;
     const nextDefaultBranch = defaultBranch.trim();
-    if (currentDefaultBranch !== null && nextDefaultBranch !== "" && nextDefaultBranch !== currentDefaultBranch) {
+    if (
+      currentDefaultBranch !== null &&
+      nextDefaultBranch !== "" &&
+      nextDefaultBranch !== currentDefaultBranch
+    ) {
       return true;
     }
 
@@ -21563,6 +23668,144 @@ function RepositorySettingsTab({
     onMutate("editRepository", repositorySettingsSaveRequiresConfirmation(), payload);
   }
 
+  function submitAddCollaborator(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    const username = collaboratorLogin.trim();
+    if (adminDisabled || username.length === 0) {
+      return;
+    }
+    onMutate("addRepositoryCollaborator", false, { username, permission: collaboratorPermission });
+    setCollaboratorLogin("");
+  }
+
+  function updateCollaboratorPermission(
+    collaborator: RepositoryCollaboratorSummary,
+    permission: string
+  ): void {
+    if (adminDisabled) {
+      return;
+    }
+    onMutate("updateCollaboratorPermission", false, { username: collaborator.login, permission });
+  }
+
+  function removeCollaborator(collaborator: RepositoryCollaboratorSummary): void {
+    if (adminDisabled) {
+      return;
+    }
+    onMutate("removeRepositoryCollaborator", true, { username: collaborator.login });
+  }
+
+  function submitAddTeam(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    const slug = teamSlug.trim();
+    if (adminDisabled || slug.length === 0) {
+      return;
+    }
+    onMutate("addRepositoryTeam", false, { teamSlug: slug, permission: teamPermission });
+    setTeamSlug("");
+  }
+
+  function updateTeamPermission(team: TeamSummary, permission: string): void {
+    if (adminDisabled) {
+      return;
+    }
+    onMutate("updateTeamPermission", false, { teamSlug: team.slug, permission });
+  }
+
+  function removeTeam(team: TeamSummary): void {
+    if (adminDisabled) {
+      return;
+    }
+    onMutate("removeRepositoryTeam", true, { teamSlug: team.slug });
+  }
+
+  function branchProtectionPayload(): Record<string, unknown> | null {
+    if (!branchProtectionBranch) {
+      return null;
+    }
+
+    const approvalCount = Math.max(0, Number.parseInt(branchRequiredApprovals, 10) || 0);
+    return {
+      branch: branchProtectionBranch,
+      required_status_checks: null,
+      enforce_admins: branchEnforceAdmins,
+      required_pull_request_reviews: branchRequiresReviews
+        ? {
+            required_approving_review_count: approvalCount,
+            dismiss_stale_reviews: branchProtection?.protection?.dismissStaleReviews ?? false,
+            require_code_owner_reviews: branchProtection?.protection?.requireCodeOwnerReviews ?? false,
+            require_last_push_approval: branchProtection?.protection?.requireLastPushApproval ?? false
+          }
+        : null,
+      restrictions: null,
+      required_linear_history: branchRequireLinearHistory,
+      required_conversation_resolution: branchRequireConversationResolution,
+      allow_force_pushes: branchProtection?.protection?.allowForcePushes ?? false,
+      allow_deletions: branchProtection?.protection?.allowDeletions ?? false,
+      lock_branch: branchProtection?.protection?.lockBranch ?? false,
+      allow_fork_syncing: branchProtection?.protection?.allowForkSyncing ?? false
+    };
+  }
+
+  function submitBranchProtection(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    if (branchProtectionDisabled) {
+      return;
+    }
+    const payload = branchProtectionPayload();
+    if (payload) {
+      onMutate("updateBranchProtection", false, payload);
+    }
+  }
+
+  function deleteBranchProtection(): void {
+    if (branchProtectionDisabled || !branchProtectionBranch) {
+      return;
+    }
+    onMutate("deleteBranchProtection", true, { branch: branchProtectionBranch });
+  }
+
+  function rulesetPayload(ruleset?: RepositoryRulesetSummary): Record<string, unknown> {
+    const name = rulesetName.trim() || ruleset?.name || `${repository.name} branch rules`;
+    const ref = administration.defaultBranch ?? repository.defaultBranch;
+    return {
+      rulesetId: ruleset?.id,
+      name,
+      target: ruleset?.target ?? "branch",
+      enforcement: ruleset?.enforcement ?? rulesetEnforcement,
+      bypass_actors: [],
+      conditions: {
+        ref_name: {
+          include: ref ? [`refs/heads/${ref}`] : ["~DEFAULT_BRANCH"],
+          exclude: []
+        }
+      },
+      rules: [
+        { type: "deletion" },
+        { type: "non_fast_forward" },
+        {
+          type: "pull_request",
+          parameters: {
+            required_approving_review_count: 1,
+            dismiss_stale_reviews_on_push: true,
+            require_code_owner_review: false,
+            require_last_push_approval: false,
+            required_review_thread_resolution: true
+          }
+        }
+      ]
+    };
+  }
+
+  function submitCreateRuleset(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    if (rulesetDisabled || rulesetName.trim().length === 0) {
+      return;
+    }
+    onMutate("createRepositoryRuleset", false, rulesetPayload());
+    setRulesetName("");
+  }
+
   return (
     <section className="repository-settings-panel">
       <header className="settings-surface-header">
@@ -21578,7 +23821,9 @@ function RepositorySettingsTab({
         </button>
       </header>
 
-      {administrationAvailabilityMessage && <div className="error-state">{administrationAvailabilityMessage}</div>}
+      {administrationAvailabilityMessage && (
+        <div className="error-state">{administrationAvailabilityMessage}</div>
+      )}
 
       <div className="settings-summary-grid">
         <div>
@@ -21748,8 +23993,12 @@ function RepositorySettingsTab({
             <input
               type="checkbox"
               checked={features.discussions}
-              disabled={Boolean(settingControlDisabledReason(administration.features.discussions, "Discussions"))}
-              title={settingControlDisabledReason(administration.features.discussions, "Discussions") ?? undefined}
+              disabled={Boolean(
+                settingControlDisabledReason(administration.features.discussions, "Discussions")
+              )}
+              title={
+                settingControlDisabledReason(administration.features.discussions, "Discussions") ?? undefined
+              }
               onChange={(event) => updateFeature("discussions", event.target.checked)}
             />
             Discussions
@@ -21764,8 +24013,10 @@ function RepositorySettingsTab({
                 settingControlDisabledReason(administration.mergeSettings.allowMergeCommit, "Merge commits")
               )}
               title={
-                settingControlDisabledReason(administration.mergeSettings.allowMergeCommit, "Merge commits") ??
-                undefined
+                settingControlDisabledReason(
+                  administration.mergeSettings.allowMergeCommit,
+                  "Merge commits"
+                ) ?? undefined
               }
               onChange={(event) => updateMergeSetting("allowMergeCommit", event.target.checked)}
             />
@@ -21841,23 +24092,35 @@ function RepositorySettingsTab({
               type="checkbox"
               checked={mergeSettings.allowUpdateBranch}
               disabled={Boolean(
-                settingControlDisabledReason(administration.mergeSettings.allowUpdateBranch, "Update branch button")
+                settingControlDisabledReason(
+                  administration.mergeSettings.allowUpdateBranch,
+                  "Update branch button"
+                )
               )}
               title={
-                settingControlDisabledReason(administration.mergeSettings.allowUpdateBranch, "Update branch button") ??
-                undefined
+                settingControlDisabledReason(
+                  administration.mergeSettings.allowUpdateBranch,
+                  "Update branch button"
+                ) ?? undefined
               }
               onChange={(event) => updateMergeSetting("allowUpdateBranch", event.target.checked)}
             />
             Update branch button
           </label>
         </div>
-        <button className="dark-action" type="submit" disabled={formDisabled} title={formDisabledReason ?? undefined}>
+        <button
+          className="dark-action"
+          type="submit"
+          disabled={formDisabled}
+          title={formDisabledReason ?? undefined}
+        >
           {saving ? "Saving..." : "Save repository settings"}
         </button>
         {settingsDisabledReason && <small className="action-disabled-note">{settingsDisabledReason}</small>}
         {saveSucceeded && !saving && <div className="muted-row">Repository settings saved.</div>}
-        {saveError && <div className="error-state">Could not save repository settings: {saveError.message}</div>}
+        {saveError && (
+          <div className="error-state">Could not save repository settings: {saveError.message}</div>
+        )}
       </form>
 
       <div className="settings-list-grid">
@@ -21899,6 +24162,238 @@ function RepositorySettingsTab({
         </section>
       </div>
 
+      <section className="repository-admin-section">
+        <header>
+          <div>
+            <h3>Branch protection</h3>
+            <small>{branchProtectionBranch ?? "No branch selected"}</small>
+          </div>
+          <span
+            className={`state-chip ${branchProtectionError || branchProtectionAvailabilityMessage ? "attention" : ""}`}
+          >
+            {branchProtectionLoading && !branchProtection
+              ? "loading"
+              : branchProtectionError || branchProtectionAvailabilityMessage
+                ? "unavailable"
+                : branchProtectionExists
+                  ? "protected"
+                  : "unprotected"}
+          </span>
+        </header>
+        {branchProtectionError && (
+          <div className="error-state">Branch protection unavailable: {branchProtectionError.message}</div>
+        )}
+        {branchProtectionAvailabilityMessage && (
+          <div className="error-state">{branchProtectionAvailabilityMessage}</div>
+        )}
+        <form className="repository-admin-form" onSubmit={submitBranchProtection}>
+          <label>
+            Required approvals
+            <input
+              type="number"
+              min="0"
+              max="6"
+              value={branchRequiredApprovals}
+              disabled={branchProtectionDisabled || !branchRequiresReviews}
+              title={branchProtectionDisabledReason ?? undefined}
+              onChange={(event) => setBranchRequiredApprovals(event.target.value)}
+            />
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={branchRequiresReviews}
+              disabled={branchProtectionDisabled}
+              title={branchProtectionDisabledReason ?? undefined}
+              onChange={(event) => setBranchRequiresReviews(event.target.checked)}
+            />
+            Require pull request reviews
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={branchEnforceAdmins}
+              disabled={branchProtectionDisabled}
+              title={branchProtectionDisabledReason ?? undefined}
+              onChange={(event) => setBranchEnforceAdmins(event.target.checked)}
+            />
+            Enforce for admins
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={branchRequireLinearHistory}
+              disabled={branchProtectionDisabled}
+              title={branchProtectionDisabledReason ?? undefined}
+              onChange={(event) => setBranchRequireLinearHistory(event.target.checked)}
+            />
+            Require linear history
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={branchRequireConversationResolution}
+              disabled={branchProtectionDisabled}
+              title={branchProtectionDisabledReason ?? undefined}
+              onChange={(event) => setBranchRequireConversationResolution(event.target.checked)}
+            />
+            Require conversation resolution
+          </label>
+          <div className="repository-admin-actions">
+            <button
+              className="dark-action"
+              type="submit"
+              disabled={branchProtectionDisabled}
+              title={branchProtectionDisabledReason ?? undefined}
+            >
+              {branchProtectionExists ? "Update branch protection" : "Create branch protection"}
+            </button>
+            <button
+              type="button"
+              disabled={branchProtectionDisabled || !branchProtectionExists}
+              title={
+                !branchProtectionExists
+                  ? "This branch does not have protection to delete."
+                  : (branchProtectionDisabledReason ?? undefined)
+              }
+              onClick={deleteBranchProtection}
+            >
+              Delete branch protection
+            </button>
+          </div>
+          {branchProtectionDisabledReason && (
+            <small className="action-disabled-note">{branchProtectionDisabledReason}</small>
+          )}
+        </form>
+      </section>
+
+      <section className="repository-admin-section">
+        <header>
+          <div>
+            <h3>Repository rulesets</h3>
+            <small>Basic create/update/delete controls for repository-owned rulesets.</small>
+          </div>
+          <span
+            className={`state-chip ${repositoryRulesetsError || repositoryRulesetsAvailabilityMessage ? "attention" : ""}`}
+          >
+            {repositoryRulesetsLoading && repositoryRulesets.length === 0
+              ? "loading"
+              : repositoryRulesetsError || repositoryRulesetsAvailabilityMessage
+                ? "unavailable"
+                : `${repositoryRulesets.length} rulesets`}
+          </span>
+        </header>
+        {repositoryRulesetsError && (
+          <div className="error-state">
+            Repository rulesets unavailable: {repositoryRulesetsError.message}
+          </div>
+        )}
+        {repositoryRulesetsAvailabilityMessage && (
+          <div className="error-state">{repositoryRulesetsAvailabilityMessage}</div>
+        )}
+        <form className="repository-admin-form repository-admin-inline-form" onSubmit={submitCreateRuleset}>
+          <label>
+            Ruleset name
+            <input
+              value={rulesetName}
+              placeholder="Branch rules"
+              disabled={rulesetDisabled}
+              title={rulesetDisabledReason ?? undefined}
+              onChange={(event) => setRulesetName(event.target.value)}
+            />
+          </label>
+          <label>
+            Enforcement
+            <select
+              value={rulesetEnforcement}
+              disabled={rulesetDisabled}
+              title={rulesetDisabledReason ?? undefined}
+              onChange={(event) => setRulesetEnforcement(event.target.value)}
+            >
+              <option value="active">active</option>
+              <option value="evaluate">evaluate</option>
+              <option value="disabled">disabled</option>
+            </select>
+          </label>
+          <button
+            className="dark-action"
+            type="submit"
+            disabled={rulesetDisabled || rulesetName.trim().length === 0}
+            title={rulesetDisabledReason ?? "Enter a ruleset name."}
+          >
+            Create ruleset
+          </button>
+        </form>
+        {repositoryRulesets.length > 0 && (
+          <div className="repository-admin-list">
+            {repositoryRulesets.map((ruleset) => {
+              const inherited = ruleset.sourceType !== null && ruleset.sourceType !== "Repository";
+              const disabledReason = inherited
+                ? "Inherited rulesets must be managed from their source."
+                : (rulesetDisabledReason ?? null);
+              return (
+                <div className="repository-admin-row" key={ruleset.id}>
+                  <span>
+                    <strong>{ruleset.name}</strong>
+                    <small>
+                      {ruleset.enforcement ?? "unknown"} · {ruleset.target ?? "target unknown"}
+                      {ruleset.source ? ` · ${ruleset.source}` : ""}
+                    </small>
+                    <small>{rulesetCompactSummary(ruleset)}</small>
+                  </span>
+                  <div>
+                    <button
+                      type="button"
+                      disabled={Boolean(disabledReason)}
+                      title={disabledReason ?? undefined}
+                      onClick={() => onMutate("updateRepositoryRuleset", false, rulesetPayload(ruleset))}
+                    >
+                      Apply baseline
+                    </button>
+                    <button
+                      type="button"
+                      disabled={Boolean(disabledReason)}
+                      title={disabledReason ?? undefined}
+                      onClick={() => onMutate("deleteRepositoryRuleset", true, { rulesetId: ruleset.id })}
+                    >
+                      Delete
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!ruleset.htmlUrl}
+                      title={ruleset.htmlUrl ? "Open ruleset on GitHub" : "Ruleset URL unavailable."}
+                      onClick={() => {
+                        if (ruleset.htmlUrl) {
+                          onOpenExternal(ruleset.htmlUrl);
+                        }
+                      }}
+                    >
+                      <ExternalLink size={14} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {repositoryRulesets.length >= repositoryRulesetsLimit && (
+          <div className="muted-row">
+            Showing the first {repositoryRulesets.length} rulesets returned by GitHub.
+          </div>
+        )}
+        {rulesetDisabledReason && <small className="action-disabled-note">{rulesetDisabledReason}</small>}
+      </section>
+
+      {repositoryAdminMutationSucceeded && mutationAction && (
+        <div className="muted-row">{githubActionLabel(mutationAction)} completed.</div>
+      )}
+      {repositoryAdminMutationError && (
+        <div className="error-state">
+          Could not run {mutationAction ? githubActionLabel(mutationAction) : "repository admin action"}:{" "}
+          {repositoryAdminMutationError.message}
+        </div>
+      )}
+
       <section className="settings-network-section">
         <header>
           <h3>Fork network</h3>
@@ -21907,8 +24402,12 @@ function RepositorySettingsTab({
           </span>
         </header>
         {repositoryForksLoading && !repositoryForks && <div className="loading-state">Loading forks...</div>}
-        {repositoryForksError && <div className="error-state">Fork network unavailable: {repositoryForksError.message}</div>}
-        {forkNetworkAvailabilityMessage && <div className="error-state">{forkNetworkAvailabilityMessage}</div>}
+        {repositoryForksError && (
+          <div className="error-state">Fork network unavailable: {repositoryForksError.message}</div>
+        )}
+        {forkNetworkAvailabilityMessage && (
+          <div className="error-state">{forkNetworkAvailabilityMessage}</div>
+        )}
         {!repositoryForksLoading &&
           !repositoryForksError &&
           !forkNetworkAvailabilityMessage &&
@@ -21921,9 +24420,7 @@ function RepositorySettingsTab({
                   <GitFork size={15} />
                   <span>
                     <strong>{fork.nameWithOwner}</strong>
-                    <small>
-                      {repositoryForkMetadataLabel(fork)}
-                    </small>
+                    <small>{repositoryForkMetadataLabel(fork)}</small>
                   </span>
                 </button>
                 <button
@@ -21958,6 +24455,37 @@ function RepositorySettingsTab({
               {collaboratorsStatusLabel}
             </span>
           </header>
+          <form className="repository-admin-inline-form" onSubmit={submitAddCollaborator}>
+            <input
+              aria-label="Collaborator username"
+              placeholder="username"
+              value={collaboratorLogin}
+              disabled={adminDisabled}
+              title={adminDisabledReason ?? undefined}
+              onChange={(event) => setCollaboratorLogin(event.target.value)}
+            />
+            <select
+              aria-label="Collaborator permission"
+              value={collaboratorPermission}
+              disabled={adminDisabled}
+              title={adminDisabledReason ?? undefined}
+              onChange={(event) => setCollaboratorPermission(event.target.value)}
+            >
+              <option value="pull">read</option>
+              <option value="triage">triage</option>
+              <option value="push">write</option>
+              <option value="maintain">maintain</option>
+              <option value="admin">admin</option>
+            </select>
+            <button
+              className="dark-action"
+              type="submit"
+              disabled={adminDisabled || collaboratorLogin.trim().length === 0}
+              title={adminDisabledReason ?? "Enter a username."}
+            >
+              Add
+            </button>
+          </form>
           {repositoryAccessLoading && !repositoryAccess && (
             <div className="loading-state">Loading collaborators...</div>
           )}
@@ -22019,6 +24547,29 @@ function RepositorySettingsTab({
                     >
                       <ExternalLink size={14} />
                     </button>
+                    <div className="repository-admin-row-actions">
+                      <select
+                        aria-label={`Permission for ${collaborator.login}`}
+                        value={collaboratorPermissionForMutation(collaborator)}
+                        disabled={adminDisabled}
+                        title={adminDisabledReason ?? undefined}
+                        onChange={(event) => updateCollaboratorPermission(collaborator, event.target.value)}
+                      >
+                        <option value="pull">read</option>
+                        <option value="triage">triage</option>
+                        <option value="push">write</option>
+                        <option value="maintain">maintain</option>
+                        <option value="admin">admin</option>
+                      </select>
+                      <button
+                        type="button"
+                        disabled={adminDisabled}
+                        title={adminDisabledReason ?? `Remove ${collaborator.login}`}
+                        onClick={() => removeCollaborator(collaborator)}
+                      >
+                        Remove
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -22039,9 +24590,13 @@ function RepositorySettingsTab({
           {selectedCollaborator && (
             <aside className="contributor-detail-panel repository-collaborator-detail-panel">
               <div className="contributor-detail-header">
-                {selectedCollaboratorProfileData?.avatarUrl ?? selectedCollaborator.avatarUrl ? (
+                {(selectedCollaboratorProfileData?.avatarUrl ?? selectedCollaborator.avatarUrl) ? (
                   <img
-                    src={selectedCollaboratorProfileData?.avatarUrl ?? selectedCollaborator.avatarUrl ?? undefined}
+                    src={
+                      selectedCollaboratorProfileData?.avatarUrl ??
+                      selectedCollaborator.avatarUrl ??
+                      undefined
+                    }
                     alt=""
                     onError={(event) => event.currentTarget.remove()}
                   />
@@ -22065,17 +24620,25 @@ function RepositorySettingsTab({
                 )}
               </div>
 
-              {!githubReady && <div className="muted-row">Cached mode: showing stored collaborator details when available.</div>}
+              {!githubReady && (
+                <div className="muted-row">
+                  Cached mode: showing stored collaborator details when available.
+                </div>
+              )}
               {selectedCollaboratorProfile.isFetching && !selectedCollaboratorProfileData && (
                 <div className="loading-state">Loading collaborator profile...</div>
               )}
               {selectedCollaboratorProfile.error instanceof Error && (
-                <div className="error-state">Profile unavailable: {selectedCollaboratorProfile.error.message}</div>
+                <div className="error-state">
+                  Profile unavailable: {selectedCollaboratorProfile.error.message}
+                </div>
               )}
               {selectedCollaboratorProfileAvailabilityMessage && (
                 <div className="error-state">{selectedCollaboratorProfileAvailabilityMessage}</div>
               )}
-              {selectedCollaboratorPermissionContext && <div className="muted-row">{selectedCollaboratorPermissionContext}</div>}
+              {selectedCollaboratorPermissionContext && (
+                <div className="muted-row">{selectedCollaboratorPermissionContext}</div>
+              )}
 
               {(selectedCollaboratorProfileData?.bio ||
                 selectedCollaboratorProfileData?.company ||
@@ -22083,10 +24646,17 @@ function RepositorySettingsTab({
                 selectedCollaboratorProfileData?.websiteUrl) && (
                 <div className="contributor-detail-copy">
                   {selectedCollaboratorProfileData.bio && <p>{selectedCollaboratorProfileData.bio}</p>}
-                  {selectedCollaboratorProfileData.company && <small>{selectedCollaboratorProfileData.company}</small>}
-                  {selectedCollaboratorProfileData.location && <small>{selectedCollaboratorProfileData.location}</small>}
+                  {selectedCollaboratorProfileData.company && (
+                    <small>{selectedCollaboratorProfileData.company}</small>
+                  )}
+                  {selectedCollaboratorProfileData.location && (
+                    <small>{selectedCollaboratorProfileData.location}</small>
+                  )}
                   {selectedCollaboratorProfileData.websiteUrl && (
-                    <button type="button" onClick={() => onOpenExternal(selectedCollaboratorProfileData.websiteUrl!)}>
+                    <button
+                      type="button"
+                      onClick={() => onOpenExternal(selectedCollaboratorProfileData.websiteUrl!)}
+                    >
                       {selectedCollaboratorProfileData.websiteUrl}
                     </button>
                   )}
@@ -22104,7 +24674,9 @@ function RepositorySettingsTab({
                   <small>Repositories</small>
                 </span>
                 <span>
-                  <strong>{formatCompactNumber(selectedCollaboratorProfileData?.starredRepositoryCount ?? 0)}</strong>
+                  <strong>
+                    {formatCompactNumber(selectedCollaboratorProfileData?.starredRepositoryCount ?? 0)}
+                  </strong>
                   <small>Starred</small>
                 </span>
                 <span>
@@ -22174,7 +24746,8 @@ function RepositorySettingsTab({
                 )}
                 {!canExpandSelectedCollaboratorRepositories && selectedCollaboratorRepositoriesLimitHit && (
                   <div className="muted-row">
-                    Showing the first {selectedCollaboratorRepositoryItems.length} repositories returned by GitHub.
+                    Showing the first {selectedCollaboratorRepositoryItems.length} repositories returned by
+                    GitHub.
                   </div>
                 )}
               </div>
@@ -22188,6 +24761,37 @@ function RepositorySettingsTab({
               {teamsStatusLabel}
             </span>
           </header>
+          <form className="repository-admin-inline-form" onSubmit={submitAddTeam}>
+            <input
+              aria-label="Team slug"
+              placeholder="team-slug"
+              value={teamSlug}
+              disabled={adminDisabled}
+              title={adminDisabledReason ?? undefined}
+              onChange={(event) => setTeamSlug(event.target.value)}
+            />
+            <select
+              aria-label="Team permission"
+              value={teamPermission}
+              disabled={adminDisabled}
+              title={adminDisabledReason ?? undefined}
+              onChange={(event) => setTeamPermission(event.target.value)}
+            >
+              <option value="pull">read</option>
+              <option value="triage">triage</option>
+              <option value="push">write</option>
+              <option value="maintain">maintain</option>
+              <option value="admin">admin</option>
+            </select>
+            <button
+              className="dark-action"
+              type="submit"
+              disabled={adminDisabled || teamSlug.trim().length === 0}
+              title={adminDisabledReason ?? "Enter a team slug."}
+            >
+              Add
+            </button>
+          </form>
           {repositoryAccessLoading && !repositoryAccess && (
             <div className="loading-state">Loading repository teams...</div>
           )}
@@ -22202,10 +24806,7 @@ function RepositorySettingsTab({
           {accessTeams.length > 0 && (
             <div className="access-list">
               {accessTeams.map((team) => (
-                <div
-                  className="issue-row organization-team-row"
-                  key={team.id}
-                >
+                <div className="issue-row organization-team-row" key={team.id}>
                   <button
                     className="organization-row-main"
                     type="button"
@@ -22236,6 +24837,29 @@ function RepositorySettingsTab({
                   >
                     <ExternalLink size={14} />
                   </button>
+                  <div className="repository-admin-row-actions">
+                    <select
+                      aria-label={`Permission for ${team.name}`}
+                      value={team.permission ?? "push"}
+                      disabled={adminDisabled}
+                      title={adminDisabledReason ?? undefined}
+                      onChange={(event) => updateTeamPermission(team, event.target.value)}
+                    >
+                      <option value="pull">read</option>
+                      <option value="triage">triage</option>
+                      <option value="push">write</option>
+                      <option value="maintain">maintain</option>
+                      <option value="admin">admin</option>
+                    </select>
+                    <button
+                      type="button"
+                      disabled={adminDisabled}
+                      title={adminDisabledReason ?? `Remove ${team.name}`}
+                      onClick={() => removeTeam(team)}
+                    >
+                      Remove
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -22248,9 +24872,7 @@ function RepositorySettingsTab({
             </div>
           )}
           {!canExpandAccessTeams && accessTeamsLimitHit && (
-            <div className="muted-row">
-              Showing the first {accessTeams.length} teams returned by GitHub.
-            </div>
+            <div className="muted-row">Showing the first {accessTeams.length} teams returned by GitHub.</div>
           )}
         </section>
       </div>
@@ -22311,12 +24933,20 @@ function notificationSubscriptionStateLabel(notification: NotificationSummary): 
 
 function notificationMetadataParts(notification: NotificationSummary): string[] {
   return [
-    notification.repositoryPrivate === null ? null : notification.repositoryPrivate ? "private repository" : "public repository",
+    notification.repositoryPrivate === null
+      ? null
+      : notification.repositoryPrivate
+        ? "private repository"
+        : "public repository",
     notification.participating === true ? "participating" : null,
     notificationSubscriptionStateLabel(notification),
     notification.ignored === true ? "muted" : notification.ignored === false ? "not muted" : null,
-    notification.subscriptionReason ? `subscription reason ${notificationReasonLabel(notification.subscriptionReason)}` : null,
-    notification.subscriptionCreatedAt ? `subscribed ${formatRelativeDate(notification.subscriptionCreatedAt)}` : null,
+    notification.subscriptionReason
+      ? `subscription reason ${notificationReasonLabel(notification.subscriptionReason)}`
+      : null,
+    notification.subscriptionCreatedAt
+      ? `subscribed ${formatRelativeDate(notification.subscriptionCreatedAt)}`
+      : null,
     notification.lastReadAt ? `last read ${formatRelativeDate(notification.lastReadAt)}` : null,
     notification.subject.latestCommentHtmlUrl
       ? "latest comment link available"
@@ -22647,9 +25277,7 @@ function CollectionView({
           : "Refresh orgs"
         : "GitHub fallback";
   const actionUrl =
-    routeKind === "repositories"
-      ? "https://github.com/new"
-      : "https://github.com/notifications";
+    routeKind === "repositories" ? "https://github.com/new" : "https://github.com/notifications";
   const primaryActionDisabledReason =
     routeKind === "organizations" && organizationsFreshness.refreshing
       ? "Organization refresh is already running."
@@ -22691,7 +25319,9 @@ function CollectionView({
   const canExpandRepositories = repositoriesLimitHit && repositoryListLimit < maxRepositoryListLimit;
   const visibleUnreadNotificationIds =
     routeKind === "mailbox"
-      ? filteredNotifications.filter((notification) => notification.unread).map((notification) => notification.id)
+      ? filteredNotifications
+          .filter((notification) => notification.unread)
+          .map((notification) => notification.id)
       : [];
   const filteredRepositories =
     routeKind === "repositories"
@@ -22737,13 +25367,14 @@ function CollectionView({
           )
         )
       : [];
-  const organizationsLimitHit = routeKind === "organizations" && organizations.length >= organizationListLimit;
+  const organizationsLimitHit =
+    routeKind === "organizations" && organizations.length >= organizationListLimit;
   const canExpandOrganizations = organizationsLimitHit && organizationListLimit < maxOrganizationListLimit;
   const selectedOrganization =
     routeKind === "organizations"
-      ? organizations.find((organization) => organization.login === selectedOrganizationLogin) ??
+      ? (organizations.find((organization) => organization.login === selectedOrganizationLogin) ??
         organizations[0] ??
-        null
+        null)
       : null;
   const selectedOrganizationRepositories =
     routeKind === "organizations" && selectedOrganizationLogin
@@ -22787,7 +25418,7 @@ function CollectionView({
       : [];
   const selectedOrganizationProject =
     routeKind === "organizations" && selectedOrganizationProjectId
-      ? organizationProjects.find((project) => project.id === selectedOrganizationProjectId) ?? null
+      ? (organizationProjects.find((project) => project.id === selectedOrganizationProjectId) ?? null)
       : null;
   const filteredOrganizationTeams =
     routeKind === "organizations"
@@ -22799,7 +25430,9 @@ function CollectionView({
         )
       : [];
   const selectedOrganizationTeam =
-    organizationTeams.find((team) => team.slug === selectedOrganizationTeamSlug) ?? organizationTeams[0] ?? null;
+    organizationTeams.find((team) => team.slug === selectedOrganizationTeamSlug) ??
+    organizationTeams[0] ??
+    null;
   const filteredOrganizationTeamRepositories =
     routeKind === "organizations"
       ? organizationTeamRepositories.filter((repository) =>
@@ -22820,27 +25453,36 @@ function CollectionView({
   const filteredOrganizationTeamMembers =
     routeKind === "organizations"
       ? organizationTeamMembers.filter((member) =>
-          matchesCollectionFilter([member.login, member.siteAdmin ? "site admin" : null], normalizedCollectionFilter)
+          matchesCollectionFilter(
+            [member.login, member.siteAdmin ? "site admin" : null],
+            normalizedCollectionFilter
+          )
         )
       : [];
   const filteredOrganizationMembers =
     routeKind === "organizations"
       ? organizationMembers.filter((member) =>
-          matchesCollectionFilter([member.login, member.siteAdmin ? "site admin" : null], normalizedCollectionFilter)
+          matchesCollectionFilter(
+            [member.login, member.siteAdmin ? "site admin" : null],
+            normalizedCollectionFilter
+          )
         )
       : [];
   const selectedVisibleOrganizationMember =
     filteredOrganizationMembers.find((member) => member.login === selectedOrganizationMemberLogin) ?? null;
   const selectedVisibleTeamMember =
-    filteredOrganizationTeamMembers.find((member) => member.login === selectedOrganizationMemberLogin) ?? null;
+    filteredOrganizationTeamMembers.find((member) => member.login === selectedOrganizationMemberLogin) ??
+    null;
   const selectedOrganizationMember = selectedVisibleTeamMember ?? selectedVisibleOrganizationMember;
   const selectedOrganizationMemberRepositoryLimit = selectedOrganizationMember
-    ? profileRepositoryLimits[selectedOrganizationMember.login] ?? defaultMemberProfileRepositoryLimit
+    ? (profileRepositoryLimits[selectedOrganizationMember.login] ?? defaultMemberProfileRepositoryLimit)
     : defaultMemberProfileRepositoryLimit;
   const selectedOrganizationMemberContext = selectedOrganizationMember
     ? [
         selectedOrganization?.login ? `${selectedOrganization.login} organization` : null,
-        selectedVisibleTeamMember && selectedOrganizationTeam ? `${selectedOrganizationTeam.name} team` : null,
+        selectedVisibleTeamMember && selectedOrganizationTeam
+          ? `${selectedOrganizationTeam.name} team`
+          : null,
         selectedOrganizationMember.siteAdmin ? "site admin" : "member"
       ]
         .filter(Boolean)
@@ -22856,7 +25498,11 @@ function CollectionView({
     enabled: Boolean(selectedOrganizationMember)
   });
   const selectedOrganizationMemberRepositories = useQuery<AccountRepositoryListResult>({
-    queryKey: ["github-account-repositories", selectedOrganizationMember?.login ?? null, selectedOrganizationMemberRepositoryLimit],
+    queryKey: [
+      "github-account-repositories",
+      selectedOrganizationMember?.login ?? null,
+      selectedOrganizationMemberRepositoryLimit
+    ],
     queryFn: () =>
       api.github.listAccountRepositoriesWithStatus({
         login: selectedOrganizationMember?.login ?? undefined,
@@ -22886,7 +25532,10 @@ function CollectionView({
     "Organization projects",
     organizationProjectsAvailability
   );
-  const organizationsAvailabilityMessage = readAvailabilityMessage("Organizations", organizationsAvailability);
+  const organizationsAvailabilityMessage = readAvailabilityMessage(
+    "Organizations",
+    organizationsAvailability
+  );
   const organizationRepositoriesAvailabilityMessage = readAvailabilityMessage(
     "Organization repositories",
     organizationRepositoriesAvailability
@@ -22915,9 +25564,11 @@ function CollectionView({
     "Team repositories",
     organizationTeamRepositoriesAvailability
   );
-  const organizationTeamRepositoriesLimitHit = organizationTeamRepositories.length >= organizationTeamRepositoryLimit;
+  const organizationTeamRepositoriesLimitHit =
+    organizationTeamRepositories.length >= organizationTeamRepositoryLimit;
   const canExpandOrganizationTeamRepositories =
-    organizationTeamRepositoriesLimitHit && organizationTeamRepositoryLimit < maxOrganizationTeamRepositoryLimit;
+    organizationTeamRepositoriesLimitHit &&
+    organizationTeamRepositoryLimit < maxOrganizationTeamRepositoryLimit;
   const organizationTeamMembersAvailabilityMessage = readAvailabilityMessage(
     "Team members",
     organizationTeamMembersAvailability
@@ -22929,15 +25580,18 @@ function CollectionView({
     "Organization membership",
     selectedOrganization?.viewerMembershipAvailability ?? null
   );
-  const notificationsAvailabilityMessage = readAvailabilityMessage("Notifications", notificationsAvailability);
+  const notificationsAvailabilityMessage = readAvailabilityMessage(
+    "Notifications",
+    notificationsAvailability
+  );
   const repositoryPinDisabledReason = repositoryPinBusy ? "Repository pin update is still running." : null;
   const notificationBulkMarkReadDisabledReason = notificationBulkMarkingRead
     ? "Visible notifications are already being marked as read."
     : !githubReady
       ? "Sign in with GitHub to mark notifications as read."
-    : visibleUnreadNotificationIds.length === 0
-      ? "No visible unread notifications."
-      : null;
+      : visibleUnreadNotificationIds.length === 0
+        ? "No visible unread notifications."
+        : null;
 
   function expandSelectedOrganizationMemberRepositories(): void {
     if (!selectedOrganizationMember) {
@@ -23083,19 +25737,18 @@ function CollectionView({
               ? "Notification is already read."
               : !githubReady
                 ? "Sign in with GitHub to mark notifications as read."
-              : notificationMarkingReadId === notification.id
-                ? "Notification is already being marked as read."
-                : notificationBulkMarkingRead
-                  ? "Visible notifications are being marked as read."
-                  : null;
-            const unsubscribeDisabledReason =
-              !githubReady
-                ? "Sign in with GitHub to unsubscribe from notifications."
-                : notification.subscribed === false
+                : notificationMarkingReadId === notification.id
+                  ? "Notification is already being marked as read."
+                  : notificationBulkMarkingRead
+                    ? "Visible notifications are being marked as read."
+                    : null;
+            const unsubscribeDisabledReason = !githubReady
+              ? "Sign in with GitHub to unsubscribe from notifications."
+              : notification.subscribed === false
                 ? "Notification thread is not currently subscribed."
                 : notificationUnsubscribingId === notification.id
-                ? "Notification thread is already being unsubscribed."
-                : null;
+                  ? "Notification thread is already being unsubscribed."
+                  : null;
 
             return (
               <div
@@ -23105,7 +25758,11 @@ function CollectionView({
                 <button
                   className="notification-row-main"
                   type="button"
-                  title={notificationTarget ? "Open notification target in Control" : "Open notification target on GitHub"}
+                  title={
+                    notificationTarget
+                      ? "Open notification target in Control"
+                      : "Open notification target on GitHub"
+                  }
                   onClick={() => onOpenNotification(notification)}
                 >
                   {notification.unread ? <CircleDot size={17} /> : <Inbox size={17} />}
@@ -23214,22 +25871,20 @@ function CollectionView({
               row.kind === "pull" ? pullRequestMergeableStateLabel(row.mergeableState) : null;
             const isCrossRepository =
               row.kind === "pull"
-                ? row.isCrossRepository ??
+                ? (row.isCrossRepository ??
                   Boolean(
                     (row.headRepositoryNameWithOwner &&
                       row.headRepositoryNameWithOwner !== row.repositoryNameWithOwner) ||
-                      (row.baseRepositoryNameWithOwner &&
-                        row.baseRepositoryNameWithOwner !== row.repositoryNameWithOwner)
-                  )
+                    (row.baseRepositoryNameWithOwner &&
+                      row.baseRepositoryNameWithOwner !== row.repositoryNameWithOwner)
+                  ))
                 : false;
             const sourceRepositoryLabel =
               row.kind === "pull" && row.headRepositoryNameWithOwner
                 ? `fork: ${row.headRepositoryNameWithOwner}`
                 : "fork";
             const metadataParts =
-              row.kind === "pull"
-                ? mailboxPullRequestMetadataParts(row)
-                : mailboxIssueMetadataParts(row);
+              row.kind === "pull" ? mailboxPullRequestMetadataParts(row) : mailboxIssueMetadataParts(row);
 
             return (
               <div className="issue-row mailbox-work-row" key={`${row.kind}-${row.id}`}>
@@ -23245,9 +25900,7 @@ function CollectionView({
                       {row.repositoryNameWithOwner ?? "GitHub"} #{row.number} · updated{" "}
                       {formatRelativeDate(row.updatedAt)}
                     </small>
-                    <small className="notification-detail-line">
-                      {metadataParts.join(" · ")}
-                    </small>
+                    <small className="notification-detail-line">{metadataParts.join(" · ")}</small>
                   </div>
                 </button>
                 <span className={`state-chip ${row.state === "open" ? "success" : "attention"}`}>
@@ -23258,9 +25911,7 @@ function CollectionView({
                   <span className="state-chip attention">{mergeableStateLabel}</span>
                 )}
                 {reviewDecisionLabel && (
-                  <span className={`state-chip ${reviewDecisionChipTone}`}>
-                    {reviewDecisionLabel}
-                  </span>
+                  <span className={`state-chip ${reviewDecisionChipTone}`}>{reviewDecisionLabel}</span>
                 )}
                 {isCrossRepository && (
                   <span className="state-chip attention" title={sourceRepositoryLabel}>
@@ -23315,9 +25966,7 @@ function CollectionView({
                       {formatRelativeDate(repositoryActivityDate(repository))}
                     </small>
                     {metadataParts.length > 0 && (
-                      <small className="notification-detail-line">
-                        {metadataParts.join(" · ")}
-                      </small>
+                      <small className="notification-detail-line">{metadataParts.join(" · ")}</small>
                     )}
                   </div>
                   <span className="state-chip">{repository.visibility.toLowerCase()}</span>
@@ -23330,7 +25979,9 @@ function CollectionView({
                   aria-label={`${pinned ? "Unpin" : "Pin"} ${repository.name}`}
                   aria-pressed={pinned}
                   disabled={Boolean(repositoryPinDisabledReason)}
-                  title={repositoryPinDisabledReason ?? `${pinned ? "Unpin" : "Pin"} ${repository.nameWithOwner}`}
+                  title={
+                    repositoryPinDisabledReason ?? `${pinned ? "Unpin" : "Pin"} ${repository.nameWithOwner}`
+                  }
                   onClick={() => onToggleRepositoryPin(repository.nameWithOwner)}
                 >
                   <Pin size={15} />
@@ -23352,7 +26003,10 @@ function CollectionView({
           directRepositoryTarget &&
           directRepositoryName &&
           directRepositoryOwner && (
-            <div className="issue-row repository-row repository-row-with-actions" key="direct-repository-target">
+            <div
+              className="issue-row repository-row repository-row-with-actions"
+              key="direct-repository-target"
+            >
               <button
                 className="repository-row-main"
                 type="button"
@@ -23390,10 +26044,7 @@ function CollectionView({
             );
 
             return (
-              <div
-                className="issue-row organization-row"
-                key={organization.id}
-              >
+              <div className="issue-row organization-row" key={organization.id}>
                 <button
                   className={`organization-row-main ${
                     organization.login === selectedOrganizationLogin ? "selected-action" : ""
@@ -23405,8 +26056,8 @@ function CollectionView({
                   <div>
                     <strong>{organization.name ?? organization.login}</strong>
                     <small>
-                      {organization.login} · {formatCompactNumber(organization.repositoryCount)} repositories ·{" "}
-                      {formatCompactNumber(organization.teamCount)} teams ·{" "}
+                      {organization.login} · {formatCompactNumber(organization.repositoryCount)} repositories
+                      · {formatCompactNumber(organization.teamCount)} teams ·{" "}
                       {organization.viewerMembershipRole ??
                         (organization.viewerCanAdminister
                           ? "admin"
@@ -23444,7 +26095,10 @@ function CollectionView({
           </div>
         )}
         {routeKind === "organizations" && selectedOrganization && (
-          <section className="organization-profile-summary" aria-label={`${selectedOrganization.login} profile`}>
+          <section
+            className="organization-profile-summary"
+            aria-label={`${selectedOrganization.login} profile`}
+          >
             {selectedOrganization.avatarUrl ? (
               <img src={selectedOrganization.avatarUrl} alt="" />
             ) : (
@@ -23475,8 +26129,16 @@ function CollectionView({
                 {selectedOrganization.websiteUrl && <span>{selectedOrganization.websiteUrl}</span>}
               </div>
               <div className="organization-profile-meta">
-                <span>{selectedOrganization.viewerCanCreateRepositories ? "can create repos" : "repo creation unavailable"}</span>
-                <span>{selectedOrganization.viewerCanCreateTeams ? "can create teams" : "team creation unavailable"}</span>
+                <span>
+                  {selectedOrganization.viewerCanCreateRepositories
+                    ? "can create repos"
+                    : "repo creation unavailable"}
+                </span>
+                <span>
+                  {selectedOrganization.viewerCanCreateTeams
+                    ? "can create teams"
+                    : "team creation unavailable"}
+                </span>
               </div>
             </div>
             <button
@@ -23540,7 +26202,9 @@ function CollectionView({
                   : `${formatCompactNumber(selectedOrganizationProject.fieldsCount)} fields`}
               </span>
               {selectedOrganizationProject.viewerCanUpdate !== null && (
-                <span>{selectedOrganizationProject.viewerCanUpdate ? "Viewer can update" : "Viewer read-only"}</span>
+                <span>
+                  {selectedOrganizationProject.viewerCanUpdate ? "Viewer can update" : "Viewer read-only"}
+                </span>
               )}
             </div>
             <div className="muted-row">
@@ -23591,7 +26255,10 @@ function CollectionView({
                 </button>
               )}
               {selectedOrganizationProject.ownerHtmlUrl && (
-                <button type="button" onClick={() => onOpenExternal(selectedOrganizationProject.ownerHtmlUrl!)}>
+                <button
+                  type="button"
+                  onClick={() => onOpenExternal(selectedOrganizationProject.ownerHtmlUrl!)}
+                >
                   <ExternalLink size={16} /> Owner GitHub fallback
                 </button>
               )}
@@ -23601,18 +26268,28 @@ function CollectionView({
         {routeKind === "organizations" && selectedOrganizationMember && (
           <aside className="contributor-detail-panel organization-member-detail-panel">
             <div className="contributor-detail-header">
-              {selectedOrganizationMemberProfileData?.avatarUrl ?? selectedOrganizationMember.avatarUrl ? (
+              {(selectedOrganizationMemberProfileData?.avatarUrl ?? selectedOrganizationMember.avatarUrl) ? (
                 <img
-                  src={selectedOrganizationMemberProfileData?.avatarUrl ?? selectedOrganizationMember.avatarUrl ?? undefined}
+                  src={
+                    selectedOrganizationMemberProfileData?.avatarUrl ??
+                    selectedOrganizationMember.avatarUrl ??
+                    undefined
+                  }
                   alt=""
                   onError={(event) => event.currentTarget.remove()}
                 />
               ) : (
-                <span className="mini-avatar">{selectedOrganizationMember.login.slice(0, 1).toUpperCase()}</span>
+                <span className="mini-avatar">
+                  {selectedOrganizationMember.login.slice(0, 1).toUpperCase()}
+                </span>
               )}
               <div>
-                <strong>{selectedOrganizationMemberProfileData?.name ?? `@${selectedOrganizationMember.login}`}</strong>
-                <small>@{selectedOrganizationMemberProfileData?.login ?? selectedOrganizationMember.login}</small>
+                <strong>
+                  {selectedOrganizationMemberProfileData?.name ?? `@${selectedOrganizationMember.login}`}
+                </strong>
+                <small>
+                  @{selectedOrganizationMemberProfileData?.login ?? selectedOrganizationMember.login}
+                </small>
               </div>
               {selectedOrganizationMemberProfileUrl && (
                 <button
@@ -23627,30 +26304,43 @@ function CollectionView({
               )}
             </div>
 
-            {!githubReady && <div className="muted-row">Cached mode: showing stored member details when available.</div>}
+            {!githubReady && (
+              <div className="muted-row">Cached mode: showing stored member details when available.</div>
+            )}
             {selectedOrganizationMemberProfile.isFetching && !selectedOrganizationMemberProfileData && (
               <div className="loading-state">Loading member profile...</div>
             )}
             {selectedOrganizationMemberProfile.error instanceof Error && (
-              <div className="error-state">Profile unavailable: {selectedOrganizationMemberProfile.error.message}</div>
+              <div className="error-state">
+                Profile unavailable: {selectedOrganizationMemberProfile.error.message}
+              </div>
             )}
             {selectedOrganizationMemberProfileAvailabilityMessage && (
               <div className="error-state">{selectedOrganizationMemberProfileAvailabilityMessage}</div>
             )}
-            {selectedOrganizationMemberContext && <div className="muted-row">{selectedOrganizationMemberContext}</div>}
+            {selectedOrganizationMemberContext && (
+              <div className="muted-row">{selectedOrganizationMemberContext}</div>
+            )}
 
             {(selectedOrganizationMemberProfileData?.bio ||
               selectedOrganizationMemberProfileData?.company ||
               selectedOrganizationMemberProfileData?.location ||
               selectedOrganizationMemberProfileData?.websiteUrl) && (
               <div className="contributor-detail-copy">
-                {selectedOrganizationMemberProfileData.bio && <p>{selectedOrganizationMemberProfileData.bio}</p>}
-                {selectedOrganizationMemberProfileData.company && <small>{selectedOrganizationMemberProfileData.company}</small>}
+                {selectedOrganizationMemberProfileData.bio && (
+                  <p>{selectedOrganizationMemberProfileData.bio}</p>
+                )}
+                {selectedOrganizationMemberProfileData.company && (
+                  <small>{selectedOrganizationMemberProfileData.company}</small>
+                )}
                 {selectedOrganizationMemberProfileData.location && (
                   <small>{selectedOrganizationMemberProfileData.location}</small>
                 )}
                 {selectedOrganizationMemberProfileData.websiteUrl && (
-                  <button type="button" onClick={() => onOpenExternal(selectedOrganizationMemberProfileData.websiteUrl!)}>
+                  <button
+                    type="button"
+                    onClick={() => onOpenExternal(selectedOrganizationMemberProfileData.websiteUrl!)}
+                  >
                     {selectedOrganizationMemberProfileData.websiteUrl}
                   </button>
                 )}
@@ -23668,7 +26358,9 @@ function CollectionView({
                 <small>Repositories</small>
               </span>
               <span>
-                <strong>{formatCompactNumber(selectedOrganizationMemberProfileData?.starredRepositoryCount ?? 0)}</strong>
+                <strong>
+                  {formatCompactNumber(selectedOrganizationMemberProfileData?.starredRepositoryCount ?? 0)}
+                </strong>
                 <small>Starred</small>
               </span>
               <span>
@@ -23685,9 +26377,10 @@ function CollectionView({
               <div className="section-title-row">
                 <span>Repositories</span>
               </div>
-              {selectedOrganizationMemberRepositories.isFetching && !selectedOrganizationMemberRepositories.data && (
-                <div className="loading-state">Loading repositories...</div>
-              )}
+              {selectedOrganizationMemberRepositories.isFetching &&
+                !selectedOrganizationMemberRepositories.data && (
+                  <div className="loading-state">Loading repositories...</div>
+                )}
               {selectedOrganizationMemberRepositories.error instanceof Error && (
                 <div className="error-state">
                   Repositories unavailable: {selectedOrganizationMemberRepositories.error.message}
@@ -23736,11 +26429,13 @@ function CollectionView({
                   </button>
                 </div>
               )}
-              {!canExpandSelectedOrganizationMemberRepositories && selectedOrganizationMemberRepositoriesLimitHit && (
-                <div className="muted-row">
-                  Showing the first {selectedOrganizationMemberRepositoryItems.length} repositories returned by GitHub.
-                </div>
-              )}
+              {!canExpandSelectedOrganizationMemberRepositories &&
+                selectedOrganizationMemberRepositoriesLimitHit && (
+                  <div className="muted-row">
+                    Showing the first {selectedOrganizationMemberRepositoryItems.length} repositories returned
+                    by GitHub.
+                  </div>
+                )}
             </div>
           </aside>
         )}
@@ -23763,13 +26458,11 @@ function CollectionView({
         {routeKind === "organizations" && organizationMembersError && (
           <div className="error-state">Could not load organization members.</div>
         )}
-        {routeKind === "organizations" &&
-          !canExpandOrganizationMembers &&
-          organizationMembersLimitHit && (
-            <div className="muted-row">
-              Showing the first {organizationMembers.length} members returned by GitHub.
-            </div>
-          )}
+        {routeKind === "organizations" && !canExpandOrganizationMembers && organizationMembersLimitHit && (
+          <div className="muted-row">
+            Showing the first {organizationMembers.length} members returned by GitHub.
+          </div>
+        )}
         {routeKind === "organizations" &&
           filteredOrganizationMembers.map((member) => (
             <div
@@ -23822,7 +26515,7 @@ function CollectionView({
                 ? "No visible organization members returned."
                 : "No organization members match this filter."}
             </div>
-        )}
+          )}
         {routeKind === "organizations" && selectedOrganizationLogin && (
           <div className="section-title-row">
             <div className="collection-section-label">{selectedOrganizationLogin} repositories</div>
@@ -23833,9 +26526,11 @@ function CollectionView({
             )}
           </div>
         )}
-        {routeKind === "organizations" && organizationRepositoriesLoading && organizationRepositories.length === 0 && (
-          <div className="loading-state">Loading organization repositories...</div>
-        )}
+        {routeKind === "organizations" &&
+          organizationRepositoriesLoading &&
+          organizationRepositories.length === 0 && (
+            <div className="loading-state">Loading organization repositories...</div>
+          )}
         {routeKind === "organizations" && organizationRepositoriesAvailabilityMessage && (
           <div className="error-state">{organizationRepositoriesAvailabilityMessage}</div>
         )}
@@ -23858,7 +26553,10 @@ function CollectionView({
             const chips = organizationRepositoryCollectionChips(repository, pinned);
 
             return (
-              <div className="issue-row repository-row repository-row-with-actions" key={`org-repository-${repository.id}`}>
+              <div
+                className="issue-row repository-row repository-row-with-actions"
+                key={`org-repository-${repository.id}`}
+              >
                 <button
                   className="repository-row-main"
                   type="button"
@@ -23881,7 +26579,9 @@ function CollectionView({
                   aria-label={`${pinned ? "Unpin" : "Pin"} ${repository.name}`}
                   aria-pressed={pinned}
                   disabled={Boolean(repositoryPinDisabledReason)}
-                  title={repositoryPinDisabledReason ?? `${pinned ? "Unpin" : "Pin"} ${repository.nameWithOwner}`}
+                  title={
+                    repositoryPinDisabledReason ?? `${pinned ? "Unpin" : "Pin"} ${repository.nameWithOwner}`
+                  }
                   onClick={() => onToggleRepositoryPin(repository.nameWithOwner)}
                 >
                   <Pin size={15} />
@@ -23920,22 +26620,22 @@ function CollectionView({
             )}
           </div>
         )}
-        {routeKind === "organizations" && organizationProjectsLoading && organizationProjects.length === 0 && (
-          <div className="loading-state">Loading organization projects...</div>
-        )}
+        {routeKind === "organizations" &&
+          organizationProjectsLoading &&
+          organizationProjects.length === 0 && (
+            <div className="loading-state">Loading organization projects...</div>
+          )}
         {routeKind === "organizations" && organizationProjectsAvailabilityMessage && (
           <div className="error-state">{organizationProjectsAvailabilityMessage}</div>
         )}
         {routeKind === "organizations" && organizationProjectsError && (
           <div className="error-state">Could not load organization projects.</div>
         )}
-        {routeKind === "organizations" &&
-          !canExpandOrganizationProjects &&
-          organizationProjectsLimitHit && (
-            <div className="muted-row">
-              Showing the first {organizationProjects.length} projects returned by GitHub.
-            </div>
-          )}
+        {routeKind === "organizations" && !canExpandOrganizationProjects && organizationProjectsLimitHit && (
+          <div className="muted-row">
+            Showing the first {organizationProjects.length} projects returned by GitHub.
+          </div>
+        )}
         {routeKind === "organizations" &&
           filteredOrganizationProjects.map((project) => (
             <div
@@ -23989,7 +26689,11 @@ function CollectionView({
                 type="button"
                 aria-label={`Open GitHub fallback for ${project.title}`}
                 disabled={!project.htmlUrl}
-                title={project.htmlUrl ? `Open GitHub fallback for ${project.title}` : "Organization project URL unavailable."}
+                title={
+                  project.htmlUrl
+                    ? `Open GitHub fallback for ${project.title}`
+                    : "Organization project URL unavailable."
+                }
                 onClick={() => {
                   if (project.htmlUrl) {
                     onOpenExternal(project.htmlUrl);
@@ -24033,13 +26737,11 @@ function CollectionView({
         {routeKind === "organizations" && organizationTeamsError && (
           <div className="error-state">Could not load visible teams.</div>
         )}
-        {routeKind === "organizations" &&
-          !canExpandOrganizationTeams &&
-          organizationTeamsLimitHit && (
-            <div className="muted-row">
-              Showing the first {organizationTeams.length} teams returned by GitHub.
-            </div>
-          )}
+        {routeKind === "organizations" && !canExpandOrganizationTeams && organizationTeamsLimitHit && (
+          <div className="muted-row">
+            Showing the first {organizationTeams.length} teams returned by GitHub.
+          </div>
+        )}
         {routeKind === "organizations" &&
           filteredOrganizationTeams.map((team) => (
             <div
@@ -24090,9 +26792,11 @@ function CollectionView({
             )}
           </div>
         )}
-        {routeKind === "organizations" && organizationTeamMembersLoading && organizationTeamMembers.length === 0 && (
-          <div className="loading-state">Loading team members...</div>
-        )}
+        {routeKind === "organizations" &&
+          organizationTeamMembersLoading &&
+          organizationTeamMembers.length === 0 && (
+            <div className="loading-state">Loading team members...</div>
+          )}
         {routeKind === "organizations" && organizationTeamMembersAvailabilityMessage && (
           <div className="error-state">{organizationTeamMembersAvailabilityMessage}</div>
         )}
@@ -24154,7 +26858,9 @@ function CollectionView({
           !organizationTeamMembersAvailabilityMessage &&
           filteredOrganizationTeamMembers.length === 0 && (
             <div className="empty-state">
-              {organizationTeamMembers.length === 0 ? "No visible team members returned." : "No team members match this filter."}
+              {organizationTeamMembers.length === 0
+                ? "No visible team members returned."
+                : "No team members match this filter."}
             </div>
           )}
         {routeKind === "organizations" && selectedOrganizationTeam && (
@@ -24167,9 +26873,11 @@ function CollectionView({
             )}
           </div>
         )}
-        {routeKind === "organizations" && organizationTeamRepositoriesLoading && organizationTeamRepositories.length === 0 && (
-          <div className="loading-state">Loading team repositories...</div>
-        )}
+        {routeKind === "organizations" &&
+          organizationTeamRepositoriesLoading &&
+          organizationTeamRepositories.length === 0 && (
+            <div className="loading-state">Loading team repositories...</div>
+          )}
         {routeKind === "organizations" && organizationTeamRepositoriesAvailabilityMessage && (
           <div className="error-state">{organizationTeamRepositoriesAvailabilityMessage}</div>
         )}
@@ -24192,7 +26900,10 @@ function CollectionView({
             const chips = organizationRepositoryCollectionChips(repository, pinned);
 
             return (
-              <div className="issue-row repository-row repository-row-with-actions" key={`team-repository-${repository.id}`}>
+              <div
+                className="issue-row repository-row repository-row-with-actions"
+                key={`team-repository-${repository.id}`}
+              >
                 <button
                   className="repository-row-main"
                   type="button"
@@ -24215,7 +26926,9 @@ function CollectionView({
                   aria-label={`${pinned ? "Unpin" : "Pin"} ${repository.name}`}
                   aria-pressed={pinned}
                   disabled={Boolean(repositoryPinDisabledReason)}
-                  title={repositoryPinDisabledReason ?? `${pinned ? "Unpin" : "Pin"} ${repository.nameWithOwner}`}
+                  title={
+                    repositoryPinDisabledReason ?? `${pinned ? "Unpin" : "Pin"} ${repository.nameWithOwner}`
+                  }
                   onClick={() => onToggleRepositoryPin(repository.nameWithOwner)}
                 >
                   <Pin size={15} />
@@ -24256,7 +26969,7 @@ function CollectionView({
                 ? "No GitHub notifications or open account work."
                 : "No mailbox items match this filter."}
             </div>
-        )}
+          )}
         {routeKind === "repositories" && repositoriesLoading && repositories.length === 0 && (
           <div className="loading-state">Loading GitHub repositories...</div>
         )}
@@ -24272,17 +26985,21 @@ function CollectionView({
           !repositoriesAvailabilityMessage &&
           filteredRepositories.length === 0 &&
           !showDirectRepositoryTarget && (
-          <div className="empty-state">
-            {repositories.length === 0 ? "No repositories loaded from GitHub." : "No repositories match this filter."}
-          </div>
-        )}
+            <div className="empty-state">
+              {repositories.length === 0
+                ? "No repositories loaded from GitHub."
+                : "No repositories match this filter."}
+            </div>
+          )}
         {routeKind === "organizations" &&
           !organizationsLoading &&
           !organizationsError &&
           !organizationsAvailabilityMessage &&
           filteredOrganizations.length === 0 && (
             <div className="empty-state">
-              {organizations.length === 0 ? "No GitHub organizations returned." : "No organizations match this filter."}
+              {organizations.length === 0
+                ? "No GitHub organizations returned."
+                : "No organizations match this filter."}
             </div>
           )}
         {routeKind === "organizations" && organizationsLoading && organizations.length === 0 && (
@@ -24488,7 +27205,9 @@ function RightRail({
             <span>{releasesLoading ? "updating" : releases.length}</span>
           </div>
         </div>
-        {releasesLoading && releases.length === 0 && <small className="rail-muted">Loading releases...</small>}
+        {releasesLoading && releases.length === 0 && (
+          <small className="rail-muted">Loading releases...</small>
+        )}
         {releasesError && <small className="rail-error">Releases unavailable: {releasesError.message}</small>}
         {releasesAvailabilityMessage && <small className="rail-error">{releasesAvailabilityMessage}</small>}
         {releases.length > 0 && (
@@ -24534,7 +27253,9 @@ function RightRail({
             <span>{contributorsLoading ? "updating" : contributors.length}</span>
           </div>
         </div>
-        {contributorsLoading && contributors.length === 0 && <small className="rail-muted">Loading contributors...</small>}
+        {contributorsLoading && contributors.length === 0 && (
+          <small className="rail-muted">Loading contributors...</small>
+        )}
         {contributorsError && (
           <small className="rail-error">Contributors unavailable: {contributorsError.message}</small>
         )}
@@ -24580,9 +27301,12 @@ function RightRail({
             </div>
           ))}
         </div>
-        {!contributorsLoading && !contributorsError && !contributorsAvailabilityMessage && contributors.length === 0 && (
-          <small className="rail-muted">GitHub returned no contributors for this repository.</small>
-        )}
+        {!contributorsLoading &&
+          !contributorsError &&
+          !contributorsAvailabilityMessage &&
+          contributors.length === 0 && (
+            <small className="rail-muted">GitHub returned no contributors for this repository.</small>
+          )}
       </section>
     </aside>
   );
@@ -24627,11 +27351,11 @@ function SettingsPanel({
     ? `Enter ${signInSession?.userCode ?? "the code"} in GitHub.`
     : signOutStatus === "signedOut"
       ? "Not connected."
-    : authenticated
-      ? `Connected as ${githubUser ?? "GitHub"}`
-      : signInConfigured
-        ? "Not connected."
-        : "GitHub sign-in is not configured in this build.";
+      : authenticated
+        ? `Connected as ${githubUser ?? "GitHub"}`
+        : signInConfigured
+          ? "Not connected."
+          : "GitHub sign-in is not configured in this build.";
   const signInDisabledReason = signOutBusy
     ? "GitHub sign-out is still running."
     : signInBusy
@@ -24643,11 +27367,11 @@ function SettingsPanel({
     ? "GitHub sign-out is still running."
     : signOutStatus === "signedOut"
       ? "No GitHub account is connected."
-    : signInBusy
-      ? "Cancel or complete GitHub sign-in before signing out."
-      : !authenticated
-        ? "No GitHub account is connected."
-        : null;
+      : signInBusy
+        ? "Cancel or complete GitHub sign-in before signing out."
+        : !authenticated
+          ? "No GitHub account is connected."
+          : null;
   const saveDisabledReason = saveBusy ? "Settings save is still running." : null;
 
   useEffect(() => {

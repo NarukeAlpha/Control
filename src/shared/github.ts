@@ -745,6 +745,7 @@ export interface MilestoneSummary {
 
 export interface IssueSummary {
   id: number | string;
+  nodeId: string | null;
   number: number;
   title: string;
   state: string;
@@ -799,6 +800,7 @@ export interface IssueDetailResult {
 
 export interface PullRequestSummary {
   id: number | string;
+  nodeId: string | null;
   number: number;
   title: string;
   state: string;
@@ -1008,7 +1010,19 @@ export interface DiscussionSummary {
   htmlUrl: string;
 }
 
+export interface DiscussionCategorySummary {
+  id: string;
+  name: string;
+  emoji: string | null;
+  description: string | null;
+  isAnswerable: boolean | null;
+}
+
 export interface DiscussionListInput extends RepoDetailInput {
+  limit?: number;
+}
+
+export interface DiscussionCategoryListInput extends RepoDetailInput {
   limit?: number;
 }
 
@@ -1052,6 +1066,11 @@ export interface RepositoryMilestoneListResult {
 
 export interface DiscussionListResult {
   items: DiscussionSummary[];
+  availability: GitHubReadAvailability;
+}
+
+export interface DiscussionCategoryListResult {
+  items: DiscussionCategorySummary[];
   availability: GitHubReadAvailability;
 }
 
@@ -1161,12 +1180,7 @@ export interface WorkflowListInput extends RepoDetailInput {
   limit?: number;
 }
 
-export type WorkflowDispatchInputType =
-  | "string"
-  | "boolean"
-  | "choice"
-  | "number"
-  | "environment";
+export type WorkflowDispatchInputType = "string" | "boolean" | "choice" | "number" | "environment";
 
 export interface WorkflowDispatchInputSummary {
   name: string;
@@ -1336,16 +1350,53 @@ export interface ProjectSummary {
   createdAt: string | null;
   updatedAt: string | null;
   itemsCount: number | null;
+  items: ProjectItemSummary[];
+  itemsTruncated: boolean;
   fieldsCount: number | null;
   fields: ProjectFieldSummary[];
   viewerCanUpdate: boolean | null;
   htmlUrl: string | null;
 }
 
+export interface ProjectItemSummary {
+  id: string;
+  type: string | null;
+  contentId: string | null;
+  contentType: string | null;
+  title: string | null;
+  body: string | null;
+  number: number | null;
+  state: string | null;
+  repositoryNameWithOwner: string | null;
+  htmlUrl: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  fieldValues: ProjectItemFieldValueSummary[];
+  fieldValuesTruncated: boolean;
+}
+
+export interface ProjectItemFieldValueSummary {
+  id: string;
+  fieldId: string | null;
+  fieldName: string | null;
+  dataType: string | null;
+  value: string | number | null;
+  optionId: string | null;
+  optionName: string | null;
+  options: ProjectFieldOptionSummary[];
+  editable: boolean;
+}
+
 export interface ProjectFieldSummary {
   id: string;
   name: string;
   dataType: string | null;
+  options: ProjectFieldOptionSummary[];
+}
+
+export interface ProjectFieldOptionSummary {
+  id: string;
+  name: string;
 }
 
 export interface ProjectsInput extends RepoDetailInput {
@@ -1485,11 +1536,32 @@ export interface RepositoryRulesetSummary {
   source: string | null;
   htmlUrl: string | null;
   bypassActorCount: number | null;
+  bypassActors: RepositoryRulesetBypassActorSummary[];
   conditionCount: number | null;
+  conditions: RepositoryRulesetConditionSummary[];
   ruleCount: number | null;
+  rules: RepositoryRulesetRuleSummary[];
   currentUserCanBypass: string | null;
   createdAt: string | null;
   updatedAt: string | null;
+}
+
+export interface RepositoryRulesetBypassActorSummary {
+  actorId: number | null;
+  actorType: string | null;
+  bypassMode: string | null;
+}
+
+export interface RepositoryRulesetConditionSummary {
+  type: string;
+  include: string[];
+  exclude: string[];
+  parameters: string[];
+}
+
+export interface RepositoryRulesetRuleSummary {
+  type: string;
+  parameters: string[];
 }
 
 export interface RepositoryRulesetsInput extends RepoDetailInput {
@@ -1704,17 +1776,23 @@ export interface GitHubProvider {
   listOrganizationsWithStatus(input?: OrganizationListInput): Promise<OrganizationListResult>;
   listOrganizationTeams(input: OrganizationTeamsInput): Promise<TeamSummary[]>;
   listOrganizationTeamsWithStatus(input: OrganizationTeamsInput): Promise<OrganizationTeamsResult>;
-  listOrganizationRepositoriesWithStatus(input: OrganizationRepositoriesInput): Promise<OrganizationRepositoriesResult>;
+  listOrganizationRepositoriesWithStatus(
+    input: OrganizationRepositoriesInput
+  ): Promise<OrganizationRepositoriesResult>;
   listOrganizationTeamRepositoriesWithStatus(
     input: OrganizationTeamRepositoriesInput
   ): Promise<OrganizationTeamRepositoriesResult>;
-  listOrganizationTeamMembersWithStatus(input: OrganizationTeamMembersInput): Promise<OrganizationTeamMembersResult>;
+  listOrganizationTeamMembersWithStatus(
+    input: OrganizationTeamMembersInput
+  ): Promise<OrganizationTeamMembersResult>;
   listOrganizationMembersWithStatus(input: OrganizationMembersInput): Promise<OrganizationMembersResult>;
   listOrganizationProjectsWithStatus(input: OrganizationProjectsInput): Promise<ProjectListResult>;
   listAccountIssues(input: AccountIssueListInput): Promise<IssueSummary[]>;
   listAccountIssuesWithStatus(input?: AccountIssueListInput): Promise<AccountIssueListResult>;
   listAccountPullRequests(input: AccountPullRequestListInput): Promise<PullRequestSummary[]>;
-  listAccountPullRequestsWithStatus(input?: AccountPullRequestListInput): Promise<AccountPullRequestListResult>;
+  listAccountPullRequestsWithStatus(
+    input?: AccountPullRequestListInput
+  ): Promise<AccountPullRequestListResult>;
   listNotifications(input: NotificationListInput): Promise<NotificationSummary[]>;
   listNotificationsWithStatus(input?: NotificationListInput): Promise<NotificationListResult>;
   markNotificationThreadRead(input: NotificationThreadInput): Promise<NotificationThreadMutationResult>;
@@ -1754,6 +1832,9 @@ export interface GitHubProvider {
   getPullRequestDetailWithStatus(input: PullRequestDetailInput): Promise<PullRequestDetailResult>;
   listDiscussions(input: DiscussionListInput): Promise<DiscussionSummary[]>;
   listDiscussionsWithStatus(input: DiscussionListInput): Promise<DiscussionListResult>;
+  listDiscussionCategoriesWithStatus(
+    input: DiscussionCategoryListInput
+  ): Promise<DiscussionCategoryListResult>;
   getDiscussionDetail(input: DiscussionDetailInput): Promise<DiscussionDetailResult>;
   listActions(input: ActionsInput): Promise<WorkflowRunSummary[]>;
   listActionsWithStatus(input: ActionsInput): Promise<WorkflowRunListResult>;
@@ -1773,7 +1854,9 @@ export interface GitHubProvider {
     input: RepositorySecurityAdvisoriesInput
   ): Promise<RepositorySecurityAdvisoriesResult>;
   getRepositorySecurityPolicy(input: RepositorySecurityPolicyInput): Promise<RepositorySecurityPolicyResult>;
-  getRepositoryCommunityProfile(input: RepositoryCommunityProfileInput): Promise<RepositoryCommunityProfileResult>;
+  getRepositoryCommunityProfile(
+    input: RepositoryCommunityProfileInput
+  ): Promise<RepositoryCommunityProfileResult>;
   listReleases(input: ReleasesInput): Promise<ReleaseSummary[]>;
   listReleasesWithStatus(input: ReleasesInput): Promise<ReleaseListResult>;
   listContributors(input: ContributorsInput): Promise<ContributorSummary[]>;

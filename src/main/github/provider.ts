@@ -24,6 +24,8 @@ import type {
   ContributorSummary,
   DependabotAlertsInput,
   DependabotAlertsResult,
+  DiscussionCategoryListInput,
+  DiscussionCategoryListResult,
   DiscussionDetailInput,
   DiscussionDetailResult,
   DiscussionListInput,
@@ -144,7 +146,44 @@ import type { LocalStore } from "../storage";
 const githubOAuthClientIdEnvironmentVariable = "CONTROL_GITHUB_CLIENT_ID";
 const defaultGitHubOAuthClientId = "Ov23ctnQ2BrIJraiNh0c";
 
+const cacheTtlMs = {
+  accountProfile: 120_000,
+  accountRepositories: 120_000,
+  organizationDirectory: 120_000,
+  accountWork: 30_000,
+  notifications: 15_000,
+  repositoryRefs: 300_000,
+  repositoryTree: 300_000,
+  repositoryReadme: 300_000,
+  repositoryContents: 60_000,
+  fileContent: 300_000,
+  fileBlame: 300_000,
+  repositoryWiki: 300_000,
+  repositoryCommits: 60_000,
+  repositoryMetadata: 300_000,
+  repositoryAccess: 120_000,
+  issueList: 30_000,
+  issueDetail: 30_000,
+  pullList: 30_000,
+  pullDetail: 20_000,
+  discussionList: 60_000,
+  discussionDetail: 60_000,
+  actionsList: 15_000,
+  workflowDefinitions: 300_000,
+  workflowDetail: 15_000,
+  workflowLogs: 60_000,
+  projects: 120_000,
+  branchProtection: 120_000,
+  securityAlerts: 60_000,
+  repositoryRulesets: 120_000,
+  repositoryForks: 120_000,
+  securityDocuments: 300_000,
+  releases: 120_000,
+  contributors: 300_000
+} as const;
+
 type RepositoryUpdateListener = (nameWithOwner: string | null) => void;
+type AuthUpdateListener = (appState: AppState) => void;
 type OpenExternalUrl = (url: string) => Promise<void>;
 
 interface DeviceSignInRecord {
@@ -163,11 +202,56 @@ export class GitHubProviderManager implements GitHubProvider {
   private providerPromise: Promise<GitHubProvider> | null = null;
   private readonly inFlight = new Map<string, Promise<unknown>>();
   private deviceSignIn: DeviceSignInRecord | null = null;
+  private authenticatedViewer: Viewer | null = null;
+  private authRefreshPromise: Promise<void> | null = null;
 
   constructor(
     private readonly store: LocalStore,
-    private readonly onRepositoryDataUpdated: RepositoryUpdateListener = () => undefined
+    private readonly onRepositoryDataUpdated: RepositoryUpdateListener = () => undefined,
+    private readonly onAuthStateUpdated: AuthUpdateListener = () => undefined
   ) {}
+
+  async createAppState(): Promise<AppState> {
+    const settings = this.store.getSettings();
+    const token = await getGitHubToken();
+    const signInConfigured = isGitHubSignInConfigured();
+
+    if (!token) {
+      this.authenticatedViewer = null;
+      return createGitHubAppState({
+        settings,
+        signInConfigured,
+        authenticated: false,
+        viewer: null,
+        user: null,
+        error: signInConfigured
+          ? "Sign in with GitHub in Settings to load live GitHub data."
+          : "GitHub sign-in is not configured in this build."
+      });
+    }
+
+    if (this.authenticatedViewer) {
+      return createGitHubAppState({
+        settings,
+        signInConfigured,
+        authenticated: true,
+        viewer: this.authenticatedViewer,
+        user: this.authenticatedViewer.login,
+        error: null
+      });
+    }
+
+    const cachedViewer = cachedViewerFromStore(this.store);
+    this.refreshViewerInBackground(token);
+    return createGitHubAppState({
+      settings,
+      signInConfigured,
+      authenticated: true,
+      viewer: cachedViewer,
+      user: cachedViewer?.login ?? null,
+      error: null
+    });
+  }
 
   async signInWithBrowser(openAuthorizeUrl: OpenExternalUrl): Promise<GitHubSignInSession> {
     if (this.deviceSignIn?.status === "pending") {
@@ -243,7 +327,10 @@ export class GitHubProviderManager implements GitHubProvider {
     const viewer = await validateGitHubToken(trimmed);
     await setGitHubToken(trimmed);
     this.providerPromise = Promise.resolve(new OctokitProvider(trimmed));
+    this.authenticatedViewer = viewer;
+    this.authRefreshPromise = null;
     this.store.saveAccount("github", viewer.login, viewer);
+    this.store.saveAccount("github-viewer", viewer.login, viewer);
     this.store.updateSettings({ credentialProvider: "github-oauth" });
     return viewer;
   }
@@ -251,23 +338,30 @@ export class GitHubProviderManager implements GitHubProvider {
   async clearToken(): Promise<void> {
     await clearGitHubToken();
     this.providerPromise = null;
+    this.authenticatedViewer = null;
+    this.authRefreshPromise = null;
     this.clearDeviceSignIn();
   }
 
   async getViewer(): Promise<Viewer> {
     const viewer = await (await this.provider()).getViewer();
+    this.authenticatedViewer = viewer;
     this.store.saveAccount("github", viewer.login, viewer);
+    this.store.saveAccount("github-viewer", viewer.login, viewer);
     return viewer;
   }
 
   async getAccountProfile(input: AccountProfileInput = {}): Promise<GitHubAccountProfile> {
     const profile = await this.withCache(
       `account-profile:${input.login ?? "viewer"}`,
-      60_000,
+      cacheTtlMs.accountProfile,
       async () => (await this.provider()).getAccountProfile(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
     this.store.saveAccount("github", profile.login, profile);
+    if (!input.login) {
+      this.store.saveAccount("github-viewer", profile.login, profile);
+    }
     return profile;
   }
 
@@ -281,6 +375,9 @@ export class GitHubProviderManager implements GitHubProvider {
       });
       if (cached !== null) {
         this.store.saveAccount("github", cached.login, cached);
+        if (!input.login) {
+          this.store.saveAccount("github-viewer", cached.login, cached);
+        }
         return { profile: cached, availability: available };
       }
     }
@@ -318,9 +415,12 @@ export class GitHubProviderManager implements GitHubProvider {
           cacheKey,
           payload: result.profile,
           etag: null,
-          expiresAt: new Date(Date.now() + 60_000).toISOString()
+          expiresAt: new Date(Date.now() + cacheTtlMs.accountProfile).toISOString()
         });
         this.store.saveAccount("github", result.profile.login, result.profile);
+        if (!input.login) {
+          this.store.saveAccount("github-viewer", result.profile.login, result.profile);
+        }
       }
       return result;
     });
@@ -400,7 +500,7 @@ export class GitHubProviderManager implements GitHubProvider {
     const key = `account-repositories:${input.login}:${input.limit ?? 50}`;
     const repositories = await this.withCache(
       key,
-      60_000,
+      cacheTtlMs.accountRepositories,
       async () => (await this.provider()).listAccountRepositories(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -409,7 +509,9 @@ export class GitHubProviderManager implements GitHubProvider {
     return repositories;
   }
 
-  async listAccountRepositoriesWithStatus(input: AccountRepositoryInput = {}): Promise<AccountRepositoryListResult> {
+  async listAccountRepositoriesWithStatus(
+    input: AccountRepositoryInput = {}
+  ): Promise<AccountRepositoryListResult> {
     if (!input.login) {
       return this.listRepositoriesWithStatus({
         limit: input.limit,
@@ -448,7 +550,7 @@ export class GitHubProviderManager implements GitHubProvider {
         cacheKey: key,
         payload: result.items,
         etag: null,
-        expiresAt: new Date(Date.now() + 60_000).toISOString()
+        expiresAt: new Date(Date.now() + cacheTtlMs.accountRepositories).toISOString()
       });
     }
     return result;
@@ -457,7 +559,7 @@ export class GitHubProviderManager implements GitHubProvider {
   async listOrganizations(input: OrganizationListInput = {}): Promise<OrganizationSummary[]> {
     return this.withCache(
       `organizations:${input.limit ?? 50}`,
-      60_000,
+      cacheTtlMs.organizationDirectory,
       async () => (await this.provider()).listOrganizations(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -466,7 +568,7 @@ export class GitHubProviderManager implements GitHubProvider {
   async listOrganizationsWithStatus(input: OrganizationListInput = {}): Promise<OrganizationListResult> {
     return this.withListStatusCache(
       `organizations-with-status:${input.limit ?? 50}`,
-      60_000,
+      cacheTtlMs.organizationDirectory,
       async () => (await this.provider()).listOrganizationsWithStatus(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -476,9 +578,12 @@ export class GitHubProviderManager implements GitHubProvider {
     const key = `organization-teams:${input.org}:${input.limit ?? 30}`;
     return this.withCache(
       key,
-      60_000,
+      cacheTtlMs.organizationDirectory,
       async () => (await this.provider()).listOrganizationTeams(input),
-      { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
+      {
+        forceRefresh: input.forceRefresh,
+        cacheOnly: input.cacheOnly
+      }
     );
   }
 
@@ -486,7 +591,7 @@ export class GitHubProviderManager implements GitHubProvider {
     const key = `organization-teams-with-status:${input.org}:${input.limit ?? 30}`;
     return this.withListStatusCache(
       key,
-      60_000,
+      cacheTtlMs.organizationDirectory,
       async () => (await this.provider()).listOrganizationTeamsWithStatus(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -498,7 +603,7 @@ export class GitHubProviderManager implements GitHubProvider {
     const key = `organization-repositories:${input.org}:${input.limit ?? 50}`;
     return this.withListStatusCache(
       key,
-      60_000,
+      cacheTtlMs.organizationDirectory,
       async () => (await this.provider()).listOrganizationRepositoriesWithStatus(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -510,7 +615,7 @@ export class GitHubProviderManager implements GitHubProvider {
     const key = `organization-team-repositories:${input.org}:${input.teamSlug}:${input.limit ?? 30}`;
     return this.withListStatusCache(
       key,
-      60_000,
+      cacheTtlMs.organizationDirectory,
       async () => (await this.provider()).listOrganizationTeamRepositoriesWithStatus(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -522,17 +627,19 @@ export class GitHubProviderManager implements GitHubProvider {
     const key = `organization-team-members:${input.org}:${input.teamSlug}:${input.limit ?? 30}`;
     return this.withListStatusCache(
       key,
-      60_000,
+      cacheTtlMs.organizationDirectory,
       async () => (await this.provider()).listOrganizationTeamMembersWithStatus(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
   }
 
-  async listOrganizationMembersWithStatus(input: OrganizationMembersInput): Promise<OrganizationMembersResult> {
+  async listOrganizationMembersWithStatus(
+    input: OrganizationMembersInput
+  ): Promise<OrganizationMembersResult> {
     const key = `organization-members:${input.org}:${input.limit ?? 30}`;
     return this.withListStatusCache(
       key,
-      60_000,
+      cacheTtlMs.organizationDirectory,
       async () => (await this.provider()).listOrganizationMembersWithStatus(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -542,7 +649,7 @@ export class GitHubProviderManager implements GitHubProvider {
     const key = `organization-projects-status:${input.org}:${input.limit ?? 20}`;
     return this.withListStatusCache(
       key,
-      60_000,
+      cacheTtlMs.organizationDirectory,
       async () => (await this.provider()).listOrganizationProjectsWithStatus(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -552,9 +659,12 @@ export class GitHubProviderManager implements GitHubProvider {
     const key = `account-issues:${input.login ?? "viewer"}:${input.state ?? "open"}:${input.limit ?? 30}`;
     return this.withCache(
       key,
-      30_000,
+      cacheTtlMs.accountWork,
       async () => (await this.provider()).listAccountIssues(input),
-      { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
+      {
+        forceRefresh: input.forceRefresh,
+        cacheOnly: input.cacheOnly
+      }
     );
   }
 
@@ -562,7 +672,7 @@ export class GitHubProviderManager implements GitHubProvider {
     const key = `account-issues-with-status:${input.login ?? "viewer"}:${input.state ?? "open"}:${input.limit ?? 30}`;
     return this.withListStatusCache(
       key,
-      30_000,
+      cacheTtlMs.accountWork,
       async () => (await this.provider()).listAccountIssuesWithStatus(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -572,17 +682,22 @@ export class GitHubProviderManager implements GitHubProvider {
     const key = `account-pulls:${input.login ?? "viewer"}:${input.state ?? "open"}:${input.limit ?? 30}`;
     return this.withCache(
       key,
-      30_000,
+      cacheTtlMs.accountWork,
       async () => (await this.provider()).listAccountPullRequests(input),
-      { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
+      {
+        forceRefresh: input.forceRefresh,
+        cacheOnly: input.cacheOnly
+      }
     );
   }
 
-  async listAccountPullRequestsWithStatus(input: AccountPullRequestListInput = {}): Promise<AccountPullRequestListResult> {
+  async listAccountPullRequestsWithStatus(
+    input: AccountPullRequestListInput = {}
+  ): Promise<AccountPullRequestListResult> {
     const key = `account-pulls-with-status:${input.login ?? "viewer"}:${input.state ?? "open"}:${input.limit ?? 30}`;
     return this.withListStatusCache(
       key,
-      30_000,
+      cacheTtlMs.accountWork,
       async () => (await this.provider()).listAccountPullRequestsWithStatus(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -592,9 +707,12 @@ export class GitHubProviderManager implements GitHubProvider {
     const key = `notifications:${input.all ? "all" : "unread"}:${input.participating ? "participating" : "all"}:${input.since ?? "none"}:${input.before ?? "none"}:${input.limit ?? 30}`;
     return this.withCache(
       key,
-      30_000,
+      cacheTtlMs.notifications,
       async () => (await this.provider()).listNotifications(input),
-      { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
+      {
+        forceRefresh: input.forceRefresh,
+        cacheOnly: input.cacheOnly
+      }
     );
   }
 
@@ -602,7 +720,7 @@ export class GitHubProviderManager implements GitHubProvider {
     const key = `notifications-with-status:${input.all ? "all" : "unread"}:${input.participating ? "participating" : "all"}:${input.since ?? "none"}:${input.before ?? "none"}:${input.limit ?? 30}`;
     return this.withListStatusCache(
       key,
-      30_000,
+      cacheTtlMs.notifications,
       async () => (await this.provider()).listNotificationsWithStatus(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -678,9 +796,7 @@ export class GitHubProviderManager implements GitHubProvider {
     repoName?: string
   ): Promise<RepositoryDetailResult> {
     const input =
-      typeof ownerOrInput === "string"
-        ? { owner: ownerOrInput, repo: repoName ?? "" }
-        : ownerOrInput;
+      typeof ownerOrInput === "string" ? { owner: ownerOrInput, repo: repoName ?? "" } : ownerOrInput;
     const id = `${input.owner}/${input.repo}`;
     const available = { status: "available", message: null } as const;
 
@@ -744,49 +860,74 @@ export class GitHubProviderManager implements GitHubProvider {
 
   async listBranches(input: BranchListInput): Promise<BranchSummary[]> {
     const key = `branches:${input.owner}/${input.repo}:${input.limit ?? 50}`;
-    return this.withCache(key, 60_000, async () => (await this.provider()).listBranches(input), {
-      forceRefresh: input.forceRefresh,
-      cacheOnly: input.cacheOnly
-    });
+    return this.withCache(
+      key,
+      cacheTtlMs.repositoryRefs,
+      async () => (await this.provider()).listBranches(input),
+      {
+        forceRefresh: input.forceRefresh,
+        cacheOnly: input.cacheOnly
+      }
+    );
   }
 
   async listBranchesWithStatus(input: BranchListInput): Promise<BranchListResult> {
     const key = `branches-with-status:${input.owner}/${input.repo}:${input.limit ?? 50}`;
-    return this.withListStatusCache(key, 60_000, async () => (await this.provider()).listBranchesWithStatus(input), {
-      forceRefresh: input.forceRefresh,
-      cacheOnly: input.cacheOnly
-    });
+    return this.withListStatusCache(
+      key,
+      cacheTtlMs.repositoryRefs,
+      async () => (await this.provider()).listBranchesWithStatus(input),
+      {
+        forceRefresh: input.forceRefresh,
+        cacheOnly: input.cacheOnly
+      }
+    );
   }
 
   async listTags(input: TagListInput): Promise<TagSummary[]> {
     const key = `tags:${input.owner}/${input.repo}:${input.limit ?? 50}`;
-    return this.withCache(key, 60_000, async () => (await this.provider()).listTags(input), {
-      forceRefresh: input.forceRefresh,
-      cacheOnly: input.cacheOnly
-    });
+    return this.withCache(
+      key,
+      cacheTtlMs.repositoryRefs,
+      async () => (await this.provider()).listTags(input),
+      {
+        forceRefresh: input.forceRefresh,
+        cacheOnly: input.cacheOnly
+      }
+    );
   }
 
   async listTagsWithStatus(input: TagListInput): Promise<TagListResult> {
     const key = `tags-with-status:${input.owner}/${input.repo}:${input.limit ?? 50}`;
-    return this.withListStatusCache(key, 60_000, async () => (await this.provider()).listTagsWithStatus(input), {
-      forceRefresh: input.forceRefresh,
-      cacheOnly: input.cacheOnly
-    });
+    return this.withListStatusCache(
+      key,
+      cacheTtlMs.repositoryRefs,
+      async () => (await this.provider()).listTagsWithStatus(input),
+      {
+        forceRefresh: input.forceRefresh,
+        cacheOnly: input.cacheOnly
+      }
+    );
   }
 
   async listTree(input: RepoTreeInput): Promise<RepoTreeResult> {
     const key = `tree:${input.owner}/${input.repo}:${input.ref ?? "default"}:${input.recursive === false ? "flat" : "recursive"}:${input.limit ?? "all"}`;
-    return this.withCache(key, 60_000, async () => (await this.provider()).listTree(input), {
-      forceRefresh: input.forceRefresh,
-      cacheOnly: input.cacheOnly
-    });
+    return this.withCache(
+      key,
+      cacheTtlMs.repositoryTree,
+      async () => (await this.provider()).listTree(input),
+      {
+        forceRefresh: input.forceRefresh,
+        cacheOnly: input.cacheOnly
+      }
+    );
   }
 
   async listTreeWithStatus(input: RepoTreeInput): Promise<RepoTreeReadResult> {
     const key = `tree-with-status:${input.owner}/${input.repo}:${input.ref ?? "default"}:${input.recursive === false ? "flat" : "recursive"}:${input.limit ?? "all"}`;
     return this.withStatusCache(
       key,
-      60_000,
+      cacheTtlMs.repositoryTree,
       async () => (await this.provider()).listTreeWithStatus(input),
       { tree: null },
       {
@@ -800,7 +941,7 @@ export class GitHubProviderManager implements GitHubProvider {
     if (input.ref) {
       return this.withStatusCache(
         `readme:${input.owner}/${input.repo}:${input.ref}`,
-        60_000,
+        cacheTtlMs.repositoryReadme,
         async () => (await this.provider()).getReadme(input),
         { markdown: null },
         { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
@@ -850,33 +991,48 @@ export class GitHubProviderManager implements GitHubProvider {
 
   async listContents(input: RepoContentsInput): Promise<RepoEntry[]> {
     const key = `contents:${input.owner}/${input.repo}:${input.ref ?? "default"}:${input.path ?? ""}`;
-    return this.withCache(key, 30_000, async () => (await this.provider()).listContents(input), {
-      forceRefresh: input.forceRefresh,
-      cacheOnly: input.cacheOnly
-    });
+    return this.withCache(
+      key,
+      cacheTtlMs.repositoryContents,
+      async () => (await this.provider()).listContents(input),
+      {
+        forceRefresh: input.forceRefresh,
+        cacheOnly: input.cacheOnly
+      }
+    );
   }
 
   async listContentsWithStatus(input: RepoContentsInput): Promise<RepoContentsResult> {
     const key = `contents-with-status:${input.owner}/${input.repo}:${input.ref ?? "default"}:${input.path ?? ""}`;
-    return this.withListStatusCache(key, 30_000, async () => (await this.provider()).listContentsWithStatus(input), {
-      forceRefresh: input.forceRefresh,
-      cacheOnly: input.cacheOnly
-    });
+    return this.withListStatusCache(
+      key,
+      cacheTtlMs.repositoryContents,
+      async () => (await this.provider()).listContentsWithStatus(input),
+      {
+        forceRefresh: input.forceRefresh,
+        cacheOnly: input.cacheOnly
+      }
+    );
   }
 
   async getFileContent(input: RepoFileContentInput): Promise<RepoFileContent> {
     const key = `file-content:${input.owner}/${input.repo}:${input.ref ?? "default"}:${input.path}`;
-    return this.withCache(key, 120_000, async () => (await this.provider()).getFileContent(input), {
-      forceRefresh: input.forceRefresh,
-      cacheOnly: input.cacheOnly
-    });
+    return this.withCache(
+      key,
+      cacheTtlMs.fileContent,
+      async () => (await this.provider()).getFileContent(input),
+      {
+        forceRefresh: input.forceRefresh,
+        cacheOnly: input.cacheOnly
+      }
+    );
   }
 
   async getFileContentWithStatus(input: RepoFileContentInput): Promise<RepoFileContentResult> {
     const key = `file-content-with-status:${input.owner}/${input.repo}:${input.ref ?? "default"}:${input.path}`;
     return this.withStatusCache(
       key,
-      120_000,
+      cacheTtlMs.fileContent,
       async () => (await this.provider()).getFileContentWithStatus(input),
       { item: null },
       {
@@ -890,7 +1046,7 @@ export class GitHubProviderManager implements GitHubProvider {
     const key = `file-blame:${input.owner}/${input.repo}:${input.ref ?? "default"}:${input.path}:${input.maxRanges ?? 20}`;
     return this.withStatusCache(
       key,
-      120_000,
+      cacheTtlMs.fileBlame,
       async () => (await this.provider()).getFileBlame(input),
       { path: input.path, ref: input.ref ?? null, ranges: [], truncated: false },
       {
@@ -904,7 +1060,7 @@ export class GitHubProviderManager implements GitHubProvider {
     const key = `repository-wiki:${input.owner}/${input.repo}:${input.pagePath ?? "default"}:${input.limit ?? 50}`;
     return this.withStatusCache(
       key,
-      120_000,
+      cacheTtlMs.repositoryWiki,
       async () => (await this.provider()).getRepositoryWiki(input),
       { pages: [], selectedPage: null },
       {
@@ -917,7 +1073,7 @@ export class GitHubProviderManager implements GitHubProvider {
   async listCommits(input: RepositoryCommitListInput): Promise<RepositoryCommitSummary[]> {
     return this.withCache(
       `commits:${input.owner}/${input.repo}:${input.ref ?? "default"}:${input.path ?? ""}:${input.limit ?? 20}`,
-      60_000,
+      cacheTtlMs.repositoryCommits,
       async () => (await this.provider()).listCommits(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -928,7 +1084,7 @@ export class GitHubProviderManager implements GitHubProvider {
       `commits-with-status:${input.owner}/${input.repo}:${input.ref ?? "default"}:${input.path ?? ""}:${
         input.limit ?? 20
       }`,
-      60_000,
+      cacheTtlMs.repositoryCommits,
       async () => (await this.provider()).listCommitsWithStatus(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -937,7 +1093,7 @@ export class GitHubProviderManager implements GitHubProvider {
   async listLabels(input: RepositoryLabelListInput): Promise<LabelSummary[]> {
     return this.withCache(
       `labels:${input.owner}/${input.repo}:${input.limit ?? 100}`,
-      120_000,
+      cacheTtlMs.repositoryMetadata,
       async () => (await this.provider()).listLabels(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -946,7 +1102,7 @@ export class GitHubProviderManager implements GitHubProvider {
   async listLabelsWithStatus(input: RepositoryLabelListInput): Promise<RepositoryLabelListResult> {
     return this.withListStatusCache(
       `labels-with-status:${input.owner}/${input.repo}:${input.limit ?? 100}`,
-      120_000,
+      cacheTtlMs.repositoryMetadata,
       async () => (await this.provider()).listLabelsWithStatus(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -955,7 +1111,7 @@ export class GitHubProviderManager implements GitHubProvider {
   async listAssignableUsers(input: AssignableUserListInput): Promise<AssignableUserSummary[]> {
     return this.withCache(
       `assignable-users:${input.owner}/${input.repo}:${input.limit ?? 100}`,
-      120_000,
+      cacheTtlMs.repositoryMetadata,
       async () => (await this.provider()).listAssignableUsers(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -964,7 +1120,7 @@ export class GitHubProviderManager implements GitHubProvider {
   async listAssignableUsersWithStatus(input: AssignableUserListInput): Promise<AssignableUserListResult> {
     return this.withListStatusCache(
       `assignable-users-with-status:${input.owner}/${input.repo}:${input.limit ?? 100}`,
-      120_000,
+      cacheTtlMs.repositoryMetadata,
       async () => (await this.provider()).listAssignableUsersWithStatus(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -976,7 +1132,7 @@ export class GitHubProviderManager implements GitHubProvider {
     }:${input.limit ?? 30}`;
     return this.withRepositoryAccessCache(
       key,
-      120_000,
+      cacheTtlMs.repositoryAccess,
       async () => (await this.provider()).getRepositoryAccess(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -985,16 +1141,18 @@ export class GitHubProviderManager implements GitHubProvider {
   async listMilestones(input: RepositoryMilestoneListInput): Promise<MilestoneSummary[]> {
     return this.withCache(
       `milestones:${input.owner}/${input.repo}:${input.state ?? "open"}:${input.limit ?? 100}`,
-      120_000,
+      cacheTtlMs.repositoryMetadata,
       async () => (await this.provider()).listMilestones(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
   }
 
-  async listMilestonesWithStatus(input: RepositoryMilestoneListInput): Promise<RepositoryMilestoneListResult> {
+  async listMilestonesWithStatus(
+    input: RepositoryMilestoneListInput
+  ): Promise<RepositoryMilestoneListResult> {
     return this.withListStatusCache(
       `milestones-with-status:${input.owner}/${input.repo}:${input.state ?? "open"}:${input.limit ?? 100}`,
-      120_000,
+      cacheTtlMs.repositoryMetadata,
       async () => (await this.provider()).listMilestonesWithStatus(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -1003,7 +1161,7 @@ export class GitHubProviderManager implements GitHubProvider {
   async listIssues(input: IssueListInput): Promise<IssueSummary[]> {
     return this.withCache(
       `issues:${input.owner}/${input.repo}:${input.state ?? "open"}`,
-      30_000,
+      cacheTtlMs.issueList,
       async () => (await this.provider()).listIssues(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -1012,7 +1170,7 @@ export class GitHubProviderManager implements GitHubProvider {
   async listIssuesWithStatus(input: IssueListInput): Promise<IssueListResult> {
     return this.withListStatusCache(
       `issues-with-status:${input.owner}/${input.repo}:${input.state ?? "open"}:${input.limit ?? 50}`,
-      30_000,
+      cacheTtlMs.issueList,
       async () => (await this.provider()).listIssuesWithStatus(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -1020,17 +1178,22 @@ export class GitHubProviderManager implements GitHubProvider {
 
   async getIssueDetail(input: IssueDetailInput): Promise<IssueDetail> {
     const key = `issue-detail:${input.owner}/${input.repo}:${input.issueNumber}`;
-    return this.withCache(key, 30_000, async () => (await this.provider()).getIssueDetail(input), {
-      forceRefresh: input.forceRefresh,
-      cacheOnly: input.cacheOnly
-    });
+    return this.withCache(
+      key,
+      cacheTtlMs.issueDetail,
+      async () => (await this.provider()).getIssueDetail(input),
+      {
+        forceRefresh: input.forceRefresh,
+        cacheOnly: input.cacheOnly
+      }
+    );
   }
 
   async getIssueDetailWithStatus(input: IssueDetailInput): Promise<IssueDetailResult> {
     const key = `issue-detail-with-status:${input.owner}/${input.repo}:${input.issueNumber}`;
     return this.withStatusCache(
       key,
-      30_000,
+      cacheTtlMs.issueDetail,
       async () => (await this.provider()).getIssueDetailWithStatus(input),
       { detail: null },
       {
@@ -1043,7 +1206,7 @@ export class GitHubProviderManager implements GitHubProvider {
   async listPullRequests(input: PullRequestListInput): Promise<PullRequestSummary[]> {
     return this.withCache(
       `pulls:${input.owner}/${input.repo}:${input.state ?? "open"}`,
-      30_000,
+      cacheTtlMs.pullList,
       async () => (await this.provider()).listPullRequests(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -1052,7 +1215,7 @@ export class GitHubProviderManager implements GitHubProvider {
   async listPullRequestsWithStatus(input: PullRequestListInput): Promise<PullRequestListResult> {
     return this.withListStatusCache(
       `pulls-with-status:${input.owner}/${input.repo}:${input.state ?? "open"}:${input.limit ?? 50}`,
-      30_000,
+      cacheTtlMs.pullList,
       async () => (await this.provider()).listPullRequestsWithStatus(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -1060,17 +1223,22 @@ export class GitHubProviderManager implements GitHubProvider {
 
   async getPullRequestDetail(input: PullRequestDetailInput): Promise<PullRequestDetail> {
     const key = `pull-detail:${input.owner}/${input.repo}:${input.pullNumber}`;
-    return this.withCache(key, 30_000, async () => (await this.provider()).getPullRequestDetail(input), {
-      forceRefresh: input.forceRefresh,
-      cacheOnly: input.cacheOnly
-    });
+    return this.withCache(
+      key,
+      cacheTtlMs.pullDetail,
+      async () => (await this.provider()).getPullRequestDetail(input),
+      {
+        forceRefresh: input.forceRefresh,
+        cacheOnly: input.cacheOnly
+      }
+    );
   }
 
   async getPullRequestDetailWithStatus(input: PullRequestDetailInput): Promise<PullRequestDetailResult> {
     const key = `pull-detail-with-status:${input.owner}/${input.repo}:${input.pullNumber}`;
     return this.withStatusCache(
       key,
-      30_000,
+      cacheTtlMs.pullDetail,
       async () => (await this.provider()).getPullRequestDetailWithStatus(input),
       { detail: null },
       {
@@ -1083,7 +1251,7 @@ export class GitHubProviderManager implements GitHubProvider {
   async listDiscussions(input: DiscussionListInput): Promise<DiscussionSummary[]> {
     return this.withCache(
       `discussions:${input.owner}/${input.repo}:${input.limit ?? 30}`,
-      45_000,
+      cacheTtlMs.discussionList,
       async () => (await this.provider()).listDiscussions(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -1092,8 +1260,19 @@ export class GitHubProviderManager implements GitHubProvider {
   async listDiscussionsWithStatus(input: DiscussionListInput): Promise<DiscussionListResult> {
     return this.withListStatusCache(
       `discussions-status:${input.owner}/${input.repo}:${input.limit ?? 30}`,
-      45_000,
+      cacheTtlMs.discussionList,
       async () => (await this.provider()).listDiscussionsWithStatus(input),
+      { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
+    );
+  }
+
+  async listDiscussionCategoriesWithStatus(
+    input: DiscussionCategoryListInput
+  ): Promise<DiscussionCategoryListResult> {
+    return this.withListStatusCache(
+      `discussion-categories-status:${input.owner}/${input.repo}:${input.limit ?? 25}`,
+      cacheTtlMs.repositoryMetadata,
+      async () => (await this.provider()).listDiscussionCategoriesWithStatus(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
   }
@@ -1101,7 +1280,7 @@ export class GitHubProviderManager implements GitHubProvider {
   async getDiscussionDetail(input: DiscussionDetailInput): Promise<DiscussionDetailResult> {
     return this.withStatusCache(
       `discussion-detail:${input.owner}/${input.repo}:${input.discussionNumber}:${input.commentsLimit ?? 100}:${input.repliesLimit ?? 20}`,
-      45_000,
+      cacheTtlMs.discussionDetail,
       async () => (await this.provider()).getDiscussionDetail(input),
       { item: null },
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
@@ -1111,7 +1290,7 @@ export class GitHubProviderManager implements GitHubProvider {
   async listActions(input: ActionsInput): Promise<WorkflowRunSummary[]> {
     return this.withCache(
       `actions:${input.owner}/${input.repo}:${input.limit ?? 30}`,
-      20_000,
+      cacheTtlMs.actionsList,
       async () => (await this.provider()).listActions(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -1120,7 +1299,7 @@ export class GitHubProviderManager implements GitHubProvider {
   async listActionsWithStatus(input: ActionsInput): Promise<WorkflowRunListResult> {
     return this.withListStatusCache(
       `actions-with-status:${input.owner}/${input.repo}:${input.limit ?? 30}`,
-      20_000,
+      cacheTtlMs.actionsList,
       async () => (await this.provider()).listActionsWithStatus(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -1129,7 +1308,7 @@ export class GitHubProviderManager implements GitHubProvider {
   async listWorkflows(input: WorkflowListInput): Promise<WorkflowDefinitionSummary[]> {
     return this.withCache(
       `workflows:${input.owner}/${input.repo}:${input.ref ?? "default"}:${input.limit ?? 50}`,
-      60_000,
+      cacheTtlMs.workflowDefinitions,
       async () => (await this.provider()).listWorkflows(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -1138,7 +1317,7 @@ export class GitHubProviderManager implements GitHubProvider {
   async listWorkflowsWithStatus(input: WorkflowListInput): Promise<WorkflowDefinitionListResult> {
     return this.withListStatusCache(
       `workflows-with-status:${input.owner}/${input.repo}:${input.ref ?? "default"}:${input.limit ?? 50}`,
-      60_000,
+      cacheTtlMs.workflowDefinitions,
       async () => (await this.provider()).listWorkflowsWithStatus(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -1147,7 +1326,7 @@ export class GitHubProviderManager implements GitHubProvider {
   async getWorkflowRunDetail(input: WorkflowRunDetailInput): Promise<WorkflowRunDetail> {
     return this.withCache(
       `action-detail:${input.owner}/${input.repo}:${input.runId}`,
-      20_000,
+      cacheTtlMs.workflowDetail,
       async () => (await this.provider()).getWorkflowRunDetail(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -1156,7 +1335,7 @@ export class GitHubProviderManager implements GitHubProvider {
   async getWorkflowRunDetailWithStatus(input: WorkflowRunDetailInput): Promise<WorkflowRunDetailResult> {
     return this.withStatusCache(
       `action-detail-with-status:${input.owner}/${input.repo}:${input.runId}`,
-      20_000,
+      cacheTtlMs.workflowDetail,
       async () => (await this.provider()).getWorkflowRunDetailWithStatus(input),
       { detail: null },
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
@@ -1166,7 +1345,7 @@ export class GitHubProviderManager implements GitHubProvider {
   async getWorkflowJobLogs(input: WorkflowJobLogsInput): Promise<WorkflowJobLogsResult> {
     return this.withStatusCache(
       `workflow-job-logs:${input.owner}/${input.repo}:${input.jobId}:${input.maxCharacters ?? 12_000}`,
-      30_000,
+      cacheTtlMs.workflowLogs,
       async () => (await this.provider()).getWorkflowJobLogs(input),
       { jobId: input.jobId, text: "", truncated: false, downloadUrl: null },
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
@@ -1176,7 +1355,7 @@ export class GitHubProviderManager implements GitHubProvider {
   async listProjects(input: ProjectsInput): Promise<ProjectSummary[]> {
     return this.withCache(
       `projects:${input.owner}/${input.repo}:${input.limit ?? 20}`,
-      60_000,
+      cacheTtlMs.projects,
       async () => (await this.provider()).listProjects(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -1185,7 +1364,7 @@ export class GitHubProviderManager implements GitHubProvider {
   async listProjectsWithStatus(input: ProjectsInput): Promise<ProjectListResult> {
     return this.withListStatusCache(
       `projects-status:${input.owner}/${input.repo}:${input.limit ?? 20}`,
-      60_000,
+      cacheTtlMs.projects,
       async () => (await this.provider()).listProjectsWithStatus(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -1194,7 +1373,7 @@ export class GitHubProviderManager implements GitHubProvider {
   async getBranchProtection(input: BranchProtectionInput): Promise<BranchProtectionResult> {
     return this.withStatusCache(
       `branch-protection:${input.owner}/${input.repo}:${input.branch}`,
-      60_000,
+      cacheTtlMs.branchProtection,
       async () => (await this.provider()).getBranchProtection(input),
       { protection: null },
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
@@ -1204,7 +1383,7 @@ export class GitHubProviderManager implements GitHubProvider {
   async listDependabotAlerts(input: DependabotAlertsInput): Promise<DependabotAlertsResult> {
     return this.withListStatusCache(
       `dependabot-alerts:${input.owner}/${input.repo}:${input.state ?? "open"}:${input.limit ?? 30}`,
-      60_000,
+      cacheTtlMs.securityAlerts,
       async () => (await this.provider()).listDependabotAlerts(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -1213,7 +1392,7 @@ export class GitHubProviderManager implements GitHubProvider {
   async listCodeScanningAlerts(input: CodeScanningAlertsInput): Promise<CodeScanningAlertsResult> {
     return this.withListStatusCache(
       `code-scanning-alerts:${input.owner}/${input.repo}:${input.state ?? "open"}:${input.limit ?? 30}`,
-      60_000,
+      cacheTtlMs.securityAlerts,
       async () => (await this.provider()).listCodeScanningAlerts(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -1222,7 +1401,7 @@ export class GitHubProviderManager implements GitHubProvider {
   async listSecretScanningAlerts(input: SecretScanningAlertsInput): Promise<SecretScanningAlertsResult> {
     return this.withListStatusCache(
       `secret-scanning-alerts:${input.owner}/${input.repo}:${input.state ?? "open"}:${input.limit ?? 30}`,
-      60_000,
+      cacheTtlMs.securityAlerts,
       async () => (await this.provider()).listSecretScanningAlerts(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -1231,7 +1410,7 @@ export class GitHubProviderManager implements GitHubProvider {
   async listRepositoryRulesets(input: RepositoryRulesetsInput): Promise<RepositoryRulesetsResult> {
     return this.withListStatusCache(
       `repository-rulesets:${input.owner}/${input.repo}:${input.includesParents ?? true}:${input.limit ?? 30}`,
-      60_000,
+      cacheTtlMs.repositoryRulesets,
       async () => (await this.provider()).listRepositoryRulesets(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -1240,7 +1419,7 @@ export class GitHubProviderManager implements GitHubProvider {
   async listRepositoryForks(input: RepositoryForksInput): Promise<RepositoryForksResult> {
     return this.withListStatusCache(
       `repository-forks:${input.owner}/${input.repo}:${input.sort ?? "newest"}:${input.limit ?? 30}`,
-      60_000,
+      cacheTtlMs.repositoryForks,
       async () => (await this.provider()).listRepositoryForks(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -1251,16 +1430,18 @@ export class GitHubProviderManager implements GitHubProvider {
   ): Promise<RepositorySecurityAdvisoriesResult> {
     return this.withListStatusCache(
       `repository-security-advisories:${input.owner}/${input.repo}:${input.limit ?? 30}`,
-      60_000,
+      cacheTtlMs.securityAlerts,
       async () => (await this.provider()).listRepositorySecurityAdvisories(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
   }
 
-  async getRepositorySecurityPolicy(input: RepositorySecurityPolicyInput): Promise<RepositorySecurityPolicyResult> {
+  async getRepositorySecurityPolicy(
+    input: RepositorySecurityPolicyInput
+  ): Promise<RepositorySecurityPolicyResult> {
     return this.withStatusCache(
       `repository-security-policy:${input.owner}/${input.repo}:${input.ref ?? "default"}`,
-      120_000,
+      cacheTtlMs.securityDocuments,
       async () => (await this.provider()).getRepositorySecurityPolicy(input),
       { policy: null },
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
@@ -1272,7 +1453,7 @@ export class GitHubProviderManager implements GitHubProvider {
   ): Promise<RepositoryCommunityProfileResult> {
     return this.withStatusCache(
       `repository-community-profile:${input.owner}/${input.repo}`,
-      120_000,
+      cacheTtlMs.securityDocuments,
       async () => (await this.provider()).getRepositoryCommunityProfile(input),
       { profile: null },
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
@@ -1282,7 +1463,7 @@ export class GitHubProviderManager implements GitHubProvider {
   async listReleases(input: ReleasesInput): Promise<ReleaseSummary[]> {
     return this.withCache(
       `releases:${input.owner}/${input.repo}:${input.limit ?? 20}`,
-      60_000,
+      cacheTtlMs.releases,
       async () => (await this.provider()).listReleases(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -1291,7 +1472,7 @@ export class GitHubProviderManager implements GitHubProvider {
   async listReleasesWithStatus(input: ReleasesInput): Promise<ReleaseListResult> {
     return this.withListStatusCache(
       `releases-with-status:${input.owner}/${input.repo}:${input.limit ?? 20}`,
-      60_000,
+      cacheTtlMs.releases,
       async () => (await this.provider()).listReleasesWithStatus(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -1300,7 +1481,7 @@ export class GitHubProviderManager implements GitHubProvider {
   async listContributors(input: ContributorsInput): Promise<ContributorSummary[]> {
     return this.withCache(
       `contributors:${input.owner}/${input.repo}`,
-      120_000,
+      cacheTtlMs.contributors,
       async () => (await this.provider()).listContributors(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -1309,7 +1490,7 @@ export class GitHubProviderManager implements GitHubProvider {
   async listContributorsWithStatus(input: ContributorsInput): Promise<ContributorListResult> {
     return this.withListStatusCache(
       `contributors-with-status:${input.owner}/${input.repo}`,
-      120_000,
+      cacheTtlMs.contributors,
       async () => (await this.provider()).listContributorsWithStatus(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
@@ -1497,6 +1678,7 @@ export class GitHubProviderManager implements GitHubProvider {
       `pull-detail-with-status:${scope}`,
       `discussions:${scope}`,
       `discussions-status:${scope}`,
+      `discussion-categories-status:${scope}`,
       `discussion-detail:${scope}`,
       `actions:${scope}`,
       `actions-with-status:${scope}`,
@@ -1665,6 +1847,60 @@ export class GitHubProviderManager implements GitHubProvider {
       return new OctokitProvider(token);
     });
     return this.providerPromise;
+  }
+
+  private refreshViewerInBackground(token: string): void {
+    if (this.authRefreshPromise) {
+      return;
+    }
+
+    this.authRefreshPromise = this.loadViewerForAppState(token).finally(() => {
+      this.authRefreshPromise = null;
+    });
+  }
+
+  private async loadViewerForAppState(token: string): Promise<void> {
+    const signInConfigured = isGitHubSignInConfigured();
+
+    try {
+      const provider = new OctokitProvider(token);
+      const viewer = await provider.getViewer();
+      if ((await getGitHubToken()) !== token) {
+        return;
+      }
+
+      this.providerPromise = Promise.resolve(provider);
+      this.authenticatedViewer = viewer;
+      this.store.saveAccount("github", viewer.login, viewer);
+      this.store.saveAccount("github-viewer", viewer.login, viewer);
+      this.onAuthStateUpdated(
+        createGitHubAppState({
+          settings: this.store.getSettings(),
+          signInConfigured,
+          authenticated: true,
+          viewer,
+          user: viewer.login,
+          error: null
+        })
+      );
+    } catch (error) {
+      if ((await getGitHubToken()) !== token) {
+        return;
+      }
+
+      this.providerPromise = null;
+      this.authenticatedViewer = null;
+      this.onAuthStateUpdated(
+        createGitHubAppState({
+          settings: this.store.getSettings(),
+          signInConfigured,
+          authenticated: false,
+          viewer: null,
+          user: null,
+          error: error instanceof Error ? error.message : "GitHub credential authentication failed."
+        })
+      );
+    }
   }
 
   private async withCache<T>(
@@ -1967,41 +2203,68 @@ export class GitHubProviderManager implements GitHubProvider {
 export async function createAppState(store: LocalStore): Promise<AppState> {
   const settings = store.getSettings();
   const token = await getGitHubToken();
-  const signInConfigured = Boolean(
-    process.env[githubOAuthClientIdEnvironmentVariable]?.trim() || defaultGitHubOAuthClientId
-  );
-  let viewer: Viewer | null = null;
-  let github: GitHubAuthStatus = {
-    available: true,
-    authenticated: false,
-    signInConfigured,
-    user: null,
-    error: signInConfigured
-      ? "Sign in with GitHub in Settings to load live GitHub data."
-      : "GitHub sign-in is not configured in this build."
-  };
+  const signInConfigured = isGitHubSignInConfigured();
+  const cachedViewer = token ? cachedViewerFromStore(store) : null;
 
-  if (token) {
-    try {
-      viewer = await new OctokitProvider(token).getViewer();
-      store.saveAccount("github", viewer.login, viewer);
-      github = {
-        available: true,
-        authenticated: true,
-        signInConfigured,
-        user: viewer.login,
-        error: null
-      };
-    } catch (error) {
-      github = {
-        available: true,
-        authenticated: false,
-        signInConfigured,
-        user: null,
-        error: error instanceof Error ? error.message : "GitHub credential authentication failed."
-      };
-    }
+  return createGitHubAppState({
+    settings,
+    signInConfigured,
+    authenticated: Boolean(token),
+    viewer: cachedViewer,
+    user: cachedViewer?.login ?? null,
+    error: token
+      ? null
+      : signInConfigured
+        ? "Sign in with GitHub in Settings to load live GitHub data."
+        : "GitHub sign-in is not configured in this build."
+  });
+}
+
+function isGitHubSignInConfigured(): boolean {
+  return Boolean(process.env[githubOAuthClientIdEnvironmentVariable]?.trim() || defaultGitHubOAuthClientId);
+}
+
+function cachedViewerFromStore(store: LocalStore): Viewer | null {
+  const cached = store.getLastAccount<unknown>("github-viewer");
+  if (!cached || typeof cached !== "object") {
+    return null;
   }
+
+  const record = cached as Record<string, unknown>;
+  if (typeof record.login !== "string" || record.login.length === 0) {
+    return null;
+  }
+
+  return {
+    login: record.login,
+    name: typeof record.name === "string" ? record.name : null,
+    avatarUrl: typeof record.avatarUrl === "string" ? record.avatarUrl : null,
+    htmlUrl: typeof record.htmlUrl === "string" ? record.htmlUrl : null
+  };
+}
+
+function createGitHubAppState({
+  settings,
+  signInConfigured,
+  authenticated,
+  viewer,
+  user,
+  error
+}: {
+  settings: AppState["settings"];
+  signInConfigured: boolean;
+  authenticated: boolean;
+  viewer: Viewer | null;
+  user: string | null;
+  error: string | null;
+}): AppState {
+  const github: GitHubAuthStatus = {
+    available: true,
+    authenticated,
+    signInConfigured,
+    user,
+    error
+  };
 
   return {
     platform: process.platform,

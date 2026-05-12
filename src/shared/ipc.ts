@@ -25,6 +25,8 @@ import type {
   ControlSettings,
   DependabotAlertsInput,
   DependabotAlertsResult,
+  DiscussionCategoryListInput,
+  DiscussionCategoryListResult,
   DiscussionDetailInput,
   DiscussionDetailResult,
   DiscussionListInput,
@@ -155,6 +157,7 @@ export interface ControlApi {
   listRecentItems(input?: LocalRecentListInput): Promise<LocalRecentItem[]>;
   recordRecentItem(input: LocalRecentRecordInput): Promise<LocalRecentItem[]>;
   onGitHubRepositoriesUpdated(callback: (event: GitHubRepositoriesUpdatedEvent) => void): () => void;
+  onGitHubAuthUpdated(callback: (event: GitHubAuthUpdatedEvent) => void): () => void;
   github: {
     getViewer(): Promise<Viewer>;
     getAccountProfile(input?: AccountProfileInput): Promise<GitHubAccountProfile>;
@@ -173,13 +176,17 @@ export interface ControlApi {
     listOrganizationTeamRepositoriesWithStatus(
       input: OrganizationTeamRepositoriesInput
     ): Promise<OrganizationTeamRepositoriesResult>;
-    listOrganizationTeamMembersWithStatus(input: OrganizationTeamMembersInput): Promise<OrganizationTeamMembersResult>;
+    listOrganizationTeamMembersWithStatus(
+      input: OrganizationTeamMembersInput
+    ): Promise<OrganizationTeamMembersResult>;
     listOrganizationMembersWithStatus(input: OrganizationMembersInput): Promise<OrganizationMembersResult>;
     listOrganizationProjectsWithStatus(input: OrganizationProjectsInput): Promise<ProjectListResult>;
     listAccountIssues(input?: AccountIssueListInput): Promise<IssueSummary[]>;
     listAccountIssuesWithStatus(input?: AccountIssueListInput): Promise<AccountIssueListResult>;
     listAccountPullRequests(input?: AccountPullRequestListInput): Promise<PullRequestSummary[]>;
-    listAccountPullRequestsWithStatus(input?: AccountPullRequestListInput): Promise<AccountPullRequestListResult>;
+    listAccountPullRequestsWithStatus(
+      input?: AccountPullRequestListInput
+    ): Promise<AccountPullRequestListResult>;
     listNotifications(input?: NotificationListInput): Promise<NotificationSummary[]>;
     listNotificationsWithStatus(input?: NotificationListInput): Promise<NotificationListResult>;
     markNotificationThreadRead(input: NotificationThreadInput): Promise<NotificationThreadMutationResult>;
@@ -219,6 +226,9 @@ export interface ControlApi {
     getPullRequestDetailWithStatus(input: PullRequestDetailInput): Promise<PullRequestDetailResult>;
     listDiscussions(input: DiscussionListInput): Promise<DiscussionSummary[]>;
     listDiscussionsWithStatus(input: DiscussionListInput): Promise<DiscussionListResult>;
+    listDiscussionCategoriesWithStatus(
+      input: DiscussionCategoryListInput
+    ): Promise<DiscussionCategoryListResult>;
     getDiscussionDetail(input: DiscussionDetailInput): Promise<DiscussionDetailResult>;
     listActions(input: ActionsInput): Promise<WorkflowRunSummary[]>;
     listActionsWithStatus(input: ActionsInput): Promise<WorkflowRunListResult>;
@@ -237,8 +247,12 @@ export interface ControlApi {
     listRepositorySecurityAdvisories(
       input: RepositorySecurityAdvisoriesInput
     ): Promise<RepositorySecurityAdvisoriesResult>;
-    getRepositorySecurityPolicy(input: RepositorySecurityPolicyInput): Promise<RepositorySecurityPolicyResult>;
-    getRepositoryCommunityProfile(input: RepositoryCommunityProfileInput): Promise<RepositoryCommunityProfileResult>;
+    getRepositorySecurityPolicy(
+      input: RepositorySecurityPolicyInput
+    ): Promise<RepositorySecurityPolicyResult>;
+    getRepositoryCommunityProfile(
+      input: RepositoryCommunityProfileInput
+    ): Promise<RepositoryCommunityProfileResult>;
     listReleases(input: ReleasesInput): Promise<ReleaseSummary[]>;
     listReleasesWithStatus(input: ReleasesInput): Promise<ReleaseListResult>;
     listContributors(input: ContributorsInput): Promise<ContributorSummary[]>;
@@ -251,6 +265,10 @@ export interface ControlApi {
 
 export interface GitHubRepositoriesUpdatedEvent {
   nameWithOwner: string | null;
+}
+
+export interface GitHubAuthUpdatedEvent {
+  appState: AppState;
 }
 
 export const ipcChannels = {
@@ -268,6 +286,7 @@ export const ipcChannels = {
   listRecentItems: "control:list-recent-items",
   recordRecentItem: "control:record-recent-item",
   githubRepositoriesUpdated: "github:repositories-updated",
+  githubAuthUpdated: "github:auth-updated",
   githubViewer: "github:viewer",
   githubAccountProfile: "github:account-profile",
   githubAccountProfileWithStatus: "github:account-profile-with-status",
@@ -327,6 +346,7 @@ export const ipcChannels = {
   githubPullRequestDetailWithStatus: "github:pull-request-detail-with-status",
   githubDiscussions: "github:discussions",
   githubDiscussionsWithStatus: "github:discussions-with-status",
+  githubDiscussionCategoriesWithStatus: "github:discussion-categories-with-status",
   githubDiscussionDetail: "github:discussion-detail",
   githubActions: "github:actions",
   githubActionsWithStatus: "github:actions-with-status",

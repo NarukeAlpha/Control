@@ -227,7 +227,6 @@ const repositorySummaryFragment = `
     issues(states: OPEN) { totalCount }
     pullRequests(states: OPEN) { totalCount }
     discussions { totalCount }
-    projectsV2 { totalCount }
     releases { totalCount }
     primaryLanguage { name color }
   }

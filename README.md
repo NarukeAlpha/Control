@@ -1,6 +1,6 @@
 # Control
 
-Control is a local-first desktop client for GitHub, designed around a macOS glass shell inspired by the provided GitHub concept and Apple Music.app.
+Control is a local-first desktop client for managing GitHub from a macOS glass shell inspired by the provided GitHub concept and Apple Music.app.
 
 V1 is GitHub.com-only and signs in with GitHub through OAuth device flow. Control opens GitHub's verification page, shows the one-time user code in-app, stores the resulting access token in the OS keychain, and loads GitHub data through Octokit with a local SQLite cache for faster repository opens.
 

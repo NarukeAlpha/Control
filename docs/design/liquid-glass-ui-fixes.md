@@ -22,7 +22,6 @@ the five iterative issues the user reported and the fixes applied for each.
   rendering as stretched pills (42×38, 48×38) instead of 38×38 circles.
 - `.app-shell` margins (26/48) and column widths (278 / 304) were larger than
   the inspiration.
-  ![img.png](img.png)
 
 ### Fix (`src/renderer/src/styles.css`)
 

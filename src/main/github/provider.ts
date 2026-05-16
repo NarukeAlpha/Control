@@ -721,37 +721,40 @@ export class GitHubProviderManager implements GitHubProvider {
   }
 
   async listAccountIssues(input: AccountIssueListInput = {}): Promise<IssueSummary[]> {
-    const key = `account-issues:${input.login ?? "viewer"}:${input.state ?? "open"}:${input.limit ?? 30}`;
+    const normalizedInput = this.withViewerLogin(input);
+    const key = `account-issues:${normalizedInput.login ?? "viewer"}:${normalizedInput.state ?? "open"}:${normalizedInput.limit ?? 30}`;
     return this.withCache(
       key,
       cacheTtlMs.accountWork,
-      async () => (await this.provider()).listAccountIssues(input),
+      async () => (await this.provider()).listAccountIssues(normalizedInput),
       {
-        forceRefresh: input.forceRefresh,
-        cacheOnly: input.cacheOnly
+        forceRefresh: normalizedInput.forceRefresh,
+        cacheOnly: normalizedInput.cacheOnly
       }
     );
   }
 
   async listAccountIssuesWithStatus(input: AccountIssueListInput = {}): Promise<AccountIssueListResult> {
-    const key = `account-issues-with-status:${input.login ?? "viewer"}:${input.state ?? "open"}:${input.limit ?? 30}`;
+    const normalizedInput = this.withViewerLogin(input);
+    const key = `account-issues-with-status:${normalizedInput.login ?? "viewer"}:${normalizedInput.state ?? "open"}:${normalizedInput.limit ?? 30}`;
     return this.withListStatusCache(
       key,
       cacheTtlMs.accountWork,
-      async () => (await this.provider()).listAccountIssuesWithStatus(input),
-      { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
+      async () => (await this.provider()).listAccountIssuesWithStatus(normalizedInput),
+      { forceRefresh: normalizedInput.forceRefresh, cacheOnly: normalizedInput.cacheOnly }
     );
   }
 
   async listAccountPullRequests(input: AccountPullRequestListInput = {}): Promise<PullRequestSummary[]> {
-    const key = `account-pulls:${input.login ?? "viewer"}:${input.state ?? "open"}:${input.limit ?? 30}`;
+    const normalizedInput = this.withViewerLogin(input);
+    const key = `account-pulls:${normalizedInput.login ?? "viewer"}:${normalizedInput.state ?? "open"}:${normalizedInput.limit ?? 30}`;
     return this.withCache(
       key,
       cacheTtlMs.accountWork,
-      async () => (await this.provider()).listAccountPullRequests(input),
+      async () => (await this.provider()).listAccountPullRequests(normalizedInput),
       {
-        forceRefresh: input.forceRefresh,
-        cacheOnly: input.cacheOnly
+        forceRefresh: normalizedInput.forceRefresh,
+        cacheOnly: normalizedInput.cacheOnly
       }
     );
   }
@@ -759,12 +762,13 @@ export class GitHubProviderManager implements GitHubProvider {
   async listAccountPullRequestsWithStatus(
     input: AccountPullRequestListInput = {}
   ): Promise<AccountPullRequestListResult> {
-    const key = `account-pulls-with-status:${input.login ?? "viewer"}:${input.state ?? "open"}:${input.limit ?? 30}`;
+    const normalizedInput = this.withViewerLogin(input);
+    const key = `account-pulls-with-status:${normalizedInput.login ?? "viewer"}:${normalizedInput.state ?? "open"}:${normalizedInput.limit ?? 30}`;
     return this.withListStatusCache(
       key,
       cacheTtlMs.accountWork,
-      async () => (await this.provider()).listAccountPullRequestsWithStatus(input),
-      { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
+      async () => (await this.provider()).listAccountPullRequestsWithStatus(normalizedInput),
+      { forceRefresh: normalizedInput.forceRefresh, cacheOnly: normalizedInput.cacheOnly }
     );
   }
 
@@ -2018,6 +2022,15 @@ export class GitHubProviderManager implements GitHubProvider {
     return this.providerPromise;
   }
 
+  private withViewerLogin<T extends { login?: string | null }>(input: T): T {
+    if (input.login) {
+      return input;
+    }
+
+    const login = this.authenticatedViewer?.login ?? cachedViewerFromStore(this.store)?.login ?? null;
+    return login ? { ...input, login } : input;
+  }
+
   private refreshViewerInBackground(token: string): void {
     if (this.authRefreshPromise) {
       return;
@@ -2382,26 +2395,6 @@ export class GitHubProviderManager implements GitHubProvider {
 
     return { clientId };
   }
-}
-
-export async function createAppState(store: LocalStore): Promise<AppState> {
-  const settings = store.getSettings();
-  const token = await getGitHubToken();
-  const signInConfigured = isGitHubSignInConfigured();
-  const cachedViewer = token ? cachedViewerFromStore(store) : null;
-
-  return createGitHubAppState({
-    settings,
-    signInConfigured,
-    authenticated: Boolean(token),
-    viewer: cachedViewer,
-    user: cachedViewer?.login ?? null,
-    error: token
-      ? null
-      : signInConfigured
-        ? "Sign in with GitHub in Settings to load live GitHub data."
-        : "GitHub sign-in is not configured in this build."
-  });
 }
 
 function isGitHubSignInConfigured(): boolean {

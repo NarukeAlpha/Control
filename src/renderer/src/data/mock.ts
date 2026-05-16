@@ -139,9 +139,6 @@ function localStorageOrNull(): Storage | null {
   if (typeof window === "undefined") {
     return null;
   }
-  if (window.navigator.userAgent.toLowerCase().includes("jsdom")) {
-    return null;
-  }
 
   try {
     return window.localStorage ?? null;

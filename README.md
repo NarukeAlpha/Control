@@ -11,6 +11,25 @@ npm install
 npm run dev
 ```
 
+The project also supports Bun for local command execution:
+
+```sh
+bun install
+bun run dev
+```
+
+`package-lock.json` is the canonical dependency lockfile unless the project explicitly switches package
+managers later. Bun installs are supported for local development and use `trustedDependencies` so Electron
+and native bindings can run their install scripts.
+
+If `node_modules` was copied between machines, Node/Electron versions changed, or install scripts were
+skipped, repair the Electron runtime before starting the app:
+
+```sh
+npm run repair:runtime
+bun run repair:runtime
+```
+
 GitHub account sign-in uses the app-owned OAuth App client ID embedded in the desktop build. In development you can override it with `CONTROL_GITHUB_CLIENT_ID=<client_id> npm run dev`. The OAuth App must have `Enable Device Flow` turned on in GitHub.
 
 ## Checks

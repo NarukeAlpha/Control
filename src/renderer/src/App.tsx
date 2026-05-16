@@ -138,6 +138,7 @@ import type {
 } from "@shared/github";
 import type { LocalRecentItem, LocalRecentRecordInput, LocalRecentSecurityItemKind } from "@shared/local";
 import { getControlApi } from "./api/controlApi";
+import { repositoryScopedQueryKeys } from "./queries/repositoryQueryKeys";
 import { useUiStore, type AppRoute, type RepositoryTab } from "./stores/uiStore";
 import { firstMarkdownHeading, formatCompactNumber, formatRelativeDate } from "./utils/format";
 
@@ -4033,6 +4034,7 @@ export function App(): JSX.Element {
   });
   const githubAuthenticated = appState.data?.github.authenticated ?? false;
   const githubReady = appState.isSuccess && githubAuthenticated;
+  const authenticatedViewerLogin = appState.data?.github.user ?? appState.data?.viewer?.login ?? null;
 
   useEffect(() => {
     if (!controlRendererLoadingLogsEnabled) {
@@ -4120,9 +4122,10 @@ export function App(): JSX.Element {
   );
 
   const accountIssues = useQuery({
-    queryKey: ["account-issues", accountWorkLimit],
+    queryKey: ["account-issues", authenticatedViewerLogin ?? "viewer", accountWorkLimit],
     queryFn: () =>
       api.github.listAccountIssuesWithStatus({
+        ...(authenticatedViewerLogin ? { login: authenticatedViewerLogin } : {}),
         state: "open",
         limit: accountWorkLimit,
         cacheOnly: !githubReady
@@ -4134,9 +4137,10 @@ export function App(): JSX.Element {
   const accountIssuesAvailability = accountIssues.data?.availability ?? null;
 
   const accountPulls = useQuery({
-    queryKey: ["account-pulls", accountWorkLimit],
+    queryKey: ["account-pulls", authenticatedViewerLogin ?? "viewer", accountWorkLimit],
     queryFn: () =>
       api.github.listAccountPullRequestsWithStatus({
+        ...(authenticatedViewerLogin ? { login: authenticatedViewerLogin } : {}),
         state: "open",
         limit: accountWorkLimit,
         cacheOnly: !githubReady
@@ -5257,7 +5261,12 @@ export function App(): JSX.Element {
     queryKey: ["releases", owner, repo, releasesLimit],
     queryFn: () =>
       api.github.listReleasesWithStatus({ owner, repo, limit: releasesLimit, cacheOnly: !githubReady }),
-    enabled: appState.isSuccess && isRepositoryRoute && hasRepositoryParts && repository.isSuccess,
+    enabled:
+      appState.isSuccess &&
+      isRepositoryRoute &&
+      activeRepositoryTab === "releases" &&
+      hasRepositoryParts &&
+      repository.isSuccess,
     staleTime: 120_000
   });
 
@@ -5270,7 +5279,12 @@ export function App(): JSX.Element {
         limit: repositoryContributorLimit,
         cacheOnly: !githubReady
       }),
-    enabled: appState.isSuccess && isRepositoryRoute && hasRepositoryParts && repository.isSuccess,
+    enabled:
+      appState.isSuccess &&
+      isRepositoryRoute &&
+      activeRepositoryTab === "contributors" &&
+      hasRepositoryParts &&
+      repository.isSuccess,
     staleTime: 120_000
   });
   const releaseItems = releases.data?.items ?? [];
@@ -5282,47 +5296,11 @@ export function App(): JSX.Element {
 
   const invalidateRepositoryScopedQueries = useCallback(
     async (targetOwner: string, targetRepo: string): Promise<void> => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["repository", targetOwner, targetRepo] }),
-        queryClient.invalidateQueries({ queryKey: ["branches", targetOwner, targetRepo] }),
-        queryClient.invalidateQueries({ queryKey: ["tags", targetOwner, targetRepo] }),
-        queryClient.invalidateQueries({ queryKey: ["contents", targetOwner, targetRepo] }),
-        queryClient.invalidateQueries({ queryKey: ["readme", targetOwner, targetRepo] }),
-        queryClient.invalidateQueries({ queryKey: ["file-content", targetOwner, targetRepo] }),
-        queryClient.invalidateQueries({ queryKey: ["file-blame", targetOwner, targetRepo] }),
-        queryClient.invalidateQueries({ queryKey: ["commits", targetOwner, targetRepo] }),
-        queryClient.invalidateQueries({ queryKey: ["tree", targetOwner, targetRepo] }),
-        queryClient.invalidateQueries({ queryKey: ["issues", targetOwner, targetRepo] }),
-        queryClient.invalidateQueries({ queryKey: ["issue-detail", targetOwner, targetRepo] }),
-        queryClient.invalidateQueries({ queryKey: ["labels", targetOwner, targetRepo] }),
-        queryClient.invalidateQueries({ queryKey: ["assignable-users", targetOwner, targetRepo] }),
-        queryClient.invalidateQueries({ queryKey: ["milestones", targetOwner, targetRepo] }),
-        queryClient.invalidateQueries({ queryKey: ["pulls", targetOwner, targetRepo] }),
-        queryClient.invalidateQueries({ queryKey: ["pull-detail", targetOwner, targetRepo] }),
-        queryClient.invalidateQueries({ queryKey: ["discussions", targetOwner, targetRepo] }),
-        queryClient.invalidateQueries({ queryKey: ["discussion-categories", targetOwner, targetRepo] }),
-        queryClient.invalidateQueries({ queryKey: ["projects", targetOwner, targetRepo] }),
-        queryClient.invalidateQueries({ queryKey: ["actions", targetOwner, targetRepo] }),
-        queryClient.invalidateQueries({ queryKey: ["action-detail", targetOwner, targetRepo] }),
-        queryClient.invalidateQueries({ queryKey: ["workflows", targetOwner, targetRepo] }),
-        queryClient.invalidateQueries({ queryKey: ["repository-wiki", targetOwner, targetRepo] }),
-        queryClient.invalidateQueries({ queryKey: ["repository-access", targetOwner, targetRepo] }),
-        queryClient.invalidateQueries({ queryKey: ["repository-forks", targetOwner, targetRepo] }),
-        queryClient.invalidateQueries({ queryKey: ["branch-protection", targetOwner, targetRepo] }),
-        queryClient.invalidateQueries({ queryKey: ["dependabot-alerts", targetOwner, targetRepo] }),
-        queryClient.invalidateQueries({ queryKey: ["code-scanning-alerts", targetOwner, targetRepo] }),
-        queryClient.invalidateQueries({ queryKey: ["secret-scanning-alerts", targetOwner, targetRepo] }),
-        queryClient.invalidateQueries({ queryKey: ["repository-rulesets", targetOwner, targetRepo] }),
-        queryClient.invalidateQueries({
-          queryKey: ["repository-security-advisories", targetOwner, targetRepo]
-        }),
-        queryClient.invalidateQueries({ queryKey: ["repository-security-policy", targetOwner, targetRepo] }),
-        queryClient.invalidateQueries({
-          queryKey: ["repository-community-profile", targetOwner, targetRepo]
-        }),
-        queryClient.invalidateQueries({ queryKey: ["releases", targetOwner, targetRepo] }),
-        queryClient.invalidateQueries({ queryKey: ["contributors", targetOwner, targetRepo] })
-      ]);
+      await Promise.all(
+        repositoryScopedQueryKeys(targetOwner, targetRepo).map((queryKey) =>
+          queryClient.invalidateQueries({ queryKey })
+        )
+      );
     },
     [queryClient]
   );
@@ -5499,10 +5477,11 @@ export function App(): JSX.Element {
             })
         }),
         queryClient.fetchQuery({
-          queryKey: ["account-issues", defaultMailboxListLimit],
+          queryKey: ["account-issues", authenticatedViewerLogin ?? "viewer", defaultMailboxListLimit],
           staleTime: 0,
           queryFn: () =>
             api.github.listAccountIssuesWithStatus({
+              ...(authenticatedViewerLogin ? { login: authenticatedViewerLogin } : {}),
               state: "open",
               limit: defaultMailboxListLimit,
               cacheOnly: cachedRead,
@@ -5510,10 +5489,11 @@ export function App(): JSX.Element {
             })
         }),
         queryClient.fetchQuery({
-          queryKey: ["account-pulls", defaultMailboxListLimit],
+          queryKey: ["account-pulls", authenticatedViewerLogin ?? "viewer", defaultMailboxListLimit],
           staleTime: 0,
           queryFn: () =>
             api.github.listAccountPullRequestsWithStatus({
+              ...(authenticatedViewerLogin ? { login: authenticatedViewerLogin } : {}),
               state: "open",
               limit: defaultMailboxListLimit,
               cacheOnly: cachedRead,
@@ -5563,31 +5543,6 @@ export function App(): JSX.Element {
             repo,
             cacheOnly: !githubReady,
             forceRefresh: githubReady
-          })
-      });
-    } catch {
-      // React Query owns the visible error state for this refresh.
-    }
-  }
-
-  async function refreshReleasesNow(): Promise<void> {
-    if (!appState.isSuccess || !hasRepositoryParts) {
-      return;
-    }
-
-    const cachedRead = !githubReady;
-
-    try {
-      await queryClient.fetchQuery({
-        queryKey: ["releases", owner, repo, releasesLimit],
-        staleTime: 0,
-        queryFn: () =>
-          api.github.listReleasesWithStatus({
-            owner,
-            repo,
-            limit: releasesLimit,
-            cacheOnly: cachedRead,
-            forceRefresh: !cachedRead
           })
       });
     } catch {
@@ -6462,10 +6417,11 @@ export function App(): JSX.Element {
     try {
       await Promise.all([
         queryClient.fetchQuery({
-          queryKey: ["account-issues", mailboxWorkLimit],
+          queryKey: ["account-issues", authenticatedViewerLogin ?? "viewer", mailboxWorkLimit],
           staleTime: 0,
           queryFn: () =>
             api.github.listAccountIssuesWithStatus({
+              ...(authenticatedViewerLogin ? { login: authenticatedViewerLogin } : {}),
               state: "open",
               limit: mailboxWorkLimit,
               cacheOnly: cachedRead,
@@ -6473,10 +6429,11 @@ export function App(): JSX.Element {
             })
         }),
         queryClient.fetchQuery({
-          queryKey: ["account-pulls", mailboxWorkLimit],
+          queryKey: ["account-pulls", authenticatedViewerLogin ?? "viewer", mailboxWorkLimit],
           staleTime: 0,
           queryFn: () =>
             api.github.listAccountPullRequestsWithStatus({
+              ...(authenticatedViewerLogin ? { login: authenticatedViewerLogin } : {}),
               state: "open",
               limit: mailboxWorkLimit,
               cacheOnly: cachedRead,
@@ -7324,7 +7281,6 @@ export function App(): JSX.Element {
 
   async function refreshRepositorySurface(): Promise<void> {
     await refreshRepositoryDetailNow();
-    await Promise.all([refreshReleasesNow(), refreshContributorsNow()]);
     if (activeRepositoryTab === "code") {
       await refreshCodeSurfaceNow();
       await queryClient.invalidateQueries({ queryKey: ["tree", owner, repo] });
@@ -8299,15 +8255,16 @@ export function App(): JSX.Element {
           route.kind === "repository" && route.nameWithOwner === effectiveRepository
             ? (route.workflowRunId ?? null)
             : null;
-        const focusedWorkflowRunDetail =
+        const focusedWorkflowRunDetailResult =
           focusedWorkflowRunId !== null
-            ? queryClient.getQueryData<WorkflowRunDetail>([
+            ? queryClient.getQueryData<WorkflowRunDetailResult>([
                 "action-detail",
                 owner,
                 repo,
                 focusedWorkflowRunId
               ])
             : null;
+        const focusedWorkflowRunDetail = focusedWorkflowRunDetailResult?.detail ?? null;
         if (focusedWorkflowRunDetail) {
           for (const artifact of focusedWorkflowRunDetail.artifacts) {
             items.push({
@@ -8986,9 +8943,9 @@ export function App(): JSX.Element {
     () =>
       api.onGitHubAuthUpdated((event) => {
         queryClient.setQueryData(["app-state"], event.appState);
-        void queryClient.invalidateQueries({ queryKey: ["account-profile"] });
+        void invalidateGitHubSessionQueries();
       }),
-    [api, queryClient]
+    [api, invalidateGitHubSessionQueries, queryClient]
   );
 
   useEffect(() => {
@@ -9003,7 +8960,13 @@ export function App(): JSX.Element {
     return () => window.removeEventListener("keydown", handleCommandPaletteShortcut);
   }, []);
 
-  const shellClass = appState.data?.settings.glassMode === "solid" ? "app-shell solid-shell" : "app-shell";
+  const shellClass = [
+    "app-shell",
+    appState.data?.settings.glassMode === "solid" ? "solid-shell" : null,
+    appState.data?.settings.glassMode === "reduced" ? "reduced-glass" : null
+  ]
+    .filter(Boolean)
+    .join(" ");
   const repositoryRightRail = isRepositoryRoute ? (
     <RightRail
       repository={repositoryDetail ?? undefined}

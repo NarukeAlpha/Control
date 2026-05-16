@@ -6,12 +6,17 @@
   "type": "commonjs",
   "main": "./out/main/index.js",
   "scripts": {
+    "predev": "node scripts/ensure-electron-runtime.cjs --repair",
     "dev": "env -u ELECTRON_RUN_AS_NODE electron-vite dev",
     "dev:renderer": "vite --config vite.renderer.config.ts --host 127.0.0.1",
-    "postinstall": "electron-builder install-app-deps",
+    "postinstall": "node scripts/ensure-electron-runtime.cjs --repair",
+    "prebuild": "node scripts/ensure-electron-runtime.cjs --repair",
     "build": "npm run typecheck && electron-vite build",
+    "prepreview": "node scripts/ensure-electron-runtime.cjs --repair",
     "preview": "env -u ELECTRON_RUN_AS_NODE electron-vite preview",
     "package": "npm run build && electron-builder --mac",
+    "ensure:runtime": "node scripts/ensure-electron-runtime.cjs --check",
+    "repair:runtime": "node scripts/ensure-electron-runtime.cjs --repair",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint .",
     "test": "vitest run",
@@ -50,6 +55,11 @@
     "better-sqlite3": "^12.9.0",
     "keytar": "^7.9.0"
   },
+  "trustedDependencies": [
+    "better-sqlite3",
+    "electron",
+    "keytar"
+  ],
   "devDependencies": {
     "@eslint/js": "^9.39.4",
     "@playwright/test": "^1.59.1",

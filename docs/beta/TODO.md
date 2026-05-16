@@ -49,15 +49,25 @@ Avoid broad mechanical moves until P1 gives a working test signal.
 
 ## P0 - Baseline And Safety Rails
 
-- [ ] P0.1 - Confirm branch and worktree state before cleanup: `git status --short` and current branch name.
-- [ ] P0.2 - Run baseline validation and record the result in the PR notes:
+- [x] P0.1 - Confirm branch and worktree state before cleanup: `git status --short` and current branch name.
+- [x] P0.2 - Run baseline validation and record the result in the PR notes:
   - `bun run typecheck`
   - `bun run lint`
   - `bun run test`
-- [ ] P0.3 - Capture the current failing test groups by file, not just total count.
-- [ ] P0.4 - Identify all `App.tsx` query key names used by repository tabs before moving code.
-- [ ] P0.5 - Identify all renderer routes and route assertions that changed with the GitHub integration.
-- [ ] P0.6 - Confirm there are no e2e additions planned for this cleanup unless requested later.
+- [x] P0.3 - Capture the current failing test groups by file, not just total count.
+- [x] P0.4 - Identify all `App.tsx` query key names used by repository tabs before moving code.
+- [x] P0.5 - Identify all renderer routes and route assertions that changed with the GitHub integration.
+- [x] P0.6 - Confirm there are no e2e additions planned for this cleanup unless requested later.
+
+Implementation note:
+
+- Baseline branch: `feature/optimization-audit`.
+- Baseline `bun run typecheck`: passed.
+- Baseline `bun run lint`: passed with the existing Babel large-file deopt note for `App.tsx`.
+- Baseline `bun run test`: failed in `src/main/github/octokitProvider.test.ts` and
+  `src/renderer/src/App.test.tsx`.
+- After the renderer assertion cleanup, both `octokitProvider.test.ts` and `App.test.tsx` pass in targeted
+  runs.
 
 Acceptance criteria:
 
@@ -69,12 +79,31 @@ Acceptance criteria:
 
 - [x] P1.1 - `src/renderer/src/test/setup.ts` - add a full `Storage` mock with
       `getItem`, `setItem`, `removeItem`, `clear`, `key`, and `length`.
-- [ ] P1.2 - `src/main/github/octokitProvider.test.ts` - update stale GraphQL query-scope assertions for fields added
+- [x] P1.2 - `src/main/github/octokitProvider.test.ts` - update stale GraphQL query-scope assertions for fields added
       by the branch.
-- [ ] P1.3 - Renderer tests - update route assertions that still expect the old route shape.
-- [ ] P1.4 - Renderer tests - separate true behavior regressions from snapshot/assertion drift.
-- [ ] P1.5 - Run `bun run test` and confirm renderer failures are no longer dominated by test setup.
-- [ ] P1.6 - Run `bun run typecheck` and `bun run lint` after test changes.
+- [x] P1.3 - Renderer tests - update route assertions that still expect the old route shape.
+- [x] P1.4 - Renderer tests - separate true behavior regressions from snapshot/assertion drift.
+- [x] P1.5 - Run `bun run test` and confirm renderer failures are no longer dominated by test setup.
+- [x] P1.6 - Run `bun run typecheck` and `bun run lint` after test changes.
+
+Implementation note:
+
+- `src/renderer/src/test/setup.ts` now uses behavioral in-memory storage with dynamic `length` and `key()`.
+- `src/renderer/src/data/mock.ts` now allows the jsdom storage mock so mock pins, recents, and mutable fixture
+  state can behave like the app.
+- `src/renderer/src/App.test.tsx` now bridges legacy test overrides into the corresponding `*WithStatus`
+  methods for repository, account, organization, notification, tab, search, and detail queries.
+- `src/renderer/src/App.test.tsx` now matches the current command-palette `option` semantics, cache-aware query
+  inputs, route shapes with explicit code-browser line state, renamed GitHub fallback controls, and current
+  mutation payloads.
+- While updating the renderer tests, `App.tsx` also stopped assuming cached workflow-run detail query data was
+  the raw detail object; command-palette artifact indexing now reads the typed `detail` result.
+- Targeted `bun run test -- src/renderer/src/App.test.tsx --reporter=verbose`: 68 tests passed.
+- Current validation after the P1/P2 cleanup slice:
+  - `bun run format`: passed.
+  - `bun run lint`: passed with the existing Babel large-file deopt note for `App.tsx`.
+  - `bun run typecheck`: passed.
+  - `bun run test`: 7 files passed, 115 tests passed.
 
 Acceptance criteria:
 
@@ -86,46 +115,56 @@ Acceptance criteria:
 
 ### P2A - Optimistic App State
 
-- [ ] P2.1 - `src/main/github/provider.ts` - change `createAppState()` so it does not block on
+- [x] P2.1 - `src/main/github/provider.ts` - change `createAppState()` so it does not block on
       `new OctokitProvider(token).getViewer()`.
-- [ ] P2.2 - Return app state immediately when a token exists, using an authenticated state with a nullable viewer.
-- [ ] P2.3 - Start `getViewer()` in the background after app state is returned.
-- [ ] P2.4 - On viewer success, emit an auth update event containing the viewer payload.
-- [ ] P2.5 - On viewer failure, emit an auth update event that lets the renderer mark auth invalid and surface an error.
-- [ ] P2.6 - Keep token access and token validation entirely in the main process.
+- [x] P2.2 - Return app state immediately when a token exists, using an authenticated state with a nullable viewer.
+- [x] P2.3 - Start `getViewer()` in the background after app state is returned.
+- [x] P2.4 - On viewer success, emit an auth update event containing the viewer payload.
+- [x] P2.5 - On viewer failure, emit an auth update event that lets the renderer mark auth invalid and surface an error.
+- [x] P2.6 - Keep token access and token validation entirely in the main process.
 
 ### P2B - IPC Auth Update Event
 
-- [ ] P2.7 - `src/shared/ipc.ts` or existing IPC channel definitions - add a typed auth update channel if one does not
+- [x] P2.7 - `src/shared/ipc.ts` or existing IPC channel definitions - add a typed auth update channel if one does not
       already exist.
-- [ ] P2.8 - `src/preload/index.ts` - expose a typed subscription method with a cleanup function.
-- [ ] P2.9 - `src/shared/api.ts` or equivalent preload contract - type the auth update payload.
-- [ ] P2.10 - `src/main/index.ts` - wire the main-process event emission to the renderer.
-- [ ] P2.11 - `src/renderer/src/App.tsx` - subscribe once, update app/auth state, and unsubscribe on cleanup.
+- [x] P2.8 - `src/preload/index.ts` - expose a typed subscription method with a cleanup function.
+- [x] P2.9 - `src/shared/api.ts` or equivalent preload contract - type the auth update payload.
+- [x] P2.10 - `src/main/index.ts` - wire the main-process event emission to the renderer.
+- [x] P2.11 - `src/renderer/src/App.tsx` - subscribe once, update app/auth state, and unsubscribe on cleanup.
 
 ### P2C - Local-First Rendering
 
-- [ ] P2.12 - Remove the `appState.isSuccess` gate from `pinnedRepositories` queries.
-- [ ] P2.13 - Remove the `appState.isSuccess` gate from `recentItems` queries.
-- [ ] P2.14 - Ensure local-only SQLite reads can render while auth is checking, signed out, or offline.
-- [ ] P2.15 - Use React Query `placeholderData` or equivalent cache-backed behavior where cached GitHub data exists.
+- [x] P2.12 - Remove the `appState.isSuccess` gate from `pinnedRepositories` queries.
+- [x] P2.13 - Remove the `appState.isSuccess` gate from `recentItems` queries.
+- [x] P2.14 - Ensure local-only SQLite reads can render while auth is checking, signed out, or offline.
+- [x] P2.15 - Use React Query `placeholderData` or equivalent cache-backed behavior where cached GitHub data exists.
 - [ ] P2.16 - Avoid the current fast-auth double render caused by a forced `cacheOnly: true` pass followed by live reads.
 
 ### P2D - Repository Query Concurrency
 
-- [ ] P2.17 - Add a typed `prefetchTabs` constant for high-traffic tabs: `code`, `issues`, `pulls`, and `actions`.
-- [ ] P2.18 - Replace strict `activeRepositoryTab === "..."` gates for those tabs with repo-open prefetch gates.
-- [ ] P2.19 - Keep lower-traffic tabs lazy until visited.
-- [ ] P2.20 - Set or preserve sensible `staleTime` values to avoid refetch storms when switching tabs.
-- [ ] P2.21 - Interleave post-mutation invalidations and refreshes with one `Promise.all([...])`.
+- [x] P2.17 - Add a typed `prefetchTabs` constant for high-traffic tabs: `code`, `issues`, `pulls`, and `actions`.
+- [x] P2.18 - Replace strict `activeRepositoryTab === "..."` gates for those tabs with repo-open prefetch gates.
+- [x] P2.19 - Keep lower-traffic tabs lazy until visited.
+- [x] P2.20 - Set or preserve sensible `staleTime` values to avoid refetch storms when switching tabs.
+- [x] P2.21 - Interleave post-mutation invalidations and refreshes with one `Promise.all([...])`.
 - [ ] P2.22 - Verify failed auth, offline cache-only reads, and slow network startup all have predictable UI states.
 
 ### P2E - Auth Loading UI
 
-- [ ] P2.23 - Add a reusable small loading indicator class for avatar/auth refresh states.
-- [ ] P2.24 - In the top bar, show the loading indicator when authenticated but viewer data is still pending.
-- [ ] P2.25 - Show the viewer avatar when available.
-- [ ] P2.26 - Preserve the signed-out fallback behavior.
+- [x] P2.23 - Add a reusable small loading indicator class for avatar/auth refresh states.
+- [x] P2.24 - In the top bar, show the loading indicator when authenticated but viewer data is still pending.
+- [x] P2.25 - Show the viewer avatar when available.
+- [x] P2.26 - Preserve the signed-out fallback behavior.
+
+Implementation note:
+
+- Removed the unused exported app-state helper so callers use `GitHubProviderManager.createAppState()`, which owns
+  cached viewer reads and background validation.
+- Account issue/pull reads now pass or inject the authenticated viewer login when available, avoiding extra hidden
+  viewer lookups during warm starts.
+- Auth updates now invalidate the GitHub session query set, not only account profile data.
+- Releases and contributors now stay lazy until their tabs are visited, and repository refresh no longer refreshes
+  them for every active tab.
 
 Acceptance criteria:
 
@@ -143,8 +182,8 @@ Acceptance criteria:
 - [ ] P3.3 - Context should provide only stable repository-level dependencies:
       `owner`, `repo`, `githubReady`, `api`, and `queryClient`.
 - [ ] P3.4 - Create `src/renderer/src/hooks/useExpandableList.ts`.
-- [ ] P3.5 - Create a centralized `repositoryQueryKeys` helper or constant module.
-- [ ] P3.6 - Update `invalidateRepositoryScopedQueries` to use the centralized query keys.
+- [x] P3.5 - Create a centralized `repositoryQueryKeys` helper or constant module.
+- [x] P3.6 - Update `invalidateRepositoryScopedQueries` to use the centralized query keys.
 
 ### P3B - Shared UI Primitives
 
@@ -198,15 +237,15 @@ Acceptance criteria:
 
 ### P4B - Liquid Glass And Accessibility Fixes
 
-- [ ] P4.6 - Standardize non-standard font weights from `620`, `650`, and `750` to supported system weights.
-- [ ] P4.7 - Raise metadata text that is currently `10px` to at least `12px`, with `11px` only for non-critical badges.
+- [x] P4.6 - Standardize non-standard font weights from `620`, `650`, and `750` to supported system weights.
+- [x] P4.7 - Raise metadata text that is currently `10px` to at least `12px`, with `11px` only for non-critical badges.
 - [ ] P4.8 - Align detail panel border radii with the documented glass panel standard.
 - [ ] P4.9 - Review the top-bar row height change from `50px` to `52px` and either make all dependent measurements
       consistent or revert the drift.
 - [ ] P4.10 - Restore transparent `.app-shell` behavior when native liquid glass is active.
 - [ ] P4.11 - Restore the documented blue-tinted fallback gradient for `body.no-liquid-glass`.
 - [ ] P4.12 - Fix right-rail corner treatment so it does not visually fight the rounded app shell.
-- [ ] P4.13 - Make the `reduced` glass setting real in the renderer class calculation and CSS.
+- [x] P4.13 - Make the `reduced` glass setting real in the renderer class calculation and CSS.
 
 ### P4C - Mock Data Split
 

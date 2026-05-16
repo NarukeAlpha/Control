@@ -113,6 +113,11 @@ body.no-liquid-glass .app-shell {
   background: transparent;
 }
 
+.reduced-glass {
+  -webkit-backdrop-filter: blur(16px) saturate(1.1);
+  backdrop-filter: blur(16px) saturate(1.1);
+}
+
 body.no-liquid-glass .solid-shell {
   background: #f8fafc;
 }
@@ -388,14 +393,14 @@ body:not(.no-liquid-glass) .code-toolbar {
 }
 
 .repo-name {
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .repo-meta,
 .repo-source {
   color: #617089;
-  font-size: 10px;
-  font-weight: 750;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .repo-source {
@@ -903,7 +908,7 @@ p {
   overflow: hidden;
   color: #080f1e;
   font-size: 25px;
-  font-weight: 760;
+  font-weight: 700;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -911,7 +916,7 @@ p {
 
 .repo-title-line h1 span {
   color: #53657d;
-  font-weight: 520;
+  font-weight: 500;
 }
 
 .repo-title-block p {
@@ -2468,7 +2473,7 @@ p {
 .mailbox-work-row-main strong,
 .notification-row-main strong {
   color: #101827;
-  font-weight: 720;
+  font-weight: 700;
 }
 
 .repository-row-main small,
@@ -2847,7 +2852,7 @@ p {
 .collection-section-label {
   color: var(--muted);
   font-size: 12px;
-  font-weight: 620;
+  font-weight: 600;
   letter-spacing: 0;
   padding: 12px 16px 6px;
   text-transform: uppercase;

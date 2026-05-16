@@ -59,6 +59,12 @@ describe("OctokitProvider query scopes", () => {
   });
 
   it("maps viewer organizations with repository and team counts", async () => {
+    requestMock.mockResolvedValue({
+      data: {
+        role: "member",
+        state: "active"
+      }
+    });
     graphqlMock.mockResolvedValue({
       viewer: {
         organizations: {
@@ -104,7 +110,10 @@ describe("OctokitProvider query scopes", () => {
         viewerIsMember: true,
         viewerCanAdminister: false,
         viewerCanCreateRepositories: true,
-        viewerCanCreateTeams: false
+        viewerCanCreateTeams: false,
+        viewerMembershipRole: "member",
+        viewerMembershipState: "active",
+        viewerMembershipAvailability: { status: "available", message: null }
       }
     ]);
   });
@@ -1198,12 +1207,13 @@ describe("OctokitProvider query scopes", () => {
             ]
           })
         ],
-        logs: {
+        logs: expect.objectContaining({
           apiUrl: "https://api.github.com/repos/apple/swift/actions/runs/9000/logs",
           downloadUrl: "https://pipelines.actions.githubusercontent.com/logs.zip",
           available: true,
-          message: null
-        }
+          message: null,
+          availability: { status: "available", message: null }
+        })
       })
     );
   });
@@ -1621,6 +1631,15 @@ describe("OctokitProvider query scopes", () => {
             created_at: "2026-05-05T10:00:00.000Z",
             updated_at: "2026-05-05T11:00:00.000Z",
             html_url: "https://github.com/apple/swift/pull/17"
+          }
+        };
+      }
+      if (route === "GET /repos/{owner}/{repo}/issues/{issue_number}") {
+        return {
+          data: {
+            labels: [],
+            assignees: [],
+            milestone: null
           }
         };
       }
@@ -2269,8 +2288,7 @@ describe("OctokitProvider query scopes", () => {
               content_type: "application/octet-stream",
               size: 241172480,
               download_count: 1842,
-              browser_download_url:
-                "https://github.com/apple/swift/releases/download/swift-5.10.0/swift.pkg",
+              browser_download_url: "https://github.com/apple/swift/releases/download/swift-5.10.0/swift.pkg",
               created_at: "2026-05-01T00:00:00.000Z",
               updated_at: "2026-05-01T00:00:00.000Z"
             }
@@ -2294,6 +2312,7 @@ describe("OctokitProvider query scopes", () => {
         body: "Release notes from GitHub.",
         isDraft: false,
         isPrerelease: false,
+        targetCommitish: null,
         publishedAt: "2026-05-01T00:00:00.000Z",
         htmlUrl: "https://github.com/apple/swift/releases/tag/swift-5.10.0",
         assets: [

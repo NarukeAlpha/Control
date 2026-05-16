@@ -79,12 +79,15 @@ interface UiState {
 
 export const useUiStore = create<UiState>((set) => ({
   route: { kind: "home" },
-  selectedRepository: "apple/swift",
+  selectedRepository: null,
   settingsOpen: false,
   navigate: (route) =>
     set((state) => ({
       route,
-      selectedRepository: route.kind === "repository" ? route.nameWithOwner : state.selectedRepository
+      selectedRepository:
+        route.kind === "repository" || route.kind === "codeBrowser"
+          ? route.nameWithOwner
+          : state.selectedRepository
     })),
   goHome: () => set({ route: { kind: "home" } }),
   goToMailbox: () => set({ route: { kind: "mailbox" } }),
@@ -100,9 +103,11 @@ export const useUiStore = create<UiState>((set) => ({
   setRepositoryTab: (tab) =>
     set((state) => {
       const nameWithOwner =
-        state.route.kind === "repository"
-          ? state.route.nameWithOwner
-          : (state.selectedRepository ?? "apple/swift");
+        state.route.kind === "repository" ? state.route.nameWithOwner : state.selectedRepository;
+
+      if (!nameWithOwner) {
+        return state;
+      }
 
       return {
         selectedRepository: nameWithOwner,

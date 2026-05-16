@@ -1,0 +1,41 @@
+const repositoryScopedQueryKeyPrefixes = [
+  "repository",
+  "branches",
+  "tags",
+  "contents",
+  "readme",
+  "file-content",
+  "file-blame",
+  "commits",
+  "tree",
+  "issues",
+  "issue-detail",
+  "labels",
+  "assignable-users",
+  "milestones",
+  "pulls",
+  "pull-detail",
+  "discussions",
+  "discussion-categories",
+  "projects",
+  "actions",
+  "action-detail",
+  "workflows",
+  "repository-wiki",
+  "repository-access",
+  "repository-forks",
+  "branch-protection",
+  "dependabot-alerts",
+  "code-scanning-alerts",
+  "secret-scanning-alerts",
+  "repository-rulesets",
+  "repository-security-advisories",
+  "repository-security-policy",
+  "repository-community-profile",
+  "releases",
+  "contributors"
+] as const;
+
+export function repositoryScopedQueryKeys(owner: string, repo: string): ReadonlyArray<readonly unknown[]> {
+  return repositoryScopedQueryKeyPrefixes.map((prefix) => [prefix, owner, repo] as const);
+}

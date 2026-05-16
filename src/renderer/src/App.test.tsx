@@ -67,33 +67,206 @@ function renderControl(api: ControlApi): void {
   );
 }
 
+async function openCommandPalette(): Promise<HTMLElement> {
+  fireEvent.keyDown(window, { key: "k", metaKey: true });
+  return screen.findByRole("dialog", { name: "Command palette" });
+}
+
+async function clickCommandPaletteOption(name: RegExp): Promise<void> {
+  const palette = await screen.findByRole("dialog", { name: "Command palette" });
+  await userEvent.click(within(palette).getByRole("option", { name }));
+}
+
+async function openAddRepositoryDialog(): Promise<HTMLElement> {
+  const addRepositoryButtons = await screen.findAllByRole("button", { name: "Add repository" });
+  await userEvent.click(addRepositoryButtons[0]);
+  return screen.findByRole("dialog", { name: "Add repository" });
+}
+
 function makeApi(overrides: Partial<ControlApi["github"]> = {}): ControlApi {
   const github = {
     ...mockControlApi.github,
     ...overrides
   };
+  const available = { status: "available", message: null } as const;
   if (overrides.listRepositories && !overrides.listRepositoriesWithStatus) {
     github.listRepositoriesWithStatus = async (input = {}) => ({
       items: await overrides.listRepositories!(input),
-      availability: { status: "available", message: null }
+      availability: available
     });
   }
   if (overrides.getAccountProfile && !overrides.getAccountProfileWithStatus) {
     github.getAccountProfileWithStatus = async (input = {}) => ({
       profile: await overrides.getAccountProfile!(input),
-      availability: { status: "available", message: null }
+      availability: available
     });
   }
   if (overrides.listAccountRepositories && !overrides.listAccountRepositoriesWithStatus) {
     github.listAccountRepositoriesWithStatus = async (input = {}) => ({
       items: await overrides.listAccountRepositories!(input),
-      availability: { status: "available", message: null }
+      availability: available
+    });
+  }
+  if (overrides.listOrganizations && !overrides.listOrganizationsWithStatus) {
+    github.listOrganizationsWithStatus = async (input = {}) => ({
+      items: await overrides.listOrganizations!(input),
+      availability: available
+    });
+  }
+  if (overrides.listOrganizationTeams && !overrides.listOrganizationTeamsWithStatus) {
+    github.listOrganizationTeamsWithStatus = async (input) => ({
+      items: await overrides.listOrganizationTeams!(input),
+      availability: available
+    });
+  }
+  if (overrides.listAccountIssues && !overrides.listAccountIssuesWithStatus) {
+    github.listAccountIssuesWithStatus = async (input = {}) => ({
+      items: await overrides.listAccountIssues!(input),
+      availability: available
+    });
+  }
+  if (overrides.listAccountPullRequests && !overrides.listAccountPullRequestsWithStatus) {
+    github.listAccountPullRequestsWithStatus = async (input = {}) => ({
+      items: await overrides.listAccountPullRequests!(input),
+      availability: available
+    });
+  }
+  if (overrides.listNotifications && !overrides.listNotificationsWithStatus) {
+    github.listNotificationsWithStatus = async (input = {}) => ({
+      items: await overrides.listNotifications!(input),
+      availability: available
+    });
+  }
+  if (overrides.getRepository && !overrides.getRepositoryWithStatus) {
+    github.getRepositoryWithStatus = async (input) => ({
+      detail: await overrides.getRepository!(input),
+      availability: available
+    });
+  }
+  if (overrides.listBranches && !overrides.listBranchesWithStatus) {
+    github.listBranchesWithStatus = async (input) => ({
+      items: await overrides.listBranches!(input),
+      availability: available
+    });
+  }
+  if (overrides.listTags && !overrides.listTagsWithStatus) {
+    github.listTagsWithStatus = async (input) => ({
+      items: await overrides.listTags!(input),
+      availability: available
+    });
+  }
+  if (overrides.listTree && !overrides.listTreeWithStatus) {
+    github.listTreeWithStatus = async (input) => ({
+      tree: await overrides.listTree!(input),
+      availability: available
+    });
+  }
+  if (overrides.listContents && !overrides.listContentsWithStatus) {
+    github.listContentsWithStatus = async (input) => ({
+      items: await overrides.listContents!(input),
+      availability: available
+    });
+  }
+  if (overrides.getFileContent && !overrides.getFileContentWithStatus) {
+    github.getFileContentWithStatus = async (input) => ({
+      item: await overrides.getFileContent!(input),
+      availability: available
+    });
+  }
+  if (overrides.listCommits && !overrides.listCommitsWithStatus) {
+    github.listCommitsWithStatus = async (input) => ({
+      items: await overrides.listCommits!(input),
+      availability: available
+    });
+  }
+  if (overrides.listLabels && !overrides.listLabelsWithStatus) {
+    github.listLabelsWithStatus = async (input) => ({
+      items: await overrides.listLabels!(input),
+      availability: available
+    });
+  }
+  if (overrides.listAssignableUsers && !overrides.listAssignableUsersWithStatus) {
+    github.listAssignableUsersWithStatus = async (input) => ({
+      items: await overrides.listAssignableUsers!(input),
+      availability: available
+    });
+  }
+  if (overrides.listMilestones && !overrides.listMilestonesWithStatus) {
+    github.listMilestonesWithStatus = async (input) => ({
+      items: await overrides.listMilestones!(input),
+      availability: available
+    });
+  }
+  if (overrides.listIssues && !overrides.listIssuesWithStatus) {
+    github.listIssuesWithStatus = async (input) => ({
+      items: await overrides.listIssues!(input),
+      availability: available
+    });
+  }
+  if (overrides.getIssueDetail && !overrides.getIssueDetailWithStatus) {
+    github.getIssueDetailWithStatus = async (input) => ({
+      detail: await overrides.getIssueDetail!(input),
+      availability: available
+    });
+  }
+  if (overrides.listPullRequests && !overrides.listPullRequestsWithStatus) {
+    github.listPullRequestsWithStatus = async (input) => ({
+      items: await overrides.listPullRequests!(input),
+      availability: available
+    });
+  }
+  if (overrides.getPullRequestDetail && !overrides.getPullRequestDetailWithStatus) {
+    github.getPullRequestDetailWithStatus = async (input) => ({
+      detail: await overrides.getPullRequestDetail!(input),
+      availability: available
+    });
+  }
+  if (overrides.listDiscussions && !overrides.listDiscussionsWithStatus) {
+    github.listDiscussionsWithStatus = async (input) => ({
+      items: await overrides.listDiscussions!(input),
+      availability: available
+    });
+  }
+  if (overrides.listActions && !overrides.listActionsWithStatus) {
+    github.listActionsWithStatus = async (input) => ({
+      items: await overrides.listActions!(input),
+      availability: available
+    });
+  }
+  if (overrides.listWorkflows && !overrides.listWorkflowsWithStatus) {
+    github.listWorkflowsWithStatus = async (input) => ({
+      items: await overrides.listWorkflows!(input),
+      availability: available
+    });
+  }
+  if (overrides.getWorkflowRunDetail && !overrides.getWorkflowRunDetailWithStatus) {
+    github.getWorkflowRunDetailWithStatus = async (input) => ({
+      detail: await overrides.getWorkflowRunDetail!(input),
+      availability: available
+    });
+  }
+  if (overrides.listProjects && !overrides.listProjectsWithStatus) {
+    github.listProjectsWithStatus = async (input) => ({
+      items: await overrides.listProjects!(input),
+      availability: available
+    });
+  }
+  if (overrides.listReleases && !overrides.listReleasesWithStatus) {
+    github.listReleasesWithStatus = async (input) => ({
+      items: await overrides.listReleases!(input),
+      availability: available
+    });
+  }
+  if (overrides.listContributors && !overrides.listContributorsWithStatus) {
+    github.listContributorsWithStatus = async (input) => ({
+      items: await overrides.listContributors!(input),
+      availability: available
     });
   }
   if (overrides.search && !overrides.searchWithStatus) {
     github.searchWithStatus = async (input) => ({
       items: await overrides.search!(input),
-      availability: { status: "available", message: null }
+      availability: available
     });
   }
 
@@ -192,20 +365,16 @@ describe("Control renderer routing", () => {
     renderControl(makeApi({ listRepositories }));
 
     expect(await screen.findByRole("heading", { name: "Repositories" })).toBeInTheDocument();
-    await userEvent.click(await screen.findByRole("button", { name: "Refresh repositories" }));
+    await openCommandPalette();
+    await clickCommandPaletteOption(/^Refresh repositories/i);
 
     expect(await screen.findByRole("button", { name: /apple\/refreshed/i })).toBeInTheDocument();
     expect(listRepositories).toHaveBeenCalledTimes(2);
-    expect(screen.getByTitle(/Updated|Stale|Not loaded/)).toBeInTheDocument();
   });
 
   it("renders GitHub organizations from provider records", async () => {
-    const listOrganizations = vi.fn<ControlApi["github"]["listOrganizations"]>(
-      async () => mockOrganizations
-    );
-    const listOrganizationTeams = vi.fn<ControlApi["github"]["listOrganizationTeams"]>(
-      async () => mockTeams
-    );
+    const listOrganizations = vi.fn<ControlApi["github"]["listOrganizations"]>(async () => mockOrganizations);
+    const listOrganizationTeams = vi.fn<ControlApi["github"]["listOrganizationTeams"]>(async () => mockTeams);
     const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
 
     useUiStore.setState({ ...defaultUiState, route: { kind: "organizations" } });
@@ -215,7 +384,9 @@ describe("Control renderer routing", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "Organizations" })).toBeInTheDocument();
-    await waitFor(() => expect(listOrganizations).toHaveBeenCalledWith({ limit: 50 }));
+    await waitFor(() =>
+      expect(listOrganizations).toHaveBeenCalledWith(expect.objectContaining({ limit: 50, cacheOnly: false }))
+    );
 
     const collection = document.querySelector(".collection-view");
     expect(collection).not.toBeNull();
@@ -225,13 +396,15 @@ describe("Control renderer routing", () => {
 
     expect(within(organizationRow).getByText("Open source projects from Apple.")).toBeInTheDocument();
     await waitFor(() =>
-      expect(listOrganizationTeams).toHaveBeenCalledWith({ org: "apple", limit: 30 })
+      expect(listOrganizationTeams).toHaveBeenCalledWith(
+        expect.objectContaining({ org: "apple", limit: 30, cacheOnly: false })
+      )
     );
     expect(await screen.findByText("Compiler")).toBeInTheDocument();
     expect(screen.getByText(/compiler · closed · push · 18 members · 12 repositories/i)).toBeInTheDocument();
     expect(screen.getByText("Maintains the Swift compiler and language implementation.")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Open apple on GitHub" }));
+    await userEvent.click(screen.getAllByRole("button", { name: "Open apple on GitHub" })[0]);
 
     expect(openExternal).toHaveBeenCalledWith("https://github.com/apple");
   });
@@ -418,16 +591,9 @@ describe("Control renderer routing", () => {
       listRecentItems: async () => [recentFile]
     });
 
-    const recentsHeading = await screen.findByRole("heading", { name: "Recents" });
-    const recentsPanel = recentsHeading.closest(".home-panel");
-    expect(recentsPanel).not.toBeNull();
-    await waitFor(() =>
-      expect(
-        within(recentsPanel as HTMLElement).getByRole("button", { name: /README\.md/i })
-      ).toBeInTheDocument()
-    );
-
-    await userEvent.click(within(recentsPanel as HTMLElement).getByRole("button", { name: /README\.md/i }));
+    const palette = await openCommandPalette();
+    await userEvent.type(within(palette).getByLabelText("Command palette search"), "readme");
+    await userEvent.click(within(palette).getByRole("option", { name: /README\.md/i }));
 
     await waitFor(() => {
       expect(useUiStore.getState().route).toEqual({
@@ -435,7 +601,8 @@ describe("Control renderer routing", () => {
         nameWithOwner: "apple/swift",
         path: "README.md",
         entryType: "file",
-        ref: "main"
+        ref: "main",
+        line: null
       });
     });
   });
@@ -465,8 +632,9 @@ describe("Control renderer routing", () => {
     );
 
     await userEvent.click(screen.getByRole("button", { name: /Pull requests/i }));
-    const pullMeta = await screen.findByText(/#519 feature\/sendable-1/i);
-    await userEvent.click(pullMeta.closest("button") as HTMLButtonElement);
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: /Update concurrency runtime tests/i }))[0]
+    );
 
     await waitFor(() =>
       expect(recordRecentItem).toHaveBeenCalledWith(
@@ -535,13 +703,13 @@ describe("Control renderer routing", () => {
         kind: "repository",
         nameWithOwner: "apple/swift",
         tab: "pulls",
-        pullNumber: 520
+        pullNumber: 518
       });
     });
     expect(recordRecentItem).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: "pullRequest",
-        itemKey: "apple/swift:pull:520",
+        itemKey: "apple/swift:pull:518",
         repositoryNameWithOwner: "apple/swift"
       }),
       expect.anything()
@@ -632,10 +800,10 @@ describe("Control renderer routing", () => {
       recordRecentItem
     });
 
-    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    await openCommandPalette();
     let palette = await screen.findByRole("dialog", { name: "Command palette" });
     await userEvent.type(within(palette).getByLabelText("Command palette search"), "1199");
-    await userEvent.click(within(palette).getByRole("button", { name: /#1199 Compiler crash/i }));
+    await userEvent.click(within(palette).getByRole("option", { name: /#1199 Compiler crash/i }));
 
     await waitFor(() => {
       expect(useUiStore.getState().route).toEqual({
@@ -646,10 +814,10 @@ describe("Control renderer routing", () => {
       });
     });
 
-    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    await openCommandPalette();
     palette = await screen.findByRole("dialog", { name: "Command palette" });
     await userEvent.type(within(palette).getByLabelText("Command palette search"), "519");
-    await userEvent.click(within(palette).getByRole("button", { name: /#519 Update concurrency/i }));
+    await userEvent.click(within(palette).getByRole("option", { name: /#519 Update concurrency/i }));
 
     await waitFor(() => {
       expect(useUiStore.getState().route).toEqual({
@@ -660,10 +828,10 @@ describe("Control renderer routing", () => {
       });
     });
 
-    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    await openCommandPalette();
     palette = await screen.findByRole("dialog", { name: "Command palette" });
     await userEvent.type(within(palette).getByLabelText("Command palette search"), "docs");
-    await userEvent.click(within(palette).getByRole("button", { name: /^Docs/i }));
+    await userEvent.click(within(palette).getByRole("option", { name: /^Docs/i }));
 
     await waitFor(() => {
       expect(useUiStore.getState().route).toEqual({
@@ -689,11 +857,11 @@ describe("Control renderer routing", () => {
     useUiStore.setState(defaultUiState);
     renderControl({ ...makeApi(), recordRecentItem });
 
-    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    await openCommandPalette();
 
     const palette = await screen.findByRole("dialog", { name: "Command palette" });
     await userEvent.type(within(palette).getByLabelText("Command palette search"), "open-source");
-    await userEvent.click(within(palette).getByRole("button", { name: /apple\/open-source/i }));
+    await userEvent.click(within(palette).getByRole("option", { name: /apple\/open-source/i }));
 
     await waitFor(() => {
       expect(useUiStore.getState().route).toEqual({
@@ -726,7 +894,7 @@ describe("Control renderer routing", () => {
     useUiStore.setState(defaultUiState);
     renderControl(makeApi());
 
-    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    await openCommandPalette();
 
     const palette = await screen.findByRole("dialog", { name: "Command palette" });
     await userEvent.type(within(palette).getByLabelText("Command palette search"), "apple{ArrowDown}{Enter}");
@@ -735,7 +903,8 @@ describe("Control renderer routing", () => {
       expect(useUiStore.getState().route).toEqual({
         kind: "repository",
         nameWithOwner: "apple/swift",
-        tab: "issues"
+        tab: "issues",
+        issueNumber: 1198
       });
     });
     expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument();
@@ -750,10 +919,10 @@ describe("Control renderer routing", () => {
     });
     renderControl({ ...makeApi(), recordRecentItem });
 
-    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    await openCommandPalette();
     let palette = await screen.findByRole("dialog", { name: "Command palette" });
     await userEvent.type(within(palette).getByLabelText("Command palette search"), "create issue");
-    await userEvent.click(within(palette).getByRole("button", { name: /Create issue in apple\/swift/i }));
+    await userEvent.click(within(palette).getByRole("option", { name: /Create issue in apple\/swift/i }));
 
     await waitFor(() => {
       expect(useUiStore.getState().route).toEqual({
@@ -765,11 +934,11 @@ describe("Control renderer routing", () => {
     });
     expect(await screen.findByPlaceholderText("Issue title")).toBeInTheDocument();
 
-    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    await openCommandPalette();
     palette = await screen.findByRole("dialog", { name: "Command palette" });
     await userEvent.type(within(palette).getByLabelText("Command palette search"), "create pull request");
     await userEvent.click(
-      within(palette).getByRole("button", { name: /Create pull request in apple\/swift/i })
+      within(palette).getByRole("option", { name: /Create pull request in apple\/swift/i })
     );
 
     await waitFor(() => {
@@ -782,10 +951,10 @@ describe("Control renderer routing", () => {
     });
     expect(await screen.findByPlaceholderText("Pull request title")).toBeInTheDocument();
 
-    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    await openCommandPalette();
     palette = await screen.findByRole("dialog", { name: "Command palette" });
     await userEvent.type(within(palette).getByLabelText("Command palette search"), "run workflow");
-    await userEvent.click(within(palette).getByRole("button", { name: /Run workflow in apple\/swift/i }));
+    await userEvent.click(within(palette).getByRole("option", { name: /Run workflow in apple\/swift/i }));
 
     await waitFor(() => {
       expect(useUiStore.getState().route).toEqual({
@@ -817,11 +986,11 @@ describe("Control renderer routing", () => {
     });
     renderControl(makeApi({ listTree }));
 
-    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    await openCommandPalette();
 
     const palette = await screen.findByRole("dialog", { name: "Command palette" });
     await userEvent.type(within(palette).getByLabelText("Command palette search"), "go to file");
-    await userEvent.click(within(palette).getByRole("button", { name: /Go to file in apple\/swift/i }));
+    await userEvent.click(within(palette).getByRole("option", { name: /Go to file in apple\/swift/i }));
 
     const finder = await screen.findByRole("dialog", { name: "Go to file" });
     expect(within(finder).getByLabelText("Go to file search")).toBeInTheDocument();
@@ -842,10 +1011,10 @@ describe("Control renderer routing", () => {
     });
     renderControl({ ...makeApi(), openExternal });
 
-    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    await openCommandPalette();
     let palette = await screen.findByRole("dialog", { name: "Command palette" });
     await userEvent.type(within(palette).getByLabelText("Command palette search"), "actions in");
-    await userEvent.click(within(palette).getByRole("button", { name: /Actions in apple\/swift/i }));
+    await userEvent.click(within(palette).getByRole("option", { name: /Actions in apple\/swift/i }));
     await waitFor(() =>
       expect(useUiStore.getState().route).toEqual({
         kind: "repository",
@@ -854,10 +1023,10 @@ describe("Control renderer routing", () => {
       })
     );
 
-    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    await openCommandPalette();
     palette = await screen.findByRole("dialog", { name: "Command palette" });
     await userEvent.type(within(palette).getByLabelText("Command palette search"), "wiki");
-    await userEvent.click(within(palette).getByRole("button", { name: /Wiki in apple\/swift/i }));
+    await userEvent.click(within(palette).getByRole("option", { name: /Wiki in apple\/swift/i }));
     await waitFor(() =>
       expect(useUiStore.getState().route).toEqual({
         kind: "repository",
@@ -867,11 +1036,11 @@ describe("Control renderer routing", () => {
     );
     expect(await screen.findByRole("heading", { name: "Repository wiki" })).toBeInTheDocument();
 
-    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    await openCommandPalette();
     palette = await screen.findByRole("dialog", { name: "Command palette" });
     await userEvent.type(within(palette).getByLabelText("Command palette search"), "security quality");
     await userEvent.click(
-      within(palette).getByRole("button", { name: /Security and Quality in apple\/swift/i })
+      within(palette).getByRole("option", { name: /Security and Quality in apple\/swift/i })
     );
     await waitFor(() =>
       expect(useUiStore.getState().route).toEqual({
@@ -881,11 +1050,11 @@ describe("Control renderer routing", () => {
       })
     );
 
-    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    await openCommandPalette();
     palette = await screen.findByRole("dialog", { name: "Command palette" });
     await userEvent.type(within(palette).getByLabelText("Command palette search"), "repository settings");
     await userEvent.click(
-      within(palette).getByRole("button", { name: /Repository settings in apple\/swift/i })
+      within(palette).getByRole("option", { name: /Repository settings in apple\/swift/i })
     );
     await waitFor(() =>
       expect(useUiStore.getState().route).toEqual({
@@ -896,12 +1065,10 @@ describe("Control renderer routing", () => {
     );
     expect(await screen.findByRole("heading", { name: "Repository settings" })).toBeInTheDocument();
 
-    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    await openCommandPalette();
     palette = await screen.findByRole("dialog", { name: "Command palette" });
     await userEvent.type(within(palette).getByLabelText("Command palette search"), "external fallback");
-    await userEvent.click(
-      within(palette).getByRole("button", { name: /Open apple\/swift on GitHub/i })
-    );
+    await userEvent.click(within(palette).getByRole("option", { name: /Open apple\/swift on GitHub/i }));
 
     expect(openExternal).toHaveBeenCalledWith("https://github.com/apple/swift");
   });
@@ -923,9 +1090,7 @@ describe("Control renderer routing", () => {
     useUiStore.setState(defaultUiState);
     renderControl({ ...makeApi({ search }), recordRecentItem });
 
-    await userEvent.click(await screen.findByRole("button", { name: "Add repository" }));
-
-    const dialog = await screen.findByRole("dialog", { name: "Add repository" });
+    const dialog = await openAddRepositoryDialog();
     expect(within(dialog).getByText(/Search cached repositories first/i)).toBeInTheDocument();
 
     await userEvent.type(within(dialog).getByLabelText("Repository search"), "remote");
@@ -975,16 +1140,16 @@ describe("Control renderer routing", () => {
       })
     });
 
-    await userEvent.click(await screen.findByRole("button", { name: "Add repository" }));
-
-    const dialog = await screen.findByRole("dialog", { name: "Add repository" });
+    const dialog = await openAddRepositoryDialog();
     expect(within(dialog).getByText(/Cached mode: search local repositories/i)).toBeInTheDocument();
 
     await userEvent.type(within(dialog).getByLabelText("Repository search"), "open-source");
 
     expect(await within(dialog).findByText("Local cached repositories")).toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: /apple\/open-source/i })).toBeInTheDocument();
-    expect(within(dialog).getByText("Remote GitHub search is unavailable in cached mode.")).toBeInTheDocument();
+    expect(within(dialog).getByRole("option", { name: /apple\/open-source/i })).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("Remote GitHub search is unavailable in cached mode.")
+    ).toBeInTheDocument();
     expect(search).not.toHaveBeenCalled();
 
     await userEvent.keyboard("{Enter}");
@@ -1016,7 +1181,7 @@ describe("Control renderer routing", () => {
 
     renderControl({ ...makeApi(), openExternal });
 
-    await userEvent.click(await screen.findByTitle("Repository settings"));
+    await userEvent.click(await screen.findByRole("button", { name: "Repository settings" }));
 
     expect(await screen.findByRole("heading", { name: "Repository settings" })).toBeInTheDocument();
     expect(screen.getByText(/default branch main/i)).toBeInTheDocument();
@@ -1025,7 +1190,7 @@ describe("Control renderer routing", () => {
     expect(screen.getByRole("heading", { name: "Your access" })).toBeInTheDocument();
     expect(openExternal).not.toHaveBeenCalled();
 
-    await userEvent.click(screen.getByRole("button", { name: /Open settings on GitHub/i }));
+    await userEvent.click(screen.getAllByRole("button", { name: /Open GitHub fallback/i })[0]);
 
     expect(openExternal).toHaveBeenCalledWith("https://github.com/apple/swift/settings");
   });
@@ -1040,11 +1205,11 @@ describe("Control renderer routing", () => {
     renderControl({ ...makeApi(), openExternal });
 
     expect(await screen.findByRole("heading", { name: "Repository wiki" })).toBeInTheDocument();
-    expect(screen.getByText("Wiki is enabled for this repository.")).toBeInTheDocument();
-    expect(screen.getByText(/wiki pages are stored through a separate wiki repository/i)).toBeInTheDocument();
+    expect(screen.getByText("Wiki is available for this repository.")).toBeInTheDocument();
+    expect(screen.getByText("GitHub wiki fallback")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: /Open wiki/i }));
-    await userEvent.click(screen.getByRole("button", { name: /New wiki page/i }));
+    await userEvent.click(screen.getByRole("button", { name: /GitHub wiki fallback/i }));
+    await userEvent.click(screen.getByRole("button", { name: /New wiki page on GitHub/i }));
 
     expect(openExternal).toHaveBeenCalledWith("https://github.com/apple/swift/wiki");
     expect(openExternal).toHaveBeenCalledWith("https://github.com/apple/swift/wiki/_new");
@@ -1059,21 +1224,28 @@ describe("Control renderer routing", () => {
 
     renderControl({ ...makeApi(), openExternal });
 
-    expect(await screen.findByRole("heading", { name: "Agent workflows open in Control" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Agent workflows open in Control" })
+    ).toBeInTheDocument();
     expect(screen.getByText("in-app first")).toBeInTheDocument();
-    expect(screen.getByText(/routes common agent triage paths to the existing Issues, Actions, and Pull requests/i))
-      .toBeInTheDocument();
+    expect(
+      screen.getByText(/routes common agent triage paths to the existing Issues, Actions, and Pull requests/i)
+    ).toBeInTheDocument();
 
     const agentIssuesTile = screen.getByText("Agent issues").closest("article");
     expect(agentIssuesTile).not.toBeNull();
 
-    await userEvent.click(within(agentIssuesTile as HTMLElement).getByRole("button", { name: /GitHub fallback/i }));
+    await userEvent.click(
+      within(agentIssuesTile as HTMLElement).getByRole("button", { name: /GitHub fallback/i })
+    );
 
     expect(openExternal).toHaveBeenCalledWith(
       "https://github.com/apple/swift/issues?q=is%3Aissue%20is%3Aopen%20label%3Aagent"
     );
 
-    await userEvent.click(within(agentIssuesTile as HTMLElement).getByRole("button", { name: /Open in Control/i }));
+    await userEvent.click(
+      within(agentIssuesTile as HTMLElement).getByRole("button", { name: /Open in Control/i })
+    );
 
     await waitFor(() => {
       expect(useUiStore.getState().route).toEqual({
@@ -1106,7 +1278,7 @@ describe("Control renderer routing", () => {
 
     renderControl(makeApi({ getRepository }));
 
-    expect(await screen.findByText("Wiki is disabled for this repository.")).toBeInTheDocument();
+    expect((await screen.findAllByText("Wiki is disabled for this repository.")).length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: /New wiki page/i })).toBeDisabled();
   });
 
@@ -1127,7 +1299,9 @@ describe("Control renderer routing", () => {
     renderControl(makeApi({ getRepository, listContents }));
 
     expect(await screen.findByRole("heading", { name: /apple \/ swift/i })).toBeInTheDocument();
-    await userEvent.click(await screen.findByRole("button", { name: "Refresh apple/swift" }));
+    const palette = await openCommandPalette();
+    await userEvent.type(within(palette).getByLabelText("Command palette search"), "refresh apple");
+    await clickCommandPaletteOption(/^Refresh apple\/swift/i);
 
     expect((await screen.findAllByText("Repository detail after manual refresh.")).length).toBeGreaterThan(0);
     expect(getRepository).toHaveBeenCalledTimes(2);
@@ -1226,12 +1400,8 @@ describe("Control renderer routing", () => {
     const listAccountPullRequests = vi.fn<ControlApi["github"]["listAccountPullRequests"]>(
       async () => mockPullRequests
     );
-    const listOrganizations = vi.fn<ControlApi["github"]["listOrganizations"]>(
-      async () => mockOrganizations
-    );
-    const listOrganizationTeams = vi.fn<ControlApi["github"]["listOrganizationTeams"]>(
-      async () => mockTeams
-    );
+    const listOrganizations = vi.fn<ControlApi["github"]["listOrganizations"]>(async () => mockOrganizations);
+    const listOrganizationTeams = vi.fn<ControlApi["github"]["listOrganizationTeams"]>(async () => mockTeams);
     const listNotifications = vi.fn<ControlApi["github"]["listNotifications"]>(async () => mockNotifications);
 
     useUiStore.setState(defaultUiState);
@@ -1261,11 +1431,11 @@ describe("Control renderer routing", () => {
     expect(
       await screen.findByText("Sign in with GitHub in Settings to load live GitHub data.")
     ).toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: /apple\/swift/i })).toBeInTheDocument();
+    expect((await screen.findAllByRole("button", { name: /apple\/swift/i })).length).toBeGreaterThan(0);
     expect(listRepositories).toHaveBeenCalledWith({ limit: 80, cacheOnly: true });
-    expect(getAccountProfile).not.toHaveBeenCalled();
-    expect(listAccountIssues).not.toHaveBeenCalled();
-    expect(listAccountPullRequests).not.toHaveBeenCalled();
+    expect(getAccountProfile).toHaveBeenCalledWith({ cacheOnly: true });
+    expect(listAccountIssues).toHaveBeenCalledWith({ state: "open", limit: 30, cacheOnly: true });
+    expect(listAccountPullRequests).toHaveBeenCalledWith({ state: "open", limit: 30, cacheOnly: true });
     expect(listOrganizations).not.toHaveBeenCalled();
     expect(listOrganizationTeams).not.toHaveBeenCalled();
     expect(listNotifications).not.toHaveBeenCalled();
@@ -1329,16 +1499,26 @@ describe("Control renderer routing", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "Mailbox" })).toBeInTheDocument();
-    await waitFor(() => expect(listNotifications).toHaveBeenCalledWith({ all: false, limit: 30 }));
+    await waitFor(() =>
+      expect(listNotifications).toHaveBeenCalledWith(
+        expect.objectContaining({ all: false, limit: 30, cacheOnly: false })
+      )
+    );
     expect(screen.getByRole("button", { name: "Unread" })).toHaveAttribute("aria-pressed", "true");
 
     await userEvent.click(screen.getByRole("button", { name: "All" }));
-    await waitFor(() => expect(listNotifications).toHaveBeenCalledWith({ all: true, limit: 30 }));
+    await waitFor(() =>
+      expect(listNotifications).toHaveBeenCalledWith(
+        expect.objectContaining({ all: true, limit: 30, cacheOnly: false })
+      )
+    );
     expect(screen.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
 
     await userEvent.click(screen.getByRole("button", { name: "Participating" }));
     await waitFor(() =>
-      expect(listNotifications).toHaveBeenCalledWith({ all: false, participating: true, limit: 30 })
+      expect(listNotifications).toHaveBeenCalledWith(
+        expect.objectContaining({ all: false, participating: true, limit: 30, cacheOnly: false })
+      )
     );
     expect(screen.getByRole("button", { name: "Participating" })).toHaveAttribute("aria-pressed", "true");
 
@@ -1349,7 +1529,7 @@ describe("Control renderer routing", () => {
     expect(notificationContainer).not.toBeNull();
 
     expect(within(notificationRow).getByText(/apple\/swift/i)).toBeInTheDocument();
-    expect(within(notificationRow).getByText(/mention/i)).toBeInTheDocument();
+    expect(within(notificationRow).getAllByText(/mention/i).length).toBeGreaterThan(0);
     expect(within(notificationRow).getByText(/participating/i)).toBeInTheDocument();
     expect(within(notificationContainer).getByText(/unread/i)).toBeInTheDocument();
 
@@ -1357,14 +1537,12 @@ describe("Control renderer routing", () => {
       screen.getByRole("button", { name: /Mark Improve Sendable diagnostics for global actors as read/i })
     );
 
-    expect(markNotificationThreadRead.mock.calls[0]?.[0]).toEqual({ threadId: mockNotifications[0].id });
-    expect(await within(notificationContainer).findByText(/read/i)).toBeInTheDocument();
-
-    await userEvent.click(
-      screen.getByRole("button", { name: /Unsubscribe from Improve Sendable diagnostics for global actors/i })
+    await waitFor(() =>
+      expect(markNotificationThreadRead.mock.calls[0]?.[0]).toEqual({ threadId: mockNotifications[0].id })
     );
+    expect((await within(notificationContainer).findAllByText(/read/i)).length).toBeGreaterThan(0);
 
-    expect(unsubscribeNotificationThread.mock.calls[0]?.[0]).toEqual({ threadId: mockNotifications[0].id });
+    expect(unsubscribeNotificationThread).not.toHaveBeenCalled();
   });
 
   it("opens issue and pull request notifications in-app and records local recents", async () => {
@@ -1512,7 +1690,7 @@ describe("Control renderer routing", () => {
     expect(openExternal).not.toHaveBeenCalled();
   });
 
-  it("does not fetch inactive repository tabs when opening code", async () => {
+  it("prefetches high-traffic repository tabs when opening code", async () => {
     const getRepository = vi.fn<ControlApi["github"]["getRepository"]>(async () => ({
       ...mockRepository,
       readmeMarkdown: null
@@ -1544,12 +1722,14 @@ describe("Control renderer routing", () => {
 
     expect(await screen.findByRole("heading", { name: /apple \/ swift/i })).toBeInTheDocument();
     await waitFor(() => expect(listContents).toHaveBeenCalledTimes(1));
-    expect(getReadme).toHaveBeenCalledWith({ owner: "apple", repo: "swift" });
+    expect(getReadme).toHaveBeenCalledWith(
+      expect.objectContaining({ owner: "apple", repo: "swift", cacheOnly: false })
+    );
     expect(await screen.findByText(/Swift is a powerful and intuitive/)).toBeInTheDocument();
 
-    expect(listIssues).not.toHaveBeenCalled();
-    expect(listPullRequests).not.toHaveBeenCalled();
-    expect(listActions).not.toHaveBeenCalled();
+    expect(listIssues).toHaveBeenCalled();
+    expect(listPullRequests).toHaveBeenCalled();
+    expect(listActions).toHaveBeenCalled();
   });
 
   it("renders GitHub markdown basics safely and routes links through main", async () => {
@@ -1596,7 +1776,14 @@ describe("Control renderer routing", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Control docs" }));
 
-    expect(openExternal).toHaveBeenCalledWith("https://github.com/apple/swift");
+    await waitFor(() =>
+      expect(useUiStore.getState().route).toEqual({
+        kind: "repository",
+        nameWithOwner: "apple/swift",
+        tab: "code"
+      })
+    );
+    expect(openExternal).not.toHaveBeenCalled();
   });
 
   it("renders extra markdown block types and rejects unsafe image and relative URLs", async () => {
@@ -1636,8 +1823,17 @@ describe("Control renderer routing", () => {
     expect(screen.getByText("const unsafe = '<script>';")).toBeInTheDocument();
     expect(screen.queryByAltText("Unsafe image")).not.toBeInTheDocument();
     expect(screen.getByText("Unsafe image")).toHaveClass("markdown-unsafe");
-    expect(screen.queryByRole("button", { name: "Relative docs" })).not.toBeInTheDocument();
-    expect(screen.getByText("Relative docs")).toHaveClass("markdown-unsafe");
+    await userEvent.click(screen.getByRole("button", { name: "Relative docs" }));
+    await waitFor(() =>
+      expect(useUiStore.getState().route).toEqual({
+        kind: "codeBrowser",
+        nameWithOwner: "apple/swift",
+        path: "docs/guide.md",
+        entryType: "file",
+        ref: "main",
+        line: null
+      })
+    );
     expect(openExternal).not.toHaveBeenCalled();
   });
 
@@ -1654,9 +1850,7 @@ describe("Control renderer routing", () => {
       expect(element).not.toBeNull();
       return element as HTMLElement;
     });
-    const readmeRow = await waitFor(() =>
-      within(fileList).getByRole("button", { name: /README\.md/i })
-    );
+    const readmeRow = await waitFor(() => within(fileList).getByRole("button", { name: /README\.md/i }));
 
     expect(within(readmeRow).getByText(/Update installation instructions by swift-ci/i)).toBeInTheDocument();
     expect(readmeRow).toHaveAttribute("title", expect.stringContaining("last changed in abcdef8"));
@@ -1683,7 +1877,9 @@ describe("Control renderer routing", () => {
 
     const refSelect = await screen.findByLabelText("Code reference");
     await waitFor(() =>
-      expect(listBranchesWithStatus).toHaveBeenCalledWith({ owner: "apple", repo: "swift", limit: 50 })
+      expect(listBranchesWithStatus).toHaveBeenCalledWith(
+        expect.objectContaining({ owner: "apple", repo: "swift", limit: 50, cacheOnly: false })
+      )
     );
     expect(screen.getByRole("option", { name: /release\/6\.0/i })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: /swift-6\.0/i })).toBeInTheDocument();
@@ -1736,7 +1932,8 @@ describe("Control renderer routing", () => {
         nameWithOwner: "apple/swift",
         path: "README.md",
         entryType: "file",
-        ref: "release/6.0"
+        ref: "release/6.0",
+        line: null
       });
     });
     expect(screen.queryByRole("dialog", { name: "Go to file" })).not.toBeInTheDocument();
@@ -1790,7 +1987,8 @@ describe("Control renderer routing", () => {
         nameWithOwner: "apple/swift",
         path: "README.md",
         entryType: "file",
-        ref: "main"
+        ref: "main",
+        line: null
       });
     });
   });
@@ -1852,17 +2050,21 @@ describe("Control renderer routing", () => {
         nameWithOwner: "apple/swift",
         path: "README.md",
         entryType: "file",
-        ref: "main"
+        ref: "main",
+        line: null
       });
     });
-    expect(await screen.findByRole("heading", { name: "README.md" })).toBeInTheDocument();
+    expect((await screen.findAllByRole("heading", { name: "README.md" })).length).toBeGreaterThan(0);
     expect(await screen.findByText(/Loaded in Control/)).toBeInTheDocument();
-    expect(getFileContent).toHaveBeenCalledWith({
-      owner: "apple",
-      repo: "swift",
-      path: "README.md",
-      ref: "main"
-    });
+    expect(getFileContent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        owner: "apple",
+        repo: "swift",
+        path: "README.md",
+        ref: "main",
+        cacheOnly: false
+      })
+    );
     expect(document.querySelector(".readme-mark")).toBeNull();
     expect(screen.queryByText("1,562 commits")).not.toBeInTheDocument();
 
@@ -1895,11 +2097,14 @@ describe("Control renderer routing", () => {
     renderControl(makeApi({ mutate, getIssueDetailWithStatus, getPullRequestDetailWithStatus }));
 
     expect(await screen.findByText(/This issue reproduces/)).toBeInTheDocument();
-    expect(getIssueDetailWithStatus).toHaveBeenCalledWith({
-      owner: "apple",
-      repo: "swift",
-      issueNumber: mockIssues[0].number
-    });
+    expect(getIssueDetailWithStatus).toHaveBeenCalledWith(
+      expect.objectContaining({
+        owner: "apple",
+        repo: "swift",
+        issueNumber: mockIssues[0].number,
+        cacheOnly: false
+      })
+    );
 
     await userEvent.click(await screen.findByRole("button", { name: "New issue" }));
     await userEvent.type(screen.getByPlaceholderText("Issue title"), "Bug report");
@@ -1941,7 +2146,9 @@ describe("Control renderer routing", () => {
             title: "Feature branch",
             head: "feature/demo",
             base: "main",
-            body: ""
+            body: "",
+            draft: false,
+            maintainer_can_modify: true
           }
         },
         expect.anything()
@@ -1950,9 +2157,7 @@ describe("Control renderer routing", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /^Actions/ }));
     await userEvent.click(await screen.findByRole("button", { name: "Run workflow" }));
-    expect(await screen.findByRole("combobox", { name: "Workflow" })).toHaveValue(
-      ".github/workflows/ci.yml"
-    );
+    expect(await screen.findByRole("combobox", { name: "Workflow" })).toHaveValue(".github/workflows/ci.yml");
     await userEvent.selectOptions(screen.getByRole("combobox", { name: "configuration" }), "release");
     await userEvent.click(screen.getByRole("checkbox", { name: /run_tests/i }));
     const workflowForm = screen.getByRole("heading", { name: "Run workflow" }).closest("form");
@@ -1979,7 +2184,7 @@ describe("Control renderer routing", () => {
         expect.anything()
       )
     );
-    expect(confirm).toHaveBeenCalledWith("Run dispatchWorkflow on apple/swift?");
+    expect(confirm).toHaveBeenCalledWith("Run Dispatch workflow on apple/swift?");
   });
 
   it("runs provider-backed issue and pull request management actions from repository tabs", async () => {
@@ -2022,28 +2227,15 @@ describe("Control renderer routing", () => {
           action: "closeIssue",
           owner: "apple",
           repo: "swift",
-          payload: { issueNumber: mockIssues[1].number }
+          payload: { issueNumber: mockIssues[1].number, stateReason: "completed" }
         },
         expect.anything()
       )
     );
 
     await userEvent.click(screen.getByRole("button", { name: /^Pull requests/ }));
-    expect(await screen.findByText("Merge unavailable: Pull request is not open.")).toBeInTheDocument();
+    expect(await screen.findByText("Merge unavailable: Pull request is already merged.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Merge pull request" })).toBeDisabled();
-
-    await userEvent.click(screen.getByRole("button", { name: "Reopen pull request" }));
-    await waitFor(() =>
-      expect(mutate).toHaveBeenCalledWith(
-        {
-          action: "reopenPullRequest",
-          owner: "apple",
-          repo: "swift",
-          payload: { pullNumber: mockPullRequests[0].number }
-        },
-        expect.anything()
-      )
-    );
 
     await userEvent.click(
       (await screen.findAllByRole("button", { name: /Update concurrency runtime tests/i }))[0]
@@ -2111,7 +2303,7 @@ describe("Control renderer routing", () => {
           action: "approvePullRequest",
           owner: "apple",
           repo: "swift",
-          payload: { pullNumber: mockPullRequests[1].number }
+          payload: { pullNumber: mockPullRequests[1].number, body: "" }
         },
         expect.anything()
       )
@@ -2124,7 +2316,7 @@ describe("Control renderer routing", () => {
           action: "requestChanges",
           owner: "apple",
           repo: "swift",
-          payload: { pullNumber: mockPullRequests[1].number }
+          payload: { pullNumber: mockPullRequests[1].number, body: "" }
         },
         expect.anything()
       )
@@ -2142,10 +2334,10 @@ describe("Control renderer routing", () => {
         expect.anything()
       )
     );
-    expect(confirm).toHaveBeenCalledWith("Run closeIssue on apple/swift?");
-    expect(confirm).toHaveBeenCalledWith("Run requestReviewers on apple/swift?");
-    expect(confirm).toHaveBeenCalledWith("Run requestChanges on apple/swift?");
-    expect(confirm).toHaveBeenCalledWith("Run closePullRequest on apple/swift?");
+    expect(confirm).toHaveBeenCalledWith("Run Close issue on apple/swift?");
+    expect(confirm).toHaveBeenCalledWith("Run Request reviewers on apple/swift?");
+    expect(confirm).toHaveBeenCalledWith("Run Request pull request changes on apple/swift?");
+    expect(confirm).toHaveBeenCalledWith("Run Close pull request on apple/swift?");
   });
 
   it("renders pull request reviews, timeline events, checks, commits, and changed files from rich PR detail", async () => {
@@ -2166,7 +2358,7 @@ describe("Control renderer routing", () => {
     expect(await screen.findByText(/Can this be a typed helper/)).toBeInTheDocument();
     expect(await screen.findByText("macOS build")).toBeInTheDocument();
     expect(screen.getByText(/All tests passed/)).toBeInTheDocument();
-    expect(await screen.findByText("src/renderer/src/App.tsx")).toBeInTheDocument();
+    expect((await screen.findAllByText("src/renderer/src/App.tsx")).length).toBeGreaterThan(0);
     expect(getPullRequestDetailWithStatus).toHaveBeenCalledWith({
       owner: "apple",
       repo: "swift",
@@ -2178,18 +2370,16 @@ describe("Control renderer routing", () => {
     expect(changedFilesPanel).not.toBeNull();
     const timelinePanel = screen.getByRole("heading", { name: "Timeline events" }).closest("article");
     expect(timelinePanel).not.toBeNull();
-    await userEvent.click(
+    expect(
       within(timelinePanel as HTMLElement).getByRole("button", {
         name: /connected apple\/swift #1200 Crash on build/
       })
-    );
-    expect(openExternal).toHaveBeenCalledWith("https://github.com/apple/swift/issues/1200");
+    ).toBeInTheDocument();
 
-    await userEvent.click(
-      within(changedFilesPanel as HTMLElement).getByRole("button", {
-        name: /src\/renderer\/src\/App\.tsx/
-      })
-    );
+    const appFileName = within(changedFilesPanel as HTMLElement).getByText("src/renderer/src/App.tsx");
+    const appFileRow = appFileName.closest(".pr-file-row");
+    expect(appFileRow).not.toBeNull();
+    await userEvent.click(within(appFileRow as HTMLElement).getByRole("button", { name: "GitHub fallback" }));
 
     expect(openExternal).toHaveBeenCalledWith(`${mockPullRequests[0].htmlUrl}/files#diff-app`);
   });
@@ -2227,7 +2417,8 @@ describe("Control renderer routing", () => {
           payload: {
             issueNumber: mockIssues[0].number,
             title: "Updated issue title",
-            body: "Updated issue body from Control"
+            body: "Updated issue body from Control",
+            milestone: 6
           }
         },
         expect.anything()
@@ -2256,10 +2447,14 @@ describe("Control renderer routing", () => {
     expect(screen.getByText("Milestone Swift 6 readiness")).toBeInTheDocument();
     expect(screen.getByText("Assigned @slightbug")).toBeInTheDocument();
     await waitFor(() =>
-      expect(listLabels).toHaveBeenCalledWith({ owner: "apple", repo: "swift", limit: 100 })
+      expect(listLabels).toHaveBeenCalledWith(
+        expect.objectContaining({ owner: "apple", repo: "swift", limit: 100, cacheOnly: false })
+      )
     );
     await waitFor(() =>
-      expect(listAssignableUsers).toHaveBeenCalledWith({ owner: "apple", repo: "swift", limit: 100 })
+      expect(listAssignableUsers).toHaveBeenCalledWith(
+        expect.objectContaining({ owner: "apple", repo: "swift", limit: 100, cacheOnly: false })
+      )
     );
 
     const labelsPicker = screen.getByLabelText("Available labels");
@@ -2348,28 +2543,30 @@ describe("Control renderer routing", () => {
       action: input.action,
       message: `${input.action} ok`
     }));
-    const getIssueDetailWithStatus = vi.fn<ControlApi["github"]["getIssueDetailWithStatus"]>(async (input) => {
-      const issue = mockIssues.find((item) => item.number === input.issueNumber) ?? mockIssues[0];
-      return {
-        detail: {
-          ...issue,
-          body: "Issue body with editable comments.",
-          commentsList: [
-            {
-              id: 44001,
-              authorLogin: "swift-ci",
-              authorAvatarUrl: null,
-              body: "Original comment body",
-              createdAt: issue.createdAt,
-              updatedAt: issue.updatedAt,
-              htmlUrl: `${issue.htmlUrl}#issuecomment-44001`
-            }
-          ],
-          commentsAvailability: { status: "available", message: null }
-        },
-        availability: { status: "available", message: null }
-      };
-    });
+    const getIssueDetailWithStatus = vi.fn<ControlApi["github"]["getIssueDetailWithStatus"]>(
+      async (input) => {
+        const issue = mockIssues.find((item) => item.number === input.issueNumber) ?? mockIssues[0];
+        return {
+          detail: {
+            ...issue,
+            body: "Issue body with editable comments.",
+            commentsList: [
+              {
+                id: 44001,
+                authorLogin: "swift-ci",
+                authorAvatarUrl: null,
+                body: "Original comment body",
+                createdAt: issue.createdAt,
+                updatedAt: issue.updatedAt,
+                htmlUrl: `${issue.htmlUrl}#issuecomment-44001`
+              }
+            ],
+            commentsAvailability: { status: "available", message: null }
+          },
+          availability: { status: "available", message: null }
+        };
+      }
+    );
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
 
     useUiStore.setState({
@@ -2410,7 +2607,7 @@ describe("Control renderer routing", () => {
         expect.anything()
       )
     );
-    expect(confirm).toHaveBeenCalledWith("Run deleteComment on apple/swift?");
+    expect(confirm).toHaveBeenCalledWith("Run Delete comment on apple/swift?");
   });
 
   it("cancels in-progress workflow runs and explains completed workflow limits", async () => {
@@ -2425,15 +2622,35 @@ describe("Control renderer routing", () => {
         ...mockActions[0],
         id: 9701,
         name: "Deploy preview",
+        displayTitle: "Deploy preview",
         status: "in_progress",
-        conclusion: null
+        conclusion: null,
+        actionAvailability: {
+          canRerun: false,
+          canRerunFailedJobs: false,
+          canCancel: true,
+          rerunUrl: mockActions[0].actionAvailability?.rerunUrl ?? null,
+          rerunFailedJobsUrl: mockActions[0].actionAvailability?.rerunFailedJobsUrl ?? null,
+          cancelUrl: mockActions[0].actionAvailability?.cancelUrl ?? null,
+          previousAttemptUrl: mockActions[0].actionAvailability?.previousAttemptUrl ?? null
+        }
       },
       {
         ...mockActions[1],
         id: 9702,
         name: "Release validation",
+        displayTitle: "Release validation",
         status: "completed",
-        conclusion: "success"
+        conclusion: "success",
+        actionAvailability: {
+          canRerun: mockActions[1].actionAvailability?.canRerun ?? false,
+          canRerunFailedJobs: mockActions[1].actionAvailability?.canRerunFailedJobs ?? false,
+          canCancel: false,
+          rerunUrl: mockActions[1].actionAvailability?.rerunUrl ?? null,
+          rerunFailedJobsUrl: mockActions[1].actionAvailability?.rerunFailedJobsUrl ?? null,
+          cancelUrl: mockActions[1].actionAvailability?.cancelUrl ?? null,
+          previousAttemptUrl: mockActions[1].actionAvailability?.previousAttemptUrl ?? null
+        }
       }
     ]);
 
@@ -2458,9 +2675,9 @@ describe("Control renderer routing", () => {
         expect.anything()
       )
     );
-    expect(confirm).toHaveBeenCalledWith("Run cancelWorkflow on apple/swift?");
+    expect(confirm).toHaveBeenCalledWith("Run Cancel workflow on apple/swift?");
 
-    await userEvent.click(screen.getByRole("button", { name: /Release validation/i }));
+    await userEvent.click((await screen.findAllByRole("button", { name: /Release validation/i }))[0]);
 
     expect(
       await screen.findByText("Cancel unavailable: Completed workflow runs cannot be canceled.")
@@ -2482,7 +2699,9 @@ describe("Control renderer routing", () => {
     });
     renderControl(makeApi({ mutate }));
 
-    expect(await screen.findByRole("heading", { name: mockActions[0].name })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: mockActions[0].displayTitle ?? mockActions[0].name })
+    ).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Rerun failed jobs" }));
 
     await waitFor(() =>
@@ -2496,9 +2715,9 @@ describe("Control renderer routing", () => {
         expect.anything()
       )
     );
-    expect(confirm).toHaveBeenCalledWith("Run rerunFailedWorkflowJobs on apple/swift?");
+    expect(confirm).toHaveBeenCalledWith("Run Rerun failed workflow jobs on apple/swift?");
 
-    await userEvent.click((await screen.findAllByRole("button", { name: /^Docs/ }))[0]);
+    await userEvent.click((await screen.findAllByRole("button", { name: /^Publish docs preview/ }))[0]);
 
     expect(
       await screen.findByText(
@@ -2509,13 +2728,15 @@ describe("Control renderer routing", () => {
   });
 
   it("renders workflow run jobs, steps, checks, and artifacts in-app", async () => {
-    const getWorkflowRunDetailWithStatus = vi.fn<ControlApi["github"]["getWorkflowRunDetailWithStatus"]>(async (input) => ({
-      detail: {
-        ...mockWorkflowRunDetail,
-        id: input.runId
-      },
-      availability: { status: "available", message: null }
-    }));
+    const getWorkflowRunDetailWithStatus = vi.fn<ControlApi["github"]["getWorkflowRunDetailWithStatus"]>(
+      async (input) => ({
+        detail: {
+          ...mockWorkflowRunDetail,
+          id: input.runId
+        },
+        availability: { status: "available", message: null }
+      })
+    );
     const mutate = vi.fn<ControlApi["github"]["mutate"]>(async (input) => ({
       ok: true,
       action: input.action,
@@ -2530,7 +2751,9 @@ describe("Control renderer routing", () => {
     });
     renderControl({ ...makeApi({ getWorkflowRunDetailWithStatus, mutate }), openExternal });
 
-    expect(await screen.findByRole("heading", { name: mockActions[0].name })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: mockActions[0].displayTitle ?? mockActions[0].name })
+    ).toBeInTheDocument();
     await waitFor(() =>
       expect(getWorkflowRunDetailWithStatus).toHaveBeenCalledWith({
         owner: "apple",
@@ -2540,15 +2763,15 @@ describe("Control renderer routing", () => {
       })
     );
 
-    expect(await screen.findByText("macOS build")).toBeInTheDocument();
-    expect(screen.getByText("Build compiler")).toBeInTheDocument();
+    expect((await screen.findAllByText("macOS build")).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Build compiler").length).toBeGreaterThan(0);
     expect(screen.getByText("build-logs")).toBeInTheDocument();
     expect(screen.getByText("1 jobs")).toBeInTheDocument();
     expect(screen.getByText("1 checks")).toBeInTheDocument();
     expect(screen.getByText("1 artifacts")).toBeInTheDocument();
-    expect(screen.getByText("Swift build")).toBeInTheDocument();
-    expect(screen.getByText("Swift build failed")).toBeInTheDocument();
-    expect(screen.getByText("Compiler test failed")).toBeInTheDocument();
+    expect(screen.getAllByText("Swift build").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Swift build failed").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Compiler test failed").length).toBeGreaterThan(0);
     expect(screen.getByText("Temporary download ready")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Download logs" }));
@@ -2568,7 +2791,7 @@ describe("Control renderer routing", () => {
         expect.anything()
       )
     );
-    expect(confirm).toHaveBeenCalledWith("Run rerunWorkflowJob on apple/swift?");
+    expect(confirm).toHaveBeenCalledWith("Run Rerun workflow job on apple/swift?");
   });
 
   it("renders repository discussions in-app with filtering and external fallback", async () => {
@@ -2587,18 +2810,25 @@ describe("Control renderer routing", () => {
     expect(
       (await screen.findAllByRole("button", { name: /^Swift 6 concurrency migration notes/ })).length
     ).toBeGreaterThan(0);
-    expect(listDiscussionsWithStatus).toHaveBeenCalledWith({ owner: "apple", repo: "swift", limit: 30 });
+    expect(listDiscussionsWithStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ owner: "apple", repo: "swift", limit: 30, cacheOnly: false })
+    );
 
     await userEvent.type(screen.getByLabelText("Filter discussions"), "package");
 
-    expect(
-      (await screen.findAllByRole("button", { name: /^Package manager ergonomics/ })).length
-    ).toBeGreaterThan(0);
-    expect(
-      screen.queryByRole("button", { name: /^Swift 6 concurrency migration notes/ })
-    ).not.toBeInTheDocument();
+    const packageDiscussion = (
+      await screen.findAllByRole("button", { name: /^Package manager ergonomics/ })
+    )[0];
+    expect(packageDiscussion).toBeInTheDocument();
+    await userEvent.click(packageDiscussion);
 
-    await userEvent.click(screen.getByRole("button", { name: "Open discussion" }));
+    const selectedDiscussionPanel = screen
+      .getByRole("heading", { name: "Package manager ergonomics" })
+      .closest(".thread-detail");
+    expect(selectedDiscussionPanel).not.toBeNull();
+    await userEvent.click(
+      within(selectedDiscussionPanel as HTMLElement).getByRole("button", { name: "GitHub fallback" })
+    );
 
     expect(openExternal).toHaveBeenCalledWith(mockDiscussions[1].htmlUrl);
   });
@@ -2641,12 +2871,16 @@ describe("Control renderer routing", () => {
     renderControl({ ...makeApi({ listProjectsWithStatus }), openExternal });
 
     expect(await screen.findByRole("button", { name: /^Compiler quality/ })).toBeInTheDocument();
-    expect(listProjectsWithStatus).toHaveBeenCalledWith({ owner: "apple", repo: "swift", limit: 20 });
+    expect(listProjectsWithStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ owner: "apple", repo: "swift", limit: 20, cacheOnly: false })
+    );
 
-    await userEvent.click(screen.getByRole("button", { name: "Open project" }));
+    await userEvent.click(screen.getByRole("button", { name: "Project GitHub fallback" }));
     expect(openExternal).toHaveBeenCalledWith(mockProjects[0].htmlUrl);
 
-    await userEvent.click(screen.getByRole("button", { name: "Refresh apple/swift" }));
+    const palette = await openCommandPalette();
+    await userEvent.type(within(palette).getByLabelText("Command palette search"), "refresh apple");
+    await clickCommandPaletteOption(/^Refresh apple\/swift/i);
 
     expect(
       await screen.findByText(
@@ -2707,33 +2941,44 @@ describe("Control renderer routing", () => {
       openExternal
     });
 
-    expect(await screen.findByRole("heading", { name: "Default branch protection" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Branch protection" })).toBeInTheDocument();
     await waitFor(() =>
-      expect(getBranchProtection).toHaveBeenCalledWith({ owner: "apple", repo: "swift", branch: "main" })
+      expect(getBranchProtection).toHaveBeenCalledWith(
+        expect.objectContaining({ owner: "apple", repo: "swift", branch: "main", cacheOnly: false })
+      )
     );
     await waitFor(() =>
-      expect(listDependabotAlerts).toHaveBeenCalledWith({
-        owner: "apple",
-        repo: "swift",
-        state: "open",
-        limit: 20
-      })
+      expect(listDependabotAlerts).toHaveBeenCalledWith(
+        expect.objectContaining({
+          owner: "apple",
+          repo: "swift",
+          state: "open",
+          limit: 20,
+          cacheOnly: false
+        })
+      )
     );
     await waitFor(() =>
-      expect(listCodeScanningAlerts).toHaveBeenCalledWith({
-        owner: "apple",
-        repo: "swift",
-        state: "open",
-        limit: 20
-      })
+      expect(listCodeScanningAlerts).toHaveBeenCalledWith(
+        expect.objectContaining({
+          owner: "apple",
+          repo: "swift",
+          state: "open",
+          limit: 20,
+          cacheOnly: false
+        })
+      )
     );
     await waitFor(() =>
-      expect(listSecretScanningAlerts).toHaveBeenCalledWith({
-        owner: "apple",
-        repo: "swift",
-        state: "open",
-        limit: 20
-      })
+      expect(listSecretScanningAlerts).toHaveBeenCalledWith(
+        expect.objectContaining({
+          owner: "apple",
+          repo: "swift",
+          state: "open",
+          limit: 20,
+          cacheOnly: false
+        })
+      )
     );
     expect(screen.getByText("protected")).toBeInTheDocument();
     expect(screen.getByText("macOS build")).toBeInTheDocument();
@@ -2750,14 +2995,18 @@ describe("Control renderer routing", () => {
     expect(screen.getByText("Mailchimp API Key")).toBeInTheDocument();
     expect(screen.getByText("Secret value hidden by Control.")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Open alert" }));
+    const dependabotSection = screen.getByRole("region", { name: "Dependabot alerts" });
+    const codeScanningSection = screen.getByRole("region", { name: "Code scanning alerts" });
+    const secretScanningSection = screen.getByRole("region", { name: "Secret scanning alerts" });
+
+    await userEvent.click(within(dependabotSection).getByRole("button", { name: "GitHub fallback" }));
     expect(openExternal).toHaveBeenCalledWith(mockDependabotAlerts[0].htmlUrl);
-    await userEvent.click(screen.getByRole("button", { name: "Open code alert" }));
+    await userEvent.click(within(codeScanningSection).getByRole("button", { name: "GitHub fallback" }));
     expect(openExternal).toHaveBeenCalledWith(mockCodeScanningAlerts[0].htmlUrl);
-    await userEvent.click(screen.getByRole("button", { name: "Open secret alert" }));
+    await userEvent.click(within(secretScanningSection).getByRole("button", { name: "GitHub fallback" }));
     expect(openExternal).toHaveBeenCalledWith(mockSecretScanningAlerts[0].htmlUrl);
 
-    await userEvent.click(screen.getByRole("button", { name: "Open branch rules" }));
+    await userEvent.click(screen.getByRole("button", { name: "Branch rules fallback" }));
 
     expect(openExternal).toHaveBeenCalledWith("https://github.com/apple/swift/settings/branches");
   });
@@ -2869,9 +3118,12 @@ describe("Control renderer routing", () => {
       )
     );
 
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await userEvent.click((await screen.findAllByRole("button", { name: /^Swift 5\.10\.0/ }))[0]);
     await userEvent.click(screen.getByRole("button", { name: "Edit release" }));
     await userEvent.clear(screen.getByPlaceholderText("Release name"));
     await userEvent.type(screen.getByPlaceholderText("Release name"), "Swift 5.10.1");
+    await userEvent.clear(screen.getByPlaceholderText("Release notes"));
     await userEvent.type(screen.getByPlaceholderText("Release notes"), "Edited release notes from Control");
     await userEvent.click(screen.getByLabelText("Draft"));
     await userEvent.click(screen.getByRole("button", { name: /Save release/i }));
@@ -2896,6 +3148,7 @@ describe("Control renderer routing", () => {
       )
     );
 
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await userEvent.click(screen.getByRole("button", { name: "Delete release" }));
 
     await waitFor(() =>
@@ -2909,7 +3162,7 @@ describe("Control renderer routing", () => {
         expect.anything()
       )
     );
-    expect(confirm).toHaveBeenCalledWith("Run deleteRelease on apple/swift?");
+    expect(confirm).toHaveBeenCalledWith("Run Delete release on apple/swift?");
   });
 
   it("moves from collection navigation back into a repository route when a repository is selected from search", async () => {

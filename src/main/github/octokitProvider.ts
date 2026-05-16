@@ -938,7 +938,6 @@ export class OctokitProvider implements GitHubProvider {
         tags: { totalCount: number };
         languages: GitHubLanguages;
         parent: GitHubRepositoryRefNode | null;
-        source: GitHubRepositoryRefNode | null;
         viewerHasStarred: boolean;
         viewerSubscription: ViewerRepositoryState["subscription"];
         viewerPermission: string | null;
@@ -992,19 +991,6 @@ export class OctokitProvider implements GitHubProvider {
             defaultBranchRef { name }
             owner { login }
           }
-          source {
-            id
-            name
-            nameWithOwner
-            url
-            visibility
-            isPrivate
-            forkCount
-            stargazerCount
-            viewerPermission
-            defaultBranchRef { name }
-            owner { login }
-          }
           viewerHasStarred
           viewerSubscription
           viewerPermission
@@ -1034,7 +1020,7 @@ export class OctokitProvider implements GitHubProvider {
       htmlUrl: data.repository.url,
       languages: mapLanguages(data.repository.languages),
       parent: restMetadata?.parent ?? mapRepositoryRef(data.repository.parent),
-      source: restMetadata?.source ?? mapRepositoryRef(data.repository.source),
+      source: restMetadata?.source ?? null,
       viewerState: {
         hasStarred: data.repository.viewerHasStarred,
         subscription: data.repository.viewerSubscription,

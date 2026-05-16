@@ -38,7 +38,7 @@ import {
   Workflow,
   X
 } from "lucide-react";
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, JSX, ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -538,6 +538,10 @@ function isMarkdownTableDivider(line: string): boolean {
   return /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line);
 }
 
+function markdownBlockKey(prefix: string, lineNumber: number, content: string): string {
+  return `${prefix}-${lineNumber}-${content.slice(0, 80)}`;
+}
+
 function renderPlainMarkdownText(
   text: string,
   keyPrefix: string,
@@ -795,7 +799,7 @@ function MarkdownBody({
   urlContext?: MarkdownUrlContext;
   emptyText?: string;
 }): JSX.Element {
-  const contextMarkdownUrlHandler = useContext(MarkdownUrlHandlerContext);
+  const contextMarkdownUrlHandler = use(MarkdownUrlHandlerContext);
   const markdownUrlHandler = onOpenMarkdownUrl ?? contextMarkdownUrlHandler ?? undefined;
   const lines = (markdown?.trim() || emptyText).split(/\r?\n/);
   const blocks: ReactNode[] = [];
@@ -811,6 +815,7 @@ function MarkdownBody({
 
     const fence = line.match(/^```([A-Za-z0-9_-]+)?\s*$/);
     if (fence) {
+      const blockStartLine = index;
       const codeLines: string[] = [];
       index += 1;
       while (index < lines.length && !/^```\s*$/.test(lines[index] ?? "")) {
@@ -819,7 +824,10 @@ function MarkdownBody({
       }
       index += 1;
       blocks.push(
-        <pre className="markdown-code-block" key={`code-${index}`}>
+        <pre
+          className="markdown-code-block"
+          key={markdownBlockKey("code", blockStartLine, codeLines.join("\n"))}
+        >
           {fence[1] && <span>{fence[1]}</span>}
           <code>{codeLines.join("\n")}</code>
         </pre>
@@ -829,14 +837,15 @@ function MarkdownBody({
 
     const heading = line.match(/^(#{1,4})\s+(.+)$/);
     if (heading) {
+      const blockStartLine = index;
       const level = Math.min(heading[1].length + 2, 6);
       const Tag = `h${level}` as keyof JSX.IntrinsicElements;
       blocks.push(
-        <Tag key={`heading-${index}`}>
+        <Tag key={markdownBlockKey("heading", blockStartLine, heading[2].trim())}>
           {renderInlineMarkdown(
             heading[2].trim(),
             onOpenExternal,
-            `heading-${index}`,
+            `heading-${blockStartLine}`,
             urlContext,
             markdownUrlHandler
           )}
@@ -847,6 +856,7 @@ function MarkdownBody({
     }
 
     if (index + 1 < lines.length && line.includes("|") && isMarkdownTableDivider(lines[index + 1] ?? "")) {
+      const blockStartLine = index;
       const headers = splitTableCells(line);
       const rows: string[][] = [];
       index += 2;
@@ -855,11 +865,11 @@ function MarkdownBody({
         index += 1;
       }
       blocks.push(
-        <table className="markdown-table" key={`table-${index}`}>
+        <table className="markdown-table" key={markdownBlockKey("table", blockStartLine, line)}>
           <thead>
             <tr>
               {headers.map((header, cellIndex) => (
-                <th key={`h-${cellIndex}`}>
+                <th key={`h-${header}`}>
                   {renderInlineMarkdown(
                     header,
                     onOpenExternal,
@@ -873,9 +883,9 @@ function MarkdownBody({
           </thead>
           <tbody>
             {rows.map((row, rowIndex) => (
-              <tr key={`r-${rowIndex}`}>
+              <tr key={`r-${row.join("|")}`}>
                 {headers.map((_, cellIndex) => (
-                  <td key={`c-${cellIndex}`}>
+                  <td key={`c-${headers[cellIndex] ?? ""}`}>
                     {renderInlineMarkdown(
                       row[cellIndex] ?? "",
                       onOpenExternal,
@@ -896,9 +906,11 @@ function MarkdownBody({
     const unordered = line.match(/^\s*[-*]\s+(?:\[([ xX])\]\s+)?(.+)$/);
     const ordered = line.match(/^\s*\d+\.\s+(.+)$/);
     if (unordered || ordered) {
-      const items: Array<{ checked: boolean | null; text: string }> = [];
+      const blockStartLine = index;
+      const items: Array<{ checked: boolean | null; lineNumber: number; text: string }> = [];
       const orderedList = Boolean(ordered);
       while (index < lines.length) {
+        const itemLineNumber = index;
         const current = lines[index] ?? "";
         const unorderedItem = current.match(/^\s*[-*]\s+(?:\[([ xX])\]\s+)?(.+)$/);
         const orderedItem = current.match(/^\s*\d+\.\s+(.+)$/);
@@ -907,6 +919,7 @@ function MarkdownBody({
         }
         items.push({
           checked: unorderedItem?.[1] ? unorderedItem[1].toLowerCase() === "x" : null,
+          lineNumber: itemLineNumber,
           text: (orderedItem?.[1] ?? unorderedItem?.[2] ?? "").trim()
         });
         index += 1;
@@ -915,15 +928,15 @@ function MarkdownBody({
       blocks.push(
         <ListTag
           className={items.some((item) => item.checked !== null) ? "markdown-task-list" : undefined}
-          key={`list-${index}`}
+          key={markdownBlockKey("list", blockStartLine, items.map((item) => item.text).join("\n"))}
         >
-          {items.map((item, itemIndex) => (
-            <li key={`item-${itemIndex}`}>
+          {items.map((item) => (
+            <li key={markdownBlockKey("item", item.lineNumber, item.text)}>
               {item.checked !== null && <input checked={item.checked} readOnly type="checkbox" />}
               {renderInlineMarkdown(
                 item.text,
                 onOpenExternal,
-                `list-${index}-${itemIndex}`,
+                `list-${blockStartLine}-${item.lineNumber}`,
                 urlContext,
                 markdownUrlHandler
               )}
@@ -935,17 +948,18 @@ function MarkdownBody({
     }
 
     if (line.startsWith(">")) {
+      const blockStartLine = index;
       const quoteLines: string[] = [];
       while (index < lines.length && lines[index]?.startsWith(">")) {
         quoteLines.push((lines[index] ?? "").replace(/^>\s?/, ""));
         index += 1;
       }
       blocks.push(
-        <blockquote key={`quote-${index}`}>
+        <blockquote key={markdownBlockKey("quote", blockStartLine, quoteLines.join(" "))}>
           {renderInlineMarkdown(
             quoteLines.join(" "),
             onOpenExternal,
-            `quote-${index}`,
+            `quote-${blockStartLine}`,
             urlContext,
             markdownUrlHandler
           )}
@@ -955,6 +969,7 @@ function MarkdownBody({
     }
 
     const paragraphLines: string[] = [];
+    const blockStartLine = index;
     while (
       index < lines.length &&
       lines[index]?.trim() &&
@@ -968,11 +983,11 @@ function MarkdownBody({
       index += 1;
     }
     blocks.push(
-      <p key={`paragraph-${index}`}>
+      <p key={markdownBlockKey("paragraph", blockStartLine, paragraphLines.join(" "))}>
         {renderInlineMarkdown(
           paragraphLines.join(" "),
           onOpenExternal,
-          `paragraph-${index}`,
+          `paragraph-${blockStartLine}`,
           urlContext,
           markdownUrlHandler
         )}
@@ -3596,7 +3611,7 @@ function FileBlamePanel({
           </button>
         )}
       </header>
-      {loading && ranges.length === 0 && <div className="loading-state">Loading blame ranges...</div>}
+      {loading && ranges.length === 0 && <div className="loading-state">Loading blame ranges…</div>}
       {error && <div className="error-state">File blame unavailable: {error.message}</div>}
       {availabilityMessage && <div className="error-state">{availabilityMessage}</div>}
       {!loading && !error && !availabilityMessage && ranges.length === 0 && (
@@ -3740,7 +3755,7 @@ function CommitHistoryPanel({
           <ExternalLink size={14} /> Open GitHub fallback
         </button>
       </header>
-      {loading && commits.length === 0 && <div className="loading-state">Loading commits...</div>}
+      {loading && commits.length === 0 && <div className="loading-state">Loading commits…</div>}
       {error && <div className="error-state">Commit history unavailable: {error.message}</div>}
       {!loading && !error && availabilityMessage && <div className="error-state">{availabilityMessage}</div>}
       {!loading && !error && !availabilityMessage && commits.length === 0 && (
@@ -4214,9 +4229,9 @@ export function App(): JSX.Element {
   });
   const markVisibleNotificationsRead = useMutation({
     mutationFn: async (input: { threadIds: string[] }) => {
-      for (const threadId of input.threadIds) {
-        await api.github.markNotificationThreadRead({ threadId });
-      }
+      await Promise.all(
+        input.threadIds.map((threadId) => api.github.markNotificationThreadRead({ threadId }))
+      );
     },
     onMutate: async (input) => {
       const threadIds = new Set(input.threadIds);
@@ -10030,7 +10045,7 @@ function Sidebar({
 
         <div className="repo-list" ref={parentRef}>
           {repositoriesLoading && sidebarRepositories.length === 0 && (
-            <div className="loading-state sidebar-empty-state">Loading repositories...</div>
+            <div className="loading-state sidebar-empty-state">Loading repositories…</div>
           )}
           {repositoriesError && sidebarRepositories.length === 0 && (
             <div className="error-state sidebar-empty-state">
@@ -10041,7 +10056,7 @@ function Sidebar({
             <div className="error-state sidebar-empty-state">{repositoriesAvailabilityMessage}</div>
           )}
           {remoteSearch.isFetching && normalizedRepositoryFilter && (
-            <div className="loading-state sidebar-empty-state">Searching GitHub...</div>
+            <div className="loading-state sidebar-empty-state">Searching GitHub…</div>
           )}
           {remoteSearch.isError && normalizedRepositoryFilter && (
             <div className="error-state sidebar-empty-state">
@@ -10369,7 +10384,7 @@ function TopBar({
               openSearchResult(activeSearchResult.repository.nameWithOwner);
             }
           }}
-          placeholder="Search or jump to..."
+          placeholder="Search or jump to…"
           aria-label="Search or jump to"
         />
         <button
@@ -10451,7 +10466,7 @@ function TopBar({
                 Load more GitHub results
               </button>
             )}
-            {search.isFetching && <div className="muted-row">Searching GitHub...</div>}
+            {search.isFetching && <div className="muted-row">Searching GitHub…</div>}
             {search.error && (
               <div className="error-state">GitHub repository search unavailable: {search.error.message}</div>
             )}
@@ -10767,7 +10782,7 @@ function CommandPalette({
   }
 
   return (
-    <div className="modal-backdrop command-palette-backdrop" onMouseDown={onClose}>
+    <div className="modal-backdrop command-palette-backdrop" role="presentation" onMouseDown={onClose}>
       <section
         className="command-palette"
         role="dialog"
@@ -10900,7 +10915,7 @@ function CommandPalette({
               </div>
             </>
           )}
-          {fileSearchLoading && <div className="loading-state">Loading repository files...</div>}
+          {fileSearchLoading && <div className="loading-state">Loading repository files…</div>}
           {fileSearchError && (
             <div className="error-state">Repository file search unavailable: {fileSearchError.message}</div>
           )}
@@ -11057,7 +11072,7 @@ function AddRepositoryDialog({
   }
 
   return (
-    <div className="modal-backdrop command-palette-backdrop" onMouseDown={onClose}>
+    <div className="modal-backdrop command-palette-backdrop" role="presentation" onMouseDown={onClose}>
       <section
         className="command-palette"
         role="dialog"
@@ -11200,7 +11215,7 @@ function AddRepositoryDialog({
           {!githubReady && normalizedQuery.length > 1 && (
             <div className="muted-row">Remote GitHub search is unavailable in cached mode.</div>
           )}
-          {githubReady && remoteSearch.isFetching && <div className="muted-row">Searching GitHub...</div>}
+          {githubReady && remoteSearch.isFetching && <div className="muted-row">Searching GitHub…</div>}
           {remoteSearch.error && (
             <div className="error-state">
               GitHub repository search unavailable: {remoteSearch.error.message}
@@ -11379,7 +11394,7 @@ function FileFinder({
   }
 
   return (
-    <div className="modal-backdrop command-palette-backdrop" onMouseDown={onClose}>
+    <div className="modal-backdrop command-palette-backdrop" role="presentation" onMouseDown={onClose}>
       <section
         className="command-palette file-finder"
         role="dialog"
@@ -11496,7 +11511,7 @@ function FileFinder({
           id="file-finder-results"
           role="listbox"
         >
-          {loading && entries.length === 0 && <div className="loading-state">Loading repository tree...</div>}
+          {loading && entries.length === 0 && <div className="loading-state">Loading repository tree…</div>}
           {treeUnavailableReason && <div className="empty-state">{treeUnavailableReason}</div>}
           {error && entries.length === 0 && (
             <div className="error-state">Could not load the repository tree: {error.message}</div>
@@ -11732,7 +11747,7 @@ function HomeDashboard({
           </header>
           <div className="home-repo-grid">
             {repositoriesLoading && latestRepositories.length === 0 && (
-              <div className="loading-state">Loading repositories...</div>
+              <div className="loading-state">Loading repositories…</div>
             )}
             {repositoriesError && (
               <div className="error-state">Repositories unavailable: {repositoriesError.message}</div>
@@ -11786,7 +11801,7 @@ function HomeDashboard({
           </header>
           <div className="table-panel compact-table">
             {workLoading && workItems.length === 0 && (
-              <div className="loading-state">Loading assigned issues and pull requests...</div>
+              <div className="loading-state">Loading assigned issues and pull requests…</div>
             )}
             {workErrors.map((message) => (
               <div className="error-state" key={message}>
@@ -12320,7 +12335,7 @@ function RepositoryPage({
   const workflowComposer = route.kind === "repository" ? (route.workflowComposer ?? null) : null;
 
   if (loading) {
-    return <div className="loading-state">Loading repository...</div>;
+    return <div className="loading-state">Loading repository…</div>;
   }
 
   if ((error || availabilityMessage) && !repository) {
@@ -13001,9 +13016,7 @@ function ContributorsTab({
 }): JSX.Element {
   const api = useMemo(() => getControlApi(), []);
   const [filter, setFilter] = useState("");
-  const [selectedContributorLogin, setSelectedContributorLogin] = useState<string | null>(
-    focusedContributorLogin
-  );
+  const [selectedContributorLogin, setSelectedContributorLogin] = useState<string | null>(null);
   const [profileRepositoryLimits, setProfileRepositoryLimits] = useState<Record<string, number>>({});
   const filterParts = useMemo(() => normalizedSearchParts(filter), [filter]);
   const filteredContributors = useMemo(
@@ -13120,7 +13133,7 @@ function ContributorsTab({
 
       {error && <div className="error-state">Contributors unavailable: {error.message}</div>}
       {availabilityMessage && <div className="error-state">{availabilityMessage}</div>}
-      {loading && contributors.length === 0 && <div className="loading-state">Loading contributors...</div>}
+      {loading && contributors.length === 0 && <div className="loading-state">Loading contributors…</div>}
       {!loading && !error && !availabilityMessage && contributors.length === 0 && (
         <div className="empty-state">GitHub returned no contributors for this repository.</div>
       )}
@@ -13220,7 +13233,7 @@ function ContributorsTab({
                   </div>
                 )}
                 {selectedProfile.isFetching && !profile && (
-                  <div className="loading-state">Loading profile...</div>
+                  <div className="loading-state">Loading profile…</div>
                 )}
                 {selectedProfile.error instanceof Error && (
                   <div className="error-state">Profile unavailable: {selectedProfile.error.message}</div>
@@ -13268,7 +13281,7 @@ function ContributorsTab({
                     <span>Repositories</span>
                   </div>
                   {selectedRepositories.isFetching && !selectedRepositories.data && (
-                    <div className="loading-state">Loading repositories...</div>
+                    <div className="loading-state">Loading repositories…</div>
                   )}
                   {selectedRepositories.error instanceof Error && (
                     <div className="error-state">
@@ -13502,7 +13515,7 @@ function CodeTab({
           {contentsError && contents.length === 0 ? (
             <div className="error-state">Repository files unavailable: {contentsError.message}</div>
           ) : contentsLoading && contents.length === 0 ? (
-            <div className="loading-state">Loading files...</div>
+            <div className="loading-state">Loading files…</div>
           ) : contentsAvailabilityMessage && contents.length === 0 ? (
             <div className="error-state">{contentsAvailabilityMessage}</div>
           ) : !contentsError && contents.length === 0 ? (
@@ -13553,7 +13566,7 @@ function CodeTab({
           {readmeError && !readmeMarkdown ? (
             <div className="error-state">README unavailable: {readmeError.message}</div>
           ) : readmeLoading && !readmeMarkdown ? (
-            <div className="loading-state">Loading README...</div>
+            <div className="loading-state">Loading README…</div>
           ) : readmeAvailabilityMessage && !readmeMarkdown ? (
             <div className="error-state">{readmeAvailabilityMessage}</div>
           ) : (
@@ -13602,7 +13615,7 @@ function CodeTab({
             {rootMarkdownError && !rootMarkdownContent?.item ? (
               <div className="error-state">Markdown unavailable: {rootMarkdownError.message}</div>
             ) : rootMarkdownLoading && !rootMarkdownContent?.item ? (
-              <div className="loading-state">Loading {selectedRootMarkdownName ?? "markdown"}...</div>
+              <div className="loading-state">Loading {selectedRootMarkdownName ?? "markdown"}…</div>
             ) : rootMarkdownAvailabilityMessage && !rootMarkdownContent?.item ? (
               <div className="error-state">{rootMarkdownAvailabilityMessage}</div>
             ) : (
@@ -13739,7 +13752,7 @@ function CodeBrowserPage({
   }
 
   if (!repository) {
-    return <div className="loading-state">Loading code browser...</div>;
+    return <div className="loading-state">Loading code browser…</div>;
   }
 
   const isFile = route.entryType === "file";
@@ -13983,7 +13996,7 @@ function CodeBrowserPage({
           ) : fileAvailabilityMessage && !fileContent && !fileLoading ? (
             <div className="error-state">{fileAvailabilityMessage}</div>
           ) : fileLoading ? (
-            <div className="loading-state">Loading file...</div>
+            <div className="loading-state">Loading file…</div>
           ) : previewAsImage && fileContent?.downloadUrl ? (
             <div className="code-image-preview">
               <img src={fileContent.downloadUrl} alt={fileContent.name} />
@@ -14036,7 +14049,7 @@ function CodeBrowserPage({
           {contentsError && contents.length === 0 ? (
             <div className="error-state">Folder unavailable: {contentsError.message}</div>
           ) : contentsLoading && contents.length === 0 ? (
-            <div className="loading-state">Loading folder...</div>
+            <div className="loading-state">Loading folder…</div>
           ) : contentsAvailabilityMessage && contents.length === 0 ? (
             <div className="error-state">{contentsAvailabilityMessage}</div>
           ) : !contentsError && contents.length === 0 ? (
@@ -14162,7 +14175,7 @@ function TimelineThread({
         onOpenExternal={onOpenExternal}
       />
       {loading ? (
-        <div className="loading-state">Loading discussion...</div>
+        <div className="loading-state">Loading discussion…</div>
       ) : availabilityMessage ? (
         <div className="error-state">{availabilityMessage}</div>
       ) : (
@@ -14396,9 +14409,7 @@ function IssuesTab({
   onExpandIssues(): void;
   onMutate(action: GitHubAction, dangerous: boolean, payload?: Record<string, unknown>): void;
 }): JSX.Element {
-  const [selectedIssueNumber, setSelectedIssueNumber] = useState<number | null>(
-    focusedIssueNumber ?? issues[0]?.number ?? null
-  );
+  const [selectedIssueNumber, setSelectedIssueNumber] = useState<number | null>(null);
   const [filter, setFilter] = useState(initialFilter);
   const [creating, setCreating] = useState(initialCreating);
   const [editingIssue, setEditingIssue] = useState(false);
@@ -14442,8 +14453,13 @@ function IssuesTab({
       filterParts
     )
   );
+  const requestedIssueNumber = selectedIssueNumber ?? focusedIssueNumber;
   const selectedIssue =
-    filteredIssues.find((issue) => issue.number === selectedIssueNumber) ?? filteredIssues[0] ?? null;
+    (requestedIssueNumber !== null
+      ? filteredIssues.find((issue) => issue.number === requestedIssueNumber)
+      : null) ??
+    filteredIssues[0] ??
+    null;
   const api = useMemo(() => getControlApi(), []);
   const issueDetail = useQuery<IssueDetailResult>({
     queryKey: ["issue-detail", repository.owner, repository.name, selectedIssue?.number],
@@ -14567,7 +14583,7 @@ function IssuesTab({
       </div>
       <div className="github-split">
         <div className="thread-list">
-          {loading && issues.length === 0 && <div className="loading-state">Loading issues...</div>}
+          {loading && issues.length === 0 && <div className="loading-state">Loading issues…</div>}
           {!loading && issuesAvailabilityMessage && (
             <div className="error-state">{issuesAvailabilityMessage}</div>
           )}
@@ -14720,7 +14736,7 @@ function IssuesTab({
                 />
               </label>
               <div className="metadata-picker-options" aria-label="Issue labels for new issue">
-                {labelsLoading && <small>Loading labels...</small>}
+                {labelsLoading && <small>Loading labels…</small>}
                 {labelsError && <small>Could not load labels.</small>}
                 {!labelsError && labelsAvailabilityMessage && <small>{labelsAvailabilityMessage}</small>}
                 {!labelsLoading &&
@@ -14761,7 +14777,7 @@ function IssuesTab({
                 />
               </label>
               <div className="metadata-picker-options" aria-label="Assignees for new issue">
-                {assignableUsersLoading && <small>Loading assignable users...</small>}
+                {assignableUsersLoading && <small>Loading assignable users…</small>}
                 {assignableUsersError && <small>Could not load assignable users.</small>}
                 {!assignableUsersError && assignableUsersAvailabilityMessage && (
                   <small>{assignableUsersAvailabilityMessage}</small>
@@ -14812,7 +14828,7 @@ function IssuesTab({
                   ))}
                 </select>
               </label>
-              {milestonesLoading && <small className="action-disabled-note">Loading milestones...</small>}
+              {milestonesLoading && <small className="action-disabled-note">Loading milestones…</small>}
               {milestonesError && (
                 <small className="action-disabled-note">
                   Could not load milestones: {milestonesError.message}
@@ -14959,7 +14975,7 @@ function IssuesTab({
                       ))}
                     </select>
                   </label>
-                  {milestonesLoading && <small className="action-disabled-note">Loading milestones...</small>}
+                  {milestonesLoading && <small className="action-disabled-note">Loading milestones…</small>}
                   {milestonesError && (
                     <small className="action-disabled-note">
                       Could not load milestones: {milestonesError.message}
@@ -15107,7 +15123,7 @@ function IssuesTab({
                     />
                   </label>
                   <div className="metadata-picker-options" aria-label="Available labels">
-                    {labelsLoading && <small>Loading labels...</small>}
+                    {labelsLoading && <small>Loading labels…</small>}
                     {labelsError && <small>Could not load labels.</small>}
                     {!labelsError && labelsAvailabilityMessage && <small>{labelsAvailabilityMessage}</small>}
                     {!labelsLoading &&
@@ -15169,7 +15185,7 @@ function IssuesTab({
                     />
                   </label>
                   <div className="metadata-picker-options" aria-label="Assignable users">
-                    {assignableUsersLoading && <small>Loading assignable users...</small>}
+                    {assignableUsersLoading && <small>Loading assignable users…</small>}
                     {assignableUsersError && <small>Could not load assignable users.</small>}
                     {!assignableUsersError && assignableUsersAvailabilityMessage && (
                       <small>{assignableUsersAvailabilityMessage}</small>
@@ -15408,9 +15424,7 @@ function PullRequestsTab({
   onExpandPullRequests(): void;
   onMutate(action: GitHubAction, dangerous: boolean, payload?: Record<string, unknown>): void;
 }): JSX.Element {
-  const [selectedPullNumber, setSelectedPullNumber] = useState<number | null>(
-    focusedPullNumber ?? pulls[0]?.number ?? null
-  );
+  const [selectedPullNumber, setSelectedPullNumber] = useState<number | null>(null);
   const [filter, setFilter] = useState(initialFilter);
   const [creating, setCreating] = useState(initialCreating);
   const [title, setTitle] = useState("");
@@ -15471,20 +15485,26 @@ function PullRequestsTab({
       filterParts
     )
   );
-  const selectedPull =
-    filteredPulls.find((pull) => pull.number === selectedPullNumber) ?? filteredPulls[0] ?? null;
+  const requestedPullNumber = selectedPullNumber ?? focusedPullNumber;
+  const selectedPullFromList =
+    (requestedPullNumber !== null
+      ? filteredPulls.find((pull) => pull.number === requestedPullNumber)
+      : null) ?? (requestedPullNumber === null ? (filteredPulls[0] ?? null) : null);
+  const selectedPullNumberForDetail = selectedPullFromList?.number ?? requestedPullNumber;
   const api = useMemo(() => getControlApi(), []);
   const pullDetail = useQuery<PullRequestDetailResult>({
-    queryKey: ["pull-detail", repository.owner, repository.name, selectedPull?.number],
+    queryKey: ["pull-detail", repository.owner, repository.name, selectedPullNumberForDetail],
     queryFn: () =>
       api.github.getPullRequestDetailWithStatus({
         owner: repository.owner,
         repo: repository.name,
-        pullNumber: selectedPull?.number ?? 0,
+        pullNumber: selectedPullNumberForDetail ?? 0,
         cacheOnly: !githubReady
       }),
-    enabled: !creating && Boolean(selectedPull)
+    enabled: !creating && selectedPullNumberForDetail !== null
   });
+  const detail = pullDetail.data?.detail ?? null;
+  const selectedPull = selectedPullFromList ?? detail;
   const selectedBaseBranchProtection = useQuery<BranchProtectionResult>({
     queryKey: ["branch-protection", repository.owner, repository.name, selectedPull?.baseRefName ?? "none"],
     queryFn: () =>
@@ -15496,7 +15516,6 @@ function PullRequestsTab({
       }),
     enabled: !creating && Boolean(selectedPull?.baseRefName)
   });
-  const detail = pullDetail.data?.detail ?? null;
   const pullDetailAvailabilityMessage = readAvailabilityMessage(
     "Pull request detail",
     pullDetail.data?.availability ?? null
@@ -15738,7 +15757,7 @@ function PullRequestsTab({
       </div>
       <div className="github-split">
         <div className="thread-list">
-          {loading && pulls.length === 0 && <div className="loading-state">Loading pull requests...</div>}
+          {loading && pulls.length === 0 && <div className="loading-state">Loading pull requests…</div>}
           {!loading && pullsAvailabilityMessage && (
             <div className="error-state">{pullsAvailabilityMessage}</div>
           )}
@@ -16036,7 +16055,7 @@ function PullRequestsTab({
                   {selectedBaseProtectionBranchLabel}: <strong>{selectedBaseProtectionStatusLabel}</strong>
                 </span>
                 {selectedBaseBranchProtection.isLoading && !selectedBaseBranchProtection.data && (
-                  <span>Loading branch protection...</span>
+                  <span>Loading branch protection…</span>
                 )}
                 {selectedBaseBranchProtection.error && (
                   <span>Branch protection unavailable: {selectedBaseBranchProtection.error.message}</span>
@@ -16192,7 +16211,7 @@ function PullRequestsTab({
                   </div>
                 )}
                 <div className="metadata-picker-options" aria-label="Available pull request labels">
-                  {labelsLoading && <small>Loading labels...</small>}
+                  {labelsLoading && <small>Loading labels…</small>}
                   {labelsError && <small>Could not load labels.</small>}
                   {!labelsError && labelsAvailabilityMessage && <small>{labelsAvailabilityMessage}</small>}
                   {!labelsLoading &&
@@ -16220,7 +16239,7 @@ function PullRequestsTab({
                   </div>
                 )}
                 <div className="metadata-picker-options" aria-label="Assignable pull request users">
-                  {assignableUsersLoading && <small>Loading assignees...</small>}
+                  {assignableUsersLoading && <small>Loading assignees…</small>}
                   {assignableUsersError && <small>Could not load assignees.</small>}
                   {!assignableUsersError && assignableUsersAvailabilityMessage && (
                     <small>{assignableUsersAvailabilityMessage}</small>
@@ -16270,7 +16289,7 @@ function PullRequestsTab({
                     ))}
                   </select>
                 </label>
-                {milestonesLoading && <small className="action-disabled-note">Loading milestones...</small>}
+                {milestonesLoading && <small className="action-disabled-note">Loading milestones…</small>}
                 {milestonesError && (
                   <small className="action-disabled-note">
                     Could not load milestones: {milestonesError.message}
@@ -16388,7 +16407,7 @@ function PullRequestsTab({
                   </div>
                 )}
                 {assignableUsersLoading && (
-                  <small className="action-disabled-note">Loading reviewer suggestions...</small>
+                  <small className="action-disabled-note">Loading reviewer suggestions…</small>
                 )}
                 {assignableUsersError && (
                   <small className="action-disabled-note">
@@ -16826,7 +16845,7 @@ function PullRequestInspection({
           <span>{linkedIssues.length}</span>
         </header>
         <div className="pr-inspection-list">
-          {loading && !detail && <div className="loading-state">Loading linked issues...</div>}
+          {loading && !detail && <div className="loading-state">Loading linked issues…</div>}
           {linkedIssues.map((issue) => {
             const repositoryNameWithOwner =
               issue.repositoryNameWithOwner ?? detail?.repositoryNameWithOwner ?? null;
@@ -17531,7 +17550,7 @@ function DiscussionsTab({
       </div>
       <div className="github-split">
         <div className="thread-list">
-          {loading && discussions.length === 0 && <div className="loading-state">Loading discussions...</div>}
+          {loading && discussions.length === 0 && <div className="loading-state">Loading discussions…</div>}
           {availabilityMessage && <div className="error-state">{availabilityMessage}</div>}
           {!loading && disabledFeatureMessage && <div className="empty-state">{disabledFeatureMessage}</div>}
           {error && <div className="error-state">Discussions unavailable: {error.message}</div>}
@@ -17670,7 +17689,7 @@ function DiscussionsTab({
                 </select>
               )}
               {categories.isLoading && composingDiscussion && (
-                <small className="action-disabled-note">Loading discussion categories...</small>
+                <small className="action-disabled-note">Loading discussion categories…</small>
               )}
               {categories.error instanceof Error && composingDiscussion && (
                 <small className="action-disabled-note">
@@ -17854,7 +17873,7 @@ function DiscussionsTab({
               )}
               <div className="discussion-detail-section">
                 <h3>{selectedDiscussionDetail ? "Comments" : "Recent comments"}</h3>
-                {detail.isLoading && <div className="loading-state">Loading full discussion...</div>}
+                {detail.isLoading && <div className="loading-state">Loading full discussion…</div>}
                 {!detail.isLoading && detail.error && (
                   <div className="error-state">Discussion detail unavailable: {detail.error.message}</div>
                 )}
@@ -17960,7 +17979,7 @@ function DiscussionsTab({
             </>
           ) : (
             <div className="empty-state">
-              {loading ? "Loading discussion detail..." : "Select a discussion to inspect."}
+              {loading ? "Loading discussion detail…" : "Select a discussion to inspect."}
             </div>
           )}
         </div>
@@ -18244,7 +18263,7 @@ function ProjectsTab({
       </div>
       <div className="github-split">
         <div className="thread-list">
-          {loading && projects.length === 0 && <div className="loading-state">Loading projects...</div>}
+          {loading && projects.length === 0 && <div className="loading-state">Loading projects…</div>}
           {availabilityMessage && <div className="error-state">{availabilityMessage}</div>}
           {!loading && disabledFeatureMessage && <div className="empty-state">{disabledFeatureMessage}</div>}
           {error && <div className="error-state">Projects unavailable: {error.message}</div>}
@@ -18731,7 +18750,7 @@ function ProjectsTab({
                 <h2>Add issue or pull request</h2>
                 {projectMutationStatusActive &&
                   submittedProjectAction === "addProjectV2Item" &&
-                  mutationPending && <div className="loading-state">Adding project item...</div>}
+                  mutationPending && <div className="loading-state">Adding project item…</div>}
                 {projectMutationStatusActive &&
                   submittedProjectAction === "addProjectV2Item" &&
                   !mutationPending &&
@@ -18806,7 +18825,7 @@ function ProjectsTab({
             </>
           ) : (
             <div className="empty-state">
-              {loading ? "Loading project detail..." : "Select a project to inspect."}
+              {loading ? "Loading project detail…" : "Select a project to inspect."}
             </div>
           )}
         </div>
@@ -18873,9 +18892,7 @@ function ReleasesTab({
   const focusedRelease =
     (focusedReleaseId !== null ? releases.find((release) => release.id === focusedReleaseId) : null) ??
     (focusedReleaseTagName ? releases.find((release) => release.tagName === focusedReleaseTagName) : null);
-  const [selectedReleaseId, setSelectedReleaseId] = useState<number | null>(
-    focusedRelease?.id ?? releases[0]?.id ?? null
-  );
+  const [selectedReleaseId, setSelectedReleaseId] = useState<number | null>(null);
   const defaultReleaseTarget = selectedRef ?? repository.defaultBranch ?? "";
   const [creating, setCreating] = useState(initialCreating);
   const [editingRelease, setEditingRelease] = useState(false);
@@ -18888,7 +18905,10 @@ function ReleasesTab({
   const [makeLatest, setMakeLatest] = useState<ReleaseMakeLatestOption>("unchanged");
   const [submittedReleaseAction, setSubmittedReleaseAction] = useState<GitHubAction | null>(null);
   const selectedRelease =
-    releases.find((release) => release.id === selectedReleaseId) ?? focusedRelease ?? releases[0] ?? null;
+    (selectedReleaseId !== null ? releases.find((release) => release.id === selectedReleaseId) : null) ??
+    focusedRelease ??
+    releases[0] ??
+    null;
   const selectedReleaseAsset =
     selectedRelease && focusedReleaseAssetId !== null
       ? (selectedRelease.assets.find((asset) => asset.id === focusedReleaseAssetId) ?? null)
@@ -18986,7 +19006,7 @@ function ReleasesTab({
       </div>
       <div className="github-split">
         <div className="thread-list">
-          {loading && releases.length === 0 && <div className="loading-state">Loading releases...</div>}
+          {loading && releases.length === 0 && <div className="loading-state">Loading releases…</div>}
           {error && <div className="error-state">Releases unavailable: {error.message}</div>}
           {availabilityMessage && <div className="error-state">{availabilityMessage}</div>}
           {canExpandReleases && (
@@ -19389,7 +19409,7 @@ function ReleasesTab({
             </>
           ) : (
             <div className="empty-state">
-              {loading ? "Loading release detail..." : "Select a release to inspect."}
+              {loading ? "Loading release detail…" : "Select a release to inspect."}
             </div>
           )}
         </div>
@@ -19476,9 +19496,7 @@ function ActionsTab({
   onExpandWorkflowDefinitions(): void;
   onMutate(action: GitHubAction, dangerous: boolean, payload?: Record<string, unknown>): void;
 }): JSX.Element {
-  const [selectedRunId, setSelectedRunId] = useState<number | null>(
-    focusedWorkflowRunId ?? actions[0]?.id ?? null
-  );
+  const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
   const [filter, setFilter] = useState(initialFilter);
   const [dispatching, setDispatching] = useState(initialDispatching);
   const [workflowId, setWorkflowId] = useState("");
@@ -19541,9 +19559,10 @@ function ActionsTab({
       )
     );
   });
+  const requestedRunId = selectedRunId ?? focusedWorkflowRunId;
   const selectedRunMatchesFilter =
-    selectedRunId !== null && filteredActions.some((run) => run.id === selectedRunId);
-  const effectiveSelectedRunId = selectedRunMatchesFilter ? selectedRunId : (filteredActions[0]?.id ?? null);
+    requestedRunId !== null && filteredActions.some((run) => run.id === requestedRunId);
+  const effectiveSelectedRunId = selectedRunMatchesFilter ? requestedRunId : (filteredActions[0]?.id ?? null);
   const selectedRunFromList =
     effectiveSelectedRunId !== null
       ? (filteredActions.find((run) => run.id === effectiveSelectedRunId) ?? null)
@@ -19749,7 +19768,7 @@ function ActionsTab({
       </div>
       <div className="github-split">
         <div className="thread-list">
-          {loading && actions.length === 0 && <div className="loading-state">Loading workflow runs...</div>}
+          {loading && actions.length === 0 && <div className="loading-state">Loading workflow runs…</div>}
           {error && <div className="error-state">Workflow runs unavailable: {error.message}</div>}
           {actionsAvailabilityMessage && <div className="error-state">{actionsAvailabilityMessage}</div>}
           {canExpandActions && (
@@ -19873,7 +19892,7 @@ function ActionsTab({
                   {githubActionLabel("dispatchWorkflow")} failed: {mutationError.message}
                 </div>
               )}
-              {workflows.isLoading && <div className="loading-state">Loading workflows...</div>}
+              {workflows.isLoading && <div className="loading-state">Loading workflows…</div>}
               {workflows.error && (
                 <div className="error-state">Workflow definitions unavailable: {workflows.error.message}</div>
               )}
@@ -19915,7 +19934,7 @@ function ActionsTab({
                 <div className="table-action-row">
                   <button type="button" disabled={workflows.isFetching} onClick={onExpandWorkflowDefinitions}>
                     <ChevronDown size={16} />{" "}
-                    {workflows.isFetching ? "Loading workflows..." : "Load more workflows"}
+                    {workflows.isFetching ? "Loading workflows…" : "Load more workflows"}
                   </button>
                 </div>
               )}
@@ -20072,7 +20091,7 @@ function ActionsTab({
                 {detail && <span>{detail.checkRuns.length} checks</span>}
                 {detail && <span>{detail.artifacts.length} artifacts</span>}
               </div>
-              {runDetail.isLoading && <div className="loading-state">Loading run detail...</div>}
+              {runDetail.isLoading && <div className="loading-state">Loading run detail…</div>}
               {runDetail.error && (
                 <div className="error-state">Run detail unavailable: {runDetail.error.message}</div>
               )}
@@ -20318,7 +20337,7 @@ function ActionsTab({
                             {selectedLogJob.conclusion ?? selectedLogJob.status ?? "queued"}
                           </span>
                         </header>
-                        {jobLogs.isLoading && <div className="loading-state">Loading job logs...</div>}
+                        {jobLogs.isLoading && <div className="loading-state">Loading job logs…</div>}
                         {jobLogs.error && (
                           <div className="error-state">Job logs unavailable: {jobLogs.error.message}</div>
                         )}
@@ -20556,10 +20575,10 @@ function ActionsTab({
                             {(expandedWorkflowDetailItems.checkAnnotationIds.has(checkRun.id)
                               ? checkRun.annotations
                               : checkRun.annotations.slice(0, workflowListLimit)
-                            ).map((annotation, index) => (
+                            ).map((annotation) => (
                               <div
                                 className="workflow-annotation-row"
-                                key={`${checkRun.id}-${annotation.path}-${index}`}
+                                key={`${checkRun.id}-${annotation.path}-${annotation.startLine ?? "line"}-${annotation.endLine ?? "end"}-${annotation.annotationLevel ?? "level"}-${annotation.message}`}
                               >
                                 <div>
                                   <strong>{annotation.title ?? annotation.message}</strong>
@@ -21173,7 +21192,7 @@ function WikiTab({
         </div>
       </header>
       {wikiFeature !== false && wiki.isLoading && pages.length === 0 && (
-        <div className="loading-state">Loading wiki pages...</div>
+        <div className="loading-state">Loading wiki pages…</div>
       )}
       {wikiErrorMessage && <div className="error-state">{wikiErrorMessage}</div>}
       {wikiAvailabilityMessage && <div className="error-state">{wikiAvailabilityMessage}</div>}
@@ -21675,7 +21694,7 @@ function SecurityQualityTab({
   const branchProtectionBranchesNote = branchProtectionBranchesError
     ? `Branch list unavailable: ${branchProtectionBranchesError.message}`
     : branchProtectionBranchesDisabled
-      ? "Loading branches..."
+      ? "Loading branches…"
       : branchProtectionBranches.length === 0
         ? "No branch options available."
         : null;
@@ -21863,7 +21882,7 @@ function SecurityQualityTab({
           </span>
         </header>
         {branchProtectionLoading && !branchProtection && (
-          <div className="loading-state">Loading branch protection...</div>
+          <div className="loading-state">Loading branch protection…</div>
         )}
         {branchProtectionError && (
           <div className="error-state">Branch protection unavailable: {branchProtectionError.message}</div>
@@ -22004,7 +22023,7 @@ function SecurityQualityTab({
           </span>
         </header>
         {repositoryRulesetsLoading && repositoryRulesets.length === 0 && (
-          <div className="loading-state">Loading repository rulesets...</div>
+          <div className="loading-state">Loading repository rulesets…</div>
         )}
         {repositoryRulesetsError && (
           <div className="error-state">
@@ -22085,18 +22104,22 @@ function SecurityQualityTab({
                   ruleset.conditions.length > 0 ||
                   ruleset.bypassActors.length > 0) && (
                   <div className="ruleset-detail-list" aria-label={`${ruleset.name} ruleset details`}>
-                    {ruleset.rules.slice(0, 4).map((rule, index) => (
-                      <span key={`rule-${rule.type}-${index}`}>
+                    {ruleset.rules.slice(0, 4).map((rule) => (
+                      <span key={`rule-${rule.type}-${rule.parameters.join("|")}`}>
                         <strong>Rule</strong> {rulesetRuleLabel(rule)}
                       </span>
                     ))}
-                    {ruleset.conditions.slice(0, 3).map((condition, index) => (
-                      <span key={`condition-${condition.type}-${index}`}>
+                    {ruleset.conditions.slice(0, 3).map((condition) => (
+                      <span
+                        key={`condition-${condition.type}-${condition.include.join("|")}-${condition.exclude.join("|")}-${condition.parameters.join("|")}`}
+                      >
                         <strong>Condition</strong> {rulesetConditionLabel(condition)}
                       </span>
                     ))}
-                    {ruleset.bypassActors.slice(0, 3).map((actor, index) => (
-                      <span key={`bypass-${actor.actorType ?? "actor"}-${actor.actorId ?? index}`}>
+                    {ruleset.bypassActors.slice(0, 3).map((actor) => (
+                      <span
+                        key={`bypass-${actor.actorType ?? "actor"}-${actor.actorId ?? "unknown"}-${actor.bypassMode ?? "mode"}`}
+                      >
                         <strong>Bypass</strong> {rulesetBypassActorLabel(actor)}
                       </span>
                     ))}
@@ -22189,7 +22212,7 @@ function SecurityQualityTab({
           </span>
         </header>
         {repositorySecurityAdvisoriesLoading && repositorySecurityAdvisories.length === 0 && (
-          <div className="loading-state">Loading security advisories...</div>
+          <div className="loading-state">Loading security advisories…</div>
         )}
         {repositorySecurityAdvisoriesError && (
           <div className="error-state">
@@ -22292,7 +22315,7 @@ function SecurityQualityTab({
           </span>
         </header>
         {repositorySecurityPolicyLoading && !repositorySecurityPolicy && (
-          <div className="loading-state">Loading security policy...</div>
+          <div className="loading-state">Loading security policy…</div>
         )}
         {repositorySecurityPolicyError && (
           <div className="error-state">
@@ -22384,7 +22407,7 @@ function SecurityQualityTab({
           </span>
         </header>
         {repositoryCommunityProfileLoading && !repositoryCommunityProfile && (
-          <div className="loading-state">Loading community profile...</div>
+          <div className="loading-state">Loading community profile…</div>
         )}
         {repositoryCommunityProfileError && (
           <div className="error-state">
@@ -22517,7 +22540,7 @@ function SecurityQualityTab({
           </span>
         </header>
         {dependabotAlertsLoading && dependabotAlerts.length === 0 && (
-          <div className="loading-state">Loading Dependabot alerts...</div>
+          <div className="loading-state">Loading Dependabot alerts…</div>
         )}
         {dependabotAlertsError && (
           <div className="error-state">Dependabot alerts unavailable: {dependabotAlertsError.message}</div>
@@ -22622,7 +22645,7 @@ function SecurityQualityTab({
           </span>
         </header>
         {codeScanningAlertsLoading && codeScanningAlerts.length === 0 && (
-          <div className="loading-state">Loading code scanning alerts...</div>
+          <div className="loading-state">Loading code scanning alerts…</div>
         )}
         {codeScanningAlertsError && (
           <div className="error-state">
@@ -22733,7 +22756,7 @@ function SecurityQualityTab({
           </span>
         </header>
         {secretScanningAlertsLoading && secretScanningAlerts.length === 0 && (
-          <div className="loading-state">Loading secret scanning alerts...</div>
+          <div className="loading-state">Loading secret scanning alerts…</div>
         )}
         {secretScanningAlertsError && (
           <div className="error-state">
@@ -23075,7 +23098,7 @@ function RepositorySettingsTab({
   const [defaultBranch, setDefaultBranch] = useState(
     administration.defaultBranch ?? repository.defaultBranch ?? ""
   );
-  const [topics, setTopics] = useState(repository.topics.join(", "));
+  const [topics, setTopics] = useState(() => repository.topics.join(", "));
   const [webCommitSignoffRequired, setWebCommitSignoffRequired] = useState(
     administration.webCommitSignoffRequired === true
   );
@@ -23667,7 +23690,7 @@ function RepositorySettingsTab({
             title={statusActionDisabledReason ?? undefined}
             onClick={() => onMutate("editRepository", true, { archived: !administration.isArchived })}
           >
-            {saving ? "Saving..." : archiveActionLabel}
+            {saving ? "Saving…" : archiveActionLabel}
           </button>
           <small>
             {administration.isArchived
@@ -23859,7 +23882,7 @@ function RepositorySettingsTab({
           disabled={formDisabled}
           title={formDisabledReason ?? undefined}
         >
-          {saving ? "Saving..." : "Save repository settings"}
+          {saving ? "Saving…" : "Save repository settings"}
         </button>
         {settingsDisabledReason && <small className="action-disabled-note">{settingsDisabledReason}</small>}
         {saveSucceeded && !saving && <div className="muted-row">Repository settings saved.</div>}
@@ -24146,7 +24169,7 @@ function RepositorySettingsTab({
             {forkNetworkStatusLabel}
           </span>
         </header>
-        {repositoryForksLoading && !repositoryForks && <div className="loading-state">Loading forks...</div>}
+        {repositoryForksLoading && !repositoryForks && <div className="loading-state">Loading forks…</div>}
         {repositoryForksError && (
           <div className="error-state">Fork network unavailable: {repositoryForksError.message}</div>
         )}
@@ -24232,7 +24255,7 @@ function RepositorySettingsTab({
             </button>
           </form>
           {repositoryAccessLoading && !repositoryAccess && (
-            <div className="loading-state">Loading collaborators...</div>
+            <div className="loading-state">Loading collaborators…</div>
           )}
           {repositoryAccessError && (
             <div className="error-state">Repository access unavailable: {repositoryAccessError.message}</div>
@@ -24371,7 +24394,7 @@ function RepositorySettingsTab({
                 </div>
               )}
               {selectedCollaboratorProfile.isFetching && !selectedCollaboratorProfileData && (
-                <div className="loading-state">Loading collaborator profile...</div>
+                <div className="loading-state">Loading collaborator profile…</div>
               )}
               {selectedCollaboratorProfile.error instanceof Error && (
                 <div className="error-state">
@@ -24439,7 +24462,7 @@ function RepositorySettingsTab({
                   <span>Repositories</span>
                 </div>
                 {selectedCollaboratorRepositories.isFetching && !selectedCollaboratorRepositories.data && (
-                  <div className="loading-state">Loading repositories...</div>
+                  <div className="loading-state">Loading repositories…</div>
                 )}
                 {selectedCollaboratorRepositories.error instanceof Error && (
                   <div className="error-state">
@@ -24538,7 +24561,7 @@ function RepositorySettingsTab({
             </button>
           </form>
           {repositoryAccessLoading && !repositoryAccess && (
-            <div className="loading-state">Loading repository teams...</div>
+            <div className="loading-state">Loading repository teams…</div>
           )}
           {repositoryAccessError && (
             <div className="error-state">Repository access unavailable: {repositoryAccessError.message}</div>
@@ -25331,7 +25354,7 @@ function CollectionView({
                 title={notificationBulkMarkReadDisabledReason ?? "Mark visible unread notifications as read"}
                 onClick={() => onMarkVisibleNotificationsRead(visibleUnreadNotificationIds)}
               >
-                <CheckCircle2 size={16} /> {notificationBulkMarkingRead ? "Marking..." : "Mark visible read"}
+                <CheckCircle2 size={16} /> {notificationBulkMarkingRead ? "Marking…" : "Mark visible read"}
               </button>
             </>
           )}
@@ -25380,7 +25403,7 @@ function CollectionView({
           <div className="error-state">Local repository pin update failed: {repositoryPinError.message}</div>
         )}
         {routeKind === "mailbox" && notificationsLoading && notifications.length === 0 && (
-          <div className="loading-state">Loading GitHub notifications...</div>
+          <div className="loading-state">Loading GitHub notifications…</div>
         )}
         {routeKind === "mailbox" && notificationsError && (
           <div className="error-state">Could not load GitHub notifications: {notificationsError.message}</div>
@@ -25516,7 +25539,7 @@ function CollectionView({
             <div className="collection-section-label">Open issues and pull requests</div>
           )}
         {routeKind === "mailbox" && workRowsLoading && workRows.length === 0 && (
-          <div className="loading-state">Loading account issues and pull requests...</div>
+          <div className="loading-state">Loading account issues and pull requests…</div>
         )}
         {routeKind === "mailbox" &&
           workRowErrors.map((message) => (
@@ -25987,7 +26010,7 @@ function CollectionView({
               <div className="muted-row">Cached mode: showing stored member details when available.</div>
             )}
             {selectedOrganizationMemberProfile.isFetching && !selectedOrganizationMemberProfileData && (
-              <div className="loading-state">Loading member profile...</div>
+              <div className="loading-state">Loading member profile…</div>
             )}
             {selectedOrganizationMemberProfile.error instanceof Error && (
               <div className="error-state">
@@ -26058,7 +26081,7 @@ function CollectionView({
               </div>
               {selectedOrganizationMemberRepositories.isFetching &&
                 !selectedOrganizationMemberRepositories.data && (
-                  <div className="loading-state">Loading repositories...</div>
+                  <div className="loading-state">Loading repositories…</div>
                 )}
               {selectedOrganizationMemberRepositories.error instanceof Error && (
                 <div className="error-state">
@@ -26129,7 +26152,7 @@ function CollectionView({
           </div>
         )}
         {routeKind === "organizations" && organizationMembersLoading && organizationMembers.length === 0 && (
-          <div className="loading-state">Loading organization members...</div>
+          <div className="loading-state">Loading organization members…</div>
         )}
         {routeKind === "organizations" && organizationMembersAvailabilityMessage && (
           <div className="error-state">{organizationMembersAvailabilityMessage}</div>
@@ -26208,7 +26231,7 @@ function CollectionView({
         {routeKind === "organizations" &&
           organizationRepositoriesLoading &&
           organizationRepositories.length === 0 && (
-            <div className="loading-state">Loading organization repositories...</div>
+            <div className="loading-state">Loading organization repositories…</div>
           )}
         {routeKind === "organizations" && organizationRepositoriesAvailabilityMessage && (
           <div className="error-state">{organizationRepositoriesAvailabilityMessage}</div>
@@ -26306,7 +26329,7 @@ function CollectionView({
         {routeKind === "organizations" &&
           organizationProjectsLoading &&
           organizationProjects.length === 0 && (
-            <div className="loading-state">Loading organization projects...</div>
+            <div className="loading-state">Loading organization projects…</div>
           )}
         {routeKind === "organizations" && organizationProjectsAvailabilityMessage && (
           <div className="error-state">{organizationProjectsAvailabilityMessage}</div>
@@ -26412,7 +26435,7 @@ function CollectionView({
           </div>
         )}
         {routeKind === "organizations" && organizationTeamsLoading && organizationTeams.length === 0 && (
-          <div className="loading-state">Loading visible teams...</div>
+          <div className="loading-state">Loading visible teams…</div>
         )}
         {routeKind === "organizations" && organizationTeamsAvailabilityMessage && (
           <div className="error-state">{organizationTeamsAvailabilityMessage}</div>
@@ -26477,9 +26500,7 @@ function CollectionView({
         )}
         {routeKind === "organizations" &&
           organizationTeamMembersLoading &&
-          organizationTeamMembers.length === 0 && (
-            <div className="loading-state">Loading team members...</div>
-          )}
+          organizationTeamMembers.length === 0 && <div className="loading-state">Loading team members…</div>}
         {routeKind === "organizations" && organizationTeamMembersAvailabilityMessage && (
           <div className="error-state">{organizationTeamMembersAvailabilityMessage}</div>
         )}
@@ -26559,7 +26580,7 @@ function CollectionView({
         {routeKind === "organizations" &&
           organizationTeamRepositoriesLoading &&
           organizationTeamRepositories.length === 0 && (
-            <div className="loading-state">Loading team repositories...</div>
+            <div className="loading-state">Loading team repositories…</div>
           )}
         {routeKind === "organizations" && organizationTeamRepositoriesAvailabilityMessage && (
           <div className="error-state">{organizationTeamRepositoriesAvailabilityMessage}</div>
@@ -26658,7 +26679,7 @@ function CollectionView({
             </div>
           )}
         {routeKind === "repositories" && repositoriesLoading && repositories.length === 0 && (
-          <div className="loading-state">Loading GitHub repositories...</div>
+          <div className="loading-state">Loading GitHub repositories…</div>
         )}
         {routeKind === "repositories" && repositoriesError && (
           <div className="error-state">Could not load GitHub repositories: {repositoriesError.message}</div>
@@ -26690,7 +26711,7 @@ function CollectionView({
             </div>
           )}
         {routeKind === "organizations" && organizationsLoading && organizations.length === 0 && (
-          <div className="loading-state">Loading GitHub organizations...</div>
+          <div className="loading-state">Loading GitHub organizations…</div>
         )}
         {routeKind === "organizations" && organizationsError && (
           <div className="error-state">Could not load GitHub organizations.</div>
@@ -26874,7 +26895,7 @@ function RightRail({
           )}
         </div>
         {!repository ? (
-          <small className="rail-muted">Loading language data...</small>
+          <small className="rail-muted">Loading language data…</small>
         ) : languages.length > 0 ? (
           <>
             <div className="language-bar" aria-label="Repository language breakdown">
@@ -26912,9 +26933,7 @@ function RightRail({
             <span>{releasesLoading ? "updating" : releases.length}</span>
           </div>
         </div>
-        {releasesLoading && releases.length === 0 && (
-          <small className="rail-muted">Loading releases...</small>
-        )}
+        {releasesLoading && releases.length === 0 && <small className="rail-muted">Loading releases…</small>}
         {releasesError && <small className="rail-error">Releases unavailable: {releasesError.message}</small>}
         {releasesAvailabilityMessage && <small className="rail-error">{releasesAvailabilityMessage}</small>}
         {releases.length > 0 && (
@@ -26954,7 +26973,7 @@ function RightRail({
           </div>
         </div>
         {contributorsLoading && contributors.length === 0 && (
-          <small className="rail-muted">Loading contributors...</small>
+          <small className="rail-muted">Loading contributors…</small>
         )}
         {contributorsError && (
           <small className="rail-error">Contributors unavailable: {contributorsError.message}</small>
@@ -27255,7 +27274,7 @@ function SettingsPanel({
             title={signOutDisabledReason ?? undefined}
             onClick={() => void handleClearToken()}
           >
-            {signOutBusy ? "Signing out..." : "Sign out"}
+            {signOutBusy ? "Signing out…" : "Sign out"}
           </button>
         </div>
 
@@ -27316,7 +27335,7 @@ function SettingsPanel({
             title={saveDisabledReason ?? undefined}
             onClick={() => void handleSaveSettings()}
           >
-            {saveBusy ? "Saving..." : "Save"}
+            {saveBusy ? "Saving…" : "Save"}
           </button>
         </footer>
       </section>

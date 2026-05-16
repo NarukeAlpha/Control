@@ -141,7 +141,7 @@ import type {
 import { clearGitHubToken, getGitHubToken, setGitHubToken } from "./credentials";
 import { OctokitProvider, validateGitHubToken } from "./octokitProvider";
 import { pollGitHubDeviceAuthorization, requestGitHubDeviceAuthorization } from "./webOAuth";
-import type { LocalStore } from "../storage";
+import type { CachedRepositoryList, CachedRepositoryValue, LocalStore } from "../storage";
 
 const githubOAuthClientIdEnvironmentVariable = "CONTROL_GITHUB_CLIENT_ID";
 const defaultGitHubOAuthClientId = "Ov23ctnQ2BrIJraiNh0c";
@@ -185,6 +185,9 @@ const cacheTtlMs = {
 type RepositoryUpdateListener = (nameWithOwner: string | null) => void;
 type AuthUpdateListener = (appState: AppState) => void;
 type OpenExternalUrl = (url: string) => Promise<void>;
+
+const controlLoadingLogsEnabled =
+  process.env.NODE_ENV === "development" || process.env.npm_lifecycle_event === "dev";
 
 interface DeviceSignInRecord {
   clientId: string;
@@ -370,15 +373,28 @@ export class GitHubProviderManager implements GitHubProvider {
     const available: GitHubReadAvailability = { status: "available", message: null };
 
     if (!input.forceRefresh || input.cacheOnly) {
-      const cached = this.store.getCache<GitHubAccountProfile>("github", cacheKey, {
-        allowExpired: input.cacheOnly
-      });
-      if (cached !== null) {
-        this.store.saveAccount("github", cached.login, cached);
+      const cached = this.store.getCacheEntry<GitHubAccountProfile>("github", cacheKey);
+      if (cached) {
+        this.store.saveAccount("github", cached.payload.login, cached.payload);
         if (!input.login) {
-          this.store.saveAccount("github-viewer", cached.login, cached);
+          this.store.saveAccount("github-viewer", cached.payload.login, cached.payload);
         }
-        return { profile: cached, availability: available };
+
+        if (input.cacheOnly || !cached.isExpired) {
+          logControlLoading(
+            input.cacheOnly ? "account profile cache-only hit" : "account profile cache hit",
+            {
+              cacheKey
+            }
+          );
+          return { profile: cached.payload, availability: available };
+        }
+
+        logControlLoading("account profile stale cache hit", { cacheKey });
+        this.refreshInBackground(() =>
+          this.getAccountProfileWithStatus({ ...input, cacheOnly: false, forceRefresh: true })
+        );
+        return { profile: cached.payload, availability: available };
       }
     }
 
@@ -408,6 +424,8 @@ export class GitHubProviderManager implements GitHubProvider {
         };
       }
 
+      logControlLoading("account profile live refresh start", { cacheKey });
+      const previous = this.store.getCacheEntry<GitHubAccountProfile>("github", cacheKey);
       const result = await provider.getAccountProfileWithStatus(input);
       if (result.profile) {
         this.store.setCache({
@@ -421,6 +439,12 @@ export class GitHubProviderManager implements GitHubProvider {
         if (!input.login) {
           this.store.saveAccount("github-viewer", result.profile.login, result.profile);
         }
+        logControlLoading(
+          !previous || !areMateriallyEqual(previous.payload, result.profile)
+            ? "account profile live refresh changed"
+            : "account profile live refresh unchanged",
+          { cacheKey }
+        );
       }
       return result;
     });
@@ -428,19 +452,25 @@ export class GitHubProviderManager implements GitHubProvider {
 
   async listRepositories(input: RepoListInput): Promise<RepositorySummary[]> {
     const limit = input.limit ?? 50;
-    const cached = this.store.listGitHubRepositories(limit);
+    const cached = this.store.listGitHubRepositoriesWithMetadata(limit);
 
     if (input.cacheOnly) {
-      return cached;
+      logControlLoading("repository list cache-only", { count: cached.items.length });
+      return cached.items;
     }
 
     if (input.forceRefresh) {
       return this.refreshRepositories(input);
     }
 
-    if (cached.length > 0) {
-      this.refreshInBackground(() => this.refreshRepositories(input));
-      return cached;
+    if (cached.items.length > 0) {
+      if (repositoryCacheIsFresh(cached, cacheTtlMs.accountRepositories)) {
+        logControlLoading("repository list cache hit", { count: cached.items.length });
+      } else {
+        logControlLoading("repository list stale hit", { count: cached.items.length });
+        this.refreshInBackground(() => this.refreshRepositories(input));
+      }
+      return cached.items;
     }
 
     return this.refreshRepositories(input);
@@ -448,19 +478,21 @@ export class GitHubProviderManager implements GitHubProvider {
 
   async listRepositoriesWithStatus(input: RepoListInput = {}): Promise<RepositoryListResult> {
     const limit = input.limit ?? 50;
-    const cached = this.store.listGitHubRepositories(limit);
+    const cached = this.store.listGitHubRepositoriesWithMetadata(limit);
     const cacheKey = `repositories-with-status:${limit}`;
-    const cachedResult = this.store.getCache<RepositoryListResult>("github", cacheKey, {
-      allowExpired: input.cacheOnly
-    });
+    const cachedResult = this.store.getCacheEntry<RepositoryListResult>("github", cacheKey);
     const available = { status: "available", message: null } as const;
 
     if (input.cacheOnly) {
-      if (cached.length > 0) {
-        return { items: cached, availability: available };
+      if (cached.items.length > 0) {
+        logControlLoading("repository list status cache-only", { count: cached.items.length });
+        return { items: cached.items, availability: available };
       }
-      if (cachedResult !== null) {
-        return cachedResult;
+      if (cachedResult) {
+        logControlLoading("repository list status cache-only result", {
+          count: cachedResult.payload.items.length
+        });
+        return cachedResult.payload;
       }
       return {
         items: [],
@@ -475,14 +507,28 @@ export class GitHubProviderManager implements GitHubProvider {
       return this.refreshRepositoriesWithStatus(input);
     }
 
-    if (cached.length > 0) {
-      this.refreshInBackground(() => this.refreshRepositoriesWithStatus(input));
-      return { items: cached, availability: available };
+    if (cached.items.length > 0) {
+      if (repositoryCacheIsFresh(cached, cacheTtlMs.accountRepositories)) {
+        logControlLoading("repository list status cache hit", { count: cached.items.length });
+      } else {
+        logControlLoading("repository list status stale hit", { count: cached.items.length });
+        this.refreshInBackground(() => this.refreshRepositoriesWithStatus(input));
+      }
+      return { items: cached.items, availability: available };
     }
 
-    if (cachedResult !== null) {
-      this.refreshInBackground(() => this.refreshRepositoriesWithStatus(input));
-      return cachedResult;
+    if (cachedResult) {
+      if (cachedResult.isExpired) {
+        logControlLoading("repository list status stale result", {
+          count: cachedResult.payload.items.length
+        });
+        this.refreshInBackground(() => this.refreshRepositoriesWithStatus(input));
+      } else {
+        logControlLoading("repository list status cache result", {
+          count: cachedResult.payload.items.length
+        });
+      }
+      return cachedResult.payload;
     }
 
     return this.refreshRepositoriesWithStatus(input);
@@ -498,14 +544,20 @@ export class GitHubProviderManager implements GitHubProvider {
     }
 
     const key = `account-repositories:${input.login}:${input.limit ?? 50}`;
+    const previous = this.store.listGitHubRepositories(input.limit ?? 50);
     const repositories = await this.withCache(
       key,
       cacheTtlMs.accountRepositories,
-      async () => (await this.provider()).listAccountRepositories(input),
+      async () => {
+        const items = await (await this.provider()).listAccountRepositories(input);
+        items.forEach((repository) => this.store.upsertGitHubRepositorySummary(repository));
+        if (!areMateriallyEqual(previous, items)) {
+          this.onRepositoryDataUpdated(null);
+        }
+        return items;
+      },
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
-    repositories.forEach((repository) => this.store.upsertGitHubRepositorySummary(repository));
-    this.onRepositoryDataUpdated(null);
     return repositories;
   }
 
@@ -521,14 +573,16 @@ export class GitHubProviderManager implements GitHubProvider {
     }
 
     const key = `account-repositories:${input.login}:${input.limit ?? 50}`;
-    const cached = this.store.getCache<RepositorySummary[]>("github", key, {
-      allowExpired: input.cacheOnly
-    });
+    const cached = this.store.getCacheEntry<RepositorySummary[]>("github", key);
     const available = { status: "available", message: null } as const;
 
     if (input.cacheOnly) {
-      if (cached !== null) {
-        return { items: cached, availability: available };
+      if (cached) {
+        logControlLoading("account repositories cache-only hit", {
+          cacheKey: key,
+          count: cached.payload.length
+        });
+        return { items: cached.payload, availability: available };
       }
       return {
         items: [],
@@ -540,7 +594,18 @@ export class GitHubProviderManager implements GitHubProvider {
     }
 
     if (!input.forceRefresh && cached) {
-      return { items: cached, availability: available };
+      if (cached.isExpired) {
+        logControlLoading("account repositories stale cache hit", {
+          cacheKey: key,
+          count: cached.payload.length
+        });
+        this.refreshInBackground(() =>
+          this.listAccountRepositoriesWithStatus({ ...input, cacheOnly: false, forceRefresh: true })
+        );
+      } else {
+        logControlLoading("account repositories cache hit", { cacheKey: key, count: cached.payload.length });
+      }
+      return { items: cached.payload, availability: available };
     }
 
     const result = await this.refreshAccountRepositoriesWithStatus(input);
@@ -752,7 +817,7 @@ export class GitHubProviderManager implements GitHubProvider {
     input: { cacheOnly?: boolean; forceRefresh?: boolean } = {}
   ): Promise<RepositoryDetail> {
     const id = `${owner}/${repo}`;
-    const cachedDetail = this.store.getGitHubRepositoryDetail(id);
+    const cachedDetail = this.store.getGitHubRepositoryDetailWithMetadata(id);
 
     if (input.forceRefresh && !input.cacheOnly) {
       const detail = await this.refreshRepository(owner, repo);
@@ -761,21 +826,46 @@ export class GitHubProviderManager implements GitHubProvider {
     }
 
     if (cachedDetail) {
-      const detail = normalizeRepositoryDetailFromCache(cachedDetail);
-      if (!input.cacheOnly) {
-        this.refreshInBackground(() => this.refreshRepository(owner, repo));
+      const detail = normalizeRepositoryDetailFromCache(cachedDetail.value);
+      if (!input.cacheOnly && repositoryForkMetadataMissing(detail)) {
+        try {
+          logControlLoading("repository fork metadata cache miss", { repository: id });
+          const refreshedDetail = await this.refreshRepository(owner, repo);
+          this.store.addRecentItem("repository", "github", id, refreshedDetail);
+          return refreshedDetail;
+        } catch (error) {
+          console.warn("Control could not refresh fork metadata for cached repository.", error);
+        }
       }
-      this.store.upsertGitHubRepositoryDetail(detail);
+      if (!input.cacheOnly && !repositoryCacheIsFresh(cachedDetail, cacheTtlMs.repositoryMetadata)) {
+        logControlLoading("repository detail stale hit", { repository: id });
+        this.refreshInBackground(() => this.refreshRepository(owner, repo));
+      } else {
+        logControlLoading("repository detail cache hit", { repository: id });
+      }
       this.store.addRecentItem("repository", "github", id, detail);
       return detail;
     }
 
-    const cachedSummary = this.store.getGitHubRepository(id);
+    const cachedSummary = this.store.getGitHubRepositoryWithMetadata(id);
     if (cachedSummary) {
-      if (!input.cacheOnly) {
-        this.refreshInBackground(() => this.refreshRepository(owner, repo));
+      const detail = normalizeRepositoryDetailFromCache(repositoryDetailFromSummary(cachedSummary.value));
+      if (!input.cacheOnly && repositoryForkMetadataMissing(detail)) {
+        try {
+          logControlLoading("repository fork metadata summary miss", { repository: id });
+          const refreshedDetail = await this.refreshRepository(owner, repo);
+          this.store.addRecentItem("repository", "github", id, refreshedDetail);
+          return refreshedDetail;
+        } catch (error) {
+          console.warn("Control could not refresh fork metadata from repository summary.", error);
+        }
       }
-      const detail = normalizeRepositoryDetailFromCache(repositoryDetailFromSummary(cachedSummary));
+      if (!input.cacheOnly && !repositoryCacheIsFresh(cachedSummary, cacheTtlMs.accountRepositories)) {
+        logControlLoading("repository summary stale hit", { repository: id });
+        this.refreshInBackground(() => this.refreshRepository(owner, repo));
+      } else {
+        logControlLoading("repository summary cache hit", { repository: id });
+      }
       this.store.addRecentItem("repository", "github", id, detail);
       return detail;
     }
@@ -815,23 +905,44 @@ export class GitHubProviderManager implements GitHubProvider {
         return await liveRead();
       }
 
-      const cachedDetail = this.store.getGitHubRepositoryDetail(id);
+      const cachedDetail = this.store.getGitHubRepositoryDetailWithMetadata(id);
       if (cachedDetail) {
-        const detail = normalizeRepositoryDetailFromCache(cachedDetail);
-        if (!input.cacheOnly) {
-          this.refreshInBackground(liveRead);
+        const detail = normalizeRepositoryDetailFromCache(cachedDetail.value);
+        if (!input.cacheOnly && repositoryForkMetadataMissing(detail)) {
+          try {
+            logControlLoading("repository fork metadata status cache miss", { repository: id });
+            return await liveRead();
+          } catch (error) {
+            console.warn("Control could not refresh fork metadata for cached repository status.", error);
+          }
         }
-        this.store.upsertGitHubRepositoryDetail(detail);
+        if (!input.cacheOnly && !repositoryCacheIsFresh(cachedDetail, cacheTtlMs.repositoryMetadata)) {
+          logControlLoading("repository detail status stale hit", { repository: id });
+          this.refreshInBackground(liveRead);
+        } else {
+          logControlLoading("repository detail status cache hit", { repository: id });
+        }
         this.store.addRecentItem("repository", "github", id, detail);
         return { detail, availability: available };
       }
 
-      const cachedSummary = this.store.getGitHubRepository(id);
+      const cachedSummary = this.store.getGitHubRepositoryWithMetadata(id);
       if (cachedSummary) {
-        if (!input.cacheOnly) {
-          this.refreshInBackground(liveRead);
+        const detail = normalizeRepositoryDetailFromCache(repositoryDetailFromSummary(cachedSummary.value));
+        if (!input.cacheOnly && repositoryForkMetadataMissing(detail)) {
+          try {
+            logControlLoading("repository fork metadata status summary miss", { repository: id });
+            return await liveRead();
+          } catch (error) {
+            console.warn("Control could not refresh fork metadata from repository summary status.", error);
+          }
         }
-        const detail = normalizeRepositoryDetailFromCache(repositoryDetailFromSummary(cachedSummary));
+        if (!input.cacheOnly && !repositoryCacheIsFresh(cachedSummary, cacheTtlMs.accountRepositories)) {
+          logControlLoading("repository summary status stale hit", { repository: id });
+          this.refreshInBackground(liveRead);
+        } else {
+          logControlLoading("repository summary status cache hit", { repository: id });
+        }
         this.store.addRecentItem("repository", "github", id, detail);
         return { detail, availability: available };
       }
@@ -954,26 +1065,30 @@ export class GitHubProviderManager implements GitHubProvider {
       return this.refreshReadme(input);
     }
 
-    const cached = this.store.getGitHubRepositoryReadme(id);
+    const cached = this.store.getGitHubRepositoryReadmeWithMetadata(id);
 
-    if (cached !== null) {
-      if (!input.cacheOnly) {
+    if (cached) {
+      if (!input.cacheOnly && !repositoryCacheIsFresh(cached, cacheTtlMs.repositoryReadme)) {
+        logControlLoading("repository README stale hit", { repository: id });
         this.refreshInBackground(() => this.refreshReadme(input));
+      } else {
+        logControlLoading("repository README cache hit", { repository: id });
       }
       return {
-        markdown: cached,
+        markdown: cached.value,
         availability: { status: "available", message: null }
       };
     }
 
-    const cachedResult = this.store.getCache<RepoReadmeResult>("github", key, {
-      allowExpired: input.cacheOnly
-    });
-    if (cachedResult !== null) {
-      if (!input.cacheOnly) {
+    const cachedResult = this.store.getCacheEntry<RepoReadmeResult>("github", key);
+    if (cachedResult) {
+      if (!input.cacheOnly && cachedResult.isExpired) {
+        logControlLoading("repository README result stale hit", { repository: id });
         this.refreshInBackground(() => this.refreshReadme(input));
+      } else {
+        logControlLoading("repository README result cache hit", { repository: id });
       }
-      return cachedResult;
+      return cachedResult.payload;
     }
 
     if (input.cacheOnly) {
@@ -1721,9 +1836,20 @@ export class GitHubProviderManager implements GitHubProvider {
     const key = `refresh-repositories:${input.limit ?? 50}`;
     return this.dedupe(key, async () => {
       try {
+        logControlLoading("repository list live refresh start", { limit: input.limit ?? 50 });
+        const previous = this.store.listGitHubRepositories(input.limit ?? 50);
         const repositories = await (await this.provider()).listRepositories(input);
         repositories.forEach((repository) => this.store.upsertGitHubRepositorySummary(repository));
-        this.onRepositoryDataUpdated(null);
+        const changed = !areMateriallyEqual(previous, repositories);
+        if (changed) {
+          this.onRepositoryDataUpdated(null);
+        }
+        logControlLoading(
+          changed ? "repository list live refresh changed" : "repository list live refresh unchanged",
+          {
+            count: repositories.length
+          }
+        );
         return repositories;
       } catch (error) {
         console.warn("Control could not refresh GitHub repositories.", error);
@@ -1736,6 +1862,8 @@ export class GitHubProviderManager implements GitHubProvider {
     const key = `refresh-repositories-with-status:${input.limit ?? 50}`;
     return this.dedupe(key, async () => {
       try {
+        logControlLoading("repository list status live refresh start", { limit: input.limit ?? 50 });
+        const previous = this.store.listGitHubRepositories(input.limit ?? 50);
         const result = await (await this.provider()).listRepositoriesWithStatus(input);
         if (result.availability.status === "available") {
           result.items.forEach((repository) => this.store.upsertGitHubRepositorySummary(repository));
@@ -1744,9 +1872,18 @@ export class GitHubProviderManager implements GitHubProvider {
             cacheKey: `repositories-with-status:${input.limit ?? 50}`,
             payload: result,
             etag: null,
-            expiresAt: null
+            expiresAt: new Date(Date.now() + cacheTtlMs.accountRepositories).toISOString()
           });
-          this.onRepositoryDataUpdated(null);
+          const changed = !areMateriallyEqual(previous, result.items);
+          if (changed) {
+            this.onRepositoryDataUpdated(null);
+          }
+          logControlLoading(
+            changed
+              ? "repository list status live refresh changed"
+              : "repository list status live refresh unchanged",
+            { count: result.items.length }
+          );
         }
         return result;
       } catch (error) {
@@ -1768,10 +1905,24 @@ export class GitHubProviderManager implements GitHubProvider {
     const key = `refresh-account-repositories-with-status:${input.login ?? "viewer"}:${input.limit ?? 50}`;
     return this.dedupe(key, async () => {
       try {
+        logControlLoading("account repositories live refresh start", {
+          login: input.login ?? "viewer",
+          limit: input.limit ?? 50
+        });
+        const previous = this.store.listGitHubRepositories(input.limit ?? 50);
         const result = await (await this.provider()).listAccountRepositoriesWithStatus(input);
         if (result.availability.status === "available") {
           result.items.forEach((repository) => this.store.upsertGitHubRepositorySummary(repository));
-          this.onRepositoryDataUpdated(null);
+          const changed = !areMateriallyEqual(previous, result.items);
+          if (changed) {
+            this.onRepositoryDataUpdated(null);
+          }
+          logControlLoading(
+            changed
+              ? "account repositories live refresh changed"
+              : "account repositories live refresh unchanged",
+            { login: input.login ?? "viewer", count: result.items.length }
+          );
         }
         return result;
       } catch (error) {
@@ -1791,9 +1942,18 @@ export class GitHubProviderManager implements GitHubProvider {
     const key = `refresh-repository:${owner}/${repo}`;
     return this.dedupe(key, async () => {
       try {
+        logControlLoading("repository detail live refresh start", { repository: `${owner}/${repo}` });
+        const previous = this.store.getGitHubRepositoryDetail(`${owner}/${repo}`);
         const detail = await (await this.provider()).getRepository(owner, repo);
         this.store.upsertGitHubRepositoryDetail(detail);
-        this.onRepositoryDataUpdated(detail.nameWithOwner);
+        const changed = !areMateriallyEqual(previous, detail);
+        if (changed) {
+          this.onRepositoryDataUpdated(detail.nameWithOwner);
+        }
+        logControlLoading(
+          changed ? "repository detail live refresh changed" : "repository detail live refresh unchanged",
+          { repository: detail.nameWithOwner }
+        );
         return detail;
       } catch (error) {
         console.warn("Control could not refresh GitHub repository.", error);
@@ -1806,6 +1966,10 @@ export class GitHubProviderManager implements GitHubProvider {
     const key = `refresh-readme:${input.owner}/${input.repo}`;
     return this.dedupe(key, async () => {
       try {
+        logControlLoading("repository README live refresh start", {
+          repository: `${input.owner}/${input.repo}`
+        });
+        const previous = this.store.getGitHubRepositoryReadme(`${input.owner}/${input.repo}`);
         const result = await (await this.provider()).getReadme(input);
         if (result.availability.status === "available") {
           this.store.setCache({
@@ -1813,13 +1977,18 @@ export class GitHubProviderManager implements GitHubProvider {
             cacheKey: `readme:${input.owner}/${input.repo}:default`,
             payload: result,
             etag: null,
-            expiresAt: null
+            expiresAt: new Date(Date.now() + cacheTtlMs.repositoryReadme).toISOString()
           });
 
-          if (result.markdown !== null) {
-            this.store.upsertGitHubRepositoryReadme(`${input.owner}/${input.repo}`, result.markdown);
+          this.store.upsertGitHubRepositoryReadme(`${input.owner}/${input.repo}`, result.markdown);
+          const changed = previous !== result.markdown;
+          if (changed) {
             this.onRepositoryDataUpdated(`${input.owner}/${input.repo}`);
           }
+          logControlLoading(
+            changed ? "repository README live refresh changed" : "repository README live refresh unchanged",
+            { repository: `${input.owner}/${input.repo}` }
+          );
         }
         return result;
       } catch (error) {
@@ -1903,6 +2072,34 @@ export class GitHubProviderManager implements GitHubProvider {
     }
   }
 
+  private async refreshCachePayload<T>(
+    cacheKey: string,
+    ttlMs: number,
+    load: () => Promise<T>,
+    forceRefresh = false
+  ): Promise<T> {
+    const previous = this.store.getCacheEntry<T>("github", cacheKey);
+    const dedupeKey = forceRefresh ? `force:${cacheKey}` : cacheKey;
+    return this.dedupe(dedupeKey, async () => {
+      logControlLoading("cache live refresh start", { cacheKey });
+      const payload = await load();
+      this.store.setCache({
+        provider: "github",
+        cacheKey,
+        payload,
+        etag: null,
+        expiresAt: new Date(Date.now() + ttlMs).toISOString()
+      });
+      logControlLoading(
+        !previous || !areMateriallyEqual(previous.payload, payload)
+          ? "cache live refresh changed"
+          : "cache live refresh unchanged",
+        { cacheKey }
+      );
+      return payload;
+    });
+  }
+
   private async withCache<T>(
     cacheKey: string,
     ttlMs: number,
@@ -1910,11 +2107,16 @@ export class GitHubProviderManager implements GitHubProvider {
     options: { forceRefresh?: boolean; cacheOnly?: boolean } = {}
   ): Promise<T> {
     if (!options.forceRefresh || options.cacheOnly) {
-      const cached = this.store.getCache<T>("github", cacheKey, {
-        allowExpired: options.cacheOnly
-      });
-      if (cached !== null) {
-        return cached;
+      const cached = this.store.getCacheEntry<T>("github", cacheKey);
+      if (cached) {
+        if (options.cacheOnly || !cached.isExpired) {
+          logControlLoading(options.cacheOnly ? "cache-only hit" : "cache hit", { cacheKey });
+          return cached.payload;
+        }
+
+        logControlLoading("stale cache hit", { cacheKey });
+        this.refreshInBackground(() => this.refreshCachePayload(cacheKey, ttlMs, load));
+        return cached.payload;
       }
     }
 
@@ -1922,29 +2124,16 @@ export class GitHubProviderManager implements GitHubProvider {
       throw new Error(`No cached GitHub data for ${cacheKey}. Sign in with GitHub to refresh it.`);
     }
 
-    const dedupeKey = options.forceRefresh ? `force:${cacheKey}` : cacheKey;
-    return this.dedupe(dedupeKey, async () => {
-      try {
-        const payload = await load();
-        this.store.setCache({
-          provider: "github",
-          cacheKey,
-          payload,
-          etag: null,
-          expiresAt: new Date(Date.now() + ttlMs).toISOString()
-        });
-        return payload;
-      } catch (error) {
-        const expired = this.store.getCache<T>("github", cacheKey, {
-          allowExpired: true
-        });
-        if (expired !== null) {
-          console.warn("Control served stale cache for GitHub cache key.", cacheKey, error);
-          return expired;
-        }
-        throw error;
+    try {
+      return await this.refreshCachePayload(cacheKey, ttlMs, load, options.forceRefresh);
+    } catch (error) {
+      const expired = this.store.getCacheEntry<T>("github", cacheKey);
+      if (expired) {
+        console.warn("Control served stale cache for GitHub cache key.", cacheKey, error);
+        return expired.payload;
       }
-    });
+      throw error;
+    }
   }
 
   private async withListStatusCache<T extends { items: unknown[]; availability: GitHubReadAvailability }>(
@@ -1954,11 +2143,19 @@ export class GitHubProviderManager implements GitHubProvider {
     options: { forceRefresh?: boolean; cacheOnly?: boolean } = {}
   ): Promise<T> {
     if (!options.forceRefresh || options.cacheOnly) {
-      const cached = this.store.getCache<T>("github", cacheKey, {
-        allowExpired: options.cacheOnly
-      });
-      if (cached !== null) {
-        return cached;
+      const cached = this.store.getCacheEntry<T>("github", cacheKey);
+      if (cached) {
+        if (options.cacheOnly || !cached.isExpired) {
+          logControlLoading(options.cacheOnly ? "list cache-only hit" : "list cache hit", {
+            cacheKey,
+            count: cached.payload.items.length
+          });
+          return cached.payload;
+        }
+
+        logControlLoading("list stale cache hit", { cacheKey, count: cached.payload.items.length });
+        this.refreshInBackground(() => this.refreshCachePayload(cacheKey, ttlMs, load));
+        return cached.payload;
       }
     }
 
@@ -1972,35 +2169,22 @@ export class GitHubProviderManager implements GitHubProvider {
       } as unknown as T;
     }
 
-    const dedupeKey = options.forceRefresh ? `force:${cacheKey}` : cacheKey;
-    return this.dedupe(dedupeKey, async () => {
-      try {
-        const payload = await load();
-        this.store.setCache({
-          provider: "github",
-          cacheKey,
-          payload,
-          etag: null,
-          expiresAt: new Date(Date.now() + ttlMs).toISOString()
-        });
-        return payload;
-      } catch (error) {
-        const expired = this.store.getCache<T>("github", cacheKey, {
-          allowExpired: true
-        });
-        if (expired !== null) {
-          console.warn("Control served stale cache for GitHub cache key.", cacheKey, error);
-          return expired;
-        }
-        return {
-          items: [],
-          availability: {
-            status: "error",
-            message: error instanceof Error ? error.message : "GitHub list data is unavailable."
-          }
-        } as unknown as T;
+    try {
+      return await this.refreshCachePayload(cacheKey, ttlMs, load, options.forceRefresh);
+    } catch (error) {
+      const expired = this.store.getCacheEntry<T>("github", cacheKey);
+      if (expired) {
+        console.warn("Control served stale cache for GitHub cache key.", cacheKey, error);
+        return expired.payload;
       }
-    });
+      return {
+        items: [],
+        availability: {
+          status: "error",
+          message: error instanceof Error ? error.message : "GitHub list data is unavailable."
+        }
+      } as unknown as T;
+    }
   }
 
   private async withStatusCache<T extends { availability: GitHubReadAvailability }>(
@@ -2011,11 +2195,16 @@ export class GitHubProviderManager implements GitHubProvider {
     options: { forceRefresh?: boolean; cacheOnly?: boolean } = {}
   ): Promise<T> {
     if (!options.forceRefresh || options.cacheOnly) {
-      const cached = this.store.getCache<T>("github", cacheKey, {
-        allowExpired: options.cacheOnly
-      });
-      if (cached !== null) {
-        return cached;
+      const cached = this.store.getCacheEntry<T>("github", cacheKey);
+      if (cached) {
+        if (options.cacheOnly || !cached.isExpired) {
+          logControlLoading(options.cacheOnly ? "status cache-only hit" : "status cache hit", { cacheKey });
+          return cached.payload;
+        }
+
+        logControlLoading("status stale cache hit", { cacheKey });
+        this.refreshInBackground(() => this.refreshCachePayload(cacheKey, ttlMs, load));
+        return cached.payload;
       }
     }
 
@@ -2029,35 +2218,22 @@ export class GitHubProviderManager implements GitHubProvider {
       } as T;
     }
 
-    const dedupeKey = options.forceRefresh ? `force:${cacheKey}` : cacheKey;
-    return this.dedupe(dedupeKey, async () => {
-      try {
-        const payload = await load();
-        this.store.setCache({
-          provider: "github",
-          cacheKey,
-          payload,
-          etag: null,
-          expiresAt: new Date(Date.now() + ttlMs).toISOString()
-        });
-        return payload;
-      } catch (error) {
-        const expired = this.store.getCache<T>("github", cacheKey, {
-          allowExpired: true
-        });
-        if (expired !== null) {
-          console.warn("Control served stale cache for GitHub cache key.", cacheKey, error);
-          return expired;
-        }
-        return {
-          ...emptyValue,
-          availability: {
-            status: "error",
-            message: error instanceof Error ? error.message : "GitHub data is unavailable."
-          }
-        } as T;
+    try {
+      return await this.refreshCachePayload(cacheKey, ttlMs, load, options.forceRefresh);
+    } catch (error) {
+      const expired = this.store.getCacheEntry<T>("github", cacheKey);
+      if (expired) {
+        console.warn("Control served stale cache for GitHub cache key.", cacheKey, error);
+        return expired.payload;
       }
-    });
+      return {
+        ...emptyValue,
+        availability: {
+          status: "error",
+          message: error instanceof Error ? error.message : "GitHub data is unavailable."
+        }
+      } as T;
+    }
   }
 
   private async withRepositoryAccessCache(
@@ -2067,11 +2243,21 @@ export class GitHubProviderManager implements GitHubProvider {
     options: { forceRefresh?: boolean; cacheOnly?: boolean } = {}
   ): Promise<RepositoryAccessResult> {
     if (!options.forceRefresh || options.cacheOnly) {
-      const cached = this.store.getCache<RepositoryAccessResult>("github", cacheKey, {
-        allowExpired: options.cacheOnly
-      });
-      if (cached !== null) {
-        return cached;
+      const cached = this.store.getCacheEntry<RepositoryAccessResult>("github", cacheKey);
+      if (cached) {
+        if (options.cacheOnly || !cached.isExpired) {
+          logControlLoading(
+            options.cacheOnly ? "repository access cache-only hit" : "repository access cache hit",
+            {
+              cacheKey
+            }
+          );
+          return cached.payload;
+        }
+
+        logControlLoading("repository access stale cache hit", { cacheKey });
+        this.refreshInBackground(() => this.refreshCachePayload(cacheKey, ttlMs, load));
+        return cached.payload;
       }
     }
 
@@ -2088,18 +2274,16 @@ export class GitHubProviderManager implements GitHubProvider {
       };
     }
 
-    const dedupeKey = options.forceRefresh ? `force:${cacheKey}` : cacheKey;
-    return this.dedupe(dedupeKey, async () => {
-      const payload = await load();
-      this.store.setCache({
-        provider: "github",
-        cacheKey,
-        payload,
-        etag: null,
-        expiresAt: new Date(Date.now() + ttlMs).toISOString()
-      });
-      return payload;
-    });
+    try {
+      return await this.refreshCachePayload(cacheKey, ttlMs, load, options.forceRefresh);
+    } catch (error) {
+      const expired = this.store.getCacheEntry<RepositoryAccessResult>("github", cacheKey);
+      if (expired) {
+        console.warn("Control served stale cache for GitHub cache key.", cacheKey, error);
+        return expired.payload;
+      }
+      throw error;
+    }
   }
 
   private async dedupe<T>(key: string, load: () => Promise<T>): Promise<T> {
@@ -2312,6 +2496,10 @@ function normalizeRepositoryDetailFromCache(detail: RepositoryDetail): Repositor
   };
 }
 
+function repositoryForkMetadataMissing(detail: RepositoryDetail): boolean {
+  return detail.isFork && !detail.parent && !detail.source;
+}
+
 function normalizeRepositoryAdministration(
   administration: RepositoryAdministrationMetadata
 ): RepositoryAdministrationMetadata {
@@ -2322,6 +2510,35 @@ function normalizeRepositoryAdministration(
       ...(administration.securityAndAnalysis ?? {})
     }
   };
+}
+
+function repositoryCacheIsFresh(
+  cache: CachedRepositoryList<unknown> | CachedRepositoryValue<unknown>,
+  ttlMs: number
+): boolean {
+  if (!cache.syncedAt) {
+    return false;
+  }
+
+  const syncedAt = Date.parse(cache.syncedAt);
+  return Number.isFinite(syncedAt) && Date.now() - syncedAt < ttlMs;
+}
+
+function areMateriallyEqual(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function logControlLoading(message: string, metadata?: Record<string, unknown>): void {
+  if (!controlLoadingLogsEnabled) {
+    return;
+  }
+
+  if (metadata) {
+    console.info("[Control loading]", message, metadata);
+    return;
+  }
+
+  console.info("[Control loading]", message);
 }
 
 function repositoryAdministrationFromSummary(summary: RepositorySummary): RepositoryAdministrationMetadata {

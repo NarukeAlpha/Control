@@ -21,6 +21,24 @@ interface CacheReadOptions {
   allowExpired?: boolean;
 }
 
+export interface CacheEntry<T> {
+  payload: T;
+  etag: string | null;
+  expiresAt: string | null;
+  updatedAt: string | null;
+  isExpired: boolean;
+}
+
+export interface CachedRepositoryList<T> {
+  items: T[];
+  syncedAt: string | null;
+}
+
+export interface CachedRepositoryValue<T> {
+  value: T;
+  syncedAt: string | null;
+}
+
 interface RecentItemRow {
   kind: string;
   provider: string;
@@ -35,14 +53,19 @@ export interface LocalStore {
   saveAccount(provider: string, login: string, payload: unknown): void;
   getLastAccount<T>(provider: string): T | null;
   getCache<T>(provider: string, cacheKey: string, options?: CacheReadOptions): T | null;
+  getCacheEntry<T>(provider: string, cacheKey: string): CacheEntry<T> | null;
   setCache(record: CacheRecord): void;
   clearCacheByPrefix(provider: string, cacheKeyPrefix: string): void;
   addRecentItem(kind: string, provider: string, itemKey: string, payload: unknown): void;
   listRecentItems(input?: LocalRecentListInput): LocalRecentItem[];
   listGitHubRepositories(limit?: number): RepositorySummary[];
+  listGitHubRepositoriesWithMetadata(limit?: number): CachedRepositoryList<RepositorySummary>;
   getGitHubRepository(id: string): RepositorySummary | null;
+  getGitHubRepositoryWithMetadata(id: string): CachedRepositoryValue<RepositorySummary> | null;
   getGitHubRepositoryDetail(id: string): RepositoryDetail | null;
+  getGitHubRepositoryDetailWithMetadata(id: string): CachedRepositoryValue<RepositoryDetail> | null;
   getGitHubRepositoryReadme(id: string): string | null;
+  getGitHubRepositoryReadmeWithMetadata(id: string): CachedRepositoryValue<string | null> | null;
   upsertGitHubRepositorySummary(repository: RepositorySummary): void;
   upsertGitHubRepositoryDetail(repository: RepositoryDetail): void;
   upsertGitHubRepositoryReadme(id: string, readmeMarkdown: string | null): void;
@@ -195,21 +218,39 @@ class SqliteLocalStore implements LocalStore {
   }
 
   getCache<T>(provider: string, cacheKey: string, options: CacheReadOptions = {}): T | null {
+    const entry = this.getCacheEntry<T>(provider, cacheKey);
+    if (!entry || (!options.allowExpired && entry.isExpired)) {
+      return null;
+    }
+
+    return entry.payload;
+  }
+
+  getCacheEntry<T>(provider: string, cacheKey: string): CacheEntry<T> | null {
     const row = this.db
       .prepare(
-        "SELECT payload, expires_at AS expiresAt FROM cache_entries WHERE provider = ? AND cache_key = ?"
+        `SELECT payload,
+                etag,
+                expires_at AS expiresAt,
+                updated_at AS updatedAt
+         FROM cache_entries
+         WHERE provider = ? AND cache_key = ?`
       )
-      .get(provider, cacheKey) as { payload: string; expiresAt: string | null } | undefined;
+      .get(provider, cacheKey) as
+      | { payload: string; etag: string | null; expiresAt: string | null; updatedAt: string | null }
+      | undefined;
 
     if (!row) {
       return null;
     }
 
-    if (!options.allowExpired && row.expiresAt && Date.parse(row.expiresAt) < Date.now()) {
-      return null;
-    }
-
-    return JSON.parse(row.payload) as T;
+    return {
+      payload: JSON.parse(row.payload) as T,
+      etag: row.etag,
+      expiresAt: row.expiresAt,
+      updatedAt: row.updatedAt,
+      isExpired: cacheExpiresAtIsExpired(row.expiresAt)
+    };
   }
 
   setCache(record: CacheRecord): void {
@@ -276,36 +317,86 @@ class SqliteLocalStore implements LocalStore {
   }
 
   listGitHubRepositories(limit = 80): RepositorySummary[] {
+    return this.listGitHubRepositoriesWithMetadata(limit).items;
+  }
+
+  listGitHubRepositoriesWithMetadata(limit = 80): CachedRepositoryList<RepositorySummary> {
     const rows = this.db
       .prepare(
-        `SELECT summary_json AS summaryJson
+        `SELECT summary_json AS summaryJson,
+                synced_at AS syncedAt
          FROM github_repositories
          ORDER BY COALESCE(pushed_at, updated_at, synced_at) DESC
          LIMIT ?`
       )
-      .all(limit) as Array<{ summaryJson: string }>;
-    return rows.map((row) => JSON.parse(row.summaryJson) as RepositorySummary);
+      .all(limit) as Array<{ summaryJson: string; syncedAt: string | null }>;
+    return {
+      items: rows.map((row) => JSON.parse(row.summaryJson) as RepositorySummary),
+      syncedAt: oldestTimestamp(rows.map((row) => row.syncedAt))
+    };
   }
 
   getGitHubRepository(id: string): RepositorySummary | null {
+    return this.getGitHubRepositoryWithMetadata(id)?.value ?? null;
+  }
+
+  getGitHubRepositoryWithMetadata(id: string): CachedRepositoryValue<RepositorySummary> | null {
     const row = this.db
-      .prepare("SELECT summary_json AS summaryJson FROM github_repositories WHERE id = ?")
-      .get(id) as { summaryJson: string } | undefined;
-    return row ? (JSON.parse(row.summaryJson) as RepositorySummary) : null;
+      .prepare(
+        `SELECT summary_json AS summaryJson,
+                synced_at AS syncedAt
+         FROM github_repositories
+         WHERE id = ?`
+      )
+      .get(id) as { summaryJson: string; syncedAt: string | null } | undefined;
+    return row
+      ? {
+          value: JSON.parse(row.summaryJson) as RepositorySummary,
+          syncedAt: row.syncedAt
+        }
+      : null;
   }
 
   getGitHubRepositoryDetail(id: string): RepositoryDetail | null {
+    return this.getGitHubRepositoryDetailWithMetadata(id)?.value ?? null;
+  }
+
+  getGitHubRepositoryDetailWithMetadata(id: string): CachedRepositoryValue<RepositoryDetail> | null {
     const row = this.db
-      .prepare("SELECT detail_json AS detailJson FROM github_repositories WHERE id = ?")
-      .get(id) as { detailJson: string | null } | undefined;
-    return row?.detailJson ? (JSON.parse(row.detailJson) as RepositoryDetail) : null;
+      .prepare(
+        `SELECT detail_json AS detailJson,
+                detail_synced_at AS detailSyncedAt
+         FROM github_repositories
+         WHERE id = ?`
+      )
+      .get(id) as { detailJson: string | null; detailSyncedAt: string | null } | undefined;
+    return row?.detailJson
+      ? {
+          value: JSON.parse(row.detailJson) as RepositoryDetail,
+          syncedAt: row.detailSyncedAt
+        }
+      : null;
   }
 
   getGitHubRepositoryReadme(id: string): string | null {
+    return this.getGitHubRepositoryReadmeWithMetadata(id)?.value ?? null;
+  }
+
+  getGitHubRepositoryReadmeWithMetadata(id: string): CachedRepositoryValue<string | null> | null {
     const row = this.db
-      .prepare("SELECT readme_markdown AS readmeMarkdown FROM github_repositories WHERE id = ?")
-      .get(id) as { readmeMarkdown: string | null } | undefined;
-    return row?.readmeMarkdown ?? null;
+      .prepare(
+        `SELECT readme_markdown AS readmeMarkdown,
+                readme_synced_at AS readmeSyncedAt
+         FROM github_repositories
+         WHERE id = ?`
+      )
+      .get(id) as { readmeMarkdown: string | null; readmeSyncedAt: string | null } | undefined;
+    return row
+      ? {
+          value: row.readmeMarkdown,
+          syncedAt: row.readmeSyncedAt
+        }
+      : null;
   }
 
   upsertGitHubRepositorySummary(repository: RepositorySummary): void {
@@ -321,7 +412,7 @@ class SqliteLocalStore implements LocalStore {
       .prepare(
         `UPDATE github_repositories
          SET readme_markdown = @readmeMarkdown,
-             readme_synced_at = CURRENT_TIMESTAMP
+             readme_synced_at = STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')
          WHERE id = @id`
       )
       .run({ id, readmeMarkdown });
@@ -381,8 +472,8 @@ class SqliteLocalStore implements LocalStore {
           @languagesJson,
           @viewerStateJson,
           @permissionsJson,
-          CURRENT_TIMESTAMP,
-          CASE WHEN @detailJson IS NULL THEN NULL ELSE CURRENT_TIMESTAMP END
+          STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now'),
+          CASE WHEN @detailJson IS NULL THEN NULL ELSE STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now') END
         )
         ON CONFLICT(id) DO UPDATE SET
           owner = excluded.owner,
@@ -407,10 +498,10 @@ class SqliteLocalStore implements LocalStore {
           languages_json = COALESCE(excluded.languages_json, github_repositories.languages_json),
           viewer_state_json = COALESCE(excluded.viewer_state_json, github_repositories.viewer_state_json),
           permissions_json = COALESCE(excluded.permissions_json, github_repositories.permissions_json),
-          synced_at = CURRENT_TIMESTAMP,
+          synced_at = STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now'),
           detail_synced_at = CASE
             WHEN excluded.detail_json IS NULL THEN github_repositories.detail_synced_at
-            ELSE CURRENT_TIMESTAMP
+            ELSE STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')
           END`
       )
       .run(toGitHubRepositoryRow(repository, detail));
@@ -439,14 +530,21 @@ class SqliteLocalStore implements LocalStore {
 class MemoryLocalStore implements LocalStore {
   private settings = defaultSettings;
   private readonly accounts = new Map<string, unknown>();
-  private readonly cache = new Map<string, CacheRecord>();
+  private readonly cache = new Map<string, CacheRecord & { updatedAt: string }>();
   private readonly recentItems = new Map<
     string,
     { kind: string; provider: string; itemKey: string; payload: unknown; updatedAt: string }
   >();
   private readonly repositories = new Map<
     string,
-    { summary: RepositorySummary; detail: RepositoryDetail | null; readme: string | null }
+    {
+      summary: RepositorySummary;
+      detail: RepositoryDetail | null;
+      readme: string | null;
+      syncedAt: string | null;
+      detailSyncedAt: string | null;
+      readmeSyncedAt: string | null;
+    }
   >();
   private readonly pinnedRepositories = new Set<string>();
 
@@ -474,18 +572,32 @@ class MemoryLocalStore implements LocalStore {
   }
 
   getCache<T>(provider: string, cacheKey: string, options: CacheReadOptions = {}): T | null {
+    const entry = this.getCacheEntry<T>(provider, cacheKey);
+    if (!entry || (!options.allowExpired && entry.isExpired)) {
+      return null;
+    }
+    return entry.payload;
+  }
+
+  getCacheEntry<T>(provider: string, cacheKey: string): CacheEntry<T> | null {
     const record = this.cache.get(`${provider}:${cacheKey}`);
     if (!record) {
       return null;
     }
-    if (!options.allowExpired && record.expiresAt && Date.parse(record.expiresAt) < Date.now()) {
-      return null;
-    }
-    return record.payload as T;
+    return {
+      payload: record.payload as T,
+      etag: record.etag,
+      expiresAt: record.expiresAt,
+      updatedAt: record.updatedAt,
+      isExpired: cacheExpiresAtIsExpired(record.expiresAt)
+    };
   }
 
   setCache(record: CacheRecord): void {
-    this.cache.set(`${record.provider}:${record.cacheKey}`, record);
+    this.cache.set(`${record.provider}:${record.cacheKey}`, {
+      ...record,
+      updatedAt: new Date().toISOString()
+    });
   }
 
   clearCacheByPrefix(provider: string, cacheKeyPrefix: string): void {
@@ -517,26 +629,49 @@ class MemoryLocalStore implements LocalStore {
   }
 
   listGitHubRepositories(limit = 80): RepositorySummary[] {
-    return [...this.repositories.values()]
-      .map((record) => record.summary)
+    return this.listGitHubRepositoriesWithMetadata(limit).items;
+  }
+
+  listGitHubRepositoriesWithMetadata(limit = 80): CachedRepositoryList<RepositorySummary> {
+    const rows = [...this.repositories.values()]
       .sort(
         (a, b) =>
-          (Date.parse(b.pushedAt ?? b.updatedAt ?? "0") || 0) -
-          (Date.parse(a.pushedAt ?? a.updatedAt ?? "0") || 0)
+          (Date.parse(b.summary.pushedAt ?? b.summary.updatedAt ?? "0") || 0) -
+          (Date.parse(a.summary.pushedAt ?? a.summary.updatedAt ?? "0") || 0)
       )
       .slice(0, limit);
+
+    return {
+      items: rows.map((record) => record.summary),
+      syncedAt: oldestTimestamp(rows.map((record) => record.syncedAt))
+    };
   }
 
   getGitHubRepository(id: string): RepositorySummary | null {
-    return this.repositories.get(id)?.summary ?? null;
+    return this.getGitHubRepositoryWithMetadata(id)?.value ?? null;
+  }
+
+  getGitHubRepositoryWithMetadata(id: string): CachedRepositoryValue<RepositorySummary> | null {
+    const record = this.repositories.get(id);
+    return record ? { value: record.summary, syncedAt: record.syncedAt } : null;
   }
 
   getGitHubRepositoryDetail(id: string): RepositoryDetail | null {
-    return this.repositories.get(id)?.detail ?? null;
+    return this.getGitHubRepositoryDetailWithMetadata(id)?.value ?? null;
+  }
+
+  getGitHubRepositoryDetailWithMetadata(id: string): CachedRepositoryValue<RepositoryDetail> | null {
+    const record = this.repositories.get(id);
+    return record?.detail ? { value: record.detail, syncedAt: record.detailSyncedAt } : null;
   }
 
   getGitHubRepositoryReadme(id: string): string | null {
-    return this.repositories.get(id)?.readme ?? null;
+    return this.getGitHubRepositoryReadmeWithMetadata(id)?.value ?? null;
+  }
+
+  getGitHubRepositoryReadmeWithMetadata(id: string): CachedRepositoryValue<string | null> | null {
+    const record = this.repositories.get(id);
+    return record ? { value: record.readme, syncedAt: record.readmeSyncedAt } : null;
   }
 
   upsertGitHubRepositorySummary(repository: RepositorySummary): void {
@@ -544,15 +679,23 @@ class MemoryLocalStore implements LocalStore {
     this.repositories.set(repository.nameWithOwner, {
       summary: repository,
       detail: existing?.detail ?? null,
-      readme: existing?.readme ?? null
+      readme: existing?.readme ?? null,
+      syncedAt: new Date().toISOString(),
+      detailSyncedAt: existing?.detailSyncedAt ?? null,
+      readmeSyncedAt: existing?.readmeSyncedAt ?? null
     });
   }
 
   upsertGitHubRepositoryDetail(repository: RepositoryDetail): void {
+    const existing = this.repositories.get(repository.nameWithOwner);
+    const syncedAt = new Date().toISOString();
     this.repositories.set(repository.nameWithOwner, {
       summary: repository,
       detail: repository,
-      readme: repository.readmeMarkdown
+      readme: repository.readmeMarkdown,
+      syncedAt,
+      detailSyncedAt: syncedAt,
+      readmeSyncedAt: existing?.readmeSyncedAt ?? null
     });
   }
 
@@ -561,7 +704,7 @@ class MemoryLocalStore implements LocalStore {
     if (!existing) {
       return;
     }
-    this.repositories.set(id, { ...existing, readme });
+    this.repositories.set(id, { ...existing, readme, readmeSyncedAt: new Date().toISOString() });
   }
 
   pinRepository(nameWithOwner: string): void {
@@ -575,6 +718,28 @@ class MemoryLocalStore implements LocalStore {
   listPinnedRepositories(): string[] {
     return [...this.pinnedRepositories];
   }
+}
+
+function cacheExpiresAtIsExpired(expiresAt: string | null): boolean {
+  if (!expiresAt) {
+    return false;
+  }
+
+  const expiresAtMs = Date.parse(expiresAt);
+  return !Number.isFinite(expiresAtMs) || expiresAtMs < Date.now();
+}
+
+function oldestTimestamp(timestamps: Array<string | null>): string | null {
+  const parsedTimestamps = timestamps
+    .filter((timestamp): timestamp is string => Boolean(timestamp))
+    .map((timestamp) => ({ timestamp, time: Date.parse(timestamp) }))
+    .filter((entry) => Number.isFinite(entry.time));
+
+  if (parsedTimestamps.length === 0) {
+    return null;
+  }
+
+  return parsedTimestamps.reduce((oldest, entry) => (entry.time < oldest.time ? entry : oldest)).timestamp;
 }
 
 function toGitHubRepositoryRow(

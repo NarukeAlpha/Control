@@ -30,6 +30,30 @@ Because of that, Control should model JJ explicitly rather than forcing it into 
 - Defer SSH areas and multi-account GitHub support until the hybrid local repository model is stable.
 - Keep the local repo UI read-only in v1, except for the GitHub mutations that already exist in connected GitHub-backed tabs.
 
+## Relationship To The Multi-Area Plan
+
+This is a follow-on to the plain Git local Area milestone in
+`docs/beta/multi-area-source-switcher-plan.md`, not a parallel source model.
+The first multi-area slice should land the shared Area shell, local folder
+Areas, plain Git discovery, GitHub remote resolution, Area-aware pins/recents,
+and global search routing. JJ then extends the same local Area infrastructure.
+
+Sequencing rules:
+
+- Keep the default GitHub Area and local folder Area model from the multi-area
+  plan.
+- Reuse `areaId + repositoryId` for local repository identity.
+- Add `workspaceId` only where JJ's multi-workspace model requires it.
+- Extend `AreaRepositoryKind` from `"github" | "git"` to include `"jj"`.
+- Keep the plain Git local repository path working without JJ-specific fields.
+- Do not add separate `local_areas` if the shared `areas` table has already
+  landed.
+- Treat inline GitHub enrichment as a JJ follow-on; the plain Git local Area
+  milestone still only needs `Open in GitHub Area`.
+
+The result should be one Area system with richer local repository capabilities,
+not separate "Git local" and "JJ local" products.
+
 ## JJ Capability Inventory
 
 This section is the feature inventory Control must account for. The app does not need first-class UI for every item in v1, but the data model and refresh strategy must not break when these features exist in a repository.
@@ -192,9 +216,10 @@ JJ does not have a notion of the current tracked branch in the Git sense. The cu
 
 ## Repository And Workspace Model
 
-Introduce a repository-plus-workspace model for local sources.
+Introduce a repository-plus-workspace model for local sources by extending the
+Area repository model.
 
-- `vcsKind = "git" | "jj"`
+- `AreaRepositoryKind = "github" | "git" | "jj"`
 - `LocalRepositoryId`
 - `LocalWorkspaceId`
 - `LocalAreaSummary`
@@ -203,6 +228,17 @@ Introduce a repository-plus-workspace model for local sources.
 - `LocalWorkspaceSummary`
 - `LocalWorkspaceDetail`
 - `GitHubConnectionState`
+
+For plain Git repositories, `repositoryId` is enough to open a repository route.
+For JJ repositories, `repositoryId` identifies the backing repository and
+`workspaceId` identifies the working copy the user is browsing. That split is
+not optional: a single JJ repository can have multiple workspaces with different
+roots, working-copy commits, sparse settings, and stale states.
+
+Local Git rows should not be forced to carry fake workspace state. JJ rows
+should not be forced into Git's `currentBranch` semantics. Shared fields should
+represent only real cross-VCS concepts such as name, path, health, remotes,
+connection, scanned time, and updated time.
 
 `LocalRepositoryDetail` should be repo-scoped:
 
@@ -250,6 +286,25 @@ Required changes:
 - allow one local repository page to mount both local JJ panels and GitHub-backed tabs
 - allow switching between workspaces that share the same JJ repository
 
+The route contract should remain Area-first:
+
+```ts
+type LocalRepositoryRoute =
+  | { kind: "repository"; areaId: string; repositoryId: string; tab: RepositoryTab }
+  | {
+      kind: "repositoryWorkspace";
+      areaId: string;
+      repositoryId: string;
+      workspaceId: string;
+      tab: LocalWorkspaceTab;
+    };
+```
+
+Plain Git can continue to use the `repository` route. JJ should route to
+`repositoryWorkspace` by default and keep the backing `repositoryId` available
+for repo-scoped panels such as bookmarks, remotes, tags, operations, and GitHub
+connection state.
+
 Suggested local JJ tabs:
 
 - `Overview`
@@ -284,6 +339,12 @@ The repository header should show:
 
 Add a `LocalRepositoryManager` in the main process with separate adapters for Git and JJ.
 
+The plain Git adapter from the multi-area milestone should remain the first
+adapter. The JJ adapter should plug into the same manager as a second VCS
+adapter, with a stricter command policy and workspace grouping. Shared discovery
+can find candidate roots; each adapter is responsible for validating,
+normalizing, and summarizing the repository it owns.
+
 Discovery rules:
 
 - scan selected local roots recursively
@@ -307,6 +368,37 @@ JJ validation and data gathering should prefer explicit commands over scraping h
 - `jj sparse list`
 
 Use templated output where JJ supports it, so the adapter can avoid brittle text parsing.
+
+### JJ Adapter Command Contract
+
+The JJ adapter should have one narrow command runner boundary:
+
+- run commands with explicit `cwd` and argv arrays
+- never invoke an interpolated shell string
+- set timeouts on every command
+- set non-interactive environment variables where applicable
+- include `--ignore-working-copy` for passive read commands whenever JJ accepts
+  it
+- classify every command as `passiveRead`, `explicitReadWithSnapshotRisk`, or
+  `mutation`
+- block `explicitReadWithSnapshotRisk` and `mutation` from background refresh
+- capture stdout, stderr, exit code, duration, and whether the command was
+  allowed to touch the working copy
+
+The adapter should prefer machine-readable templates or stable separators over
+free-form human output. If a JJ command does not expose a stable enough output
+shape for a v1 parser, store a coarse summary and defer the detailed UI rather
+than building brittle parsing.
+
+Missing or unsupported JJ installations should become repository or Area health
+states:
+
+- `jj` binary not found
+- `jj` version too old for required command flags or templates
+- command timed out
+- workspace is stale
+- repository is not Git-backed, so GitHub enrichment is unavailable
+- colocated Git repository has unsupported or confusing state
 
 ## Refresh Strategy
 
@@ -405,20 +497,29 @@ UI implications:
 
 ## Storage
 
-Keep the current GitHub cache tables and add local repository tables rather than duplicating GitHub data.
+Keep the current GitHub cache tables and extend the Area storage introduced by
+the multi-area plan. Do not duplicate GitHub read models for enrichment; store
+only the local repository identity, workspace identity, VCS metadata, and the
+connection back to the canonical GitHub cache.
 
-New storage should include:
+Area storage should include or extend:
 
-- `local_areas`
-- `local_repositories`
-- `local_workspaces`
-- `local_repo_snapshots`
-- `local_workspace_snapshots`
-- `local_repo_connections`
+- `areas`
+- `area_repositories`
+- `area_repo_snapshots`
+- `area_workspaces`
+- `area_workspace_snapshots`
+- `area_repo_connections`
 
-`local_repositories` should store repo-scoped JJ data:
+If the plain Git multi-area migration has already created `areas`,
+`area_repositories`, and `area_repo_snapshots`, the JJ migration should add only
+the workspace and connection tables it needs plus any missing columns such as
+`kind = "jj"` support.
+
+`area_repositories` should store repo-scoped JJ data:
 
 - `repo_id`
+- `area_id`
 - `vcs_kind`
 - backing repo root
 - backing Git root if any
@@ -427,10 +528,11 @@ New storage should include:
 - last operation ID seen
 - recent history summary
 
-`local_workspaces` should store workspace-scoped JJ data:
+`area_workspaces` should store workspace-scoped JJ data:
 
 - `workspace_id`
 - `repo_id`
+- `area_id`
 - workspace name
 - workspace root path
 - current working-copy change ID
@@ -439,7 +541,7 @@ New storage should include:
 - sparse patterns summary
 - last passive refresh time
 
-`local_repo_connections` should store:
+`area_repo_connections` should store:
 
 - `repo_id`
 - `workspace_id` if connection behavior differs by workspace
@@ -456,36 +558,70 @@ Use the existing `github_repositories` and GitHub cache entries as the canonical
 
 ## IPC Surface
 
-Add repository-scoped and workspace-scoped local IPC methods so the renderer can stay local-first without deriving GitHub identity itself.
+Extend the `areas` IPC surface instead of introducing a disconnected local-only
+surface. Repository-scoped and workspace-scoped methods let the renderer stay
+local-first without deriving GitHub identity itself.
 
 Suggested additions:
 
-- `listLocalAreas`
-- `createLocalArea`
-- `removeLocalArea`
-- `listLocalRepositories`
-- `getLocalRepository`
-- `listLocalWorkspaces`
-- `getLocalWorkspace`
-- `listLocalWorkspaceContents`
-- `getLocalWorkspaceFileContent`
-- `listLocalRepositoryBookmarks`
-- `listLocalRepositoryTags`
-- `listLocalRepositoryRemotes`
-- `listLocalRepositoryOperations`
-- `listLocalRepositoryIssues`
-- `listLocalRepositoryPullRequests`
-- `listLocalRepositoryActions`
-- `mutateLocalRepositoryGitHub`
-- `onLocalRepositoriesUpdated`
-- `onLocalRepositoryUpdated`
-- `onLocalWorkspaceUpdated`
+- `listAreaWorkspaces(input)`
+- `getAreaWorkspace(input)`
+- `listAreaWorkspaceContents(input)`
+- `getAreaWorkspaceFileContent(input)`
+- `listAreaRepositoryBookmarks(input)`
+- `listAreaRepositoryTags(input)`
+- `listAreaRepositoryRemotes(input)`
+- `listAreaRepositoryOperations(input)`
+- `listAreaRepositoryGitHubIssues(input)`
+- `listAreaRepositoryGitHubPullRequests(input)`
+- `listAreaRepositoryGitHubActions(input)`
+- `mutateAreaRepositoryGitHub(input)`
+- `onAreaWorkspaceUpdated(callback)`
 
 Semantics:
 
 - repo-scoped methods return history, bookmarks, tags, remotes, operation summaries, and GitHub connection state
 - workspace-scoped methods return code tree, working-copy info, sparse info, and stale status
 - GitHub-backed methods resolve `owner/repo` from the local repo connection and then delegate to the existing GitHub provider code
+
+Existing plain Git methods from the multi-area plan should keep working:
+
+- `listAreas`
+- `createLocalArea`
+- `removeArea`
+- `listAreaRepositories`
+- `getAreaRepository`
+- `listAreaContents`
+- `getAreaFileContent`
+- `listAreaRemotes`
+- `getAreaStatus`
+- `listAreaActivity`
+
+For JJ workspaces, `listAreaContents` and `getAreaFileContent` can delegate to
+the workspace-aware methods when a route has an active `workspaceId`; otherwise
+they should return a capability error that tells the renderer to choose a
+workspace.
+
+## Milestone Phasing
+
+Implement JJ after the plain Git local Area foundation is in place:
+
+1. Extend shared Area types, storage, and route state with `kind = "jj"` and
+   optional `workspaceId`.
+2. Add the JJ command runner and parser contract with passive-read safety tests.
+3. Add JJ discovery and grouping under existing local Areas.
+4. Add repo-scoped JJ summaries: remotes, bookmarks, tags, operation head, and
+   Git-backed/colocated capability flags.
+5. Add workspace-scoped summaries: workspace root, working-copy IDs, sparse
+   state, stale state, and file browsing.
+6. Render the local JJ repository shell with workspace switching and JJ-native
+   terminology.
+7. Resolve GitHub remotes and render inline GitHub summary/cards/tabs using the
+   current authenticated GitHub account.
+8. Migrate global search, pins, and recents to preserve `workspaceId` for JJ
+   entries.
+9. Add polish states for missing JJ binary, unsupported versions, stale
+   workspaces, command timeouts, and disconnected GitHub enrichment.
 
 ## Implementation Priority
 
@@ -550,12 +686,16 @@ Unit coverage:
 - JJ discovery by `.jj`
 - JJ and Git deduplication for colocated workspaces
 - grouping multiple workspaces under one backing repo
+- `AreaRepositoryKind = "jj"` storage and migration behavior
+- route serialization for `areaId + repositoryId + workspaceId`
 - bookmark parsing and remote tracking state
 - tag parsing
 - GitHub remote normalization from SSH and HTTPS URLs
 - connection resolution and cached feature availability
 - stale workspace detection
 - non-mutating adapter behavior using `--ignore-working-copy`
+- passive browsing does not change JJ operation ID or working-copy commit ID
+- missing `jj` binary and unsupported JJ version health states
 
 Renderer coverage:
 
@@ -579,6 +719,7 @@ Integration and E2E coverage:
 
 ## Assumptions
 
+- The plain Git local Area foundation lands before the JJ-specific milestone.
 - This milestone intentionally prioritizes the hybrid local repository model over full provider/area generalization.
 - GitHub enrichment in v1 means repository-level surfaces Control already implements, especially `Issues`, `Pull requests`, and `Actions`.
 - Self-hosted runner inventory is not part of this milestone because Control does not yet have a dedicated runner model.

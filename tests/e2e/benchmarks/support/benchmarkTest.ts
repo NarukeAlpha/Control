@@ -3,11 +3,7 @@ import { mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import { ControlElectronDriver, GitHubWebDriver, type BenchmarkDriver } from "./drivers";
-import {
-  BenchmarkRunStore,
-  getBenchmarkBatchId,
-  getProjectArtifactDir
-} from "./runStore";
+import { BenchmarkRunStore, getBenchmarkBatchId, getProjectArtifactDir } from "./runStore";
 import { BenchmarkTelemetry } from "./telemetry";
 import {
   getGithubFixture,
@@ -71,16 +67,16 @@ export const benchmarkTest = base.extend<BenchmarkFixtures, BenchmarkOptions>({
   target: ["github-web", { option: true, scope: "worker" }],
   fixtureTier: ["standard", { option: true, scope: "worker" }],
 
-  providerFixture: async ({ fixtureTier }, use) => {
-    await use(getGithubFixture(fixtureTier));
+  providerFixture: async ({ fixtureTier }, provide) => {
+    await provide(getGithubFixture(fixtureTier));
   },
 
-  runStore: async ({ target: _target }, use) => {
+  runStore: async ({ target: _target }, provide) => {
     const store = new BenchmarkRunStore();
-    await use(store);
+    await provide(store);
   },
 
-  benchmarkTelemetry: async ({ runStore, target, fixtureTier, providerFixture }, use, testInfo) => {
+  benchmarkTelemetry: async ({ runStore, target, fixtureTier, providerFixture }, provide, testInfo) => {
     const batchId = getBenchmarkBatchId();
     runStore.ensureBatch(batchId);
 
@@ -112,14 +108,14 @@ export const benchmarkTest = base.extend<BenchmarkFixtures, BenchmarkOptions>({
       join(artifactDir, testInfo.title.replace(/[^a-zA-Z0-9._-]/g, "-"))
     );
 
-    await use(telemetry);
+    await provide(telemetry);
 
     const status = testInfo.status === testInfo.expectedStatus ? "passed" : "failed";
     const error = testInfo.errors.map((entry) => entry.message).join("\n") || null;
     runStore.finishCase(caseId, runId, status, error);
   },
 
-  driver: async ({ target, page, benchmarkTelemetry }, use) => {
+  driver: async ({ target, page, benchmarkTelemetry }, provide) => {
     const driver =
       target === "github-web"
         ? new GitHubWebDriver(page)
@@ -129,7 +125,7 @@ export const benchmarkTest = base.extend<BenchmarkFixtures, BenchmarkOptions>({
             userDataDir: benchmarkTelemetry.artifactPath("user-data")
           });
 
-    await use(driver);
+    await provide(driver);
 
     const copiedArtifacts = await driver.close();
     for (const path of copiedArtifacts) {

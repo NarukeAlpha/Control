@@ -1871,15 +1871,58 @@ p {
 
 .thread-list-row-main {
   display: grid !important;
-  grid-template-columns: 22px minmax(0, 1fr) auto auto auto;
+  grid-template-columns: 22px minmax(0, 1fr);
+  grid-template-areas:
+    "icon copy"
+    ". badges";
   width: 100%;
+  min-width: 0;
   min-height: 58px;
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 5px;
+  overflow: hidden;
   justify-content: stretch !important;
   border: 0 !important;
   background: transparent !important;
   box-shadow: none !important;
-  padding: 0 !important;
+  padding: 8px 0 !important;
   text-align: left;
+}
+
+.thread-list-row-main > svg {
+  grid-area: icon;
+}
+
+.thread-list-row-main > div:first-of-type {
+  grid-area: copy;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.thread-list-row-badges {
+  display: flex;
+  grid-area: badges;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 5px;
+}
+
+.thread-list-row-badges .label-stack {
+  max-width: 100%;
+}
+
+.thread-list-row-badges .state-chip,
+.thread-list-row-badges .label-stack span {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  flex: 0 1 auto;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .issue-row.active {
@@ -2211,6 +2254,7 @@ p {
 
 .issue-metadata-controls {
   display: grid;
+  min-width: 0;
   gap: 10px;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -2220,9 +2264,19 @@ p {
 
 .issue-metadata-controls form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 10px;
   align-items: end;
+}
+
+.issue-metadata-controls form > .metadata-picker-options,
+.issue-metadata-controls form > .table-action-row,
+.issue-metadata-controls form > .action-disabled-note {
+  grid-column: 1 / -1;
+}
+
+.issue-metadata-controls form > button[type="submit"] {
+  justify-self: start;
 }
 
 .issue-metadata-controls label {
@@ -2774,20 +2828,28 @@ p {
 
 .metadata-picker-options button {
   display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
   align-items: center;
   gap: 6px;
+  flex: 0 1 auto;
   min-height: 26px;
   border-radius: 8px;
   padding: 4px 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .metadata-picker-options span {
+  flex: 0 0 auto;
   width: 10px;
   height: 10px;
   border-radius: 50%;
 }
 
 .metadata-picker-options img {
+  flex: 0 0 auto;
   width: 16px;
   height: 16px;
   border-radius: 50%;
@@ -3966,7 +4028,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 
 .workflow-detail-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(220px, 0.7fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
   gap: 12px;
 }
 
@@ -3974,6 +4036,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 .workflow-job-card,
 .workflow-artifact-row {
   display: grid;
+  min-width: 0;
   gap: 8px;
 }
 
@@ -4067,9 +4130,25 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 .workflow-job-card header,
 .workflow-artifact-row {
   display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+}
+
+.workflow-artifact-row > div {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 180px;
+  gap: 3px;
+}
+
+.workflow-artifact-row strong,
+.workflow-artifact-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .workflow-job-card small,
@@ -4141,11 +4220,19 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 
 .workflow-step-list div {
   display: flex;
+  min-width: 0;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
   color: #334963;
   font-size: 13px;
+}
+
+.workflow-step-list span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .workflow-log-preview {
@@ -4170,7 +4257,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 
 .workflow-annotation-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
   gap: 8px;
   border: 1px solid rgba(73, 94, 126, 0.12);
@@ -4192,6 +4279,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 }
 
 .workflow-annotation-row button {
+  justify-self: start;
   min-height: 28px;
   border: 1px solid rgba(73, 94, 126, 0.12);
   border-radius: 8px;

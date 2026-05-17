@@ -14617,35 +14617,37 @@ function IssuesTab({
                       #{issue.number} opened by {issue.authorLogin ?? "unknown"} · {issue.comments} comments
                     </small>
                   </div>
-                  <div className="label-stack">
-                    {visibleLabels.map((label) => (
-                      <span key={label.id}>{label.name}</span>
-                    ))}
-                    {hiddenLabels.length > 0 && (
-                      <span title={`Hidden labels: ${hiddenLabels.map((label) => label.name).join(", ")}`}>
-                        +{hiddenLabels.length} {hiddenLabels.length === 1 ? "label" : "labels"}
-                      </span>
-                    )}
-                    {issue.milestone && (
-                      <span title={`Milestone ${issue.milestone.title}`}>{issue.milestone.title}</span>
-                    )}
-                    {visibleAssignees.map((assignee) => (
-                      <span key={assignee.id}>@{assignee.login}</span>
-                    ))}
-                    {hiddenAssignees.length > 0 && (
-                      <span
-                        title={`Hidden assignees: ${hiddenAssignees
-                          .map((assignee) => `@${assignee.login}`)
-                          .join(", ")}`}
-                      >
-                        +{hiddenAssignees.length} {hiddenAssignees.length === 1 ? "assignee" : "assignees"}
-                      </span>
-                    )}
+                  <div className="thread-list-row-badges">
+                    <div className="label-stack">
+                      {visibleLabels.map((label) => (
+                        <span key={label.id}>{label.name}</span>
+                      ))}
+                      {hiddenLabels.length > 0 && (
+                        <span title={`Hidden labels: ${hiddenLabels.map((label) => label.name).join(", ")}`}>
+                          +{hiddenLabels.length} {hiddenLabels.length === 1 ? "label" : "labels"}
+                        </span>
+                      )}
+                      {issue.milestone && (
+                        <span title={`Milestone ${issue.milestone.title}`}>{issue.milestone.title}</span>
+                      )}
+                      {visibleAssignees.map((assignee) => (
+                        <span key={assignee.id}>@{assignee.login}</span>
+                      ))}
+                      {hiddenAssignees.length > 0 && (
+                        <span
+                          title={`Hidden assignees: ${hiddenAssignees
+                            .map((assignee) => `@${assignee.login}`)
+                            .join(", ")}`}
+                        >
+                          +{hiddenAssignees.length} {hiddenAssignees.length === 1 ? "assignee" : "assignees"}
+                        </span>
+                      )}
+                    </div>
+                    <span className={`state-chip ${issue.state === "open" ? "success" : ""}`}>
+                      {issueStateLabel(issue)}
+                    </span>
+                    {issue.locked && <span className="state-chip attention">locked</span>}
                   </div>
-                  <span className={`state-chip ${issue.state === "open" ? "success" : ""}`}>
-                    {issueStateLabel(issue)}
-                  </span>
-                  {issue.locked && <span className="state-chip attention">locked</span>}
                 </button>
                 <button
                   className="pin-row-button"
@@ -15811,21 +15813,25 @@ function PullRequestsTab({
                       {pull.mergedAt ? ` · merged ${formatRelativeDate(pull.mergedAt)}` : ""}
                     </small>
                   </div>
-                  {isCrossRepository && (
-                    <span
-                      className="state-chip attention"
-                      title={`Source repository: ${sourceRepositoryLabel}`}
-                    >
-                      {headRepositoryNameWithOwner ? `fork: ${headRepositoryNameWithOwner}` : "fork"}
+                  <div className="thread-list-row-badges">
+                    {isCrossRepository && (
+                      <span
+                        className="state-chip attention"
+                        title={`Source repository: ${sourceRepositoryLabel}`}
+                      >
+                        {headRepositoryNameWithOwner ? `fork: ${headRepositoryNameWithOwner}` : "fork"}
+                      </span>
+                    )}
+                    <span className={`state-chip ${pull.mergeableState === "clean" ? "success" : ""}`}>
+                      {pull.isDraft ? "draft" : (pull.mergeableState ?? pull.state)}
                     </span>
-                  )}
-                  <span className={`state-chip ${pull.mergeableState === "clean" ? "success" : ""}`}>
-                    {pull.isDraft ? "draft" : (pull.mergeableState ?? pull.state)}
-                  </span>
-                  {reviewDecisionLabel && <span className="state-chip">{reviewDecisionLabel}</span>}
-                  {pull.merged && <span className="state-chip success">merged</span>}
-                  <span className={`state-chip ${pull.state === "open" ? "success" : ""}`}>{pull.state}</span>
-                  {pull.locked && <span className="state-chip attention">locked</span>}
+                    {reviewDecisionLabel && <span className="state-chip">{reviewDecisionLabel}</span>}
+                    {pull.merged && <span className="state-chip success">merged</span>}
+                    <span className={`state-chip ${pull.state === "open" ? "success" : ""}`}>
+                      {pull.state}
+                    </span>
+                    {pull.locked && <span className="state-chip attention">locked</span>}
+                  </div>
                 </button>
                 <button
                   className="pin-row-button"
@@ -19824,14 +19830,16 @@ function ActionsTab({
                     <strong>{run.displayTitle ?? run.name}</strong>
                     <small>{workflowRunMetadata.join(" · ")}</small>
                   </div>
-                  <span className={`state-chip ${run.conclusion === "success" ? "success" : ""}`}>
-                    {run.conclusion ?? run.status ?? "queued"}
-                  </span>
-                  {run.actionAvailability?.canRerun === true && <span className="state-chip">rerun</span>}
-                  {run.actionAvailability?.canRerunFailedJobs === true && (
-                    <span className="state-chip">rerun failed</span>
-                  )}
-                  {run.actionAvailability?.canCancel === true && <span className="state-chip">cancel</span>}
+                  <div className="thread-list-row-badges">
+                    <span className={`state-chip ${run.conclusion === "success" ? "success" : ""}`}>
+                      {run.conclusion ?? run.status ?? "queued"}
+                    </span>
+                    {run.actionAvailability?.canRerun === true && <span className="state-chip">rerun</span>}
+                    {run.actionAvailability?.canRerunFailedJobs === true && (
+                      <span className="state-chip">rerun failed</span>
+                    )}
+                    {run.actionAvailability?.canCancel === true && <span className="state-chip">cancel</span>}
+                  </div>
                 </button>
                 <button
                   className="pin-row-button"

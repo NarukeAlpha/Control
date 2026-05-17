@@ -4,7 +4,9 @@ import type { BenchmarkPhase } from "../support/types";
 test.describe("github/notifications", () => {
   test("opens account notifications", async ({ driver, providerFixture, benchmarkTelemetry }) => {
     for (const phase of ["cold", "warm"] satisfies BenchmarkPhase[]) {
-      await benchmarkTelemetry.measure("open_notifications", phase, () => driver.openNotifications(providerFixture));
+      await benchmarkTelemetry.measure("open_notifications", phase, () =>
+        driver.openNotifications(providerFixture)
+      );
 
       const data = await driver.observeNotifications(providerFixture);
       benchmarkTelemetry.recordObservation({

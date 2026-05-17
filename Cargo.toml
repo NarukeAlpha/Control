@@ -1,0 +1,3 @@
+[workspace]
+members = ["crates/control-gateway"]
+resolver = "2"

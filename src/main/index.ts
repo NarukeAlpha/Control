@@ -64,10 +64,14 @@ import type {
   LocalRecentListInput,
   LocalRecentMetadata,
   LocalRecentRecordInput,
-  RepositoryPinInput
+  RepositoryPinInput,
+  RepositoryPinRecord
 } from "@shared/local";
 import { GitHubProviderManager } from "./github/provider";
 import { createLocalStore, type LocalStore } from "./storage";
+import { AreaManager } from "./areas/areaManager";
+import { GatewayManager } from "./areas/gatewayManager";
+import { registerAreaIpc } from "./areas/registerAreaIpc";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -165,6 +169,31 @@ function requireRepositoryPinInput(input: RepositoryPinInput): string {
   return nameWithOwner;
 }
 
+function requireAreaRepositoryPinInput(input: RepositoryPinInput): RepositoryPinRecord {
+  if (!input || typeof input !== "object") {
+    throw new Error("Area repository pins require a repository payload.");
+  }
+
+  const areaId = optionalTrimmedText(input.areaId);
+  const repositoryId = optionalTrimmedText(input.repositoryId);
+  const workspaceId = optionalTrimmedText(input.workspaceId);
+  const nameWithOwner = optionalTrimmedText(input.nameWithOwner);
+  if (!areaId || !repositoryId) {
+    throw new Error("Area repository pins require an Area id and repository id.");
+  }
+  if (nameWithOwner && !/^[^/\s]+\/[^/\s]+$/.test(nameWithOwner)) {
+    throw new Error("Area repository GitHub names must use owner/repo format.");
+  }
+
+  return {
+    areaId,
+    repositoryId,
+    workspaceId,
+    nameWithOwner,
+    createdAt: null
+  };
+}
+
 function requireRecentListInput(input: LocalRecentListInput = {}): LocalRecentListInput {
   return {
     kind: input.kind ? requireRecentKind(input.kind) : undefined,
@@ -178,10 +207,14 @@ function requireRecentRecordInput(input: LocalRecentRecordInput): LocalRecentRec
   }
 
   const kind = requireRecentKind(input.kind);
+  const provider = input.provider === "local" ? "local" : "github";
   const itemKey = requireTrimmedText(input.itemKey, "Recent items require an item key.");
   const title = requireTrimmedText(input.title, "Recent items require a title.");
   const subtitle = optionalTrimmedText(input.subtitle);
   const repositoryNameWithOwner = optionalTrimmedText(input.repositoryNameWithOwner);
+  const areaId = optionalTrimmedText(input.areaId);
+  const repositoryId = optionalTrimmedText(input.repositoryId);
+  const workspaceId = optionalTrimmedText(input.workspaceId);
   const url = optionalTrimmedText(input.url);
   if (url && !url.startsWith("https://")) {
     throw new Error("Recent item URLs must be HTTPS links.");
@@ -189,10 +222,14 @@ function requireRecentRecordInput(input: LocalRecentRecordInput): LocalRecentRec
 
   return {
     kind,
+    provider,
     itemKey,
     title,
     subtitle,
     repositoryNameWithOwner,
+    areaId,
+    repositoryId,
+    workspaceId,
     url,
     metadata: sanitizeRecentMetadata(input.metadata)
   };
@@ -292,12 +329,21 @@ function registerIpc(store: LocalStore, github: GitHubProviderManager): void {
     store.unpinRepository(requireRepositoryPinInput(input));
     return store.listPinnedRepositories();
   });
+  ipcMain.handle(ipcChannels.listRepositoryPins, () => store.listAreaRepositoryPins());
+  ipcMain.handle(ipcChannels.pinAreaRepository, (_event, input: RepositoryPinInput) => {
+    store.pinAreaRepository(requireAreaRepositoryPinInput(input));
+    return store.listAreaRepositoryPins();
+  });
+  ipcMain.handle(ipcChannels.unpinAreaRepository, (_event, input: RepositoryPinInput) => {
+    store.unpinAreaRepository(requireAreaRepositoryPinInput(input));
+    return store.listAreaRepositoryPins();
+  });
   ipcMain.handle(ipcChannels.listRecentItems, (_event, input: LocalRecentListInput = {}) =>
     store.listRecentItems(requireRecentListInput(input))
   );
   ipcMain.handle(ipcChannels.recordRecentItem, (_event, input: LocalRecentRecordInput) => {
     const recent = requireRecentRecordInput(input);
-    store.addRecentItem(recent.kind, "github", recent.itemKey, recent);
+    store.addRecentItem(recent.kind, recent.provider ?? "github", recent.itemKey, recent);
     return store.listRecentItems({ limit: 12 });
   });
 
@@ -579,8 +625,22 @@ async function bootstrap(): Promise<void> {
       mainWindow?.webContents.send(ipcChannels.githubAuthUpdated, { appState });
     }
   );
+  const gateway = new GatewayManager(store, app.getPath("userData"));
+  const areaManager = new AreaManager(
+    store,
+    github,
+    {
+      onAreasUpdated: (event) => mainWindow?.webContents.send(ipcChannels.areasUpdated, event),
+      onAreaRepositoryUpdated: (event) =>
+        mainWindow?.webContents.send(ipcChannels.areaRepositoryUpdated, event),
+      onAreaWorkspaceUpdated: (event) => mainWindow?.webContents.send(ipcChannels.areaWorkspaceUpdated, event)
+    },
+    gateway
+  );
+  await areaManager.initialize();
 
   registerIpc(store, github);
+  registerAreaIpc(areaManager);
   createWindow();
 }
 

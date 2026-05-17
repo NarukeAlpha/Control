@@ -5,6 +5,12 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ControlApi } from "@shared/ipc";
+import type {
+  AreaFileContent,
+  AreaRepositoryDetail,
+  AreaRepositorySummary,
+  AreaSummary
+} from "@shared/areas";
 import type { RepositoryDetail } from "@shared/github";
 import type { LocalRecentItem } from "@shared/local";
 import { App } from "./App";
@@ -276,6 +282,172 @@ function makeApi(overrides: Partial<ControlApi["github"]> = {}): ControlApi {
   };
 }
 
+const readyAreaHealth = { status: "ready", message: null, checkedAt: "2026-05-01T00:00:00.000Z" } as const;
+
+const githubArea: AreaSummary = {
+  id: "github:default",
+  kind: "github",
+  label: "GitHub",
+  subtitle: "Ashley Rico",
+  rootPath: null,
+  accountLogin: "ashley",
+  health: readyAreaHealth,
+  repositoryCount: 2,
+  selected: true,
+  createdAt: "2026-05-01T00:00:00.000Z",
+  updatedAt: "2026-05-01T00:00:00.000Z"
+};
+
+const localArea: AreaSummary = {
+  id: "local:projects",
+  kind: "local",
+  label: "Laptop Projects",
+  subtitle: "Local repositories",
+  rootPath: "/Users/ashley/Projects",
+  accountLogin: null,
+  health: readyAreaHealth,
+  repositoryCount: 2,
+  selected: false,
+  createdAt: "2026-05-01T00:00:00.000Z",
+  updatedAt: "2026-05-01T00:00:00.000Z"
+};
+
+const localRepositoryCapabilities = {
+  supportsBranches: true,
+  supportsBookmarks: false,
+  supportsWorkspaces: false,
+  supportsOperationLog: false,
+  supportsSparse: false,
+  isGitBacked: true,
+  isColocated: false,
+  supportsGitHubEnrichment: true
+};
+
+const localGitRepository: AreaRepositorySummary = {
+  id: "repo-control",
+  areaId: localArea.id,
+  kind: "git",
+  name: "control",
+  owner: null,
+  displayName: "Control App",
+  path: "/Users/ashley/Projects/control",
+  defaultBranch: "main",
+  currentBranch: "main",
+  isDirty: true,
+  isPrivate: true,
+  description: "Local Control checkout.",
+  connection: {
+    owner: "NarukeAlpha",
+    repo: "control",
+    nameWithOwner: "NarukeAlpha/control",
+    remoteName: "origin",
+    remoteUrl: "git@github.com:NarukeAlpha/control.git",
+    url: "https://github.com/NarukeAlpha/control",
+    matchedGitHubAreaId: "github:default",
+    status: "connected",
+    lastCheckedAt: "2026-05-01T00:00:00.000Z",
+    lastError: null
+  },
+  capabilities: localRepositoryCapabilities,
+  health: readyAreaHealth,
+  updatedAt: "2026-05-02T00:00:00.000Z",
+  scannedAt: "2026-05-02T00:00:00.000Z"
+};
+
+const localJjRepository: AreaRepositorySummary = {
+  ...localGitRepository,
+  id: "repo-control-jj",
+  kind: "jj",
+  displayName: "Control JJ",
+  path: "/Users/ashley/Projects/control-jj",
+  currentBranch: null,
+  capabilities: {
+    ...localRepositoryCapabilities,
+    supportsBookmarks: true,
+    supportsWorkspaces: true,
+    supportsOperationLog: true,
+    isColocated: true
+  }
+};
+
+const localWorkspace = {
+  id: "workspace-review",
+  areaId: localArea.id,
+  repositoryId: localJjRepository.id,
+  name: "review-stack",
+  rootPath: "/Users/ashley/Projects/control-jj-worktrees/review",
+  workingCopyChangeId: "zzzzzzzz",
+  workingCopyCommitId: "abcdef123456",
+  isStale: true,
+  sparseSummary: "src/renderer",
+  health: readyAreaHealth,
+  updatedAt: "2026-05-02T00:00:00.000Z",
+  scannedAt: "2026-05-02T00:00:00.000Z"
+};
+
+function makeLocalRepositoryDetail(
+  repository: AreaRepositorySummary = localJjRepository
+): AreaRepositoryDetail {
+  return {
+    ...repository,
+    remotes: [
+      {
+        name: "origin",
+        fetchUrl: repository.connection?.remoteUrl ?? null,
+        pushUrl: repository.connection?.remoteUrl ?? null,
+        github: repository.connection
+      }
+    ],
+    branches: [
+      {
+        name: "main",
+        current: repository.currentBranch === "main",
+        upstream: "origin/main",
+        commit: "abc123"
+      }
+    ],
+    bookmarks:
+      repository.kind === "jj"
+        ? [{ name: "review-stack", remote: null, target: "zzzzzzzz", tracking: false }]
+        : [],
+    tags: [{ name: "v0.1.0", target: "abc123" }],
+    status: {
+      clean: false,
+      dirtyCount: 2,
+      untrackedCount: 1,
+      conflictedCount: 0,
+      ahead: 1,
+      behind: 0,
+      entries: [{ path: "src/renderer/src/App.tsx", indexStatus: "M", workingTreeStatus: null }]
+    },
+    recentCommits: [
+      {
+        id: "abcdef123456",
+        shortId: "abcdef1",
+        changeId: repository.kind === "jj" ? "zzzzzzzz" : null,
+        summary: "Add local Area routing",
+        authorName: "Ashley Rico",
+        authorEmail: "ashley@example.com",
+        authoredAt: "2026-05-02T00:00:00.000Z"
+      }
+    ],
+    recentOperations:
+      repository.kind === "jj"
+        ? [
+            {
+              id: "op123456",
+              shortId: "op123",
+              description: "rebase workspace stack",
+              user: "ashley",
+              time: "2026-05-02T00:00:00.000Z"
+            }
+          ]
+        : [],
+    readme: null,
+    workspaces: repository.kind === "jj" ? [localWorkspace] : []
+  };
+}
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
@@ -487,34 +659,456 @@ describe("Control renderer routing", () => {
   });
 
   it("renders local repository pins in the sidebar and Home dashboard", async () => {
-    const listPinnedRepositories = vi.fn<ControlApi["listPinnedRepositories"]>(async () => ["local/pinned"]);
+    const listRepositoryPins = vi.fn<ControlApi["listRepositoryPins"]>(async () => [
+      {
+        areaId: "github:default",
+        repositoryId: "github:default:local/pinned",
+        workspaceId: null,
+        nameWithOwner: "local/pinned",
+        createdAt: "2026-05-01T00:00:00.000Z"
+      }
+    ]);
 
     useUiStore.setState(defaultUiState);
-    renderControl({ ...makeApi(), listPinnedRepositories });
+    renderControl({ ...makeApi(), listRepositoryPins });
 
     expect(await screen.findByRole("heading", { name: "Pinned repositories" })).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /local\/pinned/i }).length).toBeGreaterThan(0);
-    expect(listPinnedRepositories).toHaveBeenCalled();
+    expect(listRepositoryPins).toHaveBeenCalled();
+  });
+
+  it("renders the topbar Area selector selects a local Area and adds a local folder Area", async () => {
+    const selectArea = vi.fn<ControlApi["areas"]["selectArea"]>(async () => [
+      { ...githubArea, selected: false },
+      { ...localArea, selected: true }
+    ]);
+    const openLocalFolderPicker = vi.fn<ControlApi["areas"]["openLocalFolderPicker"]>(
+      async () => "/Users/ashley/Projects/new-area"
+    );
+    const createLocalArea = vi.fn<ControlApi["areas"]["createLocalArea"]>(async (input) => ({
+      ...localArea,
+      id: "local:new-area",
+      label: "new-area",
+      rootPath: input.rootPath,
+      subtitle: input.rootPath,
+      selected: true,
+      repositoryCount: 0
+    }));
+    const listRepositories = vi.fn<ControlApi["areas"]["listRepositories"]>(async () => [
+      localGitRepository,
+      localJjRepository
+    ]);
+
+    useUiStore.setState({ ...defaultUiState, selectedAreaId: "github:default" });
+    renderControl({
+      ...makeApi(),
+      areas: {
+        ...mockControlApi.areas,
+        listAreas: async () => [githubArea, localArea],
+        selectArea,
+        listRepositories,
+        openLocalFolderPicker,
+        createLocalArea
+      }
+    });
+
+    expect(await screen.findByRole("button", { name: "Select Area" })).toBeInTheDocument();
+    expect(screen.queryByText(/^Area$/)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Select Area" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /Laptop Projects/i }));
+
+    await waitFor(() => expect(selectArea).toHaveBeenCalledWith(localArea.id));
+    await waitFor(() => expect(listRepositories).toHaveBeenCalledWith({ areaId: localArea.id }));
+    expect(await screen.findByRole("heading", { name: "Laptop Projects" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Open Control App/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Open Control JJ/i })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Select Area" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Add local folder Area" }));
+
+    await waitFor(() => {
+      expect(openLocalFolderPicker).toHaveBeenCalledWith();
+      expect(createLocalArea).toHaveBeenCalledWith({ rootPath: "/Users/ashley/Projects/new-area" });
+      expect(useUiStore.getState().selectedAreaId).toBe("local:new-area");
+    });
+  });
+
+  it("refetches local Area repositories from Area repository update events", async () => {
+    let areaRepositoryUpdated: Parameters<ControlApi["onAreaRepositoryUpdated"]>[0] = () => undefined;
+    const listRepositories = vi
+      .fn<ControlApi["areas"]["listRepositories"]>()
+      .mockResolvedValueOnce([localGitRepository])
+      .mockResolvedValue([localJjRepository]);
+
+    useUiStore.setState({ ...defaultUiState, selectedAreaId: localArea.id });
+    renderControl({
+      ...makeApi(),
+      areas: {
+        ...mockControlApi.areas,
+        listAreas: async () => [
+          { ...githubArea, selected: false },
+          { ...localArea, selected: true }
+        ],
+        listRepositories
+      },
+      onAreaRepositoryUpdated: (callback) => {
+        areaRepositoryUpdated = callback;
+        return () => undefined;
+      }
+    });
+
+    expect(await screen.findByRole("heading", { name: "Laptop Projects" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Open Control App/i })).toBeInTheDocument();
+
+    areaRepositoryUpdated({ areaId: localArea.id, repositoryId: localJjRepository.id });
+
+    expect(await screen.findByRole("button", { name: /Open Control JJ/i })).toBeInTheDocument();
+    expect(listRepositories).toHaveBeenCalledWith({ areaId: localArea.id });
+    expect(listRepositories).toHaveBeenCalledTimes(2);
+  });
+
+  it("opens local repository routes and renders JJ badges workspaces stale state and binary files", async () => {
+    const recordRecentItem = vi.fn<ControlApi["recordRecentItem"]>(async () => []);
+    const getRepository = vi.fn<ControlApi["areas"]["getRepository"]>(async () =>
+      makeLocalRepositoryDetail(localJjRepository)
+    );
+    const listContents = vi.fn<ControlApi["areas"]["listContents"]>(async () => [
+      { name: "README.md", path: "README.md", type: "file", size: 128, updatedAt: null },
+      { name: "logo.png", path: "logo.png", type: "file", size: 2048, updatedAt: null },
+      { name: "missing.txt", path: "missing.txt", type: "file", size: null, updatedAt: null }
+    ]);
+    const getFileContent = vi.fn<ControlApi["areas"]["getFileContent"]>(async (input) => {
+      const files: Record<string, AreaFileContent> = {
+        "logo.png": {
+          path: "logo.png",
+          kind: "binary",
+          text: null,
+          encoding: null,
+          size: 2048,
+          message: "Binary file preview is unavailable."
+        },
+        "missing.txt": {
+          path: "missing.txt",
+          kind: "unavailable",
+          text: null,
+          encoding: null,
+          size: null,
+          message: "Local file content is unavailable."
+        }
+      };
+      return (
+        files[input.path] ?? {
+          path: input.path,
+          kind: "text",
+          text: "# Local README",
+          encoding: "utf-8",
+          size: 14,
+          message: null
+        }
+      );
+    });
+
+    useUiStore.setState({ ...defaultUiState, selectedAreaId: localArea.id });
+    renderControl({
+      ...makeApi(),
+      recordRecentItem,
+      areas: {
+        ...mockControlApi.areas,
+        listAreas: async () => [
+          { ...githubArea, selected: false },
+          { ...localArea, selected: true }
+        ],
+        listRepositories: async () => [localJjRepository],
+        getRepository,
+        listWorkspaces: async () => [localWorkspace],
+        listContents,
+        getFileContent
+      }
+    });
+
+    await userEvent.click(await screen.findByRole("button", { name: /Open Control JJ/i }));
+
+    await waitFor(() => {
+      expect(useUiStore.getState().route).toEqual({
+        kind: "localRepository",
+        areaId: localArea.id,
+        repositoryId: localJjRepository.id,
+        tab: "overview",
+        workspaceId: null,
+        path: null
+      });
+    });
+    expect(recordRecentItem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "local",
+        itemKey: `${localArea.id}:${localJjRepository.id}`,
+        metadata: { vcs: "jj" }
+      }),
+      expect.anything()
+    );
+    expect(await screen.findByText("JJ")).toBeInTheDocument();
+    expect(screen.getByText("Git-backed")).toBeInTheDocument();
+    expect(screen.getByText("Colocated")).toBeInTheDocument();
+    expect(screen.getByText("GitHub connected")).toBeInTheDocument();
+    expect(screen.getByText("review-stack")).toBeInTheDocument();
+    expect(screen.getByText("Stale")).toBeInTheDocument();
+
+    const tabs = document.querySelector(".repo-tabs") as HTMLElement;
+    await userEvent.click(within(tabs).getByRole("button", { name: /^Code$/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /logo\.png/i }));
+
+    await waitFor(() =>
+      expect(getFileContent).toHaveBeenCalledWith({
+        areaId: localArea.id,
+        repositoryId: localJjRepository.id,
+        workspaceId: null,
+        path: "logo.png"
+      })
+    );
+    expect(await screen.findByText("Binary file preview is unavailable.")).toBeInTheDocument();
+
+    await userEvent.click(within(tabs).getByRole("button", { name: /^Code$/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /missing\.txt/i }));
+    await waitFor(() =>
+      expect(getFileContent).toHaveBeenCalledWith(
+        expect.objectContaining({ path: "missing.txt", areaId: localArea.id })
+      )
+    );
+    expect(await screen.findByText("Local file content is unavailable.")).toBeInTheDocument();
+  });
+
+  it("renders JJ unavailable state and disables JJ-derived tabs", async () => {
+    const unavailableRepository: AreaRepositorySummary = {
+      ...localJjRepository,
+      connection: null,
+      health: { status: "error", message: "JJ is unavailable.", checkedAt: "2026-05-02T00:00:00.000Z" }
+    };
+    const unavailableWorkspace = {
+      ...localWorkspace,
+      isStale: true,
+      health: {
+        status: "error" as const,
+        message: "JJ is unavailable.",
+        checkedAt: "2026-05-02T00:00:00.000Z"
+      }
+    };
+
+    useUiStore.setState({
+      ...defaultUiState,
+      selectedAreaId: localArea.id,
+      route: {
+        kind: "localRepository",
+        areaId: localArea.id,
+        repositoryId: unavailableRepository.id,
+        workspaceId: unavailableWorkspace.id,
+        tab: "overview",
+        path: null
+      }
+    });
+    renderControl({
+      ...makeApi(),
+      areas: {
+        ...mockControlApi.areas,
+        listAreas: async () => [
+          { ...githubArea, selected: false },
+          { ...localArea, selected: true }
+        ],
+        listRepositories: async () => [unavailableRepository],
+        getRepository: async () => ({
+          ...makeLocalRepositoryDetail(unavailableRepository),
+          workspaces: [unavailableWorkspace]
+        }),
+        listWorkspaces: async () => [unavailableWorkspace]
+      }
+    });
+
+    expect(await screen.findByRole("heading", { name: "Control JJ" })).toBeInTheDocument();
+    expect(screen.getAllByText("JJ is unavailable.").length).toBeGreaterThan(0);
+    expect(screen.getByText("Stale")).toBeInTheDocument();
+
+    const tabs = document.querySelector(".repo-tabs") as HTMLElement;
+    expect(within(tabs).getByRole("button", { name: /^Bookmarks$/ })).toBeDisabled();
+    expect(within(tabs).getByRole("button", { name: /^Operations$/ })).toBeDisabled();
+  });
+
+  it("opens connected local repositories in GitHub Area and external GitHub fallback", async () => {
+    const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
+
+    useUiStore.setState({
+      ...defaultUiState,
+      selectedAreaId: localArea.id,
+      route: {
+        kind: "localRepository",
+        areaId: localArea.id,
+        repositoryId: localGitRepository.id,
+        workspaceId: null,
+        tab: "overview",
+        path: null
+      }
+    });
+    renderControl({
+      ...makeApi(),
+      openExternal,
+      areas: {
+        ...mockControlApi.areas,
+        listAreas: async () => [
+          { ...githubArea, selected: false },
+          { ...localArea, selected: true }
+        ],
+        listRepositories: async () => [localGitRepository],
+        getRepository: async () => makeLocalRepositoryDetail(localGitRepository),
+        listWorkspaces: async () => []
+      }
+    });
+
+    expect(await screen.findByRole("heading", { name: "Control App" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Open on GitHub" }));
+    expect(openExternal).toHaveBeenCalledWith("https://github.com/NarukeAlpha/control");
+
+    await userEvent.click(screen.getByRole("button", { name: "Open in GitHub Area" }));
+    await waitFor(() => {
+      expect(useUiStore.getState().route).toEqual({
+        kind: "repository",
+        nameWithOwner: "NarukeAlpha/control",
+        tab: "code"
+      });
+    });
+  });
+
+  it("routes connected local repository GitHub tabs through area enrichment APIs", async () => {
+    const listGitHubIssues = vi.fn<ControlApi["areas"]["listGitHubIssues"]>(async () => ({
+      items: mockIssues,
+      availability: { status: "available", message: null }
+    }));
+    const listGitHubPullRequests = vi.fn<ControlApi["areas"]["listGitHubPullRequests"]>(async () => ({
+      items: mockPullRequests,
+      availability: { status: "available", message: null }
+    }));
+    const listGitHubActions = vi.fn<ControlApi["areas"]["listGitHubActions"]>(async () => ({
+      items: mockActions,
+      availability: { status: "available", message: null }
+    }));
+    const githubListIssues = vi.fn<ControlApi["github"]["listIssues"]>(mockControlApi.github.listIssues);
+    const githubListPullRequests = vi.fn<ControlApi["github"]["listPullRequests"]>(
+      mockControlApi.github.listPullRequests
+    );
+    const githubListActions = vi.fn<ControlApi["github"]["listActions"]>(mockControlApi.github.listActions);
+
+    useUiStore.setState({
+      ...defaultUiState,
+      selectedAreaId: localArea.id,
+      route: {
+        kind: "localRepository",
+        areaId: localArea.id,
+        repositoryId: localGitRepository.id,
+        workspaceId: null,
+        tab: "overview",
+        path: null
+      }
+    });
+    renderControl({
+      ...makeApi({
+        listIssues: githubListIssues,
+        listPullRequests: githubListPullRequests,
+        listActions: githubListActions
+      }),
+      areas: {
+        ...mockControlApi.areas,
+        listAreas: async () => [
+          { ...githubArea, selected: false },
+          { ...localArea, selected: true }
+        ],
+        listRepositories: async () => [localGitRepository],
+        getRepository: async () => makeLocalRepositoryDetail(localGitRepository),
+        listWorkspaces: async () => [],
+        listGitHubIssues,
+        listGitHubPullRequests,
+        listGitHubActions
+      }
+    });
+
+    expect(await screen.findByRole("heading", { name: "Control App" })).toBeInTheDocument();
+    const tabs = document.querySelector(".repo-tabs") as HTMLElement;
+
+    await userEvent.click(within(tabs).getByRole("button", { name: /^Issues$/ }));
+    expect(await screen.findByText("#1199 Compiler crash in async closure")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(listGitHubIssues).toHaveBeenCalledWith({
+        areaId: localArea.id,
+        repositoryId: localGitRepository.id,
+        workspaceId: null,
+        state: "open",
+        limit: 20
+      })
+    );
+
+    await userEvent.click(within(tabs).getByRole("button", { name: /^Pull requests$/ }));
+    expect(await screen.findByText("#519 Update concurrency runtime tests")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(listGitHubPullRequests).toHaveBeenCalledWith({
+        areaId: localArea.id,
+        repositoryId: localGitRepository.id,
+        workspaceId: null,
+        state: "open",
+        limit: 20
+      })
+    );
+
+    await userEvent.click(within(tabs).getByRole("button", { name: /^Actions$/ }));
+    expect((await screen.findAllByText("Swift CI completed")).length).toBeGreaterThan(0);
+    await waitFor(() =>
+      expect(listGitHubActions).toHaveBeenCalledWith({
+        areaId: localArea.id,
+        repositoryId: localGitRepository.id,
+        workspaceId: null,
+        limit: 20
+      })
+    );
+    expect(githubListIssues).not.toHaveBeenCalled();
+    expect(githubListPullRequests).not.toHaveBeenCalled();
+    expect(githubListActions).not.toHaveBeenCalled();
   });
 
   it("pins the current repository from repository detail without using a GitHub mutation", async () => {
-    const listPinnedRepositories = vi
-      .fn<ControlApi["listPinnedRepositories"]>()
+    const listRepositoryPins = vi
+      .fn<ControlApi["listRepositoryPins"]>()
       .mockResolvedValueOnce([])
-      .mockResolvedValue(["apple/swift"]);
-    const pinRepository = vi.fn<ControlApi["pinRepository"]>(async () => ["apple/swift"]);
+      .mockResolvedValue([
+        {
+          areaId: "github:default",
+          repositoryId: "github:default:apple/swift",
+          workspaceId: null,
+          nameWithOwner: "apple/swift",
+          createdAt: "2026-05-01T00:00:00.000Z"
+        }
+      ]);
+    const pinAreaRepository = vi.fn<ControlApi["pinAreaRepository"]>(async () => [
+      {
+        areaId: "github:default",
+        repositoryId: "github:default:apple/swift",
+        workspaceId: null,
+        nameWithOwner: "apple/swift",
+        createdAt: "2026-05-01T00:00:00.000Z"
+      }
+    ]);
     const mutate = vi.fn<ControlApi["github"]["mutate"]>(mockControlApi.github.mutate);
 
     useUiStore.setState({
       ...defaultUiState,
       route: { kind: "repository", nameWithOwner: "apple/swift", tab: "code" }
     });
-    renderControl({ ...makeApi({ mutate }), listPinnedRepositories, pinRepository });
+    renderControl({ ...makeApi({ mutate }), listRepositoryPins, pinAreaRepository });
 
     await userEvent.click(await screen.findByRole("button", { name: "Pin" }));
 
     await waitFor(() => {
-      expect(pinRepository).toHaveBeenCalledWith({ nameWithOwner: "apple/swift" });
+      expect(pinAreaRepository).toHaveBeenCalledWith({
+        areaId: "github:default",
+        repositoryId: "github:default:apple/swift",
+        workspaceId: null,
+        nameWithOwner: "apple/swift"
+      });
     });
     expect(mutate).not.toHaveBeenCalledWith(
       expect.objectContaining({ action: expect.stringMatching(/pin/i) }),
@@ -524,19 +1118,31 @@ describe("Control renderer routing", () => {
   });
 
   it("unpins repositories from the repository list", async () => {
-    const listPinnedRepositories = vi
-      .fn<ControlApi["listPinnedRepositories"]>()
-      .mockResolvedValueOnce(["apple/swift"])
+    const pinnedSwift = {
+      areaId: "github:default",
+      repositoryId: "github:default:apple/swift",
+      workspaceId: null,
+      nameWithOwner: "apple/swift",
+      createdAt: "2026-05-01T00:00:00.000Z"
+    };
+    const listRepositoryPins = vi
+      .fn<ControlApi["listRepositoryPins"]>()
+      .mockResolvedValueOnce([pinnedSwift])
       .mockResolvedValue([]);
-    const unpinRepository = vi.fn<ControlApi["unpinRepository"]>(async () => []);
+    const unpinAreaRepository = vi.fn<ControlApi["unpinAreaRepository"]>(async () => []);
 
     useUiStore.setState({ ...defaultUiState, route: { kind: "repositories" } });
-    renderControl({ ...makeApi(), listPinnedRepositories, unpinRepository });
+    renderControl({ ...makeApi(), listRepositoryPins, unpinAreaRepository });
 
     await userEvent.click(await screen.findByRole("button", { name: "Unpin swift" }));
 
     await waitFor(() => {
-      expect(unpinRepository).toHaveBeenCalledWith({ nameWithOwner: "apple/swift" });
+      expect(unpinAreaRepository).toHaveBeenCalledWith({
+        areaId: "github:default",
+        repositoryId: "github:default:apple/swift",
+        workspaceId: null,
+        nameWithOwner: "apple/swift"
+      });
     });
   });
 
@@ -3163,6 +3769,91 @@ describe("Control renderer routing", () => {
       )
     );
     expect(confirm).toHaveBeenCalledWith("Run Delete release on apple/swift?");
+  });
+
+  it("keeps duplicate GitHub local and JJ Area search results addressable", async () => {
+    const githubRepository = {
+      ...mockRepositories[0],
+      id: "R_NarukeAlpha_control",
+      owner: "NarukeAlpha",
+      name: "control",
+      nameWithOwner: "NarukeAlpha/control",
+      description: "Cached GitHub repository."
+    };
+    const remoteRepository = {
+      ...mockRepositories[1],
+      id: "R_control_remote",
+      owner: "control",
+      name: "control",
+      nameWithOwner: "control/control",
+      description: "Remote GitHub repository."
+    };
+    const searchWithStatus = vi.fn<ControlApi["github"]["searchWithStatus"]>(async () => ({
+      items: [githubRepository, remoteRepository],
+      availability: { status: "available", message: null }
+    }));
+    const searchAreas = vi.fn<ControlApi["areas"]["searchAreas"]>(async () => ({
+      areas: [],
+      repositories: [
+        { ...localGitRepository, displayName: "control", connection: localGitRepository.connection },
+        { ...localJjRepository, displayName: "control", connection: localJjRepository.connection }
+      ],
+      workspaces: []
+    }));
+    const recordRecentItem = vi.fn<ControlApi["recordRecentItem"]>(async () => []);
+
+    useUiStore.setState(defaultUiState);
+    renderControl({
+      ...makeApi({
+        listRepositories: async () => [githubRepository],
+        searchWithStatus
+      }),
+      recordRecentItem,
+      areas: {
+        ...mockControlApi.areas,
+        listAreas: async () => [githubArea, localArea],
+        searchAreas
+      }
+    });
+
+    await userEvent.type(await screen.findByLabelText("Search or jump to"), "control");
+    const popover = await waitFor(() => {
+      const element = document.querySelector(".search-popover");
+      expect(element).not.toBeNull();
+      return element as HTMLElement;
+    });
+
+    expect(await within(popover).findByText("Local repositories")).toBeInTheDocument();
+    expect(within(popover).getByText("GitHub search")).toBeInTheDocument();
+    expect(within(popover).getByText("Areas")).toBeInTheDocument();
+    expect(within(popover).getByRole("button", { name: /control\/control/i })).toBeInTheDocument();
+    expect(within(popover).getAllByRole("button", { name: /NarukeAlpha\/control/i })).toHaveLength(3);
+    const duplicateAreaResults = within(popover).getAllByRole("button", {
+      name: /control.*NarukeAlpha\/control/i
+    });
+    expect(duplicateAreaResults).toHaveLength(2);
+
+    await userEvent.click(duplicateAreaResults[1]);
+
+    await waitFor(() => {
+      expect(searchAreas).toHaveBeenCalledWith({ query: "control", limit: 8 });
+      expect(useUiStore.getState().route).toEqual({
+        kind: "localRepository",
+        areaId: localArea.id,
+        repositoryId: localJjRepository.id,
+        workspaceId: null,
+        tab: "overview",
+        path: null
+      });
+    });
+    expect(recordRecentItem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "local",
+        itemKey: `${localArea.id}:${localJjRepository.id}`,
+        metadata: { vcs: "jj" }
+      }),
+      expect.anything()
+    );
   });
 
   it("moves from collection navigation back into a repository route when a repository is selected from search", async () => {

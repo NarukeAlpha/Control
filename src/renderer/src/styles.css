@@ -197,6 +197,38 @@ body:not(.no-liquid-glass) .code-toolbar {
   margin-top: 0;
 }
 
+.area-switcher {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 14px;
+}
+
+.area-list {
+  display: grid;
+  gap: 6px;
+}
+
+.area-item {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink);
+  padding: 5px 8px;
+  text-align: left;
+}
+
+.area-item:hover,
+.area-item.selected,
+.local-repo-item.selected {
+  background: rgba(255, 255, 255, 0.58);
+}
+
 .nav-item,
 .repo-item,
 .user-footer,
@@ -372,6 +404,14 @@ body:not(.no-liquid-glass) .code-toolbar {
 }
 
 .sidebar-direct-repo-item {
+  position: relative;
+  left: auto;
+  right: auto;
+  width: 100%;
+  margin-bottom: 6px;
+}
+
+.local-repo-item {
   position: relative;
   left: auto;
   right: auto;
@@ -558,6 +598,62 @@ body:not(.no-liquid-glass) .code-toolbar {
   box-shadow: 0 10px 22px rgba(15, 23, 42, 0.08);
   -webkit-backdrop-filter: blur(18px) saturate(1.04);
   backdrop-filter: blur(18px) saturate(1.04);
+}
+
+.area-topbar-selector {
+  position: relative;
+  -webkit-app-region: no-drag;
+}
+
+.area-topbar-button {
+  min-width: 132px;
+  justify-content: space-between;
+}
+
+.area-topbar-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 20;
+  display: grid;
+  width: min(260px, calc(100vw - 28px));
+  gap: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  border-radius: 14px;
+  background: rgba(248, 250, 252, 0.92);
+  box-shadow: 0 22px 54px rgba(15, 23, 42, 0.16);
+  -webkit-backdrop-filter: blur(22px) saturate(1.08);
+  backdrop-filter: blur(22px) saturate(1.08);
+  padding: 8px;
+}
+
+.area-menu-item,
+.area-menu-add {
+  display: grid;
+  min-height: 42px;
+  align-items: center;
+  gap: 10px;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink);
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.area-menu-item {
+  grid-template-columns: 24px minmax(0, 1fr);
+}
+
+.area-menu-add {
+  grid-template-columns: 18px minmax(0, 1fr);
+  color: #39506d;
+  font-weight: 700;
+}
+
+.area-menu-item:hover,
+.area-menu-item.selected,
+.area-menu-add:hover {
+  background: rgba(255, 255, 255, 0.72);
 }
 
 .titlebar-action-button.icon-only {
@@ -1096,6 +1192,125 @@ p {
 .repo-tabs button span {
   color: var(--muted);
   font-size: 12px;
+}
+
+.local-repository-page {
+  display: grid;
+  gap: 14px;
+  padding: 22px;
+}
+
+.local-repository-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.local-repository-header h1 {
+  margin: 8px 0 4px;
+  color: var(--ink);
+  font-size: 28px;
+  letter-spacing: 0;
+}
+
+.eyebrow-row,
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-pill {
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  border: 1px solid rgba(75, 103, 140, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.6);
+  color: #31516f;
+  font-size: 12px;
+  padding: 2px 8px;
+}
+
+.local-repository-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.definition-list {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 0;
+}
+
+.definition-list div {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.definition-list dt {
+  color: var(--muted);
+}
+
+.definition-list dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.plain-list {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plain-list li {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  border-bottom: 1px solid rgba(108, 128, 156, 0.12);
+  padding-bottom: 8px;
+  overflow-wrap: anywhere;
+}
+
+.local-code-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.local-file-list {
+  display: grid;
+  gap: 6px;
+}
+
+.local-file-list button {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  min-height: 36px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.36);
+  padding: 0 10px;
+  text-align: left;
+}
+
+.local-file-preview {
+  max-height: 62vh;
+  overflow: auto;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.88);
+  color: #e5edf7;
+  font-size: 12px;
+  line-height: 1.55;
+  padding: 14px;
+  white-space: pre-wrap;
 }
 
 .code-layout {

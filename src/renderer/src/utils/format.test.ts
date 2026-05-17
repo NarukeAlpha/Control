@@ -13,4 +13,3 @@ describe("format utilities", () => {
     expect(firstMarkdownHeading(null)).toBe("README");
   });
 });
-

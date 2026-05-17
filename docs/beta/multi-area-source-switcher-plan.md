@@ -91,12 +91,7 @@ For the first milestone:
 Area health should be explicit:
 
 ```ts
-type AreaHealthStatus =
-  | "ready"
-  | "scanning"
-  | "offline"
-  | "needs-auth"
-  | "error";
+type AreaHealthStatus = "ready" | "scanning" | "offline" | "needs-auth" | "error";
 
 interface AreaHealth {
   status: AreaHealthStatus;

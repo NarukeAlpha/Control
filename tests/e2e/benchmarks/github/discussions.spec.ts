@@ -4,9 +4,15 @@ import type { BenchmarkPhase } from "../support/types";
 test.describe("github/discussions", () => {
   test("opens repository discussions", async ({ driver, providerFixture, benchmarkTelemetry }) => {
     for (const phase of ["cold", "warm"] satisfies BenchmarkPhase[]) {
-      await benchmarkTelemetry.measure("search_repository", phase, () => driver.searchRepository(providerFixture));
-      await benchmarkTelemetry.measure("open_repository", phase, () => driver.openRepository(providerFixture));
-      await benchmarkTelemetry.measure("open_discussions", phase, () => driver.openDiscussions(providerFixture));
+      await benchmarkTelemetry.measure("search_repository", phase, () =>
+        driver.searchRepository(providerFixture)
+      );
+      await benchmarkTelemetry.measure("open_repository", phase, () =>
+        driver.openRepository(providerFixture)
+      );
+      await benchmarkTelemetry.measure("open_discussions", phase, () =>
+        driver.openDiscussions(providerFixture)
+      );
 
       const data = await driver.observeDiscussions(providerFixture);
       benchmarkTelemetry.recordObservation({

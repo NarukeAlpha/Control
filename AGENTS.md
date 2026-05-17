@@ -1,6 +1,7 @@
 # Repository Guidelines
 
 ## Project Snapshot & Priorities
+
 Control is a local-first Electron desktop client for GitHub. Optimize for:
 
 - performance first
@@ -10,6 +11,7 @@ Control is a local-first Electron desktop client for GitHub. Optimize for:
 If a tradeoff is required, choose correctness and robustness over short-term convenience.
 
 ## Project Structure & Module Organization
+
 Keep process boundaries clear:
 
 - `src/main`: Electron main-process code, GitHub/provider orchestration, storage, credentials.
@@ -20,6 +22,7 @@ Keep process boundaries clear:
 - `docs`: architecture notes, design plans, and implementation docs.
 
 ## Build, Test, and Development Commands
+
 - `bun run dev`: start the Electron app in development.
 - `bun run build`: build production output.
 - `bun run format`: run Prettier across the repo.
@@ -31,6 +34,7 @@ Keep process boundaries clear:
 Before closing work, `bun run format`, `bun run lint`, and `bun run typecheck` must pass. Never call `vitest` directly when validating work; use `bun run test`.
 
 ## Coding Style & Naming Conventions
+
 Use TypeScript, 2-space indentation, semicolons, double quotes, and `110`-column formatting as enforced by Prettier. Match existing naming:
 
 - React components: `PascalCase`
@@ -44,10 +48,12 @@ Do not be afraid to change existing code when the current shape is the problem. 
 Do not code defensively by default. Prefer strong types and clear invariants over spreading `unknown`, redundant guards, or repeated output validation through the codebase.
 
 ## Testing Guidelines
-Add or update tests when behavior changes materially  or shared logic is introduced. Do not add tests for every small refactor. Keep unit tests close to the code; keep workflow and UI-path validation in `tests/e2e`.
+
+Add or update tests when behavior changes materially or shared logic is introduced. Do not add tests for every small refactor. Keep unit tests close to the code; keep workflow and UI-path validation in `tests/e2e`.
 Never add tests to e2e unless specifically asked to.
 
 ## Commit & Pull Request Guidelines
+
 Follow the existing commit style: short, imperative subjects like `Add ...`, `Remove ...`, or `Improve ...`. Keep pull requests focused. Include:
 
 - what changed and why

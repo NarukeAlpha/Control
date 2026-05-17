@@ -1,5 +1,16 @@
 export interface RepositoryPinInput {
-  nameWithOwner: string;
+  nameWithOwner?: string;
+  areaId?: string;
+  repositoryId?: string;
+  workspaceId?: string | null;
+}
+
+export interface RepositoryPinRecord {
+  nameWithOwner: string | null;
+  areaId?: string | null;
+  repositoryId?: string | null;
+  workspaceId?: string | null;
+  createdAt: string | null;
 }
 
 export type LocalRecentKind =
@@ -31,11 +42,14 @@ export type LocalRecentMetadata = Record<string, string | number | boolean | nul
 
 export interface LocalRecentItem {
   kind: LocalRecentKind;
-  provider: "github";
+  provider: "github" | "local";
   itemKey: string;
   title: string;
   subtitle: string | null;
   repositoryNameWithOwner: string | null;
+  areaId?: string | null;
+  repositoryId?: string | null;
+  workspaceId?: string | null;
   url: string | null;
   metadata: LocalRecentMetadata;
   updatedAt: string;
@@ -48,10 +62,14 @@ export interface LocalRecentListInput {
 
 export interface LocalRecentRecordInput {
   kind: LocalRecentKind;
+  provider?: "github" | "local";
   itemKey: string;
   title: string;
   subtitle?: string | null;
   repositoryNameWithOwner?: string | null;
+  areaId?: string | null;
+  repositoryId?: string | null;
+  workspaceId?: string | null;
   url?: string | null;
   metadata?: LocalRecentMetadata;
 }

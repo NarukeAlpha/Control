@@ -16,8 +16,42 @@ const controlApi: ControlApi = {
   listPinnedRepositories: () => ipcRenderer.invoke(ipcChannels.listPinnedRepositories),
   pinRepository: (input) => ipcRenderer.invoke(ipcChannels.pinRepository, input),
   unpinRepository: (input) => ipcRenderer.invoke(ipcChannels.unpinRepository, input),
+  listRepositoryPins: () => ipcRenderer.invoke(ipcChannels.listRepositoryPins),
+  pinAreaRepository: (input) => ipcRenderer.invoke(ipcChannels.pinAreaRepository, input),
+  unpinAreaRepository: (input) => ipcRenderer.invoke(ipcChannels.unpinAreaRepository, input),
   listRecentItems: (input = {}) => ipcRenderer.invoke(ipcChannels.listRecentItems, input),
   recordRecentItem: (input) => ipcRenderer.invoke(ipcChannels.recordRecentItem, input),
+  areas: {
+    listAreas: () => ipcRenderer.invoke(ipcChannels.areasList),
+    getArea: (areaId) => ipcRenderer.invoke(ipcChannels.areasGet, areaId),
+    selectArea: (areaId) => ipcRenderer.invoke(ipcChannels.areasSelect, areaId),
+    createLocalArea: (input) => ipcRenderer.invoke(ipcChannels.areasCreateLocal, input),
+    createSshArea: (input) => ipcRenderer.invoke(ipcChannels.areasCreateSsh, input),
+    removeArea: (areaId) => ipcRenderer.invoke(ipcChannels.areasRemove, areaId),
+    refreshArea: (areaId) => ipcRenderer.invoke(ipcChannels.areasRefresh, areaId),
+    searchAreas: (input) => ipcRenderer.invoke(ipcChannels.areasSearch, input),
+    listRepositories: (input) => ipcRenderer.invoke(ipcChannels.areaRepositories, input),
+    getRepository: (input) => ipcRenderer.invoke(ipcChannels.areaRepository, input),
+    listContents: (input) => ipcRenderer.invoke(ipcChannels.areaContents, input),
+    getFileContent: (input) => ipcRenderer.invoke(ipcChannels.areaFileContent, input),
+    listBranches: (input) => ipcRenderer.invoke(ipcChannels.areaBranches, input),
+    listRemotes: (input) => ipcRenderer.invoke(ipcChannels.areaRemotes, input),
+    getStatus: (input) => ipcRenderer.invoke(ipcChannels.areaStatus, input),
+    listActivity: (input) => ipcRenderer.invoke(ipcChannels.areaActivity, input),
+    listWorkspaces: (input) => ipcRenderer.invoke(ipcChannels.areaWorkspaces, input),
+    getWorkspace: (input) => ipcRenderer.invoke(ipcChannels.areaWorkspace, input),
+    getGitHubRepository: (input) => ipcRenderer.invoke(ipcChannels.areaGitHubRepository, input),
+    listGitHubIssues: (input) => ipcRenderer.invoke(ipcChannels.areaGitHubIssues, input),
+    listGitHubPullRequests: (input) => ipcRenderer.invoke(ipcChannels.areaGitHubPullRequests, input),
+    listGitHubActions: (input) => ipcRenderer.invoke(ipcChannels.areaGitHubActions, input),
+    listGitHubReleases: (input) => ipcRenderer.invoke(ipcChannels.areaGitHubReleases, input),
+    listGitHubContributors: (input) => ipcRenderer.invoke(ipcChannels.areaGitHubContributors, input),
+    getSyncStatus: (input) => ipcRenderer.invoke(ipcChannels.areaSyncStatus, input),
+    prepareGatewayOperation: (input) => ipcRenderer.invoke(ipcChannels.areaPrepareGatewayOperation, input),
+    runGatewayOperation: (input) => ipcRenderer.invoke(ipcChannels.areaRunGatewayOperation, input),
+    stopGateway: (input) => ipcRenderer.invoke(ipcChannels.areaStopGateway, input),
+    openLocalFolderPicker: () => ipcRenderer.invoke(ipcChannels.areaOpenLocalFolderPicker)
+  },
   onGitHubRepositoriesUpdated: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, payload: unknown): void => {
       callback(payload as Parameters<typeof callback>[0]);
@@ -31,6 +65,27 @@ const controlApi: ControlApi = {
     };
     ipcRenderer.on(ipcChannels.githubAuthUpdated, listener);
     return () => ipcRenderer.removeListener(ipcChannels.githubAuthUpdated, listener);
+  },
+  onAreasUpdated: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: unknown): void => {
+      callback(payload as Parameters<typeof callback>[0]);
+    };
+    ipcRenderer.on(ipcChannels.areasUpdated, listener);
+    return () => ipcRenderer.removeListener(ipcChannels.areasUpdated, listener);
+  },
+  onAreaRepositoryUpdated: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: unknown): void => {
+      callback(payload as Parameters<typeof callback>[0]);
+    };
+    ipcRenderer.on(ipcChannels.areaRepositoryUpdated, listener);
+    return () => ipcRenderer.removeListener(ipcChannels.areaRepositoryUpdated, listener);
+  },
+  onAreaWorkspaceUpdated: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: unknown): void => {
+      callback(payload as Parameters<typeof callback>[0]);
+    };
+    ipcRenderer.on(ipcChannels.areaWorkspaceUpdated, listener);
+    return () => ipcRenderer.removeListener(ipcChannels.areaWorkspaceUpdated, listener);
   },
   github: {
     getViewer: () => ipcRenderer.invoke(ipcChannels.githubViewer),

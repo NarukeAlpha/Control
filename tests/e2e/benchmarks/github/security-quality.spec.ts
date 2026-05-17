@@ -2,10 +2,18 @@ import { benchmarkTest as test } from "../support/benchmarkTest";
 import type { BenchmarkPhase } from "../support/types";
 
 test.describe("github/security-quality", () => {
-  test("opens repository security and quality signals", async ({ driver, providerFixture, benchmarkTelemetry }) => {
+  test("opens repository security and quality signals", async ({
+    driver,
+    providerFixture,
+    benchmarkTelemetry
+  }) => {
     for (const phase of ["cold", "warm"] satisfies BenchmarkPhase[]) {
-      await benchmarkTelemetry.measure("search_repository", phase, () => driver.searchRepository(providerFixture));
-      await benchmarkTelemetry.measure("open_repository", phase, () => driver.openRepository(providerFixture));
+      await benchmarkTelemetry.measure("search_repository", phase, () =>
+        driver.searchRepository(providerFixture)
+      );
+      await benchmarkTelemetry.measure("open_repository", phase, () =>
+        driver.openRepository(providerFixture)
+      );
       await benchmarkTelemetry.measure("open_security_quality", phase, () =>
         driver.openSecurityQuality(providerFixture)
       );

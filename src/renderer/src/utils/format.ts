@@ -1,12 +1,30 @@
+const compactWholeNumberFormatter = new Intl.NumberFormat("en", {
+  notation: "compact",
+  maximumFractionDigits: 0
+});
+
+const compactDecimalNumberFormatter = new Intl.NumberFormat("en", {
+  notation: "compact",
+  maximumFractionDigits: 1
+});
+
+const currentYearDateFormatter = new Intl.DateTimeFormat("en", {
+  month: "short",
+  day: "numeric"
+});
+
+const previousYearDateFormatter = new Intl.DateTimeFormat("en", {
+  month: "short",
+  day: "numeric",
+  year: "numeric"
+});
+
 export function formatCompactNumber(value: number): string {
   if (value < 1000) {
     return `${value}`;
   }
 
-  return new Intl.NumberFormat("en", {
-    notation: "compact",
-    maximumFractionDigits: value >= 10_000 ? 0 : 1
-  }).format(value);
+  return (value >= 10_000 ? compactWholeNumberFormatter : compactDecimalNumberFormatter).format(value);
 }
 
 export function formatRelativeDate(value: string | null): string {
@@ -35,11 +53,10 @@ export function formatRelativeDate(value: string | null): string {
     return `${diffDays}d ago`;
   }
 
-  return new Intl.DateTimeFormat("en", {
-    month: "short",
-    day: "numeric",
-    year: new Date().getFullYear() === new Date(timestamp).getFullYear() ? undefined : "numeric"
-  }).format(timestamp);
+  const date = new Date(timestamp);
+  const formatter =
+    new Date().getFullYear() === date.getFullYear() ? currentYearDateFormatter : previousYearDateFormatter;
+  return formatter.format(date);
 }
 
 export function firstMarkdownHeading(markdown: string | null): string {

@@ -3166,6 +3166,40 @@ describe("Control renderer routing", () => {
     expect(openExternal).toHaveBeenCalledWith(`${mockPullRequests[0].htmlUrl}/files#diff-app`);
   });
 
+  it("keeps the routed pull request selected when it is missing from the loaded pull list", async () => {
+    const focusedPull = mockPullRequests[1];
+    const largeFirstPull = {
+      ...mockPullRequests[0],
+      title: "Regenerate generated files",
+      changedFiles: 4096
+    };
+    const listPullRequests = vi.fn<ControlApi["github"]["listPullRequests"]>(async () => [largeFirstPull]);
+    const getPullRequestDetailWithStatus = vi.fn<ControlApi["github"]["getPullRequestDetailWithStatus"]>(
+      mockControlApi.github.getPullRequestDetailWithStatus
+    );
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: {
+        kind: "repository",
+        nameWithOwner: "apple/swift",
+        tab: "pulls",
+        pullNumber: focusedPull.number
+      }
+    });
+    renderControl(makeApi({ listPullRequests, getPullRequestDetailWithStatus }));
+
+    expect(await screen.findByRole("heading", { name: focusedPull.title })).toBeInTheDocument();
+    expect(screen.getByText(`${focusedPull.changedFiles} files changed`)).toBeInTheDocument();
+    expect(screen.queryByText("4096 files changed")).not.toBeInTheDocument();
+    expect(getPullRequestDetailWithStatus).toHaveBeenCalledWith({
+      owner: "apple",
+      repo: "swift",
+      pullNumber: focusedPull.number,
+      cacheOnly: false
+    });
+  });
+
   it("edits an issue title and body through the provider mutation path", async () => {
     const mutate = vi.fn<ControlApi["github"]["mutate"]>(async (input) => ({
       ok: true,

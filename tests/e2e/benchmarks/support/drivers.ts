@@ -1314,6 +1314,11 @@ function compactEnv(input: NodeJS.ProcessEnv): Record<string, string> {
 }
 
 function readGhAuthToken(): string | undefined {
+  const envToken = process.env.CONTROL_GITHUB_TOKEN?.trim();
+  if (envToken) {
+    return envToken;
+  }
+
   try {
     const token = execFileSync("gh", ["auth", "token", "--hostname", "github.com"], {
       encoding: "utf8",

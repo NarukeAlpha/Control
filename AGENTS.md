@@ -52,6 +52,21 @@ Do not code defensively by default. Prefer strong types and clear invariants ove
 Add or update tests when behavior changes materially or shared logic is introduced. Do not add tests for every small refactor. Keep unit tests close to the code; keep workflow and UI-path validation in `tests/e2e`.
 Never add tests to e2e unless specifically asked to.
 
+## Codex Review & CI Triage
+
+When reviewing pull requests or CI failures, prioritize:
+
+- Electron process-boundary regressions between `src/main`, `src/preload`, `src/renderer/src`, and `src/shared`.
+- GitHub auth, token handling, keychain behavior, and OAuth/device-flow failure states.
+- Local cache correctness, reconnect behavior, partial GitHub API failures, and stale-data presentation.
+- Renderer performance problems in repository views, virtualized lists, and high-volume GitHub data surfaces.
+- Playwright benchmark failures in `tests/e2e/benchmarks/github`, especially differences between GitHub web
+  observations and Control Electron observations.
+
+For automated E2E issue triage, name the failing test, fixture, scenario, likely owner files, smallest credible fix,
+and the validation command to rerun. Do not suggest broad rewrites unless the evidence points to a shared boundary
+being the root cause.
+
 ## Commit & Pull Request Guidelines
 
 Follow the existing commit style: short, imperative subjects like `Add ...`, `Remove ...`, or `Improve ...`. Keep pull requests focused. Include:

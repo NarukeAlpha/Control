@@ -21592,18 +21592,20 @@ function ActionsTab({
                   }}
                 >
                   <Workflow size={17} />
-                  <div>
+                  <div className="workflow-run-copy">
                     <strong>{run.displayTitle ?? run.name}</strong>
                     <small>{workflowRunMetadata.join(" · ")}</small>
                   </div>
-                  <span className={`state-chip ${run.conclusion === "success" ? "success" : ""}`}>
-                    {run.conclusion ?? run.status ?? "queued"}
+                  <span className="row-chip-stack workflow-run-chip-stack">
+                    <span className={`state-chip ${run.conclusion === "success" ? "success" : ""}`}>
+                      {run.conclusion ?? run.status ?? "queued"}
+                    </span>
+                    {run.actionAvailability?.canRerun === true && <span className="state-chip">rerun</span>}
+                    {run.actionAvailability?.canRerunFailedJobs === true && (
+                      <span className="state-chip">rerun failed</span>
+                    )}
+                    {run.actionAvailability?.canCancel === true && <span className="state-chip">cancel</span>}
                   </span>
-                  {run.actionAvailability?.canRerun === true && <span className="state-chip">rerun</span>}
-                  {run.actionAvailability?.canRerunFailedJobs === true && (
-                    <span className="state-chip">rerun failed</span>
-                  )}
-                  {run.actionAvailability?.canCancel === true && <span className="state-chip">cancel</span>}
                 </button>
                 <button
                   className="pin-row-button"
@@ -21903,48 +21905,53 @@ function ActionsTab({
 
                           return (
                             <article className="workflow-failure-item" key={item.id}>
-                              <div>
+                              <div className="workflow-failure-copy">
                                 <small>
                                   {item.kind} · {item.state}
                                 </small>
                                 <strong>{item.title}</strong>
                                 <span>{item.detail}</span>
                               </div>
-                              <button
-                                type="button"
-                                disabled={Boolean(failureControlDisabledReason)}
-                                title={failureControlDisabledReason ?? undefined}
-                                onClick={() => {
-                                  if (item.jobId !== undefined) {
-                                    setSelectedLogJobSelection({ runId: selectedRun.id, jobId: item.jobId });
-                                  } else if (item.path) {
-                                    onOpenCodePath(
-                                      item.path,
-                                      selectedRun.branch ??
-                                        selectedRun.commitSha ??
-                                        repository.defaultBranch ??
-                                        null,
-                                      item.url,
-                                      item.line ?? null,
-                                      selectedRunTargetRepositoryNameWithOwner
-                                    );
-                                  }
-                                }}
-                              >
-                                Open in Control
-                              </button>
-                              <button
-                                type="button"
-                                disabled={!item.url}
-                                title={item.url ? undefined : "Failure signal URL unavailable."}
-                                onClick={() => {
-                                  if (item.url) {
-                                    onOpenExternal(item.url);
-                                  }
-                                }}
-                              >
-                                GitHub fallback
-                              </button>
+                              <div className="workflow-card-actions workflow-failure-actions">
+                                <button
+                                  type="button"
+                                  disabled={Boolean(failureControlDisabledReason)}
+                                  title={failureControlDisabledReason ?? undefined}
+                                  onClick={() => {
+                                    if (item.jobId !== undefined) {
+                                      setSelectedLogJobSelection({
+                                        runId: selectedRun.id,
+                                        jobId: item.jobId
+                                      });
+                                    } else if (item.path) {
+                                      onOpenCodePath(
+                                        item.path,
+                                        selectedRun.branch ??
+                                          selectedRun.commitSha ??
+                                          repository.defaultBranch ??
+                                          null,
+                                        item.url,
+                                        item.line ?? null,
+                                        selectedRunTargetRepositoryNameWithOwner
+                                      );
+                                    }
+                                  }}
+                                >
+                                  Open in Control
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={!item.url}
+                                  title={item.url ? undefined : "Failure signal URL unavailable."}
+                                  onClick={() => {
+                                    if (item.url) {
+                                      onOpenExternal(item.url);
+                                    }
+                                  }}
+                                >
+                                  GitHub fallback
+                                </button>
+                              </div>
                             </article>
                           );
                         })}

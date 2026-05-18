@@ -555,6 +555,10 @@ body:not(.no-liquid-glass) .code-toolbar {
   grid-column: 2 / 4;
 }
 
+body:not(.no-liquid-glass) .workspace-repository {
+  grid-row: 1 / 3;
+}
+
 .workspace-wide {
   grid-column: 2 / 4;
 }
@@ -1003,6 +1007,11 @@ body:not(.no-liquid-glass) .code-toolbar {
   grid-template-columns: minmax(0, 1fr) 296px;
   align-items: start;
   gap: 12px;
+}
+
+body:not(.no-liquid-glass) .repository-content-scroll {
+  padding-top: 0;
+  scroll-padding-top: 64px;
 }
 
 .repo-page {
@@ -2170,15 +2179,33 @@ p {
 
 .thread-list-row-main {
   display: grid !important;
-  grid-template-columns: 22px minmax(0, 1fr) auto auto auto;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
   width: 100%;
+  min-width: 0;
   min-height: 58px;
+  overflow: hidden;
   justify-content: stretch !important;
   border: 0 !important;
   background: transparent !important;
   box-shadow: none !important;
   padding: 0 !important;
   text-align: left;
+}
+
+.workflow-run-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.workflow-run-copy strong,
+.workflow-run-copy small {
+  display: block;
+  min-width: 0;
+}
+
+.workflow-run-chip-stack {
+  max-width: min(154px, 34%);
 }
 
 .issue-row.active {
@@ -2574,6 +2601,14 @@ p {
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.7);
   padding: 12px;
+}
+
+.workflow-summary > span {
+  min-width: 0;
+  overflow: hidden;
+  max-width: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pr-inspection {
@@ -4302,9 +4337,8 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 }
 
 .workflow-failure-item {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   border: 1px solid rgba(154, 52, 18, 0.18);
   border-left: 3px solid #b45309;
@@ -4313,7 +4347,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
   padding: 10px;
 }
 
-.workflow-failure-item > div {
+.workflow-failure-copy {
   display: grid;
   min-width: 0;
   gap: 4px;
@@ -4337,12 +4371,15 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 
 .workflow-failure-item button {
   min-height: 28px;
-  flex: 0 0 auto;
   border: 1px solid rgba(154, 52, 18, 0.18);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.74);
   color: #7c2d12;
   padding: 0 9px;
+}
+
+.workflow-failure-actions {
+  justify-content: flex-end;
 }
 
 .workflow-job-card,

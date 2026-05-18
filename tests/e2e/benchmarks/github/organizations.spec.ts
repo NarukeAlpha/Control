@@ -2,9 +2,15 @@ import { benchmarkTest as test } from "../support/benchmarkTest";
 import type { BenchmarkPhase } from "../support/types";
 
 test.describe("github/organizations", () => {
-  test("opens account organizations and visible teams", async ({ driver, providerFixture, benchmarkTelemetry }) => {
+  test("opens account organizations and visible teams", async ({
+    driver,
+    providerFixture,
+    benchmarkTelemetry
+  }) => {
     for (const phase of ["cold", "warm"] satisfies BenchmarkPhase[]) {
-      await benchmarkTelemetry.measure("open_organizations", phase, () => driver.openOrganizations(providerFixture));
+      await benchmarkTelemetry.measure("open_organizations", phase, () =>
+        driver.openOrganizations(providerFixture)
+      );
       await benchmarkTelemetry.measure("open_organization_teams", phase, () =>
         driver.openOrganizationTeams(providerFixture)
       );

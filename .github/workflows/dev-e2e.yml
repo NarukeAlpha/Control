@@ -1,0 +1,106 @@
+name: Dev E2E
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: dev-e2e-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  github-benchmarks:
+    name: GitHub benchmark E2E
+    runs-on: macos-15
+    env:
+      HAS_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY != '' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium
+
+      - name: Run GitHub benchmark E2E
+        id: e2e
+        continue-on-error: true
+        env:
+          CONTROL_GITHUB_TOKEN: ${{ secrets.CONTROL_E2E_GITHUB_TOKEN }}
+        run: bun run test:e2e:github
+
+      - name: Summarize E2E failures
+        id: summarize
+        if: always()
+        run: |
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          node scripts/summarize-e2e-github-failures.cjs \
+            --e2e-outcome "${{ steps.e2e.outcome }}" \
+            --run-url "${RUN_URL}" \
+            --output e2e-failures.json \
+            --markdown e2e-failures.md
+
+      - name: Analyze failure with Codex
+        if: ${{ steps.summarize.outputs.has_failures == 'true' && env.HAS_OPENAI_API_KEY == 'true' }}
+        continue-on-error: true
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: .github/codex/prompts/dev-e2e-failure.md
+          output-file: codex-e2e-analysis.md
+          safety-strategy: drop-sudo
+          sandbox: read-only
+
+      - name: Upsert E2E failure issues
+        if: ${{ always() && steps.summarize.outputs.has_failures == 'true' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/upsert-e2e-failure-issues.cjs \
+            --input e2e-failures.json \
+            --codex-output codex-e2e-analysis.md \
+            --repo "${GITHUB_REPOSITORY}"
+
+      - name: Close resolved E2E issues
+        if: ${{ steps.e2e.outcome == 'success' && steps.summarize.outputs.has_failures == 'false' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/upsert-e2e-failure-issues.cjs \
+            --input e2e-failures.json \
+            --repo "${GITHUB_REPOSITORY}" \
+            --close-resolved true
+
+      - name: Upload E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: github-benchmark-e2e-${{ github.run_id }}
+          path: |
+            test-results/e2e-runs/**
+            playwright-report/**
+            e2e-failures.json
+            e2e-failures.md
+            codex-e2e-analysis.md
+          if-no-files-found: ignore
+
+      - name: Fail workflow when E2E failed
+        if: ${{ steps.e2e.outcome != 'success' }}
+        run: exit 1

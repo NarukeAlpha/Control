@@ -20,15 +20,15 @@ Branch state: ~80-85% code complete, ~65-70% complete with tests/docs. Agent pau
 
 ### Monolithic `App.tsx` — 24,877 lines
 
-| Metric | Count |
-|--------|-------|
-| Lines | 24,877 |
-| Top-level functions | 218 |
-| Inline component definitions | 302 |
-| `useQuery` hooks | 64 |
-| Expand/collapse limit states | 17 |
-| `as` type casts | 56 |
-| `??` fallback chains | 30+ |
+| Metric                       | Count  |
+| ---------------------------- | ------ |
+| Lines                        | 24,877 |
+| Top-level functions          | 218    |
+| Inline component definitions | 302    |
+| `useQuery` hooks             | 64     |
+| Expand/collapse limit states | 17     |
+| `as` type casts              | 56     |
+| `??` fallback chains         | 30+    |
 
 Every GitHub surface is inlined. Zero new component files were created in `src/renderer/src/`.
 
@@ -43,11 +43,11 @@ Extract shared UI primitives: `GlassPanel`, `AvailabilityBanner`, `StatusBadge`,
 
 ### Monolithic `styles.css` — 3,858 lines
 
-| Metric | Count |
-|--------|-------|
-| Class selectors | 650 |
-| Ad-hoc `font-size` | 82 |
-| Ad-hoc `background` | 153 |
+| Metric              | Count |
+| ------------------- | ----- |
+| Class selectors     | 650   |
+| Ad-hoc `font-size`  | 82    |
+| Ad-hoc `background` | 153   |
 
 No CSS custom properties, no co-location with components.
 
@@ -65,16 +65,17 @@ All test fixtures for 12+ surfaces in one file.
 
 Against the AGENTS.md guidance to prefer strong types over `unknown` and redundant guards:
 
-| Pattern | Files | Count | Example |
-|---------|-------|-------|---------|
-| `: unknown` in domain types | App.tsx, octokitProvider.ts | 59 total | GraphQL response shapes using `?: unknown` for every field |
-| `as` type casts | App.tsx | 56 | Casts where return type narrowing would suffice |
-| `??` fallback chains | App.tsx | 30+ | Guards against `null` the type system already excludes |
-| Weak GraphQL response shapes | App.tsx L3740-3772 | ~12 fields | `name?: unknown; color?: unknown` instead of `GitHubLanguageNode` |
+| Pattern                      | Files                       | Count      | Example                                                           |
+| ---------------------------- | --------------------------- | ---------- | ----------------------------------------------------------------- |
+| `: unknown` in domain types  | App.tsx, octokitProvider.ts | 59 total   | GraphQL response shapes using `?: unknown` for every field        |
+| `as` type casts              | App.tsx                     | 56         | Casts where return type narrowing would suffice                   |
+| `??` fallback chains         | App.tsx                     | 30+        | Guards against `null` the type system already excludes            |
+| Weak GraphQL response shapes | App.tsx L3740-3772          | ~12 fields | `name?: unknown; color?: unknown` instead of `GitHubLanguageNode` |
 
 The `unknown` usage in `main/index.ts` (5 instances) and `main/storage.ts` (10 instances) is legitimate — those are IPC/deserialization boundaries. The renderer is where the excessive defensiveness lives.
 
 **Remediation:**
+
 - Define proper `GitHubLanguageNode`, `GitHubCommitNode` etc. types in `src/shared/github.ts`
 - Replace `as` casts with type guards or narrow return types in query functions
 - Remove `?? fallback` chains where the upstream type already guarantees a value
@@ -110,7 +111,7 @@ Every channel follows `ipcMain.handle(ipcChannels.foo, (_event, input) => github
 ```ts
 const channelMap: Array<[string, (github: Provider, input: unknown) => Promise<unknown>]> = [
   [ipcChannels.githubViewer, (g) => g.getViewer()],
-  [ipcChannels.githubRepositoriesWithStatus, (g, i) => g.listRepositoriesWithStatus(i)],
+  [ipcChannels.githubRepositoriesWithStatus, (g, i) => g.listRepositoriesWithStatus(i)]
   // ...
 ];
 for (const [channel, handler] of channelMap) {
@@ -134,7 +135,7 @@ Each tab surface reinvents:
 
 ```ts
 const [fooLimit, setFooLimit] = useState(6);
-const onExpandFoo = () => setFooLimit(prev => prev + 6);
+const onExpandFoo = () => setFooLimit((prev) => prev + 6);
 ```
 
 **Remediation:** Extract to a shared `useExpandableList(initialLimit, increment)` hook.
@@ -149,12 +150,12 @@ Same 3-line `readAvailabilityMessage(...)` pattern repeated at every query site.
 
 ## IPC Surface Size
 
-| Metric | Count |
-|--------|-------|
-| `ipcChannels` entries | ~60 |
-| `ControlApi.github` methods | ~55 |
-| `ipcMain.handle` registrations | 97 |
-| `preload/index.ts` bridge methods | ~55 |
+| Metric                            | Count |
+| --------------------------------- | ----- |
+| `ipcChannels` entries             | ~60   |
+| `ControlApi.github` methods       | ~55   |
+| `ipcMain.handle` registrations    | 97    |
+| `preload/index.ts` bridge methods | ~55   |
 
 Each channel has 4 registration points: shared constant, `ControlApi` type, preload bridge, and `ipcMain.handle`. Adding a new GitHub surface requires touching 4 files.
 
@@ -177,6 +178,7 @@ The `getAppState()` IPC call won't resolve until GitHub's GraphQL API responds. 
 ### 2. `cacheOnly: !githubReady` forces two-pass rendering
 
 Because `githubReady = appState.isSuccess && githubAuthenticated`, every query fires twice:
+
 - Pass 1: `cacheOnly: true` (auth not ready) — reads cached SQLite data
 - Pass 2: `cacheOnly: false` (auth confirmed) — network refresh, re-renders
 
@@ -221,8 +223,8 @@ Pinned repos and recent items are purely local (SQLite reads, no token needed). 
 Mutation handlers do:
 
 ```ts
-await Promise.all(invalidations);  // wait for all cache invalidations
-await Promise.all(refreshes);      // then start refreshes
+await Promise.all(invalidations); // wait for all cache invalidations
+await Promise.all(refreshes); // then start refreshes
 ```
 
 These could be interleaved:
@@ -244,12 +246,12 @@ await Promise.all([...invalidations, ...refreshes]);
 
 ## Test Health
 
-| Layer | Tests | Pass | Fail | Rate |
-|-------|-------|------|------|------|
-| Main process (provider, storage, OAuth, credentials) | 42 | 42 | 0 | 100% |
-| Main process (octokitProvider) | ~30 | ~25 | 5 | 83% |
-| Renderer (App.test.tsx) | ~73 | 0 | 73 | 0% |
-| **Total** | **115** | **42** | **73** | **37%** |
+| Layer                                                | Tests   | Pass   | Fail   | Rate    |
+| ---------------------------------------------------- | ------- | ------ | ------ | ------- |
+| Main process (provider, storage, OAuth, credentials) | 42      | 42     | 0      | 100%    |
+| Main process (octokitProvider)                       | ~30     | ~25    | 5      | 83%     |
+| Renderer (App.test.tsx)                              | ~73     | 0      | 73     | 0%      |
+| **Total**                                            | **115** | **42** | **73** | **37%** |
 
 ### Renderer failures
 
@@ -402,7 +404,7 @@ function RepositoryIssues({ owner, repo }: { owner: string; repo: string }) {
   const { githubReady, api } = useRepositoryContext();
   const issues = useQuery({
     queryKey: ["issues", owner, repo],
-    queryFn: () => api.github.listIssuesWithStatus({ owner, repo, cacheOnly: !githubReady }),
+    queryFn: () => api.github.listIssuesWithStatus({ owner, repo, cacheOnly: !githubReady })
   });
   // ...
 }

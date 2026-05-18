@@ -22,7 +22,10 @@ test("opens repository files in the code browser", async ({ page }) => {
     .getByTitle(/Open apple\/swift/)
     .click();
 
-  await page.locator(".virtual-file-list").getByRole("button", { name: /README\.md/i }).click();
+  await page
+    .locator(".virtual-file-list")
+    .getByRole("button", { name: /README\.md/i })
+    .click();
   await expect(page.getByRole("heading", { name: "README.md" })).toBeVisible();
   await expect(page.locator(".code-viewer")).toContainText("Mock file content from Control.");
   await expect(page.getByRole("button", { name: "Repository", exact: true })).toBeVisible();
@@ -145,8 +148,12 @@ test("opens notification subjects in-app and records them as recents", async ({ 
   ).toBeVisible();
 
   await page.getByRole("button", { name: /^Home$/ }).click();
-  const recentsPanel = page.locator(".home-panel").filter({ has: page.getByRole("heading", { name: "Recents" }) });
-  await expect(recentsPanel.getByRole("button", { name: /#1200 Improve Sendable diagnostics/i })).toBeVisible();
+  const recentsPanel = page
+    .locator(".home-panel")
+    .filter({ has: page.getByRole("heading", { name: "Recents" }) });
+  await expect(
+    recentsPanel.getByRole("button", { name: /#1200 Improve Sendable diagnostics/i })
+  ).toBeVisible();
   await expect(recentsPanel.getByRole("button", { name: /#520 Add Sendable support/i })).toBeVisible();
 });
 
@@ -160,7 +167,10 @@ test("opens account work rows in-app from Home and Mailbox", async ({ page }) =>
   const homeWorkPanel = page
     .locator(".home-panel")
     .filter({ has: page.getByRole("heading", { name: "Your work" }) });
-  await homeWorkPanel.getByRole("button", { name: /Improve Sendable diagnostics/i }).first().click();
+  await homeWorkPanel
+    .getByRole("button", { name: /Improve Sendable diagnostics/i })
+    .first()
+    .click();
   await expect(
     page.locator(".thread-detail").getByRole("heading", {
       name: /Improve Sendable diagnostics/i
@@ -168,7 +178,10 @@ test("opens account work rows in-app from Home and Mailbox", async ({ page }) =>
   ).toBeVisible();
 
   await page.getByRole("button", { name: /^Home$/ }).click();
-  await homeWorkPanel.getByRole("button", { name: /Add Sendable support/i }).first().click();
+  await homeWorkPanel
+    .getByRole("button", { name: /Add Sendable support/i })
+    .first()
+    .click();
   await expect(
     page.locator(".thread-detail").getByRole("heading", {
       name: /Add Sendable support/i
@@ -191,8 +204,12 @@ test("opens account work rows in-app from Home and Mailbox", async ({ page }) =>
   ).toBeVisible();
 
   await page.getByRole("button", { name: /^Home$/ }).click();
-  const recentsPanel = page.locator(".home-panel").filter({ has: page.getByRole("heading", { name: "Recents" }) });
-  await expect(recentsPanel.getByRole("button", { name: /#1197 Improve Sendable diagnostics/i })).toBeVisible();
+  const recentsPanel = page
+    .locator(".home-panel")
+    .filter({ has: page.getByRole("heading", { name: "Recents" }) });
+  await expect(
+    recentsPanel.getByRole("button", { name: /#1197 Improve Sendable diagnostics/i })
+  ).toBeVisible();
   await expect(recentsPanel.getByRole("button", { name: /#520 Add Sendable support/i })).toBeVisible();
 });
 
@@ -254,7 +271,9 @@ test("opens discussion and release notification subjects in-app", async ({ page 
     .filter({ hasText: "Package manager ergonomics" })
     .locator(".notification-row-main")
     .click();
-  await expect(page.locator(".thread-detail").getByRole("heading", { name: "Package manager ergonomics" })).toBeVisible();
+  await expect(
+    page.locator(".thread-detail").getByRole("heading", { name: "Package manager ergonomics" })
+  ).toBeVisible();
 
   await page
     .locator(".nav-list")
@@ -340,7 +359,9 @@ test("searches and adds repositories from in-app pickers", async ({ page }) => {
   await expect(page.getByRole("heading", { name: /apple \/ design-resources/i })).toBeVisible();
 
   await page.getByRole("button", { name: /^Home$/ }).click();
-  const recentsPanel = page.locator(".home-panel").filter({ has: page.getByRole("heading", { name: "Recents" }) });
+  const recentsPanel = page
+    .locator(".home-panel")
+    .filter({ has: page.getByRole("heading", { name: "Recents" }) });
   await expect(recentsPanel.getByRole("button", { name: /apple\/design-resources/i })).toBeVisible();
 });
 
@@ -458,22 +479,32 @@ test("tracks issue pull request and workflow recents in the command palette", as
   await page.locator(".thread-list .issue-row").filter({ hasText: "Docs" }).first().click();
 
   await page.getByRole("button", { name: /^Home$/ }).click();
-  const recentsPanel = page.locator(".home-panel").filter({ has: page.getByRole("heading", { name: "Recents" }) });
-  await expect(recentsPanel.getByRole("button", { name: /#1199 Compiler crash in async closure/i })).toBeVisible();
-  await expect(recentsPanel.getByRole("button", { name: /#519 Update concurrency runtime tests/i })).toBeVisible();
+  const recentsPanel = page
+    .locator(".home-panel")
+    .filter({ has: page.getByRole("heading", { name: "Recents" }) });
+  await expect(
+    recentsPanel.getByRole("button", { name: /#1199 Compiler crash in async closure/i })
+  ).toBeVisible();
+  await expect(
+    recentsPanel.getByRole("button", { name: /#519 Update concurrency runtime tests/i })
+  ).toBeVisible();
   await expect(recentsPanel.getByRole("button", { name: /Docs/i })).toBeVisible();
 
   await page.keyboard.press("Control+K");
   let palette = page.getByRole("dialog", { name: "Command palette" });
   await palette.getByLabel("Command palette search").fill("1199");
   await palette.getByRole("button", { name: /#1199 Compiler crash in async closure/i }).click();
-  await expect(page.locator(".thread-detail").getByRole("heading", { name: /Compiler crash in async closure/i })).toBeVisible();
+  await expect(
+    page.locator(".thread-detail").getByRole("heading", { name: /Compiler crash in async closure/i })
+  ).toBeVisible();
 
   await page.keyboard.press("Control+K");
   palette = page.getByRole("dialog", { name: "Command palette" });
   await palette.getByLabel("Command palette search").fill("519");
   await palette.getByRole("button", { name: /#519 Update concurrency runtime tests/i }).click();
-  await expect(page.locator(".thread-detail").getByRole("heading", { name: /Update concurrency runtime tests/i })).toBeVisible();
+  await expect(
+    page.locator(".thread-detail").getByRole("heading", { name: /Update concurrency runtime tests/i })
+  ).toBeVisible();
 
   await page.keyboard.press("Control+K");
   palette = page.getByRole("dialog", { name: "Command palette" });
@@ -574,7 +605,9 @@ test("edits issue metadata state and comments in-app", async ({ page }) => {
   await page.getByPlaceholder("Edit issue body").fill("Updated issue body from Playwright.");
   await page.getByRole("button", { name: "Save issue" }).click();
 
-  await expect(issueDetail.getByRole("heading", { name: "Updated Sendable diagnostics from E2E" })).toBeVisible();
+  await expect(
+    issueDetail.getByRole("heading", { name: "Updated Sendable diagnostics from E2E" })
+  ).toBeVisible();
   await expect(issueDetail).toContainText("Updated issue body from Playwright.");
 
   await page.getByRole("button", { name: "Reopen issue" }).click();
@@ -651,9 +684,7 @@ test("manages pull request review state and comments in-app", async ({ page }) =
   await expect(page.getByRole("button", { name: "Close pull request" })).toBeVisible();
 
   const requestedReviewers = pullDetail.getByLabel("Requested reviewers");
-  await expect(
-    requestedReviewers.getByRole("button", { name: "Remove reviewer swift-ci" })
-  ).toBeVisible();
+  await expect(requestedReviewers.getByRole("button", { name: "Remove reviewer swift-ci" })).toBeVisible();
   await expect(
     requestedReviewers.getByRole("button", { name: "Remove team reviewer compiler" })
   ).toBeVisible();
@@ -663,18 +694,14 @@ test("manages pull request review state and comments in-app", async ({ page }) =
   page.once("dialog", (dialog) => void dialog.accept());
   await pullDetail.getByRole("button", { name: "Request review" }).click();
 
-  await expect(
-    requestedReviewers.getByRole("button", { name: "Remove reviewer slightbug" })
-  ).toBeVisible();
+  await expect(requestedReviewers.getByRole("button", { name: "Remove reviewer slightbug" })).toBeVisible();
   await expect(
     requestedReviewers.getByRole("button", { name: "Remove team reviewer developer-tools" })
   ).toBeVisible();
 
   await requestedReviewers.getByRole("button", { name: "Remove reviewer slightbug" }).click();
   await requestedReviewers.getByRole("button", { name: "Remove team reviewer developer-tools" }).click();
-  await expect(
-    requestedReviewers.getByRole("button", { name: "Remove reviewer slightbug" })
-  ).toHaveCount(0);
+  await expect(requestedReviewers.getByRole("button", { name: "Remove reviewer slightbug" })).toHaveCount(0);
   await expect(
     requestedReviewers.getByRole("button", { name: "Remove team reviewer developer-tools" })
   ).toHaveCount(0);
@@ -795,10 +822,7 @@ test("navigates repository tabs from the repository route", async ({ page }) => 
     .click();
   await expect(page.getByRole("button", { name: /Agent issues/i })).toBeVisible();
 
-  await page
-    .locator(".repo-tabs")
-    .getByRole("button", { name: /^Wiki/ })
-    .click();
+  await page.locator(".repo-tabs").getByRole("button", { name: /^Wiki/ }).click();
   await expect(page.getByRole("heading", { name: "Repository wiki" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Open wiki/i })).toBeVisible();
 
@@ -812,7 +836,9 @@ test("navigates repository tabs from the repository route", async ({ page }) => 
   await expect(page.getByLabel("Dependabot alerts")).toContainText("swift-nio");
   await expect(page.getByLabel("Dependabot alerts")).toContainText("Improper input validation");
   await expect(page.getByLabel("Code scanning alerts")).toContainText("swift/path-injection");
-  await expect(page.getByLabel("Code scanning alerts")).toContainText("Sources/PackageLoading/ManifestLoader.swift:117");
+  await expect(page.getByLabel("Code scanning alerts")).toContainText(
+    "Sources/PackageLoading/ManifestLoader.swift:117"
+  );
   await expect(page.getByLabel("Secret scanning alerts")).toContainText("Mailchimp API Key");
   await expect(page.getByLabel("Secret scanning alerts")).toContainText("Secret value hidden by Control.");
   await expect(page.getByRole("button", { name: /Code scanning/i })).toBeVisible();

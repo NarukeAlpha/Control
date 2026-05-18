@@ -4,13 +4,7 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-import type {
-  FixtureTier,
-  MetricEvent,
-  RunTarget,
-  ScenarioCategory,
-  ScenarioObservation
-} from "./types";
+import type { FixtureTier, MetricEvent, RunTarget, ScenarioCategory, ScenarioObservation } from "./types";
 
 export interface BenchmarkRunInput {
   projectName: string;
@@ -41,7 +35,10 @@ export const benchmarkDbPath = join("test-results", "e2e-runs", "testruns.sqlite
 export function getBenchmarkBatchId(): string {
   return (
     process.env.PW_BENCHMARK_BATCH_ID ??
-    new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14)
+    new Date()
+      .toISOString()
+      .replace(/[-:.TZ]/g, "")
+      .slice(0, 14)
   );
 }
 
@@ -258,13 +255,16 @@ export class BenchmarkRunStore {
     const entries: Array<[string, unknown]> = [
       ["signature", observation.signature],
       ["data", observation.data],
-      ["metadata", {
-        provider: observation.provider,
-        target: observation.target,
-        fixtureTier: observation.fixtureTier,
-        fixtureId: observation.fixtureId,
-        scenarioId: observation.scenarioId
-      }]
+      [
+        "metadata",
+        {
+          provider: observation.provider,
+          target: observation.target,
+          fixtureTier: observation.fixtureTier,
+          fixtureId: observation.fixtureId,
+          scenarioId: observation.scenarioId
+        }
+      ]
     ];
 
     const insert = this.db.prepare(

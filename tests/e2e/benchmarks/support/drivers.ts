@@ -195,7 +195,10 @@ export class GitHubWebDriver implements BenchmarkDriver {
   }
 
   async waitForReadme(): Promise<void> {
-    await this.page.getByRole("link", { name: /readme/i }).first().waitFor({ state: "visible" });
+    await this.page
+      .getByRole("link", { name: /readme/i })
+      .first()
+      .waitFor({ state: "visible" });
   }
 
   async observeRepository(fixture: ProviderFixture): Promise<RepositoryObservationData> {
@@ -208,9 +211,12 @@ export class GitHubWebDriver implements BenchmarkDriver {
   }
 
   async openIssues(fixture: ProviderFixture): Promise<void> {
-    await this.page.goto(`https://github.com/${fixture.owner}/${fixture.repo}/issues?q=is%3Aissue%20state%3Aopen`, {
-      waitUntil: "domcontentloaded"
-    });
+    await this.page.goto(
+      `https://github.com/${fixture.owner}/${fixture.repo}/issues?q=is%3Aissue%20state%3Aopen`,
+      {
+        waitUntil: "domcontentloaded"
+      }
+    );
     await this.page.locator("a[href*='/issues/']").first().waitFor({
       state: "visible",
       timeout: 30_000
@@ -231,9 +237,12 @@ export class GitHubWebDriver implements BenchmarkDriver {
   }
 
   async openPullRequests(fixture: ProviderFixture): Promise<void> {
-    await this.page.goto(`https://github.com/${fixture.owner}/${fixture.repo}/pulls?q=is%3Apr%20state%3Aopen`, {
-      waitUntil: "domcontentloaded"
-    });
+    await this.page.goto(
+      `https://github.com/${fixture.owner}/${fixture.repo}/pulls?q=is%3Apr%20state%3Aopen`,
+      {
+        waitUntil: "domcontentloaded"
+      }
+    );
     await this.page.locator("a[href*='/pull/']").first().waitFor({
       state: "visible",
       timeout: 30_000
@@ -257,8 +266,11 @@ export class GitHubWebDriver implements BenchmarkDriver {
     const repoPath = await currentGitHubRepoPath(this.page, fixture);
     const href = await this.page.evaluate(({ owner, repo }) => {
       const anchors = [...document.querySelectorAll<HTMLAnchorElement>("a[href*='/blob/']")];
-      return anchors.find((anchor) => anchor.href.includes(`/${owner}/${repo}/blob/`) && /README\.md$/i.test(anchor.href))
-        ?.href ?? null;
+      return (
+        anchors.find(
+          (anchor) => anchor.href.includes(`/${owner}/${repo}/blob/`) && /README\.md$/i.test(anchor.href)
+        )?.href ?? null
+      );
     }, repoPath);
 
     if (!href) {
@@ -283,10 +295,13 @@ export class GitHubWebDriver implements BenchmarkDriver {
     await this.page.goto(`https://github.com/${fixture.owner}/${fixture.repo}/releases`, {
       waitUntil: "domcontentloaded"
     });
-    await this.page.getByRole("heading", { name: /releases/i }).first().waitFor({
-      state: "visible",
-      timeout: 30_000
-    });
+    await this.page
+      .getByRole("heading", { name: /releases/i })
+      .first()
+      .waitFor({
+        state: "visible",
+        timeout: 30_000
+      });
   }
 
   async observeReleases(fixture: ProviderFixture): Promise<ReleaseObservationData> {
@@ -304,9 +319,13 @@ export class GitHubWebDriver implements BenchmarkDriver {
       waitUntil: "domcontentloaded"
     });
     await this.page.locator("body").waitFor({ state: "visible", timeout: 30_000 });
-    await this.page.waitForFunction(() => /discussion|not found|disabled/i.test(document.body.innerText), null, {
-      timeout: 30_000
-    });
+    await this.page.waitForFunction(
+      () => /discussion|not found|disabled/i.test(document.body.innerText),
+      null,
+      {
+        timeout: 30_000
+      }
+    );
   }
 
   async observeDiscussions(fixture: ProviderFixture): Promise<DiscussionsObservationData> {
@@ -325,9 +344,13 @@ export class GitHubWebDriver implements BenchmarkDriver {
       waitUntil: "domcontentloaded"
     });
     await this.page.locator("body").waitFor({ state: "visible", timeout: 30_000 });
-    await this.page.waitForFunction(() => /projects?|not found|disabled|access/i.test(document.body.innerText), null, {
-      timeout: 30_000
-    });
+    await this.page.waitForFunction(
+      () => /projects?|not found|disabled|access/i.test(document.body.innerText),
+      null,
+      {
+        timeout: 30_000
+      }
+    );
   }
 
   async observeProjects(fixture: ProviderFixture): Promise<ProjectsObservationData> {
@@ -339,7 +362,8 @@ export class GitHubWebDriver implements BenchmarkDriver {
       nameWithOwner: fixture.nameWithOwner,
       projectCount: await projects.count(),
       firstProjectTitle: await visibleText(projects.first()),
-      unavailableVisible: (await this.page.getByText(/projects?.*(disabled|not enabled|access|not found)/i).count()) > 0
+      unavailableVisible:
+        (await this.page.getByText(/projects?.*(disabled|not enabled|access|not found)/i).count()) > 0
     };
   }
 
@@ -347,10 +371,13 @@ export class GitHubWebDriver implements BenchmarkDriver {
     await this.page.goto(`https://github.com/${fixture.owner}/${fixture.repo}/branches/all`, {
       waitUntil: "domcontentloaded"
     });
-    await this.page.getByRole("heading", { name: /branches/i }).first().waitFor({
-      state: "visible",
-      timeout: 30_000
-    });
+    await this.page
+      .getByRole("heading", { name: /branches/i })
+      .first()
+      .waitFor({
+        state: "visible",
+        timeout: 30_000
+      });
   }
 
   async observeRefs(fixture: ProviderFixture): Promise<RefObservationData> {
@@ -406,7 +433,9 @@ export class GitHubWebDriver implements BenchmarkDriver {
           .map((link) => link.textContent?.trim().replace(/\s+/g, " ") ?? "")
           .find((text) => text.length > 0) ?? null;
       const unreadCount = [...document.querySelectorAll("[aria-label], .unread")]
-        .filter((element) => /unread/i.test(element.getAttribute("aria-label") ?? element.className.toString()))
+        .filter((element) =>
+          /unread/i.test(element.getAttribute("aria-label") ?? element.className.toString())
+        )
         .filter((element) => element.getClientRects().length > 0).length;
 
       return {
@@ -433,7 +462,8 @@ export class GitHubWebDriver implements BenchmarkDriver {
     });
     await this.page.locator("body").waitFor({ state: "visible", timeout: 30_000 });
     await this.page.waitForFunction(
-      () => /settings|options|default branch|not found|sign in|access|permission/i.test(document.body.innerText),
+      () =>
+        /settings|options|default branch|not found|sign in|access|permission/i.test(document.body.innerText),
       null,
       { timeout: 30_000 }
     );
@@ -476,7 +506,10 @@ export class GitHubWebDriver implements BenchmarkDriver {
     });
     await this.page.locator("body").waitFor({ state: "visible", timeout: 30_000 });
     await this.page.waitForFunction(
-      () => /organizations|owned organizations|member organizations|sign in|sign-in|access|permission/i.test(document.body.innerText),
+      () =>
+        /organizations|owned organizations|member organizations|sign in|sign-in|access|permission/i.test(
+          document.body.innerText
+        ),
       null,
       { timeout: 30_000 }
     );
@@ -508,10 +541,16 @@ export class GitHubWebDriver implements BenchmarkDriver {
         .filter((link) => new URL(link.href).pathname.startsWith(`/orgs/${owner}/teams/`))
         .filter((link) => link.getClientRects().length > 0);
       const uniqueOrganizations = new Map(
-        organizationLinks.map((link) => [new URL(link.href).pathname, link.textContent?.trim().replace(/\s+/g, " ") ?? ""])
+        organizationLinks.map((link) => [
+          new URL(link.href).pathname,
+          link.textContent?.trim().replace(/\s+/g, " ") ?? ""
+        ])
       );
       const uniqueTeams = new Map(
-        teamLinks.map((link) => [new URL(link.href).pathname, link.textContent?.trim().replace(/\s+/g, " ") ?? ""])
+        teamLinks.map((link) => [
+          new URL(link.href).pathname,
+          link.textContent?.trim().replace(/\s+/g, " ") ?? ""
+        ])
       );
 
       return {
@@ -540,7 +579,10 @@ export class GitHubWebDriver implements BenchmarkDriver {
     });
     await this.page.locator("body").waitFor({ state: "visible", timeout: 30_000 });
     await this.page.waitForFunction(
-      () => /contributors|contribution|not found|sign in|sign-in|access|permission/i.test(document.body.innerText),
+      () =>
+        /contributors|contribution|not found|sign in|sign-in|access|permission/i.test(
+          document.body.innerText
+        ),
       null,
       { timeout: 30_000 }
     );
@@ -552,7 +594,9 @@ export class GitHubWebDriver implements BenchmarkDriver {
       const imageLogins = [...document.querySelectorAll<HTMLImageElement>("img[alt^='@']")]
         .map((image) => image.alt.replace(/^@/, "").trim())
         .filter(Boolean);
-      const hovercardLogins = [...document.querySelectorAll<HTMLAnchorElement>("a[data-hovercard-type='user']")]
+      const hovercardLogins = [
+        ...document.querySelectorAll<HTMLAnchorElement>("a[data-hovercard-type='user']")
+      ]
         .map((link) => new URL(link.href).pathname.split("/").filter(Boolean)[0] ?? "")
         .filter(Boolean);
       const uniqueLogins = [...new Set([...imageLogins, ...hovercardLogins])];
@@ -591,7 +635,11 @@ export class GitHubWebDriver implements BenchmarkDriver {
     const data = await this.page.evaluate(() => {
       const bodyText = document.body.innerText;
       const normalized = bodyText.toLowerCase();
-      const qualityLinks = [...document.querySelectorAll<HTMLAnchorElement>("a[href*='/security'], a[href*='/community'], a[href*='/pulse']")]
+      const qualityLinks = [
+        ...document.querySelectorAll<HTMLAnchorElement>(
+          "a[href*='/security'], a[href*='/community'], a[href*='/pulse']"
+        )
+      ]
         .filter((link) => link.getClientRects().length > 0)
         .map((link) => link.href);
 
@@ -620,10 +668,13 @@ export class GitHubWebDriver implements BenchmarkDriver {
     await this.page.goto(`https://github.com/${fixture.owner}/${fixture.repo}/actions`, {
       waitUntil: "domcontentloaded"
     });
-    await this.page.getByRole("heading", { name: /actions|workflows/i }).first().waitFor({
-      state: "visible",
-      timeout: 30_000
-    });
+    await this.page
+      .getByRole("heading", { name: /actions|workflows/i })
+      .first()
+      .waitFor({
+        state: "visible",
+        timeout: 30_000
+      });
   }
 
   async observeActions(fixture: ProviderFixture): Promise<ActionsObservationData> {
@@ -647,7 +698,9 @@ export class GitHubWebDriver implements BenchmarkDriver {
     return {
       nameWithOwner: fixture.nameWithOwner,
       title: await visibleText(this.page.locator("h1, h2").first()),
-      jobCount: await this.page.locator(`a[href*='/${repoPath.owner}/${repoPath.repo}/actions/runs/'][href*='/job/']`).count(),
+      jobCount: await this.page
+        .locator(`a[href*='/${repoPath.owner}/${repoPath.repo}/actions/runs/'][href*='/job/']`)
+        .count(),
       logsVisible: (await this.page.getByText(/logs/i).count()) > 0,
       artifactsVisible: (await this.page.getByText(/artifacts/i).count()) > 0
     };
@@ -729,17 +782,26 @@ export class ControlElectronDriver implements BenchmarkDriver {
     const owners = [fixture.owner, ...(fixture.aliases ?? []).map((alias) => alias.split("/")[0])];
     await this.page
       .getByRole("heading", {
-        name: new RegExp(`(?:${owners.map(escapeRegExp).join("|")})\\s*/\\s*${escapeRegExp(fixture.repo)}`, "i")
+        name: new RegExp(
+          `(?:${owners.map(escapeRegExp).join("|")})\\s*/\\s*${escapeRegExp(fixture.repo)}`,
+          "i"
+        )
       })
       .waitFor({ state: "visible", timeout: 45_000 });
   }
 
   async waitForFileList(): Promise<void> {
-    await this.page.locator(".virtual-file-list .file-row").first().waitFor({ state: "visible", timeout: 45_000 });
+    await this.page
+      .locator(".virtual-file-list .file-row")
+      .first()
+      .waitFor({ state: "visible", timeout: 45_000 });
   }
 
   async waitForReadme(): Promise<void> {
-    await this.page.locator(".readme-panel").getByText("README.md").waitFor({ state: "visible", timeout: 45_000 });
+    await this.page
+      .locator(".readme-panel")
+      .getByText("README.md")
+      .waitFor({ state: "visible", timeout: 45_000 });
   }
 
   async observeRepository(fixture: ProviderFixture): Promise<RepositoryObservationData> {
@@ -752,7 +814,10 @@ export class ControlElectronDriver implements BenchmarkDriver {
   }
 
   async openIssues(): Promise<void> {
-    await this.page.locator(".repo-tabs").getByRole("button", { name: /^Issues/ }).click();
+    await this.page
+      .locator(".repo-tabs")
+      .getByRole("button", { name: /^Issues/ })
+      .click();
     await this.page.locator(".thread-list .issue-row").first().waitFor({ state: "visible", timeout: 45_000 });
   }
 
@@ -772,7 +837,10 @@ export class ControlElectronDriver implements BenchmarkDriver {
   }
 
   async openPullRequests(): Promise<void> {
-    await this.page.locator(".repo-tabs").getByRole("button", { name: /^Pull requests/ }).click();
+    await this.page
+      .locator(".repo-tabs")
+      .getByRole("button", { name: /^Pull requests/ })
+      .click();
     await this.page.locator(".thread-list .issue-row").first().waitFor({ state: "visible", timeout: 45_000 });
   }
 
@@ -795,7 +863,9 @@ export class ControlElectronDriver implements BenchmarkDriver {
     await this.page.locator(".repo-tabs").getByRole("button", { name: /^Code/ }).click();
     await this.waitForFileList();
     await clickVirtualFile(this.page, /README\.md/i);
-    await this.page.getByRole("heading", { name: "README.md" }).waitFor({ state: "visible", timeout: 45_000 });
+    await this.page
+      .getByRole("heading", { name: "README.md" })
+      .waitFor({ state: "visible", timeout: 45_000 });
     await this.page.locator(".code-viewer").waitFor({ state: "visible", timeout: 45_000 });
   }
 
@@ -810,7 +880,10 @@ export class ControlElectronDriver implements BenchmarkDriver {
   }
 
   async openReleases(): Promise<void> {
-    await this.page.locator(".repo-tabs").getByRole("button", { name: /^Releases/ }).click();
+    await this.page
+      .locator(".repo-tabs")
+      .getByRole("button", { name: /^Releases/ })
+      .click();
     await this.page
       .locator(".thread-list .issue-row, .github-split .empty-state")
       .first()
@@ -827,7 +900,10 @@ export class ControlElectronDriver implements BenchmarkDriver {
   }
 
   async openDiscussions(): Promise<void> {
-    await this.page.locator(".repo-tabs").getByRole("button", { name: /^Discussions/ }).click();
+    await this.page
+      .locator(".repo-tabs")
+      .getByRole("button", { name: /^Discussions/ })
+      .click();
     await this.page
       .locator(".thread-list .issue-row, .github-split .empty-state, .github-split .error-state")
       .first()
@@ -845,7 +921,10 @@ export class ControlElectronDriver implements BenchmarkDriver {
   }
 
   async openProjects(): Promise<void> {
-    await this.page.locator(".repo-tabs").getByRole("button", { name: /^Projects/ }).click();
+    await this.page
+      .locator(".repo-tabs")
+      .getByRole("button", { name: /^Projects/ })
+      .click();
     await this.page
       .locator(".thread-list .issue-row, .github-split .empty-state, .github-split .error-state")
       .first()
@@ -920,7 +999,11 @@ export class ControlElectronDriver implements BenchmarkDriver {
       nameWithOwner: fixture.nameWithOwner,
       heading: await visibleText(panel.getByRole("heading", { name: "Repository settings" })),
       defaultBranchVisible: (await panel.getByText(/default branch/i).count()) > 0,
-      featureCount: await panel.locator(".settings-list-grid section").filter({ hasText: "Features" }).locator("div").count(),
+      featureCount: await panel
+        .locator(".settings-list-grid section")
+        .filter({ hasText: "Features" })
+        .locator("div")
+        .count(),
       mergePolicyCount: await panel
         .locator(".settings-list-grid section")
         .filter({ hasText: "Merge policy" })
@@ -933,7 +1016,9 @@ export class ControlElectronDriver implements BenchmarkDriver {
 
   async openOrganizations(): Promise<void> {
     await this.page.getByRole("button", { name: /^Organizations/ }).click();
-    await this.page.getByRole("heading", { name: "Organizations" }).waitFor({ state: "visible", timeout: 45_000 });
+    await this.page
+      .getByRole("heading", { name: "Organizations" })
+      .waitFor({ state: "visible", timeout: 45_000 });
     await this.page
       .locator(".organization-row, .collection-view .empty-state, .collection-view .error-state")
       .first()
@@ -956,13 +1041,17 @@ export class ControlElectronDriver implements BenchmarkDriver {
       firstOrganizationName: await visibleText(organizations.first().locator("strong").first()),
       teamCount: await teams.count(),
       firstTeamName: await visibleText(teams.first().locator("strong").first()),
-      membershipSummaryVisible: (await this.page.getByText(/repositories.*teams.*(?:admin|member|visible)/i).count()) > 0,
+      membershipSummaryVisible:
+        (await this.page.getByText(/repositories.*teams.*(?:admin|member|visible)/i).count()) > 0,
       unavailableVisible: (await this.page.locator(".collection-view .error-state").count()) > 0
     };
   }
 
   async openContributors(): Promise<void> {
-    await this.page.locator(".contributors img, .right-rail").first().waitFor({ state: "visible", timeout: 45_000 });
+    await this.page
+      .locator(".contributors img, .right-rail")
+      .first()
+      .waitFor({ state: "visible", timeout: 45_000 });
   }
 
   async observeContributors(fixture: ProviderFixture): Promise<ContributorsObservationData> {
@@ -977,7 +1066,10 @@ export class ControlElectronDriver implements BenchmarkDriver {
   }
 
   async openSecurityQuality(): Promise<void> {
-    await this.page.locator(".repo-tabs").getByRole("button", { name: /^Security and Quality/ }).click();
+    await this.page
+      .locator(".repo-tabs")
+      .getByRole("button", { name: /^Security and Quality/ })
+      .click();
     await this.page
       .locator(".security-quality-panel, .github-split .empty-state, .github-split .error-state")
       .first()
@@ -988,17 +1080,22 @@ export class ControlElectronDriver implements BenchmarkDriver {
     const panel = this.page.locator(".security-quality-panel");
     return {
       nameWithOwner: fixture.nameWithOwner,
-      branchProtectionVisible: (await panel.getByRole("heading", { name: "Default branch protection" }).count()) > 0,
+      branchProtectionVisible:
+        (await panel.getByRole("heading", { name: "Default branch protection" }).count()) > 0,
       dependabotVisible: (await panel.getByRole("heading", { name: "Dependabot alerts" }).count()) > 0,
       codeScanningVisible: (await panel.getByRole("heading", { name: "Code scanning alerts" }).count()) > 0,
-      secretScanningVisible: (await panel.getByRole("heading", { name: "Secret scanning alerts" }).count()) > 0,
+      secretScanningVisible:
+        (await panel.getByRole("heading", { name: "Secret scanning alerts" }).count()) > 0,
       qualityLinkCount: await panel.locator(".tile-grid .project-tile").count(),
       unavailableVisible: (await panel.locator(".error-state").count()) > 0
     };
   }
 
   async openActions(): Promise<void> {
-    await this.page.locator(".repo-tabs").getByRole("button", { name: /^Actions/ }).click();
+    await this.page
+      .locator(".repo-tabs")
+      .getByRole("button", { name: /^Actions/ })
+      .click();
     await this.page
       .locator(".thread-list .issue-row, .github-split .empty-state")
       .first()
@@ -1046,7 +1143,14 @@ async function visibleText(locator: Locator): Promise<string | null> {
   if ((await locator.count()) === 0) {
     return null;
   }
-  return (await locator.first().innerText().catch(() => null))?.trim() ?? null;
+  return (
+    (
+      await locator
+        .first()
+        .innerText()
+        .catch(() => null)
+    )?.trim() ?? null
+  );
 }
 
 async function optionLabel(locator: Locator): Promise<string | null> {
@@ -1065,9 +1169,7 @@ async function countRepoLinks(page: Page, fixture: ProviderFixture): Promise<num
     const prefix = `/${owner}/${repo}/`;
     const links = [...document.querySelectorAll<HTMLAnchorElement>("a[href*='/blob/'], a[href*='/tree/']")];
     const unique = new Set(
-      links
-        .map((link) => new URL(link.href).pathname)
-        .filter((pathname) => pathname.startsWith(prefix))
+      links.map((link) => new URL(link.href).pathname).filter((pathname) => pathname.startsWith(prefix))
     );
     return unique.size;
   }, repoPath);
@@ -1136,7 +1238,10 @@ async function firstGitHubActionRunLink(
   return item;
 }
 
-async function currentGitHubRepoPath(page: Page, fixture: ProviderFixture): Promise<{ owner: string; repo: string }> {
+async function currentGitHubRepoPath(
+  page: Page,
+  fixture: ProviderFixture
+): Promise<{ owner: string; repo: string }> {
   const parsed = new URL(page.url());
   const [, owner, repo] = parsed.pathname.split("/");
   if (owner && repo) {
@@ -1189,7 +1294,8 @@ async function clickVirtualFile(page: Page, name: RegExp): Promise<void> {
     }
 
     await list.evaluate((element, attemptIndex) => {
-      element.scrollTop = attemptIndex === 0 ? 0 : element.scrollTop + Math.max(element.clientHeight * 0.75, 240);
+      element.scrollTop =
+        attemptIndex === 0 ? 0 : element.scrollTop + Math.max(element.clientHeight * 0.75, 240);
     }, attempt);
     await page.waitForTimeout(100);
   }
@@ -1208,6 +1314,11 @@ function compactEnv(input: NodeJS.ProcessEnv): Record<string, string> {
 }
 
 function readGhAuthToken(): string | undefined {
+  const envToken = process.env.CONTROL_GITHUB_TOKEN?.trim();
+  if (envToken) {
+    return envToken;
+  }
+
   try {
     const token = execFileSync("gh", ["auth", "token", "--hostname", "github.com"], {
       encoding: "utf8",

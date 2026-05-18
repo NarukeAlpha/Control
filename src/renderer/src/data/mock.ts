@@ -67,7 +67,13 @@ import type {
   WorkflowRunSummary
 } from "@shared/github";
 import type { ControlApi } from "@shared/ipc";
-import type { LocalRecentItem, LocalRecentListInput, LocalRecentRecordInput } from "@shared/local";
+import type {
+  LocalRecentItem,
+  LocalRecentListInput,
+  LocalRecentRecordInput,
+  RepositoryPinInput,
+  RepositoryPinRecord
+} from "@shared/local";
 
 const avatar = "https://avatars.githubusercontent.com/u/10639145?v=4";
 
@@ -103,6 +109,7 @@ function repositoryCounts({
 }
 
 const mockPinnedRepositoriesKey = "control:mock:pinned-repositories";
+const mockRepositoryPinsKey = "control:mock:repository-pins";
 const mockRecentItemsKey = "control:mock:recent-items";
 const mockNotificationsKey = "control:mock:notifications";
 const mockIssuesKey = "control:mock:issues";
@@ -176,6 +183,7 @@ function pinMockRepository(nameWithOwner: string): string[] {
     ? repositories
     : [nameWithOwner, ...repositories];
   writeMockArray(mockPinnedRepositoriesKey, nextRepositories);
+  pinMockAreaRepository(defaultMockGitHubRepositoryPin(nameWithOwner));
   return nextRepositories;
 }
 
@@ -183,7 +191,54 @@ function unpinMockRepository(nameWithOwner: string): string[] {
   const normalized = nameWithOwner.toLowerCase();
   const nextRepositories = listMockPinnedRepositories().filter((item) => item.toLowerCase() !== normalized);
   writeMockArray(mockPinnedRepositoriesKey, nextRepositories);
+  unpinMockAreaRepository(defaultMockGitHubRepositoryPin(nameWithOwner));
   return nextRepositories;
+}
+
+function areaRepositoryPinKey(input: {
+  areaId?: string | null;
+  repositoryId?: string | null;
+  workspaceId?: string | null;
+}): string {
+  return `${input.areaId ?? ""}:${input.repositoryId ?? ""}:${input.workspaceId ?? ""}`;
+}
+
+function defaultMockGitHubRepositoryPin(nameWithOwner: string): RepositoryPinInput {
+  return {
+    areaId: "github:default",
+    repositoryId: `github:default:${nameWithOwner.toLowerCase()}`,
+    workspaceId: null,
+    nameWithOwner
+  };
+}
+
+function listMockRepositoryPins(): RepositoryPinRecord[] {
+  return readMockArray<RepositoryPinRecord>(mockRepositoryPinsKey);
+}
+
+function pinMockAreaRepository(input: RepositoryPinInput): RepositoryPinRecord[] {
+  if (!input.areaId || !input.repositoryId) {
+    return listMockRepositoryPins();
+  }
+
+  const record: RepositoryPinRecord = {
+    areaId: input.areaId,
+    repositoryId: input.repositoryId,
+    workspaceId: input.workspaceId ?? null,
+    nameWithOwner: input.nameWithOwner ?? null,
+    createdAt: new Date().toISOString()
+  };
+  const key = areaRepositoryPinKey(record);
+  const nextPins = [record, ...listMockRepositoryPins().filter((pin) => areaRepositoryPinKey(pin) !== key)];
+  writeMockArray(mockRepositoryPinsKey, nextPins);
+  return nextPins;
+}
+
+function unpinMockAreaRepository(input: RepositoryPinInput): RepositoryPinRecord[] {
+  const key = areaRepositoryPinKey(input);
+  const nextPins = listMockRepositoryPins().filter((pin) => areaRepositoryPinKey(pin) !== key);
+  writeMockArray(mockRepositoryPinsKey, nextPins);
+  return nextPins;
 }
 
 function listMockRecentItems(input?: LocalRecentListInput): LocalRecentItem[] {
@@ -196,11 +251,14 @@ function listMockRecentItems(input?: LocalRecentListInput): LocalRecentItem[] {
 function recordMockRecentItem(input: LocalRecentRecordInput): LocalRecentItem[] {
   const item: LocalRecentItem = {
     kind: input.kind,
-    provider: "github",
+    provider: input.provider ?? "github",
     itemKey: input.itemKey,
     title: input.title,
     subtitle: input.subtitle ?? null,
     repositoryNameWithOwner: input.repositoryNameWithOwner ?? null,
+    areaId: input.areaId ?? null,
+    repositoryId: input.repositoryId ?? null,
+    workspaceId: input.workspaceId ?? null,
     url: input.url ?? null,
     metadata: input.metadata ?? {},
     updatedAt: new Date().toISOString()
@@ -3276,12 +3334,188 @@ export const mockControlApi: ControlApi = {
   }),
   openExternal: async () => undefined,
   listPinnedRepositories: async () => listMockPinnedRepositories(),
-  pinRepository: async (input) => pinMockRepository(input.nameWithOwner),
-  unpinRepository: async (input) => unpinMockRepository(input.nameWithOwner),
+  pinRepository: async (input) => pinMockRepository(input.nameWithOwner ?? ""),
+  unpinRepository: async (input) => unpinMockRepository(input.nameWithOwner ?? ""),
+  listRepositoryPins: async () => listMockRepositoryPins(),
+  pinAreaRepository: async (input) => pinMockAreaRepository(input),
+  unpinAreaRepository: async (input) => unpinMockAreaRepository(input),
   listRecentItems: async (input) => listMockRecentItems(input),
   recordRecentItem: async (input) => recordMockRecentItem(input),
   onGitHubRepositoriesUpdated: () => () => undefined,
   onGitHubAuthUpdated: () => () => undefined,
+  areas: {
+    listAreas: async () => [],
+    getArea: async () => null,
+    selectArea: async () => [],
+    createLocalArea: async (input) => ({
+      id: "local:mock",
+      kind: "local",
+      label: input.label ?? "Mock local area",
+      subtitle: input.rootPath,
+      rootPath: input.rootPath,
+      accountLogin: null,
+      gateway: null,
+      health: { status: "ready", message: null, checkedAt: new Date().toISOString() },
+      repositoryCount: 0,
+      selected: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }),
+    createSshArea: async (input) => ({
+      id: "ssh:mock",
+      kind: "ssh",
+      label: input.label ?? input.host,
+      subtitle: `${input.host}:${input.rootPath}`,
+      rootPath: input.rootPath,
+      accountLogin: null,
+      gateway: {
+        status: "ready",
+        version: "0.1.0",
+        apiUrl: "http://127.0.0.1:35525",
+        adminUrl: "http://127.0.0.1:35526",
+        serviceName: "control-gateway-mock",
+        lastStartedAt: new Date().toISOString(),
+        lastSeenAt: new Date().toISOString(),
+        message: null
+      },
+      health: { status: "ready", message: null, checkedAt: new Date().toISOString() },
+      repositoryCount: 0,
+      selected: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }),
+    updateArea: async (input) => ({
+      id: input.areaId,
+      kind: input.host ? "ssh" : input.rootPath ? "local" : "github",
+      label: input.label ?? input.host ?? "Mock Area",
+      subtitle: input.host && input.rootPath ? `${input.host}:${input.rootPath}` : (input.rootPath ?? null),
+      rootPath: input.rootPath ?? null,
+      accountLogin: null,
+      gateway: null,
+      health: { status: "ready", message: null, checkedAt: new Date().toISOString() },
+      repositoryCount: 0,
+      selected: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }),
+    removeArea: async () => [],
+    refreshArea: async () => null,
+    searchAreas: async () => ({ areas: [], repositories: [], workspaces: [] }),
+    listRepositories: async () => [],
+    getRepository: async () => null,
+    listContents: async () => [],
+    getFileContent: async (input) => ({
+      path: input.path,
+      kind: "unavailable",
+      text: null,
+      encoding: null,
+      size: null,
+      message: "Mock local file content is unavailable."
+    }),
+    listBranches: async () => [],
+    listRemotes: async () => [],
+    getStatus: async () => ({
+      clean: null,
+      dirtyCount: 0,
+      untrackedCount: 0,
+      conflictedCount: 0,
+      ahead: null,
+      behind: null,
+      entries: []
+    }),
+    listActivity: async () => [],
+    listWorkspaces: async () => [],
+    getWorkspace: async () => null,
+    getGitHubRepository: async () => ({
+      detail: null,
+      availability: { status: "not_loaded", message: "Mock local repository is not connected to GitHub." }
+    }),
+    listGitHubIssues: async () => ({
+      items: [],
+      availability: { status: "not_loaded", message: "Mock local repository is not connected to GitHub." }
+    }),
+    listGitHubPullRequests: async () => ({
+      items: [],
+      availability: { status: "not_loaded", message: "Mock local repository is not connected to GitHub." }
+    }),
+    listGitHubActions: async () => ({
+      items: [],
+      availability: { status: "not_loaded", message: "Mock local repository is not connected to GitHub." }
+    }),
+    listGitHubReleases: async () => ({
+      items: [],
+      availability: { status: "not_loaded", message: "Mock local repository is not connected to GitHub." }
+    }),
+    listGitHubContributors: async () => ({
+      items: [],
+      availability: { status: "not_loaded", message: "Mock local repository is not connected to GitHub." }
+    }),
+    getSyncStatus: async (input) => ({
+      areaId: input.areaId,
+      repositoryId: input.repositoryId,
+      provider: "git",
+      remotes: [],
+      defaultRemote: null,
+      currentBranch: null,
+      currentBookmark: null,
+      hasUncommittedChanges: null,
+      capabilities: {
+        canFetch: false,
+        canPush: false,
+        canPull: false,
+        canCreateBranch: false,
+        canCreateBookmark: false,
+        canCommit: false,
+        canUndo: false
+      },
+      updatedAt: null
+    }),
+    prepareGatewayOperation: async (input) => ({
+      id: "operation:mock",
+      areaId: input.areaId,
+      repositoryId: input.repositoryId,
+      kind: input.kind,
+      status: "prepared",
+      title: input.kind,
+      summary: "Mock gateway operation.",
+      risks: [],
+      affectedRefs: [],
+      affectedPaths: [],
+      requiresGitHubToken: false,
+      preparedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 300_000).toISOString()
+    }),
+    runGatewayOperation: async (input) => ({
+      id: input.operationId,
+      areaId: input.areaId,
+      repositoryId: "mock",
+      kind: "git.fetch",
+      status: input.confirmed ? "succeeded" : "cancelled",
+      message: "Mock gateway operation finished.",
+      stdout: null,
+      stderr: null,
+      recoveryOperationId: null,
+      completedAt: new Date().toISOString()
+    }),
+    stopGateway: async (input) => ({
+      id: input.areaId,
+      kind: "local",
+      label: "Mock local area",
+      subtitle: null,
+      rootPath: null,
+      accountLogin: null,
+      gateway: null,
+      health: { status: "offline", message: "Gateway stopped.", checkedAt: new Date().toISOString() },
+      repositoryCount: 0,
+      selected: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }),
+    openLocalFolderPicker: async () => null
+  },
+  onAreasUpdated: () => () => undefined,
+  onAreaRepositoryUpdated: () => () => undefined,
+  onAreaWorkspaceUpdated: () => () => undefined,
   github: {
     getViewer: async () => mockViewer,
     getAccountProfile: async () => mockAccountProfile,

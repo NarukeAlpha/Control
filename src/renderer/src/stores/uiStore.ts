@@ -15,6 +15,21 @@ export type RepositoryTab =
   | "securityQuality"
   | "settings";
 
+export type LocalRepositoryTab =
+  | "overview"
+  | "code"
+  | "branches"
+  | "bookmarks"
+  | "remotes"
+  | "issues"
+  | "pulls"
+  | "actions"
+  | "sync"
+  | "status"
+  | "activity"
+  | "workspaces"
+  | "operations";
+
 export type AppRoute =
   | { kind: "home" }
   | { kind: "mailbox" }
@@ -53,18 +68,36 @@ export type AppRoute =
       entryType: "file" | "dir";
       ref: string | null;
       line?: number | null;
+    }
+  | {
+      kind: "localRepository";
+      areaId: string;
+      repositoryId: string;
+      workspaceId?: string | null;
+      tab: LocalRepositoryTab;
+      path?: string | null;
     };
 
 interface UiState {
   route: AppRoute;
+  selectedAreaId: string | null;
   selectedRepository: string | null;
+  selectedLocalRepository: { areaId: string; repositoryId: string; workspaceId: string | null } | null;
   settingsOpen: boolean;
   navigate(route: AppRoute): void;
+  selectArea(areaId: string): void;
   goHome(): void;
   goToMailbox(): void;
   goToRepositories(): void;
   goToOrganizations(): void;
   goToRepository(nameWithOwner: string, tab?: RepositoryTab): void;
+  goToLocalRepository(
+    areaId: string,
+    repositoryId: string,
+    tab?: LocalRepositoryTab,
+    workspaceId?: string | null,
+    path?: string | null
+  ): void;
   openCodeBrowser(
     nameWithOwner: string,
     path: string,
@@ -79,15 +112,34 @@ interface UiState {
 
 export const useUiStore = create<UiState>((set) => ({
   route: { kind: "home" },
+  selectedAreaId: null,
   selectedRepository: null,
+  selectedLocalRepository: null,
   settingsOpen: false,
   navigate: (route) =>
     set((state) => ({
       route,
+      selectedAreaId: "areaId" in route ? route.areaId : state.selectedAreaId,
       selectedRepository:
         route.kind === "repository" || route.kind === "codeBrowser"
           ? route.nameWithOwner
-          : state.selectedRepository
+          : state.selectedRepository,
+      selectedLocalRepository:
+        route.kind === "localRepository"
+          ? {
+              areaId: route.areaId,
+              repositoryId: route.repositoryId,
+              workspaceId: route.workspaceId ?? null
+            }
+          : state.selectedLocalRepository
+    })),
+  selectArea: (selectedAreaId) =>
+    set((state) => ({
+      selectedAreaId,
+      route:
+        state.route.kind === "localRepository" && state.route.areaId !== selectedAreaId
+          ? { kind: "home" }
+          : state.route
     })),
   goHome: () => set({ route: { kind: "home" } }),
   goToMailbox: () => set({ route: { kind: "mailbox" } }),
@@ -95,6 +147,12 @@ export const useUiStore = create<UiState>((set) => ({
   goToOrganizations: () => set({ route: { kind: "organizations" } }),
   goToRepository: (nameWithOwner, tab = "code") =>
     set({ selectedRepository: nameWithOwner, route: { kind: "repository", nameWithOwner, tab } }),
+  goToLocalRepository: (areaId, repositoryId, tab = "overview", workspaceId = null, path = null) =>
+    set({
+      selectedAreaId: areaId,
+      selectedLocalRepository: { areaId, repositoryId, workspaceId },
+      route: { kind: "localRepository", areaId, repositoryId, workspaceId, tab, path }
+    }),
   openCodeBrowser: (nameWithOwner, path, entryType, ref = null, line = null) =>
     set({
       selectedRepository: nameWithOwner,

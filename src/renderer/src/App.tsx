@@ -24,6 +24,7 @@ import {
   Lock,
   MessageSquare,
   MoreHorizontal,
+  Pencil,
   Pin,
   PlayCircle,
   Plus,
@@ -34,6 +35,7 @@ import {
   Star,
   SquareKanban,
   Tag,
+  Trash2,
   Users,
   Workflow,
   X
@@ -136,10 +138,28 @@ import type {
   WikiPageContent,
   WikiPageSummary
 } from "@shared/github";
-import type { LocalRecentItem, LocalRecentRecordInput, LocalRecentSecurityItemKind } from "@shared/local";
+import type {
+  AreaFileContent,
+  AreaFileEntry,
+  AreaGatewayOperationInput,
+  AreaGatewayOperationResult,
+  AreaRepositoryDetail,
+  AreaRepositorySummary,
+  AreaSyncStatus,
+  AreaSummary,
+  CreateSshAreaInput,
+  UpdateAreaInput
+} from "@shared/areas";
+import type {
+  LocalRecentItem,
+  LocalRecentRecordInput,
+  LocalRecentSecurityItemKind,
+  RepositoryPinInput,
+  RepositoryPinRecord
+} from "@shared/local";
 import { getControlApi } from "./api/controlApi";
 import { repositoryScopedQueryKeys } from "./queries/repositoryQueryKeys";
-import { useUiStore, type AppRoute, type RepositoryTab } from "./stores/uiStore";
+import { useUiStore, type AppRoute, type LocalRepositoryTab, type RepositoryTab } from "./stores/uiStore";
 import { firstMarkdownHeading, formatCompactNumber, formatRelativeDate } from "./utils/format";
 
 const navigation = [
@@ -165,6 +185,54 @@ const repoTabs: Array<{ key: RepositoryTab; label: string; icon: typeof Code2 }>
 ];
 
 const repositoryWarmPrefetchTabs = new Set<RepositoryTab>(["code", "issues", "pulls", "actions"]);
+
+const localRepoTabs: Array<{ key: LocalRepositoryTab; label: string; icon: typeof Code2 }> = [
+  { key: "overview", label: "Overview", icon: Gauge },
+  { key: "code", label: "Code", icon: Code2 },
+  { key: "branches", label: "Branches", icon: GitBranch },
+  { key: "bookmarks", label: "Bookmarks", icon: Pin },
+  { key: "remotes", label: "Remotes", icon: GitFork },
+  { key: "issues", label: "Issues", icon: CircleDot },
+  { key: "pulls", label: "Pull requests", icon: GitPullRequest },
+  { key: "actions", label: "Actions", icon: PlayCircle },
+  { key: "sync", label: "Sync", icon: RefreshCw },
+  { key: "status", label: "Status", icon: CheckCircle2 },
+  { key: "activity", label: "Activity", icon: Workflow },
+  { key: "workspaces", label: "Workspaces", icon: Folder },
+  { key: "operations", label: "Operations", icon: MoreHorizontal }
+];
+
+function localRepositoryTabDisabledReason(
+  detail: AreaRepositoryDetail,
+  tab: LocalRepositoryTab
+): string | null {
+  if (
+    detail.kind === "jj" &&
+    detail.health.status === "error" &&
+    (tab === "bookmarks" || tab === "operations")
+  ) {
+    return detail.health.message ?? "JJ is unavailable.";
+  }
+  return null;
+}
+
+function areaRepositoryPinKey(
+  areaId: string | null | undefined,
+  repositoryId: string | null | undefined,
+  workspaceId: string | null | undefined
+): string {
+  return `${areaId ?? ""}:${repositoryId ?? ""}:${workspaceId ?? ""}`;
+}
+
+const defaultGitHubAreaId = "github:default";
+
+function isGatewayAreaKind(kind: AreaSummary["kind"] | null | undefined): boolean {
+  return kind === "local" || kind === "ssh";
+}
+
+function defaultGitHubAreaRepositoryId(nameWithOwner: string): string {
+  return `github:default:${nameWithOwner.toLowerCase()}`;
+}
 
 type MarkdownUrlHandler = (url: string) => void;
 
@@ -3276,10 +3344,14 @@ function notificationRecentInput(
 function recentItemRecordInput(item: LocalRecentItem): LocalRecentRecordInput {
   return {
     kind: item.kind,
+    provider: item.provider,
     itemKey: item.itemKey,
     title: item.title,
     subtitle: item.subtitle,
     repositoryNameWithOwner: item.repositoryNameWithOwner,
+    areaId: item.areaId,
+    repositoryId: item.repositoryId,
+    workspaceId: item.workspaceId,
     url: item.url,
     metadata: item.metadata
   };
@@ -3944,6 +4016,8 @@ function routeTitle(route: AppRoute): string {
       return route.nameWithOwner;
     case "codeBrowser":
       return `${route.nameWithOwner}/${route.path}`;
+    case "localRepository":
+      return "Local repository";
     case "home":
     default:
       return "Home";
@@ -3976,9 +4050,12 @@ export function App(): JSX.Element {
   const queryClient = useQueryClient();
   const queryFetchStatuses = useRef(new Map<string, string>());
   const route = useUiStore((state) => state.route);
+  const selectedAreaId = useUiStore((state) => state.selectedAreaId);
   const selectedRepository = useUiStore((state) => state.selectedRepository);
   const navigate = useUiStore((state) => state.navigate);
+  const selectAreaInStore = useUiStore((state) => state.selectArea);
   const goToRepository = useUiStore((state) => state.goToRepository);
+  const goToLocalRepository = useUiStore((state) => state.goToLocalRepository);
   const openCodeBrowser = useUiStore((state) => state.openCodeBrowser);
   const goHome = useUiStore((state) => state.goHome);
   const goToRepositories = useUiStore((state) => state.goToRepositories);
@@ -3988,6 +4065,9 @@ export function App(): JSX.Element {
   const setSettingsOpen = useUiStore((state) => state.setSettingsOpen);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [addRepositoryOpen, setAddRepositoryOpen] = useState(false);
+  const [sshAreaOpen, setSshAreaOpen] = useState(false);
+  const [editingArea, setEditingArea] = useState<AreaSummary | null>(null);
+  const [deletingArea, setDeletingArea] = useState<AreaSummary | null>(null);
   const [repositoryRefs, setRepositoryRefs] = useState<Record<string, string | null>>(() =>
     readRepositoryRefs()
   );
@@ -4050,6 +4130,25 @@ export function App(): JSX.Element {
   const githubAuthenticated = appState.data?.github.authenticated ?? false;
   const githubReady = appState.isSuccess && githubAuthenticated;
   const authenticatedViewerLogin = appState.data?.github.user ?? appState.data?.viewer?.login ?? null;
+  const areas = useQuery({
+    queryKey: ["areas"],
+    queryFn: () => api.areas.listAreas(),
+    enabled: appState.isSuccess,
+    staleTime: 30_000
+  });
+  const areaItems = areas.data ?? [];
+  const selectedArea =
+    areaItems.find((area) => area.id === selectedAreaId) ??
+    areaItems.find((area) => area.selected) ??
+    areaItems.find((area) => area.kind === "github") ??
+    null;
+  const selectedAreaRepositories = useQuery({
+    queryKey: ["area-repositories", selectedArea?.id ?? "none"],
+    queryFn: () => api.areas.listRepositories({ areaId: selectedArea?.id ?? "" }),
+    enabled: Boolean(selectedArea?.id && isGatewayAreaKind(selectedArea.kind)),
+    placeholderData: (previousData) => previousData
+  });
+  const localRepositoryItems = selectedAreaRepositories.data ?? [];
 
   useEffect(() => {
     if (!controlRendererLoadingLogsEnabled) {
@@ -4087,6 +4186,30 @@ export function App(): JSX.Element {
   }, [queryClient]);
 
   useEffect(() => {
+    if (!selectedAreaId && selectedArea?.id) {
+      selectAreaInStore(selectedArea.id);
+    }
+  }, [selectAreaInStore, selectedArea?.id, selectedAreaId]);
+
+  useEffect(() => {
+    const unsubscribeAreas = api.onAreasUpdated(() => {
+      void queryClient.invalidateQueries({ queryKey: ["areas"] });
+    });
+    const unsubscribeRepositories = api.onAreaRepositoryUpdated((event) => {
+      void queryClient.invalidateQueries({ queryKey: ["area-repositories", event.areaId] });
+      void queryClient.invalidateQueries({ queryKey: ["area-repository", event.areaId, event.repositoryId] });
+    });
+    const unsubscribeWorkspaces = api.onAreaWorkspaceUpdated((event) => {
+      void queryClient.invalidateQueries({ queryKey: ["area-workspaces", event.areaId, event.repositoryId] });
+    });
+    return () => {
+      unsubscribeAreas();
+      unsubscribeRepositories();
+      unsubscribeWorkspaces();
+    };
+  }, [api, queryClient]);
+
+  useEffect(() => {
     writeRepositoryRefs(repositoryRefs);
   }, [repositoryRefs]);
 
@@ -4103,15 +4226,31 @@ export function App(): JSX.Element {
     repositories.data?.availability ?? null
   );
 
-  const pinnedRepositories = useQuery({
-    queryKey: ["pinned-repositories"],
-    queryFn: () => api.listPinnedRepositories(),
+  const repositoryPins = useQuery({
+    queryKey: ["repository-pins"],
+    queryFn: () => api.listRepositoryPins(),
     staleTime: Infinity
   });
-  const pinnedRepositoryNames = useMemo(() => pinnedRepositories.data ?? [], [pinnedRepositories.data]);
+  const repositoryPinRecords = useMemo(() => repositoryPins.data ?? [], [repositoryPins.data]);
+  const pinnedRepositoryNames = useMemo(
+    () =>
+      repositoryPinRecords
+        .filter((pin) => pin.areaId === defaultGitHubAreaId && pin.nameWithOwner)
+        .map((pin) => pin.nameWithOwner as string),
+    [repositoryPinRecords]
+  );
   const pinnedRepositoryNameSet = useMemo(
     () => new Set(pinnedRepositoryNames.map((name) => name.toLowerCase())),
     [pinnedRepositoryNames]
+  );
+  const areaRepositoryPinSet = useMemo(
+    () =>
+      new Set(
+        repositoryPinRecords.map((pin) =>
+          areaRepositoryPinKey(pin.areaId, pin.repositoryId, pin.workspaceId ?? null)
+        )
+      ),
+    [repositoryPinRecords]
   );
   const repositoriesByName = useMemo(
     () => new Map(repositoryItems.map((repository) => [repository.nameWithOwner.toLowerCase(), repository])),
@@ -4431,10 +4570,13 @@ export function App(): JSX.Element {
 
   const isRepositoryRoute = route.kind === "repository";
   const isCodeBrowserRoute = route.kind === "codeBrowser";
+  const isLocalRepositoryRoute = route.kind === "localRepository";
   const isRepositoryContext = isRepositoryRoute || isCodeBrowserRoute;
   const activeRepositoryTab = isRepositoryRoute ? route.tab : "code";
+  const activeLocalRepositoryTab = isLocalRepositoryRoute ? route.tab : "overview";
   const shouldLoadRepositoryTab = (tab: RepositoryTab): boolean =>
     activeRepositoryTab === tab || (isRepositoryRoute && repositoryWarmPrefetchTabs.has(tab));
+  const activeLocalRepositoryPath = isLocalRepositoryRoute ? (route.path ?? ".") : ".";
   const effectiveRepository = isRepositoryContext ? route.nameWithOwner : (selectedRepository ?? "");
   const [owner = "", repo = ""] = effectiveRepository.split("/");
   const hasRepositoryParts = Boolean(owner && repo);
@@ -5378,31 +5520,41 @@ export function App(): JSX.Element {
       ]);
     }
   });
-  const pinMutation = useMutation({
-    mutationFn: ({ nameWithOwner, pinned }: { nameWithOwner: string; pinned: boolean }) =>
-      pinned ? api.unpinRepository({ nameWithOwner }) : api.pinRepository({ nameWithOwner }),
-    onMutate: async ({ nameWithOwner, pinned }) => {
-      await queryClient.cancelQueries({ queryKey: ["pinned-repositories"] });
-      const previousNames = queryClient.getQueryData<string[]>(["pinned-repositories"]) ?? [];
-      const normalized = nameWithOwner.toLowerCase();
-      const nextNames = pinned
-        ? previousNames.filter((name) => name.toLowerCase() !== normalized)
-        : previousNames.some((name) => name.toLowerCase() === normalized)
-          ? previousNames
-          : [nameWithOwner, ...previousNames];
-      queryClient.setQueryData(["pinned-repositories"], nextNames);
-      return { previousNames };
+  const areaPinMutation = useMutation({
+    mutationFn: ({ pinned: _pinned, ...input }: RepositoryPinInput & { pinned: boolean }) =>
+      _pinned ? api.unpinAreaRepository(input) : api.pinAreaRepository(input),
+    onMutate: async (input) => {
+      await queryClient.cancelQueries({ queryKey: ["repository-pins"] });
+      const previousPins = queryClient.getQueryData<RepositoryPinRecord[]>(["repository-pins"]) ?? [];
+      const targetKey = areaRepositoryPinKey(input.areaId, input.repositoryId, input.workspaceId ?? null);
+      const remainingPins = previousPins.filter(
+        (pin) => areaRepositoryPinKey(pin.areaId, pin.repositoryId, pin.workspaceId ?? null) !== targetKey
+      );
+      const nextPins = input.pinned
+        ? remainingPins
+        : [
+            {
+              areaId: input.areaId ?? null,
+              repositoryId: input.repositoryId ?? null,
+              workspaceId: input.workspaceId ?? null,
+              nameWithOwner: input.nameWithOwner ?? null,
+              createdAt: new Date().toISOString()
+            },
+            ...remainingPins
+          ];
+      queryClient.setQueryData(["repository-pins"], nextPins);
+      return { previousPins };
     },
     onError: (_error, _input, context) => {
-      if (context?.previousNames) {
-        queryClient.setQueryData(["pinned-repositories"], context.previousNames);
+      if (context?.previousPins) {
+        queryClient.setQueryData(["repository-pins"], context.previousPins);
       }
     },
-    onSuccess: (names) => {
-      queryClient.setQueryData(["pinned-repositories"], names);
+    onSuccess: (pins) => {
+      queryClient.setQueryData(["repository-pins"], pins);
     },
     onSettled: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["pinned-repositories"] });
+      await queryClient.invalidateQueries({ queryKey: ["repository-pins"] });
     }
   });
   const recentMutation = useMutation({
@@ -5412,11 +5564,14 @@ export function App(): JSX.Element {
       const previousItems = queryClient.getQueryData<LocalRecentItem[]>(recentItemsQueryKey) ?? [];
       const optimisticItem: LocalRecentItem = {
         kind: input.kind,
-        provider: "github",
+        provider: input.provider ?? "github",
         itemKey: input.itemKey,
         title: input.title,
         subtitle: input.subtitle ?? null,
         repositoryNameWithOwner: input.repositoryNameWithOwner ?? null,
+        areaId: input.areaId ?? null,
+        repositoryId: input.repositoryId ?? null,
+        workspaceId: input.workspaceId ?? null,
         url: input.url ?? null,
         metadata: input.metadata ?? {},
         updatedAt: new Date().toISOString()
@@ -5444,9 +5599,25 @@ export function App(): JSX.Element {
   });
 
   function toggleRepositoryPin(nameWithOwner: string): void {
-    pinMutation.mutate({
+    areaPinMutation.mutate({
+      areaId: defaultGitHubAreaId,
+      repositoryId: defaultGitHubAreaRepositoryId(nameWithOwner),
+      workspaceId: null,
       nameWithOwner,
       pinned: pinnedRepositoryNameSet.has(nameWithOwner.toLowerCase())
+    });
+  }
+
+  function toggleAreaRepositoryPin(
+    repository: AreaRepositorySummary,
+    workspaceId: string | null = null
+  ): void {
+    areaPinMutation.mutate({
+      areaId: repository.areaId,
+      repositoryId: repository.id,
+      workspaceId,
+      nameWithOwner: repository.connection?.nameWithOwner ?? undefined,
+      pinned: areaRepositoryPinSet.has(areaRepositoryPinKey(repository.areaId, repository.id, workspaceId))
     });
   }
 
@@ -6596,6 +6767,73 @@ export function App(): JSX.Element {
     recordRecent(repositoryRecentInput(nameWithOwner, repositoryForRecent(nameWithOwner), tab ?? "code"));
   }
 
+  async function selectArea(areaId: string): Promise<void> {
+    selectAreaInStore(areaId);
+    await api.areas.selectArea(areaId);
+    await queryClient.invalidateQueries({ queryKey: ["areas"] });
+  }
+
+  async function addLocalArea(): Promise<void> {
+    const rootPath = await api.areas.openLocalFolderPicker();
+    if (!rootPath) {
+      return;
+    }
+    const area = await api.areas.createLocalArea({ rootPath });
+    selectAreaInStore(area.id);
+    await queryClient.invalidateQueries({ queryKey: ["areas"] });
+    await queryClient.invalidateQueries({ queryKey: ["area-repositories", area.id] });
+  }
+
+  async function createSshArea(input: CreateSshAreaInput): Promise<void> {
+    const area = await api.areas.createSshArea(input);
+    selectAreaInStore(area.id);
+    await queryClient.invalidateQueries({ queryKey: ["areas"] });
+    await queryClient.invalidateQueries({ queryKey: ["area-repositories", area.id] });
+  }
+
+  async function updateArea(input: UpdateAreaInput): Promise<void> {
+    const area = await api.areas.updateArea(input);
+    await queryClient.invalidateQueries({ queryKey: ["areas"] });
+    await queryClient.invalidateQueries({ queryKey: ["area-repositories", area.id] });
+  }
+
+  async function deleteArea(area: AreaSummary): Promise<void> {
+    const remainingAreas = await api.areas.removeArea(area.id);
+    if (selectedAreaId === area.id) {
+      const fallbackArea =
+        remainingAreas.find((candidate) => candidate.selected) ??
+        remainingAreas.find((candidate) => candidate.kind === "github") ??
+        remainingAreas[0] ??
+        null;
+      if (fallbackArea) {
+        selectAreaInStore(fallbackArea.id);
+      }
+    }
+    await queryClient.invalidateQueries({ queryKey: ["areas"] });
+    await queryClient.invalidateQueries({ queryKey: ["area-repositories", area.id] });
+  }
+
+  function openLocalRepositoryInApp(
+    repository: AreaRepositorySummary,
+    tab: LocalRepositoryTab = "overview"
+  ): void {
+    const workspaceId = null;
+    goToLocalRepository(repository.areaId, repository.id, tab, workspaceId);
+    recordRecent({
+      kind: "repository",
+      provider: "local",
+      itemKey: `${repository.areaId}:${repository.id}`,
+      title: repository.displayName,
+      subtitle: repository.path ?? repository.connection?.nameWithOwner ?? null,
+      repositoryNameWithOwner: repository.connection?.nameWithOwner ?? null,
+      areaId: repository.areaId,
+      repositoryId: repository.id,
+      workspaceId,
+      url: repository.connection?.url ?? null,
+      metadata: { vcs: repository.kind }
+    });
+  }
+
   function openRepositoryRouteInApp(route: Extract<AppRoute, { kind: "repository" }>): void {
     navigate(route);
     recordRecent(
@@ -7053,6 +7291,12 @@ export function App(): JSX.Element {
       }
     }
 
+    if (item.kind === "repository" && item.provider === "local" && item.areaId && item.repositoryId) {
+      goToLocalRepository(item.areaId, item.repositoryId, "overview", item.workspaceId ?? null);
+      recordRecent(recentItemRecordInput(item));
+      return;
+    }
+
     if (item.kind === "repository" && item.repositoryNameWithOwner) {
       const tab = recentMetadataString(item, "tab");
       const repositoryTab = repoTabs.some((repositoryTab) => repositoryTab.key === tab)
@@ -7085,6 +7329,13 @@ export function App(): JSX.Element {
         recordRecent(recentItemRecordInput(item));
         return;
       }
+    }
+
+    if (item.kind === "file" && item.provider === "local" && item.areaId && item.repositoryId) {
+      const path = recentMetadataString(item, "path");
+      goToLocalRepository(item.areaId, item.repositoryId, "code", item.workspaceId ?? null, path ?? ".");
+      recordRecent(recentItemRecordInput(item));
+      return;
     }
 
     if (item.kind === "file" && item.repositoryNameWithOwner) {
@@ -7880,7 +8131,7 @@ export function App(): JSX.Element {
         ? "Repository refresh is already running."
         : null;
       const currentRepositoryPinned = pinnedRepositoryNameSet.has(effectiveRepository.toLowerCase());
-      const repositoryPinCommandDisabledReason = pinMutation.isPending
+      const repositoryPinCommandDisabledReason = areaPinMutation.isPending
         ? "Repository pin update is already running."
         : null;
       const currentRepositoryBranches = branchItems.slice(0, commandPaletteGeneralSourceLimit);
@@ -9023,13 +9274,19 @@ export function App(): JSX.Element {
         <Sidebar
           appState={appState.data}
           profile={accountProfileData ?? undefined}
+          areas={areaItems}
+          selectedAreaId={selectedArea?.id ?? null}
+          localRepositories={localRepositoryItems}
+          localRepositoriesLoading={selectedAreaRepositories.isLoading || selectedAreaRepositories.isFetching}
           repositories={repositoryItems}
           repositoriesLoading={repositories.isLoading || repositories.isFetching}
           repositoriesError={repositories.error}
           repositoriesAvailabilityMessage={repositoriesAvailabilityMessage}
           pinnedRepositoryNames={pinnedRepositoryNames}
+          repositoryPinRecords={repositoryPinRecords}
           selectedRepository={effectiveRepository}
           route={route}
+          onSelectLocalRepository={openLocalRepositoryInApp}
           onSelectRepository={openRepositoryInApp}
           onOpenRepositorySearch={() => setCommandPaletteOpen(true)}
           onOpenAddRepository={() => setAddRepositoryOpen(true)}
@@ -9039,15 +9296,23 @@ export function App(): JSX.Element {
         <TopBar
           viewer={appState.data?.viewer ?? null}
           route={route}
+          areas={areaItems}
+          selectedAreaId={selectedArea?.id ?? null}
           selectedRepository={selectedRepository}
           repositories={repositoryItems}
           githubReady={githubReady}
+          onSelectArea={(areaId) => void selectArea(areaId)}
+          onAddLocalArea={() => void addLocalArea()}
+          onAddSshArea={() => setSshAreaOpen(true)}
+          onEditArea={(area) => setEditingArea(area)}
+          onDeleteArea={(area) => setDeletingArea(area)}
           onGoRepository={() => {
             if (effectiveRepository) {
               openRepositoryInApp(effectiveRepository);
             }
           }}
           onOpenRepository={openRepositoryInApp}
+          onOpenLocalRepository={openLocalRepositoryInApp}
           onOpenAddRepository={() => setAddRepositoryOpen(true)}
           onOpenCommandPalette={() => setCommandPaletteOpen(true)}
           onOpenHome={goHome}
@@ -9056,12 +9321,42 @@ export function App(): JSX.Element {
         />
 
         <section
-          className={isRepositoryRoute ? "workspace workspace-repository" : "workspace workspace-wide"}
+          className={
+            isRepositoryRoute || isLocalRepositoryRoute
+              ? "workspace workspace-repository"
+              : "workspace workspace-wide"
+          }
         >
           {!appState.data?.github.authenticated && <SetupPanel appState={appState.data} />}
 
-          <main className={isRepositoryRoute ? "content-scroll repository-content-scroll" : "content-scroll"}>
-            {route.kind === "home" && (
+          <main
+            className={
+              isRepositoryRoute || isLocalRepositoryRoute
+                ? "content-scroll repository-content-scroll"
+                : "content-scroll"
+            }
+          >
+            {route.kind === "home" && selectedArea && isGatewayAreaKind(selectedArea.kind) ? (
+              <LocalAreaHome
+                area={selectedArea}
+                repositories={localRepositoryItems}
+                repositoriesLoading={
+                  selectedAreaRepositories.isLoading || selectedAreaRepositories.isFetching
+                }
+                recentItems={recentItems.data ?? []}
+                onOpenRepository={openLocalRepositoryInApp}
+                onOpenRecent={openRecentItem}
+                onRefresh={async () => {
+                  await api.areas.refreshArea(selectedArea.id);
+                  await queryClient.invalidateQueries({ queryKey: ["areas"] });
+                  await queryClient.invalidateQueries({ queryKey: ["area-repositories", selectedArea.id] });
+                }}
+                onStopGateway={async () => {
+                  await api.areas.stopGateway({ areaId: selectedArea.id });
+                  await queryClient.invalidateQueries({ queryKey: ["areas"] });
+                }}
+              />
+            ) : route.kind === "home" ? (
               <HomeDashboard
                 appState={appState.data}
                 profile={accountProfileData ?? undefined}
@@ -9088,6 +9383,39 @@ export function App(): JSX.Element {
                 onOpenMailbox={goToMailbox}
                 onOpenIssue={openIssueSummaryInApp}
                 onOpenPullRequest={openPullRequestSummaryInApp}
+                onOpenExternal={(url) => void api.openExternal(url)}
+              />
+            ) : null}
+
+            {route.kind === "localRepository" && (
+              <LocalRepositoryPage
+                route={route}
+                activeTab={activeLocalRepositoryTab}
+                activePath={activeLocalRepositoryPath}
+                onSelectTab={(tab) =>
+                  goToLocalRepository(
+                    route.areaId,
+                    route.repositoryId,
+                    tab,
+                    route.workspaceId ?? null,
+                    route.path ?? null
+                  )
+                }
+                onOpenPath={(entry) =>
+                  goToLocalRepository(
+                    route.areaId,
+                    route.repositoryId,
+                    "code",
+                    route.workspaceId ?? null,
+                    entry.path
+                  )
+                }
+                pinned={areaRepositoryPinSet.has(
+                  areaRepositoryPinKey(route.areaId, route.repositoryId, route.workspaceId ?? null)
+                )}
+                pinBusy={areaPinMutation.isPending}
+                onTogglePin={toggleAreaRepositoryPin}
+                onOpenGitHub={(nameWithOwner) => openRepositoryInApp(nameWithOwner)}
                 onOpenExternal={(url) => void api.openExternal(url)}
               />
             )}
@@ -9226,8 +9554,8 @@ export function App(): JSX.Element {
                 contributorsError={contributors.error}
                 loading={repository.isLoading}
                 pinned={pinnedRepositoryNameSet.has(effectiveRepository.toLowerCase())}
-                pinBusy={pinMutation.isPending}
-                pinError={pinMutation.error instanceof Error ? pinMutation.error : null}
+                pinBusy={areaPinMutation.isPending}
+                pinError={areaPinMutation.error instanceof Error ? areaPinMutation.error : null}
                 error={
                   repository.error ??
                   (activeRepositoryTab === "code" ? contents.error : null) ??
@@ -9517,163 +9845,166 @@ export function App(): JSX.Element {
 
             {route.kind === "codeBrowser" && repositoryRightRail}
 
-            {route.kind !== "home" && route.kind !== "repository" && route.kind !== "codeBrowser" && (
-              <CollectionView
-                title={routeTitle(route)}
-                routeKind={route.kind}
-                githubReady={githubReady}
-                issues={accountIssueItems}
-                issuesLoading={accountIssues.isLoading || accountIssues.isFetching}
-                issuesError={accountIssues.error}
-                issuesAvailability={accountIssuesAvailability}
-                pulls={accountPullItems}
-                pullsLoading={accountPulls.isLoading || accountPulls.isFetching}
-                pullsError={accountPulls.error}
-                pullsAvailability={accountPullsAvailability}
-                accountWorkLimit={accountWorkLimit}
-                notifications={notificationItems}
-                notificationsAvailability={notificationsAvailability}
-                notificationFilter={notificationFilter}
-                notificationLimit={notificationLimit}
-                notificationsLoading={notifications.isLoading || notifications.isFetching}
-                notificationsError={notifications.error}
-                notificationMarkingReadId={
-                  markNotificationRead.isPending ? (markNotificationRead.variables?.threadId ?? null) : null
-                }
-                notificationUnsubscribingId={
-                  unsubscribeNotification.isPending
-                    ? (unsubscribeNotification.variables?.threadId ?? null)
-                    : null
-                }
-                notificationActionError={
-                  (markNotificationRead.error instanceof Error ? markNotificationRead.error : null) ??
-                  (markVisibleNotificationsRead.error instanceof Error
-                    ? markVisibleNotificationsRead.error
-                    : null) ??
-                  (unsubscribeNotification.error instanceof Error ? unsubscribeNotification.error : null)
-                }
-                notificationBulkMarkingRead={markVisibleNotificationsRead.isPending}
-                organizations={organizationItems}
-                selectedOrganizationLogin={selectedOrganization?.login ?? null}
-                organizationListLimit={organizationListLimit}
-                organizationsAvailability={organizationsAvailability}
-                organizationsLoading={organizations.isLoading || organizations.isFetching}
-                organizationsError={organizations.error}
-                organizationTeams={organizationTeams.data?.items ?? []}
-                organizationTeamsAvailability={organizationTeams.data?.availability ?? null}
-                organizationTeamLimit={organizationTeamLimit}
-                organizationTeamsLoading={organizationTeams.isLoading || organizationTeams.isFetching}
-                organizationTeamsError={organizationTeams.error}
-                organizationRepositories={organizationRepositories.data?.items ?? []}
-                organizationRepositoriesAvailability={organizationRepositories.data?.availability ?? null}
-                organizationRepositoryLimit={organizationRepositoryLimit}
-                organizationRepositoriesLoading={
-                  organizationRepositories.isLoading || organizationRepositories.isFetching
-                }
-                organizationRepositoriesError={organizationRepositories.error}
-                organizationMembers={organizationMembers.data?.items ?? []}
-                organizationMembersAvailability={organizationMembers.data?.availability ?? null}
-                organizationMemberLimit={organizationMemberLimit}
-                organizationMembersLoading={organizationMembers.isLoading || organizationMembers.isFetching}
-                organizationMembersError={organizationMembers.error}
-                selectedOrganizationMemberLogin={selectedOrganizationMemberLogin}
-                selectedOrganizationTeamSlug={selectedOrganizationTeam?.slug ?? null}
-                organizationTeamRepositories={organizationTeamRepositories.data?.items ?? []}
-                organizationTeamRepositoriesAvailability={
-                  organizationTeamRepositories.data?.availability ?? null
-                }
-                organizationTeamRepositoryLimit={organizationTeamRepositoryLimit}
-                organizationTeamRepositoriesLoading={
-                  organizationTeamRepositories.isLoading || organizationTeamRepositories.isFetching
-                }
-                organizationTeamRepositoriesError={organizationTeamRepositories.error}
-                organizationTeamMembers={organizationTeamMembers.data?.items ?? []}
-                organizationTeamMembersAvailability={organizationTeamMembers.data?.availability ?? null}
-                organizationTeamMemberLimit={organizationTeamMemberLimit}
-                organizationTeamMembersLoading={
-                  organizationTeamMembers.isLoading || organizationTeamMembers.isFetching
-                }
-                organizationTeamMembersError={organizationTeamMembers.error}
-                organizationProjects={organizationProjects.data?.items ?? []}
-                organizationProjectsAvailability={organizationProjects.data?.availability ?? null}
-                organizationProjectLimit={organizationProjectLimit}
-                organizationProjectsLoading={
-                  organizationProjects.isLoading || organizationProjects.isFetching
-                }
-                organizationProjectsError={organizationProjects.error}
-                selectedOrganizationProjectId={selectedOrganizationProjectId}
-                repositories={repositoryItems}
-                repositoryListLimit={repositoryListLimit}
-                repositoriesLoading={repositories.isLoading || repositories.isFetching}
-                repositoriesError={repositories.error}
-                repositoriesAvailabilityMessage={repositoriesAvailabilityMessage}
-                pinnedRepositoryNames={pinnedRepositoryNames}
-                repositoryPinBusy={pinMutation.isPending}
-                repositoryPinError={pinMutation.error instanceof Error ? pinMutation.error : null}
-                viewerLogin={appState.data?.viewer?.login ?? accountProfileData?.login ?? null}
-                onOpenExternal={(url) => void api.openExternal(url)}
-                onOpenRepository={openRepositoryInApp}
-                onOpenAddRepository={() => setAddRepositoryOpen(true)}
-                onOpenIssue={openIssueSummaryInApp}
-                onOpenPullRequest={openPullRequestSummaryInApp}
-                onOpenNotification={openNotificationInApp}
-                onNotificationFilterChange={setNotificationFilter}
-                onMarkNotificationRead={(threadId) => {
-                  if (githubReady) {
-                    markNotificationRead.mutate({ threadId });
+            {route.kind !== "home" &&
+              route.kind !== "repository" &&
+              route.kind !== "codeBrowser" &&
+              route.kind !== "localRepository" && (
+                <CollectionView
+                  title={routeTitle(route)}
+                  routeKind={route.kind}
+                  githubReady={githubReady}
+                  issues={accountIssueItems}
+                  issuesLoading={accountIssues.isLoading || accountIssues.isFetching}
+                  issuesError={accountIssues.error}
+                  issuesAvailability={accountIssuesAvailability}
+                  pulls={accountPullItems}
+                  pullsLoading={accountPulls.isLoading || accountPulls.isFetching}
+                  pullsError={accountPulls.error}
+                  pullsAvailability={accountPullsAvailability}
+                  accountWorkLimit={accountWorkLimit}
+                  notifications={notificationItems}
+                  notificationsAvailability={notificationsAvailability}
+                  notificationFilter={notificationFilter}
+                  notificationLimit={notificationLimit}
+                  notificationsLoading={notifications.isLoading || notifications.isFetching}
+                  notificationsError={notifications.error}
+                  notificationMarkingReadId={
+                    markNotificationRead.isPending ? (markNotificationRead.variables?.threadId ?? null) : null
                   }
-                }}
-                onMarkVisibleNotificationsRead={(threadIds) => {
-                  if (githubReady) {
-                    markVisibleNotificationsRead.mutate({ threadIds });
+                  notificationUnsubscribingId={
+                    unsubscribeNotification.isPending
+                      ? (unsubscribeNotification.variables?.threadId ?? null)
+                      : null
                   }
-                }}
-                onUnsubscribeNotification={(threadId) => {
-                  if (githubReady && window.confirm("Unsubscribe from this GitHub notification thread?")) {
-                    unsubscribeNotification.mutate({ threadId });
+                  notificationActionError={
+                    (markNotificationRead.error instanceof Error ? markNotificationRead.error : null) ??
+                    (markVisibleNotificationsRead.error instanceof Error
+                      ? markVisibleNotificationsRead.error
+                      : null) ??
+                    (unsubscribeNotification.error instanceof Error ? unsubscribeNotification.error : null)
                   }
-                }}
-                onSelectOrganization={(login) => {
-                  const organization = organizationItems.find((item) => item.login === login);
-                  if (organization) {
-                    recordRecent(organizationRecentInput(organization));
+                  notificationBulkMarkingRead={markVisibleNotificationsRead.isPending}
+                  organizations={organizationItems}
+                  selectedOrganizationLogin={selectedOrganization?.login ?? null}
+                  organizationListLimit={organizationListLimit}
+                  organizationsAvailability={organizationsAvailability}
+                  organizationsLoading={organizations.isLoading || organizations.isFetching}
+                  organizationsError={organizations.error}
+                  organizationTeams={organizationTeams.data?.items ?? []}
+                  organizationTeamsAvailability={organizationTeams.data?.availability ?? null}
+                  organizationTeamLimit={organizationTeamLimit}
+                  organizationTeamsLoading={organizationTeams.isLoading || organizationTeams.isFetching}
+                  organizationTeamsError={organizationTeams.error}
+                  organizationRepositories={organizationRepositories.data?.items ?? []}
+                  organizationRepositoriesAvailability={organizationRepositories.data?.availability ?? null}
+                  organizationRepositoryLimit={organizationRepositoryLimit}
+                  organizationRepositoriesLoading={
+                    organizationRepositories.isLoading || organizationRepositories.isFetching
                   }
-                  setSelectedOrganizationLogin(login);
-                  setSelectedOrganizationTeamSlug(null);
-                  setSelectedOrganizationMemberLogin(null);
-                  setSelectedOrganizationProjectId(null);
-                }}
-                onSelectOrganizationTeam={(slug) => {
-                  const team = organizationTeams.data?.items.find((item) => item.slug === slug);
-                  if (team) {
-                    recordRecent(teamRecentInput(team));
+                  organizationRepositoriesError={organizationRepositories.error}
+                  organizationMembers={organizationMembers.data?.items ?? []}
+                  organizationMembersAvailability={organizationMembers.data?.availability ?? null}
+                  organizationMemberLimit={organizationMemberLimit}
+                  organizationMembersLoading={organizationMembers.isLoading || organizationMembers.isFetching}
+                  organizationMembersError={organizationMembers.error}
+                  selectedOrganizationMemberLogin={selectedOrganizationMemberLogin}
+                  selectedOrganizationTeamSlug={selectedOrganizationTeam?.slug ?? null}
+                  organizationTeamRepositories={organizationTeamRepositories.data?.items ?? []}
+                  organizationTeamRepositoriesAvailability={
+                    organizationTeamRepositories.data?.availability ?? null
                   }
-                  setSelectedOrganizationTeamSlug(slug);
-                  setSelectedOrganizationMemberLogin(null);
-                  setSelectedOrganizationProjectId(null);
-                }}
-                onSelectOrganizationMember={(login) => {
-                  setSelectedOrganizationMemberLogin(login);
-                  setSelectedOrganizationProjectId(null);
-                }}
-                onSelectOrganizationProject={(project) => {
-                  if (selectedOrganization) {
-                    selectOrganizationProjectInApp(selectedOrganization, project);
+                  organizationTeamRepositoryLimit={organizationTeamRepositoryLimit}
+                  organizationTeamRepositoriesLoading={
+                    organizationTeamRepositories.isLoading || organizationTeamRepositories.isFetching
                   }
-                }}
-                onExpandOrganizations={expandOrganizationList}
-                onExpandOrganizationRepositories={expandSelectedOrganizationRepositories}
-                onExpandOrganizationTeams={expandSelectedOrganizationTeams}
-                onExpandOrganizationMembers={expandSelectedOrganizationMembers}
-                onExpandOrganizationProjects={expandSelectedOrganizationProjects}
-                onExpandOrganizationTeamRepositories={expandSelectedOrganizationTeamRepositories}
-                onExpandOrganizationTeamMembers={expandSelectedOrganizationTeamMembers}
-                onExpandMailboxWork={expandMailboxWork}
-                onExpandMailboxNotifications={expandMailboxNotifications}
-                onExpandRepositories={expandRepositoryList}
-                onToggleRepositoryPin={toggleRepositoryPin}
-              />
-            )}
+                  organizationTeamRepositoriesError={organizationTeamRepositories.error}
+                  organizationTeamMembers={organizationTeamMembers.data?.items ?? []}
+                  organizationTeamMembersAvailability={organizationTeamMembers.data?.availability ?? null}
+                  organizationTeamMemberLimit={organizationTeamMemberLimit}
+                  organizationTeamMembersLoading={
+                    organizationTeamMembers.isLoading || organizationTeamMembers.isFetching
+                  }
+                  organizationTeamMembersError={organizationTeamMembers.error}
+                  organizationProjects={organizationProjects.data?.items ?? []}
+                  organizationProjectsAvailability={organizationProjects.data?.availability ?? null}
+                  organizationProjectLimit={organizationProjectLimit}
+                  organizationProjectsLoading={
+                    organizationProjects.isLoading || organizationProjects.isFetching
+                  }
+                  organizationProjectsError={organizationProjects.error}
+                  selectedOrganizationProjectId={selectedOrganizationProjectId}
+                  repositories={repositoryItems}
+                  repositoryListLimit={repositoryListLimit}
+                  repositoriesLoading={repositories.isLoading || repositories.isFetching}
+                  repositoriesError={repositories.error}
+                  repositoriesAvailabilityMessage={repositoriesAvailabilityMessage}
+                  pinnedRepositoryNames={pinnedRepositoryNames}
+                  repositoryPinBusy={areaPinMutation.isPending}
+                  repositoryPinError={areaPinMutation.error instanceof Error ? areaPinMutation.error : null}
+                  viewerLogin={appState.data?.viewer?.login ?? accountProfileData?.login ?? null}
+                  onOpenExternal={(url) => void api.openExternal(url)}
+                  onOpenRepository={openRepositoryInApp}
+                  onOpenAddRepository={() => setAddRepositoryOpen(true)}
+                  onOpenIssue={openIssueSummaryInApp}
+                  onOpenPullRequest={openPullRequestSummaryInApp}
+                  onOpenNotification={openNotificationInApp}
+                  onNotificationFilterChange={setNotificationFilter}
+                  onMarkNotificationRead={(threadId) => {
+                    if (githubReady) {
+                      markNotificationRead.mutate({ threadId });
+                    }
+                  }}
+                  onMarkVisibleNotificationsRead={(threadIds) => {
+                    if (githubReady) {
+                      markVisibleNotificationsRead.mutate({ threadIds });
+                    }
+                  }}
+                  onUnsubscribeNotification={(threadId) => {
+                    if (githubReady && window.confirm("Unsubscribe from this GitHub notification thread?")) {
+                      unsubscribeNotification.mutate({ threadId });
+                    }
+                  }}
+                  onSelectOrganization={(login) => {
+                    const organization = organizationItems.find((item) => item.login === login);
+                    if (organization) {
+                      recordRecent(organizationRecentInput(organization));
+                    }
+                    setSelectedOrganizationLogin(login);
+                    setSelectedOrganizationTeamSlug(null);
+                    setSelectedOrganizationMemberLogin(null);
+                    setSelectedOrganizationProjectId(null);
+                  }}
+                  onSelectOrganizationTeam={(slug) => {
+                    const team = organizationTeams.data?.items.find((item) => item.slug === slug);
+                    if (team) {
+                      recordRecent(teamRecentInput(team));
+                    }
+                    setSelectedOrganizationTeamSlug(slug);
+                    setSelectedOrganizationMemberLogin(null);
+                    setSelectedOrganizationProjectId(null);
+                  }}
+                  onSelectOrganizationMember={(login) => {
+                    setSelectedOrganizationMemberLogin(login);
+                    setSelectedOrganizationProjectId(null);
+                  }}
+                  onSelectOrganizationProject={(project) => {
+                    if (selectedOrganization) {
+                      selectOrganizationProjectInApp(selectedOrganization, project);
+                    }
+                  }}
+                  onExpandOrganizations={expandOrganizationList}
+                  onExpandOrganizationRepositories={expandSelectedOrganizationRepositories}
+                  onExpandOrganizationTeams={expandSelectedOrganizationTeams}
+                  onExpandOrganizationMembers={expandSelectedOrganizationMembers}
+                  onExpandOrganizationProjects={expandSelectedOrganizationProjects}
+                  onExpandOrganizationTeamRepositories={expandSelectedOrganizationTeamRepositories}
+                  onExpandOrganizationTeamMembers={expandSelectedOrganizationTeamMembers}
+                  onExpandMailboxWork={expandMailboxWork}
+                  onExpandMailboxNotifications={expandMailboxNotifications}
+                  onExpandRepositories={expandRepositoryList}
+                  onToggleRepositoryPin={toggleRepositoryPin}
+                />
+              )}
           </main>
         </section>
 
@@ -9708,6 +10039,38 @@ export function App(): JSX.Element {
             githubReady={githubReady}
             onClose={() => setAddRepositoryOpen(false)}
             onOpenRepository={openRepositoryInApp}
+          />
+        )}
+
+        {sshAreaOpen && (
+          <SshAreaDialog
+            onClose={() => setSshAreaOpen(false)}
+            onCreate={async (input) => {
+              await createSshArea(input);
+              setSshAreaOpen(false);
+            }}
+          />
+        )}
+
+        {editingArea && (
+          <AreaEditDialog
+            area={editingArea}
+            onClose={() => setEditingArea(null)}
+            onSave={async (input) => {
+              await updateArea(input);
+              setEditingArea(null);
+            }}
+          />
+        )}
+
+        {deletingArea && (
+          <AreaDeleteDialog
+            area={deletingArea}
+            onClose={() => setDeletingArea(null)}
+            onDelete={async () => {
+              await deleteArea(deletingArea);
+              setDeletingArea(null);
+            }}
           />
         )}
 
@@ -9794,16 +10157,777 @@ function isNavigationActive(route: AppRoute, label: string): boolean {
   return false;
 }
 
+function LocalAreaHome({
+  area,
+  repositories,
+  repositoriesLoading,
+  recentItems,
+  onOpenRepository,
+  onOpenRecent,
+  onRefresh,
+  onStopGateway
+}: {
+  area: AreaSummary;
+  repositories: AreaRepositorySummary[];
+  repositoriesLoading: boolean;
+  recentItems: LocalRecentItem[];
+  onOpenRepository(repository: AreaRepositorySummary): void;
+  onOpenRecent(item: LocalRecentItem): void;
+  onRefresh(): Promise<void>;
+  onStopGateway(): Promise<void>;
+}): JSX.Element {
+  const [refreshing, setRefreshing] = useState(false);
+  const [stoppingGateway, setStoppingGateway] = useState(false);
+  const connectedRepositories = repositories.filter((repository) => repository.connection);
+  const dirtyRepositories = repositories.filter((repository) => repository.isDirty);
+  const jjRepositories = repositories.filter((repository) => repository.kind === "jj");
+  const recentLocalRepositories = recentItems
+    .filter((item) => item.provider === "local" && item.kind === "repository" && item.areaId === area.id)
+    .slice(0, 6);
+  const visibleRepositories = [...repositories]
+    .sort((left, right) => {
+      const leftTime = Date.parse(left.updatedAt ?? left.scannedAt ?? "0") || 0;
+      const rightTime = Date.parse(right.updatedAt ?? right.scannedAt ?? "0") || 0;
+      return rightTime - leftTime || left.displayName.localeCompare(right.displayName);
+    })
+    .slice(0, 8);
+
+  return (
+    <section className="home-dashboard">
+      <header className="account-hero">
+        <span className="avatar-placeholder">{area.kind === "ssh" ? "S" : "L"}</span>
+        <div>
+          <h1>{area.label}</h1>
+          <p>{area.rootPath ?? area.subtitle ?? "Area"}</p>
+          {area.health.message && <small>{area.health.message}</small>}
+          {area.gateway && (
+            <small>
+              Gateway {area.gateway.status}
+              {area.gateway.adminUrl ? ` · admin ${area.gateway.adminUrl}` : ""}
+            </small>
+          )}
+        </div>
+        <div className="surface-header-actions">
+          {area.gateway?.adminUrl && (
+            <button
+              type="button"
+              disabled={stoppingGateway}
+              onClick={() => {
+                setStoppingGateway(true);
+                void onStopGateway().finally(() => setStoppingGateway(false));
+              }}
+            >
+              <X size={16} /> {stoppingGateway ? "Stopping" : "Stop gateway"}
+            </button>
+          )}
+          <button
+            type="button"
+            disabled={refreshing}
+            onClick={() => {
+              setRefreshing(true);
+              void onRefresh().finally(() => setRefreshing(false));
+            }}
+          >
+            <RefreshCw size={16} /> {refreshing ? "Refreshing" : "Refresh"}
+          </button>
+        </div>
+      </header>
+
+      <section className="home-metrics">
+        <Metric label="Repositories" value={repositories.length || area.repositoryCount} />
+        <Metric label="GitHub remotes" value={connectedRepositories.length} />
+        <Metric label="Changed" value={dirtyRepositories.length} />
+        <Metric label="JJ" value={jjRepositories.length} />
+      </section>
+
+      <section className="home-grid">
+        <div className="home-panel">
+          <div className="surface-header">
+            <div>
+              <h2>Local repositories</h2>
+              <p>
+                {repositoriesLoading ? "Scanning local Area." : `${repositories.length} repositories loaded.`}
+              </p>
+            </div>
+          </div>
+          <div className="shortcut-list">
+            {visibleRepositories.length ? (
+              visibleRepositories.map((repository) => (
+                <button
+                  key={repository.id}
+                  type="button"
+                  className="shortcut-item"
+                  onClick={() => onOpenRepository(repository)}
+                >
+                  <span className="repo-avatar">{repository.kind === "jj" ? "J" : "G"}</span>
+                  <span>
+                    <strong>{repository.displayName}</strong>
+                    <small>
+                      {repository.connection?.nameWithOwner ?? repository.path ?? repository.kind}
+                    </small>
+                  </span>
+                </button>
+              ))
+            ) : (
+              <p className="muted-row">
+                {repositoriesLoading ? "Scanning for local repositories." : "No local repositories found."}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="home-panel">
+          <div className="surface-header">
+            <div>
+              <h2>Recent local work</h2>
+              <p>
+                {recentLocalRepositories.length ? "Latest local repository routes." : "No local recents yet."}
+              </p>
+            </div>
+          </div>
+          <div className="shortcut-list">
+            {recentLocalRepositories.length ? (
+              recentLocalRepositories.map((item) => (
+                <button
+                  key={`${item.kind}-${item.itemKey}`}
+                  type="button"
+                  className="shortcut-item"
+                  onClick={() => onOpenRecent(item)}
+                >
+                  <span className="repo-avatar">R</span>
+                  <span>
+                    <strong>{item.title}</strong>
+                    <small>{item.subtitle ?? item.repositoryNameWithOwner ?? item.repositoryId}</small>
+                  </span>
+                </button>
+              ))
+            ) : (
+              <p className="muted-row">Open a local repository to add it here.</p>
+            )}
+          </div>
+        </div>
+
+        <div className="home-panel">
+          <div className="surface-header">
+            <div>
+              <h2>GitHub remotes</h2>
+              <p>
+                {connectedRepositories.length ? "Connected local repositories." : "No GitHub remotes found."}
+              </p>
+            </div>
+          </div>
+          <div className="shortcut-list">
+            {connectedRepositories.length ? (
+              connectedRepositories.slice(0, 6).map((repository) => (
+                <button
+                  key={repository.id}
+                  type="button"
+                  className="shortcut-item"
+                  onClick={() => onOpenRepository(repository)}
+                >
+                  <span className="repo-avatar">
+                    {repository.connection?.owner.slice(0, 1).toUpperCase()}
+                  </span>
+                  <span>
+                    <strong>{repository.connection?.nameWithOwner}</strong>
+                    <small>{repository.displayName}</small>
+                  </span>
+                </button>
+              ))
+            ) : (
+              <p className="muted-row">Add an origin remote to connect a local repository to GitHub.</p>
+            )}
+          </div>
+        </div>
+      </section>
+    </section>
+  );
+}
+
+function LocalRepositoryPage({
+  route,
+  activeTab,
+  activePath,
+  pinned,
+  pinBusy,
+  onSelectTab,
+  onOpenPath,
+  onTogglePin,
+  onOpenGitHub,
+  onOpenExternal
+}: {
+  route: Extract<AppRoute, { kind: "localRepository" }>;
+  activeTab: LocalRepositoryTab;
+  activePath: string;
+  pinned: boolean;
+  pinBusy: boolean;
+  onSelectTab(tab: LocalRepositoryTab): void;
+  onOpenPath(entry: AreaFileEntry): void;
+  onTogglePin(repository: AreaRepositorySummary, workspaceId: string | null): void;
+  onOpenGitHub(nameWithOwner: string): void;
+  onOpenExternal(url: string): void;
+}): JSX.Element {
+  const api = useMemo(() => getControlApi(), []);
+  const repository = useQuery({
+    queryKey: ["area-repository", route.areaId, route.repositoryId],
+    queryFn: () =>
+      api.areas.getRepository({
+        areaId: route.areaId,
+        repositoryId: route.repositoryId,
+        workspaceId: route.workspaceId ?? null
+      })
+  });
+  const workspaces = useQuery({
+    queryKey: ["area-workspaces", route.areaId, route.repositoryId],
+    queryFn: () => api.areas.listWorkspaces({ areaId: route.areaId, repositoryId: route.repositoryId })
+  });
+  const contents = useQuery({
+    queryKey: ["area-contents", route.areaId, route.repositoryId, route.workspaceId ?? "none", activePath],
+    queryFn: () =>
+      api.areas.listContents({
+        areaId: route.areaId,
+        repositoryId: route.repositoryId,
+        workspaceId: route.workspaceId ?? null,
+        path: activePath
+      }),
+    enabled: activeTab === "code"
+  });
+  const fileContent = useQuery({
+    queryKey: [
+      "area-file-content",
+      route.areaId,
+      route.repositoryId,
+      route.workspaceId ?? "none",
+      activePath
+    ],
+    queryFn: () =>
+      api.areas.getFileContent({
+        areaId: route.areaId,
+        repositoryId: route.repositoryId,
+        workspaceId: route.workspaceId ?? null,
+        path: activePath
+      }),
+    enabled: activeTab === "code" && activePath !== "."
+  });
+  const detail = repository.data;
+  const workspaceItems = workspaces.data ?? detail?.workspaces ?? [];
+  const githubConnection = detail?.connection ?? null;
+  const localIssues = useQuery({
+    queryKey: ["area-github-issues", route.areaId, route.repositoryId, route.workspaceId ?? "none"],
+    queryFn: () =>
+      api.areas.listGitHubIssues({
+        areaId: route.areaId,
+        repositoryId: route.repositoryId,
+        workspaceId: route.workspaceId ?? null,
+        state: "open",
+        limit: 20
+      }),
+    enabled: activeTab === "issues" && Boolean(detail)
+  });
+  const localPulls = useQuery({
+    queryKey: ["area-github-pulls", route.areaId, route.repositoryId, route.workspaceId ?? "none"],
+    queryFn: () =>
+      api.areas.listGitHubPullRequests({
+        areaId: route.areaId,
+        repositoryId: route.repositoryId,
+        workspaceId: route.workspaceId ?? null,
+        state: "open",
+        limit: 20
+      }),
+    enabled: activeTab === "pulls" && Boolean(detail)
+  });
+  const localActions = useQuery({
+    queryKey: ["area-github-actions", route.areaId, route.repositoryId, route.workspaceId ?? "none"],
+    queryFn: () =>
+      api.areas.listGitHubActions({
+        areaId: route.areaId,
+        repositoryId: route.repositoryId,
+        workspaceId: route.workspaceId ?? null,
+        limit: 20
+      }),
+    enabled: activeTab === "actions" && Boolean(detail)
+  });
+  const syncStatus = useQuery({
+    queryKey: ["area-sync-status", route.areaId, route.repositoryId, route.workspaceId ?? "none"],
+    queryFn: () =>
+      api.areas.getSyncStatus({
+        areaId: route.areaId,
+        repositoryId: route.repositoryId,
+        workspaceId: route.workspaceId ?? null
+      }),
+    enabled: activeTab === "sync" && Boolean(detail)
+  });
+  const gatewayOperation = useMutation({
+    mutationFn: async (kind: AreaGatewayOperationInput["kind"]) => {
+      const preview = await api.areas.prepareGatewayOperation({
+        areaId: route.areaId,
+        repositoryId: route.repositoryId,
+        workspaceId: route.workspaceId ?? null,
+        kind
+      });
+      if (!window.confirm(`${preview.title}\n\n${preview.summary}`)) {
+        return null;
+      }
+      return api.areas.runGatewayOperation({
+        areaId: route.areaId,
+        operationId: preview.id,
+        confirmed: true
+      });
+    },
+    onSuccess: async () => {
+      await syncStatus.refetch();
+      await repository.refetch();
+    }
+  });
+  const localIssuesAvailabilityMessage = readAvailabilityMessage(
+    "GitHub issues",
+    localIssues.data?.availability ?? null
+  );
+  const localPullsAvailabilityMessage = readAvailabilityMessage(
+    "GitHub pull requests",
+    localPulls.data?.availability ?? null
+  );
+  const localActionsAvailabilityMessage = readAvailabilityMessage(
+    "GitHub actions",
+    localActions.data?.availability ?? null
+  );
+  const status = detail?.status;
+
+  if (repository.isLoading) {
+    return <div className="loading-state">Loading local repository...</div>;
+  }
+  if (repository.error || !detail) {
+    return (
+      <div className="error-state">
+        Local repository unavailable
+        {repository.error instanceof Error ? `: ${repository.error.message}` : "."}
+      </div>
+    );
+  }
+
+  return (
+    <section className="local-repository-page">
+      <header className="local-repository-header">
+        <div>
+          <div className="eyebrow-row">
+            <span className="status-pill">{detail.kind.toUpperCase()}</span>
+            {detail.capabilities.isGitBacked && <span className="status-pill">Git-backed</span>}
+            {detail.capabilities.isColocated && <span className="status-pill">Colocated</span>}
+            {githubConnection && <span className="status-pill">GitHub connected</span>}
+          </div>
+          <h1>{detail.displayName}</h1>
+          {detail.path && <p className="muted-row">{detail.path}</p>}
+          {detail.health.message && <p className="error-state">{detail.health.message}</p>}
+        </div>
+        <div className="button-row">
+          <button
+            className="icon-button"
+            type="button"
+            aria-label={pinned ? "Unpin local repository" : "Pin local repository"}
+            title={pinned ? "Unpin local repository" : "Pin local repository"}
+            disabled={pinBusy}
+            onClick={() => onTogglePin(detail, route.workspaceId ?? null)}
+          >
+            <Pin size={16} fill={pinned ? "currentColor" : "none"} />
+          </button>
+          {githubConnection?.matchedGitHubAreaId && (
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => onOpenGitHub(githubConnection.nameWithOwner)}
+            >
+              Open in GitHub Area
+            </button>
+          )}
+          {githubConnection && (
+            <button
+              className="icon-button"
+              type="button"
+              title="Open on GitHub"
+              onClick={() => onOpenExternal(githubConnection.url)}
+            >
+              <ExternalLink size={16} />
+            </button>
+          )}
+        </div>
+      </header>
+
+      <nav className="repo-tabs">
+        {localRepoTabs.map((tab) => {
+          const Icon = tab.icon;
+          const disabledReason = localRepositoryTabDisabledReason(detail, tab.key);
+          return (
+            <button
+              className={activeTab === tab.key ? "active" : ""}
+              disabled={Boolean(disabledReason)}
+              key={tab.key}
+              type="button"
+              title={disabledReason ?? tab.label}
+              onClick={() => onSelectTab(tab.key)}
+            >
+              <Icon size={15} />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
+      </nav>
+
+      {activeTab === "overview" && (
+        <div className="local-repository-grid">
+          <section className="glass-panel">
+            <h2>Repository</h2>
+            <dl className="definition-list">
+              <div>
+                <dt>Path</dt>
+                <dd>{detail.path ?? "Unknown"}</dd>
+              </div>
+              <div>
+                <dt>Current branch</dt>
+                <dd>{detail.currentBranch ?? "None"}</dd>
+              </div>
+              <div>
+                <dt>Status</dt>
+                <dd>{status?.clean ? "Clean" : `${status?.dirtyCount ?? 0} changed`}</dd>
+              </div>
+              <div>
+                <dt>Remote</dt>
+                <dd>{githubConnection?.nameWithOwner ?? "No GitHub remote"}</dd>
+              </div>
+            </dl>
+          </section>
+          <section className="glass-panel">
+            <h2>Workspaces</h2>
+            {workspaceItems.length ? (
+              <ul className="plain-list">
+                {workspaceItems.map((workspace) => (
+                  <li key={workspace.id}>
+                    <strong>{workspace.name}</strong>
+                    <span>{workspace.rootPath}</span>
+                    {workspace.isStale && <span className="status-pill">Stale</span>}
+                    {workspace.health.message && <small>{workspace.health.message}</small>}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted-row">No extra workspaces.</p>
+            )}
+          </section>
+        </div>
+      )}
+
+      {activeTab === "code" && (
+        <LocalCodePanel
+          activePath={activePath}
+          contents={contents.data ?? []}
+          contentsLoading={contents.isLoading || contents.isFetching}
+          contentsError={contents.error}
+          fileContent={fileContent.data ?? null}
+          fileLoading={fileContent.isLoading || fileContent.isFetching}
+          onOpenPath={onOpenPath}
+        />
+      )}
+
+      {activeTab === "branches" && (
+        <LocalListPanel
+          title="Branches"
+          rows={detail.branches.map((branch) => `${branch.name}${branch.current ? " current" : ""}`)}
+        />
+      )}
+      {activeTab === "bookmarks" && (
+        <LocalListPanel
+          title="Bookmarks"
+          rows={detail.bookmarks.map(
+            (bookmark) => `${bookmark.name}${bookmark.target ? ` ${bookmark.target}` : ""}`
+          )}
+        />
+      )}
+      {activeTab === "remotes" && (
+        <LocalListPanel
+          title="Remotes"
+          rows={detail.remotes.map((remote) => `${remote.name} ${remote.fetchUrl ?? ""}`)}
+        />
+      )}
+      {activeTab === "issues" && (
+        <LocalListPanel
+          title="GitHub Issues"
+          rows={(localIssues.data?.items ?? []).map((issue) => `#${issue.number} ${issue.title}`)}
+          emptyLabel={
+            localIssuesAvailabilityMessage ??
+            (githubConnection ? "No open issues." : "No GitHub remote is connected.")
+          }
+          loading={localIssues.isLoading || localIssues.isFetching}
+          error={localIssues.error}
+        />
+      )}
+      {activeTab === "pulls" && (
+        <LocalListPanel
+          title="GitHub Pull Requests"
+          rows={(localPulls.data?.items ?? []).map((pull) => `#${pull.number} ${pull.title}`)}
+          emptyLabel={
+            localPullsAvailabilityMessage ??
+            (githubConnection ? "No open pull requests." : "No GitHub remote is connected.")
+          }
+          loading={localPulls.isLoading || localPulls.isFetching}
+          error={localPulls.error}
+        />
+      )}
+      {activeTab === "actions" && (
+        <LocalListPanel
+          title="GitHub Actions"
+          rows={(localActions.data?.items ?? []).map((run) => `${run.name} ${run.status ?? "unknown"}`)}
+          emptyLabel={
+            localActionsAvailabilityMessage ??
+            (githubConnection ? "No workflow runs." : "No GitHub remote is connected.")
+          }
+          loading={localActions.isLoading || localActions.isFetching}
+          error={localActions.error}
+        />
+      )}
+      {activeTab === "sync" && (
+        <LocalSyncPanel
+          detail={detail}
+          syncStatus={syncStatus.data ?? null}
+          loading={syncStatus.isLoading || syncStatus.isFetching}
+          error={syncStatus.error}
+          operationPending={gatewayOperation.isPending}
+          operationResult={gatewayOperation.data ?? null}
+          onRunOperation={(kind) => gatewayOperation.mutate(kind)}
+        />
+      )}
+      {activeTab === "status" && (
+        <LocalListPanel
+          title="Status"
+          rows={detail.status.entries.map(
+            (entry) => `${entry.indexStatus ?? ""}${entry.workingTreeStatus ?? ""} ${entry.path}`
+          )}
+          emptyLabel={detail.status.clean ? "Working tree is clean." : "No status entries."}
+        />
+      )}
+      {activeTab === "activity" && (
+        <LocalListPanel
+          title="Activity"
+          rows={detail.recentCommits.map((commit) => `${commit.shortId} ${commit.summary}`)}
+        />
+      )}
+      {activeTab === "workspaces" && (
+        <LocalListPanel
+          title="Workspaces"
+          rows={workspaceItems.map((workspace) => `${workspace.name} ${workspace.rootPath}`)}
+        />
+      )}
+      {activeTab === "operations" && (
+        <LocalListPanel
+          title="Operations"
+          rows={detail.recentOperations.map((operation) => `${operation.shortId} ${operation.description}`)}
+        />
+      )}
+    </section>
+  );
+}
+
+function LocalSyncPanel({
+  detail,
+  syncStatus,
+  loading,
+  error,
+  operationPending,
+  operationResult,
+  onRunOperation
+}: {
+  detail: AreaRepositoryDetail;
+  syncStatus: AreaSyncStatus | null;
+  loading: boolean;
+  error: Error | null;
+  operationPending: boolean;
+  operationResult: AreaGatewayOperationResult | null;
+  onRunOperation(kind: AreaGatewayOperationInput["kind"]): void;
+}): JSX.Element {
+  const fetchKind = detail.kind === "jj" ? "jj.git.fetch" : "git.fetch";
+  const pushKind = detail.kind === "jj" ? "jj.git.push" : "git.push";
+  const canFetch = syncStatus?.capabilities.canFetch ?? Boolean(detail.remotes.length);
+  const canPush = syncStatus?.capabilities.canPush ?? Boolean(detail.remotes.length);
+
+  return (
+    <section className="glass-panel local-sync-panel">
+      <div className="section-title-row">
+        <h2>Sync</h2>
+        <div className="button-row">
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={!canFetch || operationPending}
+            onClick={() => onRunOperation(fetchKind)}
+          >
+            <RefreshCw size={15} /> Fetch
+          </button>
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={!canPush || operationPending}
+            onClick={() => onRunOperation(pushKind)}
+          >
+            <GitBranch size={15} /> Push
+          </button>
+        </div>
+      </div>
+      {loading && <div className="loading-state">Loading sync state...</div>}
+      {error && <div className="error-state">Sync state unavailable: {error.message}</div>}
+      {syncStatus && (
+        <dl className="definition-list">
+          <div>
+            <dt>Provider</dt>
+            <dd>{syncStatus.provider.toUpperCase()}</dd>
+          </div>
+          <div>
+            <dt>Current branch</dt>
+            <dd>{syncStatus.currentBranch ?? "None"}</dd>
+          </div>
+          <div>
+            <dt>Current bookmark</dt>
+            <dd>{syncStatus.currentBookmark ?? "None"}</dd>
+          </div>
+          <div>
+            <dt>Working copy</dt>
+            <dd>{syncStatus.hasUncommittedChanges ? "Changed" : "Clean or unknown"}</dd>
+          </div>
+        </dl>
+      )}
+      <div className="local-file-list">
+        {(syncStatus?.remotes.length ? syncStatus.remotes : fallbackRemoteSyncRows(detail)).map((remote) => (
+          <div className="shortcut-item" key={remote.name}>
+            <span className="repo-avatar">R</span>
+            <span>
+              <strong>{remote.name}</strong>
+              <small>
+                {remote.status}
+                {remote.ahead !== null || remote.behind !== null
+                  ? ` · ahead ${remote.ahead ?? 0} · behind ${remote.behind ?? 0}`
+                  : ""}
+              </small>
+            </span>
+          </div>
+        ))}
+      </div>
+      {operationPending && <div className="loading-state">Running gateway operation...</div>}
+      {operationResult && (
+        <div className={operationResult.status === "succeeded" ? "muted-row" : "error-state"}>
+          {operationResult.message}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function LocalCodePanel({
+  activePath,
+  contents,
+  contentsLoading,
+  contentsError,
+  fileContent,
+  fileLoading,
+  onOpenPath
+}: {
+  activePath: string;
+  contents: AreaFileEntry[];
+  contentsLoading: boolean;
+  contentsError: Error | null;
+  fileContent: AreaFileContent | null;
+  fileLoading: boolean;
+  onOpenPath(entry: AreaFileEntry): void;
+}): JSX.Element {
+  const textContent = fileContent?.kind === "text" ? fileContent.text : null;
+  return (
+    <section className="glass-panel local-code-panel">
+      <div className="section-title-row">
+        <h2>{activePath === "." ? "Files" : activePath}</h2>
+      </div>
+      {textContent !== null ? (
+        <pre className="local-file-preview">{textContent}</pre>
+      ) : (
+        <>
+          {fileLoading && <div className="loading-state">Loading file...</div>}
+          {fileContent?.kind === "binary" && <div className="muted-row">{fileContent.message}</div>}
+          {fileContent?.kind === "unavailable" && (
+            <div className="muted-row">{fileContent.message ?? "File content is unavailable."}</div>
+          )}
+          {contentsLoading && <div className="loading-state">Loading directory...</div>}
+          {contentsError && <div className="error-state">Directory unavailable: {contentsError.message}</div>}
+          <div className="local-file-list">
+            {contents.map((entry) => (
+              <button key={entry.path} type="button" onClick={() => onOpenPath(entry)}>
+                {entry.type === "dir" ? <Folder size={15} /> : <FileIcon size={15} />}
+                <span>{entry.name}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+function LocalListPanel({
+  title,
+  rows,
+  emptyLabel = "Nothing to show.",
+  loading = false,
+  error = null
+}: {
+  title: string;
+  rows: string[];
+  emptyLabel?: string;
+  loading?: boolean;
+  error?: Error | null;
+}): JSX.Element {
+  return (
+    <section className="glass-panel">
+      <h2>{title}</h2>
+      {loading ? (
+        <div className="loading-state">Loading...</div>
+      ) : error ? (
+        <div className="error-state">{error.message}</div>
+      ) : rows.length ? (
+        <ul className="plain-list">
+          {rows.map((row) => (
+            <li key={row}>{row}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="muted-row">{emptyLabel}</p>
+      )}
+    </section>
+  );
+}
+
+function fallbackRemoteSyncRows(detail: AreaRepositoryDetail): AreaSyncStatus["remotes"] {
+  return detail.remotes.map((remote) => ({
+    name: remote.name,
+    fetchUrl: remote.fetchUrl,
+    pushUrl: remote.pushUrl,
+    status: "unknown",
+    ahead: detail.status.ahead,
+    behind: detail.status.behind,
+    lastFetchedAt: null,
+    message: null
+  }));
+}
+
 function Sidebar({
   appState,
   profile,
+  areas,
+  selectedAreaId,
+  localRepositories,
+  localRepositoriesLoading,
   repositories,
   repositoriesLoading,
   repositoriesError,
   repositoriesAvailabilityMessage,
   pinnedRepositoryNames,
+  repositoryPinRecords,
   selectedRepository,
   route,
+  onSelectLocalRepository,
   onSelectRepository,
   onOpenRepositorySearch,
   onOpenAddRepository,
@@ -9811,13 +10935,19 @@ function Sidebar({
 }: {
   appState?: AppState;
   profile?: GitHubAccountProfile;
+  areas: AreaSummary[];
+  selectedAreaId: string | null;
+  localRepositories: AreaRepositorySummary[];
+  localRepositoriesLoading: boolean;
   repositories: RepositorySummary[];
   repositoriesLoading: boolean;
   repositoriesError: Error | null;
   repositoriesAvailabilityMessage: string | null;
   pinnedRepositoryNames: string[];
+  repositoryPinRecords: RepositoryPinRecord[];
   selectedRepository: string;
   route: AppRoute;
+  onSelectLocalRepository(repository: AreaRepositorySummary): void;
   onSelectRepository(nameWithOwner: string): void;
   onOpenRepositorySearch(): void;
   onOpenAddRepository(): void;
@@ -9839,6 +10969,13 @@ function Sidebar({
   const footerAvatarUrl = appState?.viewer?.avatarUrl ?? profile?.avatarUrl ?? null;
   const footerLogin = appState?.viewer?.login ?? profile?.login ?? null;
   const footerName = appState?.viewer?.name ?? profile?.name ?? footerLogin;
+  const selectedAreaSummary =
+    areas.find((area) => area.id === selectedAreaId) ??
+    areas.find((area) => area.selected) ??
+    areas.find((area) => area.kind === "github") ??
+    null;
+  const browsingLocalArea = isGatewayAreaKind(selectedAreaSummary?.kind);
+  const selectedLocalRepositoryId = route.kind === "localRepository" ? route.repositoryId : null;
   const localPinnedRepositories = repositoryShortcutsFromPins(pinnedRepositoryNames, repositories);
   const trimmedRepositoryFilter = repositoryFilter.trim();
   const normalizedRepositoryFilter = trimmedRepositoryFilter.toLowerCase();
@@ -9862,6 +10999,29 @@ function Sidebar({
         .map((repository) => repositoryShortcutFromName(repository.nameWithOwner, repository)),
     [matchingLocalRepositories, visibleLocalSearchLimit]
   );
+  const matchingAreaRepositories = useMemo(() => {
+    const filteredRepositories = normalizedRepositoryFilter
+      ? localRepositories.filter((repository) =>
+          [
+            repository.displayName,
+            repository.name,
+            repository.path,
+            repository.connection?.nameWithOwner
+          ].some((value) => value?.toLowerCase().includes(normalizedRepositoryFilter))
+        )
+      : localRepositories;
+    const pinnedKeys = new Set(
+      repositoryPinRecords.map((pin) => areaRepositoryPinKey(pin.areaId, pin.repositoryId, pin.workspaceId))
+    );
+    return [...filteredRepositories].sort((left, right) => {
+      const leftPinned = pinnedKeys.has(areaRepositoryPinKey(left.areaId, left.id, null));
+      const rightPinned = pinnedKeys.has(areaRepositoryPinKey(right.areaId, right.id, null));
+      if (leftPinned !== rightPinned) {
+        return leftPinned ? -1 : 1;
+      }
+      return left.displayName.localeCompare(right.displayName);
+    });
+  }, [localRepositories, normalizedRepositoryFilter, repositoryPinRecords]);
   const localRepositoryNames = useMemo(
     () => new Set(repositories.map((repository) => repository.nameWithOwner.toLowerCase())),
     [repositories]
@@ -9874,7 +11034,7 @@ function Sidebar({
     queryKey: ["sidebar-repository-search", trimmedRepositoryFilter, remoteRepositorySearchLimit],
     queryFn: () =>
       api.github.searchWithStatus({ query: trimmedRepositoryFilter, limit: remoteRepositorySearchLimit }),
-    enabled: githubReady && trimmedRepositoryFilter.length > 1
+    enabled: !browsingLocalArea && githubReady && trimmedRepositoryFilter.length > 1
   });
   const remoteSearchItems = remoteSearch.data?.items ?? [];
   const remoteSearchAvailabilityMessage = readAvailabilityMessage(
@@ -9890,6 +11050,7 @@ function Sidebar({
   });
   const exactRepositoryTarget = repositoryNameWithOwnerInput(trimmedRepositoryFilter);
   const directRepositoryVisible =
+    !browsingLocalArea &&
     exactRepositoryTarget !== null &&
     !localRepositoryNames.has(exactRepositoryTarget.toLowerCase()) &&
     ![...matchingRepositories, ...remoteRepositories].some(
@@ -9900,50 +11061,61 @@ function Sidebar({
     : repositories
         .slice(0, Math.min(localRepositoryDisplayLimit, localRepositoryLimit))
         .map((repository) => repositoryShortcutFromName(repository.nameWithOwner, repository));
-  const sidebarRepositories = normalizedRepositoryFilter
-    ? [
-        ...matchingRepositories.map((repository) => ({ repository, source: "Local" as const })),
-        ...remoteRepositories.map((repository) => ({
-          repository: repositoryShortcutFromName(repository.nameWithOwner, repository),
-          source: "GitHub" as const
-        }))
-      ]
-    : defaultSidebarRepositories.map((repository) => ({ repository, source: null }));
-  const repositorySectionTitle = normalizedRepositoryFilter
-    ? "Repository search"
-    : localPinnedRepositories.length
-      ? "Pinned repositories"
-      : "Repositories";
+  const sidebarRepositories = browsingLocalArea
+    ? []
+    : normalizedRepositoryFilter
+      ? [
+          ...matchingRepositories.map((repository) => ({ repository, source: "Local" as const })),
+          ...remoteRepositories.map((repository) => ({
+            repository: repositoryShortcutFromName(repository.nameWithOwner, repository),
+            source: "GitHub" as const
+          }))
+        ]
+      : defaultSidebarRepositories.map((repository) => ({ repository, source: null }));
+  const repositorySectionTitle = browsingLocalArea
+    ? "Local repositories"
+    : normalizedRepositoryFilter
+      ? "Repository search"
+      : localPinnedRepositories.length
+        ? "Pinned repositories"
+        : "Repositories";
   const showCachedRepositorySearchStatus =
     normalizedRepositoryFilter.length > 0 && !githubReady && !remoteSearch.isFetching;
   const canLoadMoreLocalRepositories =
+    !browsingLocalArea &&
     !normalizedRepositoryFilter &&
     localPinnedRepositories.length === 0 &&
     localRepositoryDisplayLimit < localRepositoryLimit;
   const showingAllLoadedLocalRepositories =
+    !browsingLocalArea &&
     !normalizedRepositoryFilter &&
     localPinnedRepositories.length === 0 &&
     repositories.length > 0 &&
     repositories.length <= maxRepositoryListLimit &&
     localRepositoryDisplayLimit >= localRepositoryLimit;
   const localRepositoryListLimitReached =
+    !browsingLocalArea &&
     !normalizedRepositoryFilter &&
     localPinnedRepositories.length === 0 &&
     repositories.length > maxRepositoryListLimit &&
     localRepositoryDisplayLimit >= maxRepositoryListLimit;
   const canLoadMoreLocalSearchResults =
+    !browsingLocalArea &&
     normalizedRepositoryFilter.length > 0 &&
     visibleLocalSearchLimit < Math.min(matchingLocalRepositories.length, maxRepositoryListLimit);
   const showingAllLoadedLocalSearchResults =
+    !browsingLocalArea &&
     normalizedRepositoryFilter.length > 0 &&
     matchingLocalRepositories.length > 0 &&
     matchingLocalRepositories.length <= maxRepositoryListLimit &&
     visibleLocalSearchLimit >= Math.min(matchingLocalRepositories.length, maxRepositoryListLimit);
   const localSearchListLimitReached =
+    !browsingLocalArea &&
     normalizedRepositoryFilter.length > 0 &&
     matchingLocalRepositories.length > maxRepositoryListLimit &&
     visibleLocalSearchLimit >= maxRepositoryListLimit;
   const remoteSearchMayBeCapped =
+    !browsingLocalArea &&
     githubReady &&
     normalizedRepositoryFilter.length > 0 &&
     !remoteSearch.isFetching &&
@@ -10044,38 +11216,82 @@ function Sidebar({
         </label>
 
         <div className="repo-list" ref={parentRef}>
-          {repositoriesLoading && sidebarRepositories.length === 0 && (
+          {browsingLocalArea && localRepositoriesLoading && matchingAreaRepositories.length === 0 && (
+            <div className="loading-state sidebar-empty-state">Scanning local repositories...</div>
+          )}
+          {browsingLocalArea && !localRepositoriesLoading && matchingAreaRepositories.length === 0 && (
+            <div className="empty-state sidebar-empty-state">
+              {normalizedRepositoryFilter
+                ? "No local repositories match this filter."
+                : "No repositories found in this Area yet."}
+            </div>
+          )}
+          {browsingLocalArea &&
+            matchingAreaRepositories.map((repository) => {
+              const pinned = repositoryPinRecords.some(
+                (pin) =>
+                  areaRepositoryPinKey(pin.areaId, pin.repositoryId, pin.workspaceId) ===
+                  areaRepositoryPinKey(repository.areaId, repository.id, null)
+              );
+              return (
+                <button
+                  className={`repo-item local-repo-item ${selectedLocalRepositoryId === repository.id ? "selected" : ""}`}
+                  key={repository.id}
+                  type="button"
+                  aria-label={`Open ${repository.displayName}`}
+                  title={repository.path ?? repository.displayName}
+                  onClick={() => onSelectLocalRepository(repository)}
+                >
+                  <span className="repo-avatar">{repository.kind === "jj" ? "J" : "G"}</span>
+                  <span className="repo-copy">
+                    <span className="repo-name">{repository.displayName}</span>
+                    <span className="repo-meta">
+                      {repository.connection?.nameWithOwner ?? repository.path ?? repository.kind}
+                    </span>
+                  </span>
+                  {pinned ? (
+                    <Pin size={13} />
+                  ) : repository.connection ? (
+                    <ExternalLink size={13} />
+                  ) : (
+                    <span className="repo-source">{repository.kind}</span>
+                  )}
+                </button>
+              );
+            })}
+          {!browsingLocalArea && repositoriesLoading && sidebarRepositories.length === 0 && (
             <div className="loading-state sidebar-empty-state">Loading repositories…</div>
           )}
-          {repositoriesError && sidebarRepositories.length === 0 && (
+          {!browsingLocalArea && repositoriesError && sidebarRepositories.length === 0 && (
             <div className="error-state sidebar-empty-state">
               Repositories unavailable: {repositoriesError.message}
             </div>
           )}
-          {repositoriesAvailabilityMessage && sidebarRepositories.length === 0 && (
+          {!browsingLocalArea && repositoriesAvailabilityMessage && sidebarRepositories.length === 0 && (
             <div className="error-state sidebar-empty-state">{repositoriesAvailabilityMessage}</div>
           )}
-          {remoteSearch.isFetching && normalizedRepositoryFilter && (
+          {!browsingLocalArea && remoteSearch.isFetching && normalizedRepositoryFilter && (
             <div className="loading-state sidebar-empty-state">Searching GitHub…</div>
           )}
-          {remoteSearch.isError && normalizedRepositoryFilter && (
+          {!browsingLocalArea && remoteSearch.isError && normalizedRepositoryFilter && (
             <div className="error-state sidebar-empty-state">
               GitHub search unavailable
               {remoteSearch.error instanceof Error ? `: ${remoteSearch.error.message}` : "."}
             </div>
           )}
-          {remoteSearchAvailabilityMessage && normalizedRepositoryFilter && (
+          {!browsingLocalArea && remoteSearchAvailabilityMessage && normalizedRepositoryFilter && (
             <div className="error-state sidebar-empty-state">{remoteSearchAvailabilityMessage}</div>
           )}
-          {showCachedRepositorySearchStatus && (
+          {!browsingLocalArea && showCachedRepositorySearchStatus && (
             <div className="muted-row sidebar-empty-state">
               Cached mode: searching local repositories only.
             </div>
           )}
-          {remoteSearchMayBeCapped && (
+          {!browsingLocalArea && remoteSearchMayBeCapped && (
             <div className="muted-row sidebar-empty-state">GitHub results may be capped.</div>
           )}
-          {!repositoriesLoading &&
+          {!browsingLocalArea &&
+            !repositoriesLoading &&
             !repositoriesError &&
             !repositoriesAvailabilityMessage &&
             !remoteSearch.isFetching &&
@@ -10221,14 +11437,555 @@ function Sidebar({
   );
 }
 
+function AreaTopbarSelector({
+  areas,
+  selectedAreaId,
+  onSelectArea,
+  onAddLocalArea,
+  onAddSshArea,
+  onEditArea,
+  onDeleteArea
+}: {
+  areas: AreaSummary[];
+  selectedAreaId: string | null;
+  onSelectArea(areaId: string): void;
+  onAddLocalArea(): void;
+  onAddSshArea(): void;
+  onEditArea(area: AreaSummary): void;
+  onDeleteArea(area: AreaSummary): void;
+}): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const [actionAreaId, setActionAreaId] = useState<string | null>(null);
+  const selectedArea =
+    areas.find((area) => area.id === selectedAreaId) ??
+    areas.find((area) => area.selected) ??
+    areas.find((area) => area.kind === "github") ??
+    null;
+  const label = selectedArea?.label ?? "GitHub";
+  const mark = selectedArea?.kind === "local" ? "L" : selectedArea?.kind === "ssh" ? "S" : "GH";
+
+  return (
+    <div
+      className="area-topbar-selector"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          setOpen(false);
+        }
+      }}
+    >
+      <button
+        className="titlebar-provider-button area-topbar-button"
+        type="button"
+        aria-label="Select Area"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span className="brand-mark">{mark}</span>
+        <span>{label}</span>
+        <ChevronDown size={14} />
+      </button>
+      {open && (
+        <div className="area-topbar-menu" role="menu">
+          {areas.map((area) => {
+            const actionsOpen = actionAreaId === area.id;
+            return (
+              <div
+                className={`area-menu-row ${selectedArea?.id === area.id ? "selected" : ""}`}
+                key={area.id}
+                role="none"
+              >
+                <button
+                  className="area-menu-item"
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    onSelectArea(area.id);
+                    setOpen(false);
+                    setActionAreaId(null);
+                  }}
+                >
+                  <span className="repo-avatar">
+                    {area.kind === "github" ? "G" : area.kind === "ssh" ? "S" : "L"}
+                  </span>
+                  <span className="repo-copy">
+                    <span className="repo-name">{area.label}</span>
+                    <span className="repo-meta">
+                      {isGatewayAreaKind(area.kind) ? `${area.repositoryCount} repositories` : area.subtitle}
+                    </span>
+                  </span>
+                </button>
+                <button
+                  className="area-menu-more"
+                  type="button"
+                  aria-label={`Area actions for ${area.label}`}
+                  aria-expanded={actionsOpen}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setActionAreaId(actionsOpen ? null : area.id);
+                  }}
+                >
+                  <MoreHorizontal size={15} />
+                </button>
+                {actionsOpen && (
+                  <div className="area-actions-menu" role="menu" onClick={(event) => event.stopPropagation()}>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        onEditArea(area);
+                        setActionAreaId(null);
+                        setOpen(false);
+                      }}
+                    >
+                      <Pencil size={14} />
+                      <span>Edit Area</span>
+                    </button>
+                    {area.kind === "github" ? (
+                      <button
+                        className="area-action-delete"
+                        type="button"
+                        role="menuitem"
+                        aria-disabled="true"
+                        title="Default GitHub Area cannot be deleted"
+                      >
+                        <Trash2 size={14} />
+                        <span>Delete Area</span>
+                      </button>
+                    ) : (
+                      <AreaArmedDeleteAction
+                        area={area}
+                        onDelete={() => {
+                          onDeleteArea(area);
+                          setActionAreaId(null);
+                          setOpen(false);
+                        }}
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          <button
+            className="area-menu-add"
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              onAddLocalArea();
+              setOpen(false);
+            }}
+          >
+            <Plus size={15} />
+            <span>Add local folder Area</span>
+          </button>
+          <button
+            className="area-menu-add"
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              onAddSshArea();
+              setOpen(false);
+            }}
+          >
+            <Plus size={15} />
+            <span>Add SSH Area</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AreaArmedDeleteAction({ area, onDelete }: { area: AreaSummary; onDelete(): void }): JSX.Element {
+  const [armed, setArmed] = useState(false);
+  const armTimer = useRef<number | null>(null);
+
+  function clearTimer(): void {
+    if (armTimer.current) {
+      window.clearTimeout(armTimer.current);
+      armTimer.current = null;
+    }
+  }
+
+  function beginArming(): void {
+    if (armed || armTimer.current) {
+      return;
+    }
+    setArmed(false);
+    armTimer.current = window.setTimeout(() => {
+      setArmed(true);
+      armTimer.current = null;
+    }, 3_000);
+  }
+
+  function cancelArming(): void {
+    clearTimer();
+    setArmed(false);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (armTimer.current) {
+        window.clearTimeout(armTimer.current);
+      }
+    };
+  }, []);
+
+  return (
+    <button
+      className={`area-action-delete ${armed ? "armed" : ""}`}
+      type="button"
+      role="menuitem"
+      aria-disabled={!armed}
+      title={armed ? `Delete ${area.label}` : "Hover for 3 seconds to enable delete"}
+      onMouseEnter={beginArming}
+      onMouseLeave={cancelArming}
+      onFocus={beginArming}
+      onBlur={cancelArming}
+      onClick={(event) => {
+        if (!armed) {
+          event.preventDefault();
+          return;
+        }
+        onDelete();
+      }}
+    >
+      <Trash2 size={14} />
+      <span>Delete Area</span>
+    </button>
+  );
+}
+
+function SshAreaDialog({
+  onClose,
+  onCreate
+}: {
+  onClose(): void;
+  onCreate(input: CreateSshAreaInput): Promise<void>;
+}): JSX.Element {
+  const [host, setHost] = useState("delta-wsl");
+  const [rootPath, setRootPath] = useState("~/controltest");
+  const [username, setUsername] = useState("");
+  const [port, setPort] = useState("");
+  const [label, setLabel] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const normalizedHost = host.trim();
+    const normalizedRootPath = rootPath.trim();
+    const normalizedPort = port.trim();
+
+    if (!normalizedHost || !normalizedRootPath) {
+      setError("Host and root path are required.");
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onCreate({
+        host: normalizedHost,
+        rootPath: normalizedRootPath,
+        username: username.trim() || null,
+        label: label.trim() || normalizedHost,
+        port: normalizedPort ? Number(normalizedPort) : null
+      });
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : "SSH Area could not be created.");
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <form
+        className="settings-panel ssh-area-dialog"
+        aria-labelledby="ssh-area-dialog-title"
+        onMouseDown={(event) => event.stopPropagation()}
+        onSubmit={(event) => void submit(event)}
+      >
+        <header>
+          <div>
+            <h2 id="ssh-area-dialog-title">Add SSH Area</h2>
+            <p>Start a gateway for a remote territory.</p>
+          </div>
+          <button className="icon-button" type="button" aria-label="Close SSH Area dialog" onClick={onClose}>
+            <X size={16} />
+          </button>
+        </header>
+        <label>
+          Label
+          <input autoFocus value={label} onChange={(event) => setLabel(event.target.value)} />
+        </label>
+        <label>
+          Host
+          <input value={host} onChange={(event) => setHost(event.target.value)} />
+        </label>
+        <label>
+          Root path
+          <input value={rootPath} onChange={(event) => setRootPath(event.target.value)} />
+        </label>
+        <label>
+          Username
+          <input value={username} onChange={(event) => setUsername(event.target.value)} />
+        </label>
+        <label>
+          Port
+          <input
+            inputMode="numeric"
+            value={port}
+            onChange={(event) => setPort(event.target.value.replace(/\D/g, ""))}
+          />
+        </label>
+        {error && <div className="error-state">{error}</div>}
+        <footer>
+          <button className="secondary-button" type="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" disabled={submitting}>
+            <Plus size={16} /> {submitting ? "Adding" : "Add SSH Area"}
+          </button>
+        </footer>
+      </form>
+    </div>
+  );
+}
+
+function AreaEditDialog({
+  area,
+  onClose,
+  onSave
+}: {
+  area: AreaSummary;
+  onClose(): void;
+  onSave(input: UpdateAreaInput): Promise<void>;
+}): JSX.Element {
+  const sshDefaults = sshDefaultsFromArea(area);
+  const [label, setLabel] = useState(area.label);
+  const [rootPath, setRootPath] = useState(area.rootPath ?? "");
+  const [host, setHost] = useState(sshDefaults.host);
+  const [username, setUsername] = useState(sshDefaults.username ?? "");
+  const [port, setPort] = useState(sshDefaults.port ? String(sshDefaults.port) : "");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const normalizedLabel = label.trim();
+    const normalizedRootPath = rootPath.trim();
+    const normalizedHost = host.trim();
+    const normalizedPort = port.trim();
+
+    if (area.kind === "local" && !normalizedRootPath) {
+      setError("Root path is required.");
+      return;
+    }
+    if (area.kind === "ssh" && (!normalizedHost || !normalizedRootPath)) {
+      setError("Host and root path are required.");
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      if (area.kind === "github") {
+        await onSave({ areaId: area.id, label: normalizedLabel || "GitHub" });
+      } else if (area.kind === "local") {
+        await onSave({
+          areaId: area.id,
+          label: normalizedLabel || null,
+          rootPath: normalizedRootPath
+        });
+      } else {
+        await onSave({
+          areaId: area.id,
+          label: normalizedLabel || normalizedHost,
+          host: normalizedHost,
+          rootPath: normalizedRootPath,
+          username: username.trim() || null,
+          port: normalizedPort ? Number(normalizedPort) : null
+        });
+      }
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Area could not be saved.");
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <form
+        className="settings-panel area-edit-dialog"
+        aria-labelledby="area-edit-dialog-title"
+        onMouseDown={(event) => event.stopPropagation()}
+        onSubmit={(event) => void submit(event)}
+      >
+        <header>
+          <div>
+            <h2 id="area-edit-dialog-title">Edit Area</h2>
+            <p>{area.kind === "github" ? "Update this GitHub Area." : "Update this territory mount."}</p>
+          </div>
+          <button className="icon-button" type="button" aria-label="Close Area edit dialog" onClick={onClose}>
+            <X size={16} />
+          </button>
+        </header>
+        <label>
+          Label
+          <input autoFocus value={label} onChange={(event) => setLabel(event.target.value)} />
+        </label>
+        {area.kind === "ssh" && (
+          <label>
+            Host
+            <input value={host} onChange={(event) => setHost(event.target.value)} />
+          </label>
+        )}
+        {area.kind !== "github" && (
+          <label>
+            Root path
+            <input value={rootPath} onChange={(event) => setRootPath(event.target.value)} />
+          </label>
+        )}
+        {area.kind === "ssh" && (
+          <>
+            <label>
+              Username
+              <input value={username} onChange={(event) => setUsername(event.target.value)} />
+            </label>
+            <label>
+              Port
+              <input
+                inputMode="numeric"
+                value={port}
+                onChange={(event) => setPort(event.target.value.replace(/\D/g, ""))}
+              />
+            </label>
+          </>
+        )}
+        {error && <div className="error-state">{error}</div>}
+        <footer>
+          <button className="secondary-button" type="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" disabled={submitting}>
+            <Pencil size={16} /> {submitting ? "Saving" : "Save Area"}
+          </button>
+        </footer>
+      </form>
+    </div>
+  );
+}
+
+function AreaDeleteDialog({
+  area,
+  onClose,
+  onDelete
+}: {
+  area: AreaSummary;
+  onClose(): void;
+  onDelete(): Promise<void>;
+}): JSX.Element {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function confirmDelete(): Promise<void> {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onDelete();
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Area could not be deleted.");
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <section
+        className="settings-panel area-confirm-dialog"
+        aria-labelledby="area-delete-dialog-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header>
+          <div>
+            <h2 id="area-delete-dialog-title">Delete Area</h2>
+            <p>Are you sure you want to delete this area?</p>
+          </div>
+          <button
+            className="icon-button"
+            type="button"
+            aria-label="Close Area delete dialog"
+            onClick={onClose}
+          >
+            <X size={16} />
+          </button>
+        </header>
+        <div className="area-delete-summary">
+          <strong>{area.label}</strong>
+          <span>{area.subtitle ?? area.rootPath ?? area.kind}</span>
+        </div>
+        {error && <div className="error-state">{error}</div>}
+        <footer>
+          <button className="secondary-button" type="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            className="danger-button"
+            type="button"
+            disabled={submitting}
+            onClick={() => void confirmDelete()}
+          >
+            <Trash2 size={16} /> {submitting ? "Deleting" : "Delete Area"}
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function sshDefaultsFromArea(area: AreaSummary): {
+  host: string;
+  username: string | null;
+  port: number | null;
+} {
+  if (area.kind !== "ssh") {
+    return { host: "", username: null, port: null };
+  }
+  const suffix = area.rootPath ? `:${area.rootPath}` : "";
+  const authority =
+    suffix && area.subtitle?.endsWith(suffix)
+      ? area.subtitle.slice(0, -suffix.length)
+      : (area.subtitle?.split(":")[0] ?? area.label);
+  const [usernamePart, hostPart = usernamePart] = authority.includes("@")
+    ? authority.split("@", 2)
+    : ["", authority];
+  const portSeparator = hostPart.lastIndexOf(":");
+  const portValue = portSeparator > -1 ? Number(hostPart.slice(portSeparator + 1)) : null;
+  return {
+    host: portSeparator > -1 ? hostPart.slice(0, portSeparator) : hostPart,
+    username: usernamePart || null,
+    port: portValue && Number.isInteger(portValue) ? portValue : null
+  };
+}
+
 function TopBar({
   viewer,
   route,
+  areas,
+  selectedAreaId,
   selectedRepository,
   repositories,
   githubReady,
+  onSelectArea,
+  onAddLocalArea,
+  onAddSshArea,
+  onEditArea,
+  onDeleteArea,
   onGoRepository,
   onOpenRepository,
+  onOpenLocalRepository,
   onOpenAddRepository,
   onOpenCommandPalette,
   onOpenHome,
@@ -10237,11 +11994,19 @@ function TopBar({
 }: {
   viewer: AppState["viewer"];
   route: AppRoute;
+  areas: AreaSummary[];
+  selectedAreaId: string | null;
   selectedRepository: string | null;
   repositories: RepositorySummary[];
   githubReady: boolean;
+  onSelectArea(areaId: string): void;
+  onAddLocalArea(): void;
+  onAddSshArea(): void;
+  onEditArea(area: AreaSummary): void;
+  onDeleteArea(area: AreaSummary): void;
   onGoRepository(): void;
   onOpenRepository(nameWithOwner: string): void;
+  onOpenLocalRepository(repository: AreaRepositorySummary): void;
   onOpenAddRepository(): void;
   onOpenCommandPalette(): void;
   onOpenHome(): void;
@@ -10273,6 +12038,12 @@ function TopBar({
     enabled: githubReady && normalizedQuery.length > 1
   });
   const searchItems = search.data?.items ?? [];
+  const areaSearch = useQuery({
+    queryKey: ["area-search", normalizedQuery],
+    queryFn: () => api.areas.searchAreas({ query: normalizedQuery, limit: 8 }),
+    enabled: normalizedQuery.length > 1
+  });
+  const areaRepositoryResults = areaSearch.data?.repositories ?? [];
   const searchAvailabilityMessage = readAvailabilityMessage(
     "Repository search",
     search.data?.availability ?? null
@@ -10336,14 +12107,24 @@ function TopBar({
     setActiveSearchIndex(0);
   }
 
+  function openAreaRepositoryResult(repository: AreaRepositorySummary): void {
+    onOpenLocalRepository(repository);
+    setQuery("");
+    setActiveSearchIndex(0);
+  }
+
   return (
     <header className="topbar">
       <div className="titlebar-left">
-        <button className="titlebar-provider-button" type="button" onClick={onOpenHome}>
-          <span className="brand-mark">GH</span>
-          GitHub
-          <ChevronDown size={14} />
-        </button>
+        <AreaTopbarSelector
+          areas={areas}
+          selectedAreaId={selectedAreaId}
+          onSelectArea={onSelectArea}
+          onAddLocalArea={onAddLocalArea}
+          onAddSshArea={onAddSshArea}
+          onEditArea={onEditArea}
+          onDeleteArea={onDeleteArea}
+        />
       </div>
 
       <div className="search-wrap">
@@ -10438,6 +12219,16 @@ function TopBar({
               >
                 <span>{result.nameWithOwner}</span>
                 <small>{repositorySearchMetadataLabel(result)} · GitHub</small>
+              </button>
+            ))}
+            {areaRepositoryResults.length > 0 && <div className="palette-section-title">Areas</div>}
+            {areaRepositoryResults.map((result) => (
+              <button key={result.id} type="button" onClick={() => openAreaRepositoryResult(result)}>
+                <span>{result.displayName}</span>
+                <small>
+                  {result.kind.toUpperCase()} ·{" "}
+                  {result.connection?.nameWithOwner ?? result.path ?? "Local Area"}
+                </small>
               </button>
             ))}
             {canLoadMoreLocalResults && (
@@ -19826,7 +21617,7 @@ function ActionsTab({
                   }}
                 >
                   <Workflow size={17} />
-                  <div>
+                  <div className="workflow-run-copy">
                     <strong>{run.displayTitle ?? run.name}</strong>
                     <small>{workflowRunMetadata.join(" · ")}</small>
                   </div>
@@ -20139,48 +21930,53 @@ function ActionsTab({
 
                           return (
                             <article className="workflow-failure-item" key={item.id}>
-                              <div>
+                              <div className="workflow-failure-copy">
                                 <small>
                                   {item.kind} · {item.state}
                                 </small>
                                 <strong>{item.title}</strong>
                                 <span>{item.detail}</span>
                               </div>
-                              <button
-                                type="button"
-                                disabled={Boolean(failureControlDisabledReason)}
-                                title={failureControlDisabledReason ?? undefined}
-                                onClick={() => {
-                                  if (item.jobId !== undefined) {
-                                    setSelectedLogJobSelection({ runId: selectedRun.id, jobId: item.jobId });
-                                  } else if (item.path) {
-                                    onOpenCodePath(
-                                      item.path,
-                                      selectedRun.branch ??
-                                        selectedRun.commitSha ??
-                                        repository.defaultBranch ??
-                                        null,
-                                      item.url,
-                                      item.line ?? null,
-                                      selectedRunTargetRepositoryNameWithOwner
-                                    );
-                                  }
-                                }}
-                              >
-                                Open in Control
-                              </button>
-                              <button
-                                type="button"
-                                disabled={!item.url}
-                                title={item.url ? undefined : "Failure signal URL unavailable."}
-                                onClick={() => {
-                                  if (item.url) {
-                                    onOpenExternal(item.url);
-                                  }
-                                }}
-                              >
-                                GitHub fallback
-                              </button>
+                              <div className="workflow-card-actions workflow-failure-actions">
+                                <button
+                                  type="button"
+                                  disabled={Boolean(failureControlDisabledReason)}
+                                  title={failureControlDisabledReason ?? undefined}
+                                  onClick={() => {
+                                    if (item.jobId !== undefined) {
+                                      setSelectedLogJobSelection({
+                                        runId: selectedRun.id,
+                                        jobId: item.jobId
+                                      });
+                                    } else if (item.path) {
+                                      onOpenCodePath(
+                                        item.path,
+                                        selectedRun.branch ??
+                                          selectedRun.commitSha ??
+                                          repository.defaultBranch ??
+                                          null,
+                                        item.url,
+                                        item.line ?? null,
+                                        selectedRunTargetRepositoryNameWithOwner
+                                      );
+                                    }
+                                  }}
+                                >
+                                  Open in Control
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={!item.url}
+                                  title={item.url ? undefined : "Failure signal URL unavailable."}
+                                  onClick={() => {
+                                    if (item.url) {
+                                      onOpenExternal(item.url);
+                                    }
+                                  }}
+                                >
+                                  GitHub fallback
+                                </button>
+                              </div>
                             </article>
                           );
                         })}

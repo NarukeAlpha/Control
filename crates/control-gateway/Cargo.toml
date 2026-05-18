@@ -1,0 +1,32 @@
+[package]
+name = "control-gateway"
+version = "0.1.0"
+edition = "2021"
+description = "Lightweight local HTTP gateway for Control."
+publish = false
+
+[dependencies]
+# HTTP routing, JSON extraction, and standards-compliant SSE responses.
+axum = "0.7"
+# GraphQL schema and request/response execution without a separate web framework.
+async-graphql = "7"
+# CLI parsing for the standalone gateway process.
+clap = { version = "4", features = ["derive"] }
+# Small error wrapper for binary startup and filesystem/process failures.
+anyhow = "1"
+# Async runtime, TCP listeners, child processes, and shutdown coordination.
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "process", "signal", "fs", "sync", "net"] }
+# Serializable API contracts and optional manifest output.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Stream adapter for broadcast-backed event fanout.
+async-stream = "0.3"
+futures-core = "0.3"
+# Timestamps for operation events and manifest metadata.
+time = { version = "0.3", features = ["formatting", "macros", "serde"] }
+# UUIDs for preview confirmations and operation ids.
+uuid = { version = "1", features = ["v4", "serde"] }
+
+[dev-dependencies]
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }

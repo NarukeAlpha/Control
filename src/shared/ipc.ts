@@ -1,4 +1,39 @@
 import type {
+  AreaActivityItem,
+  AreaContentsInput,
+  AreaFileContent,
+  AreaFileContentInput,
+  AreaFileEntry,
+  AreaGatewayOperationInput,
+  AreaGatewayOperationPreview,
+  AreaGatewayOperationResult,
+  AreaGatewayRunOperationInput,
+  AreaGitHubIssuesInput,
+  AreaGitHubListInput,
+  AreaGitHubPullRequestsInput,
+  AreaGitHubRepositoryInput,
+  AreaRefInput,
+  AreaRepositoryDetail,
+  AreaRepositoryInput,
+  AreaRepositorySummary,
+  AreaRepositoryUpdatedEvent,
+  AreaSearchInput,
+  AreaSearchResult,
+  AreaSummary,
+  AreaSyncStatus,
+  AreaSyncStatusInput,
+  AreaUpdatedEvent,
+  AreaWorkspaceDetail,
+  AreaWorkspaceSummary,
+  AreaWorkspaceUpdatedEvent,
+  CreateLocalAreaInput,
+  CreateSshAreaInput,
+  ListAreaRepositoriesInput,
+  ListAreaWorkspacesInput,
+  StopAreaGatewayInput,
+  UpdateAreaInput
+} from "./areas";
+import type {
   AccountIssueListInput,
   AccountIssueListResult,
   AccountProfileInput,
@@ -139,7 +174,8 @@ import type {
   LocalRecentItem,
   LocalRecentListInput,
   LocalRecentRecordInput,
-  RepositoryPinInput
+  RepositoryPinInput,
+  RepositoryPinRecord
 } from "./local";
 
 export interface ControlApi {
@@ -154,10 +190,48 @@ export interface ControlApi {
   listPinnedRepositories(): Promise<string[]>;
   pinRepository(input: RepositoryPinInput): Promise<string[]>;
   unpinRepository(input: RepositoryPinInput): Promise<string[]>;
+  listRepositoryPins(): Promise<RepositoryPinRecord[]>;
+  pinAreaRepository(input: RepositoryPinInput): Promise<RepositoryPinRecord[]>;
+  unpinAreaRepository(input: RepositoryPinInput): Promise<RepositoryPinRecord[]>;
   listRecentItems(input?: LocalRecentListInput): Promise<LocalRecentItem[]>;
   recordRecentItem(input: LocalRecentRecordInput): Promise<LocalRecentItem[]>;
   onGitHubRepositoriesUpdated(callback: (event: GitHubRepositoriesUpdatedEvent) => void): () => void;
   onGitHubAuthUpdated(callback: (event: GitHubAuthUpdatedEvent) => void): () => void;
+  areas: {
+    listAreas(): Promise<AreaSummary[]>;
+    getArea(areaId: string): Promise<AreaSummary | null>;
+    selectArea(areaId: string): Promise<AreaSummary[]>;
+    createLocalArea(input: CreateLocalAreaInput): Promise<AreaSummary>;
+    createSshArea(input: CreateSshAreaInput): Promise<AreaSummary>;
+    updateArea(input: UpdateAreaInput): Promise<AreaSummary>;
+    removeArea(areaId: string): Promise<AreaSummary[]>;
+    refreshArea(areaId: string): Promise<AreaSummary | null>;
+    searchAreas(input: AreaSearchInput): Promise<AreaSearchResult>;
+    listRepositories(input: ListAreaRepositoriesInput): Promise<AreaRepositorySummary[]>;
+    getRepository(input: AreaRepositoryInput): Promise<AreaRepositoryDetail | null>;
+    listContents(input: AreaContentsInput): Promise<AreaFileEntry[]>;
+    getFileContent(input: AreaFileContentInput): Promise<AreaFileContent>;
+    listBranches(input: AreaRefInput): Promise<AreaRepositoryDetail["branches"]>;
+    listRemotes(input: AreaRepositoryInput): Promise<AreaRepositoryDetail["remotes"]>;
+    getStatus(input: AreaRepositoryInput): Promise<AreaRepositoryDetail["status"]>;
+    listActivity(input: AreaRefInput): Promise<AreaActivityItem[]>;
+    listWorkspaces(input: ListAreaWorkspacesInput): Promise<AreaWorkspaceSummary[]>;
+    getWorkspace(input: { areaId: string; workspaceId: string }): Promise<AreaWorkspaceDetail | null>;
+    getGitHubRepository(input: AreaGitHubRepositoryInput): Promise<RepositoryDetailResult>;
+    listGitHubIssues(input: AreaGitHubIssuesInput): Promise<IssueListResult>;
+    listGitHubPullRequests(input: AreaGitHubPullRequestsInput): Promise<PullRequestListResult>;
+    listGitHubActions(input: AreaGitHubListInput): Promise<WorkflowRunListResult>;
+    listGitHubReleases(input: AreaGitHubListInput): Promise<ReleaseListResult>;
+    listGitHubContributors(input: AreaGitHubListInput): Promise<ContributorListResult>;
+    getSyncStatus(input: AreaSyncStatusInput): Promise<AreaSyncStatus>;
+    prepareGatewayOperation(input: AreaGatewayOperationInput): Promise<AreaGatewayOperationPreview>;
+    runGatewayOperation(input: AreaGatewayRunOperationInput): Promise<AreaGatewayOperationResult>;
+    stopGateway(input: StopAreaGatewayInput): Promise<AreaSummary | null>;
+    openLocalFolderPicker(): Promise<string | null>;
+  };
+  onAreasUpdated(callback: (event: AreaUpdatedEvent) => void): () => void;
+  onAreaRepositoryUpdated(callback: (event: AreaRepositoryUpdatedEvent) => void): () => void;
+  onAreaWorkspaceUpdated(callback: (event: AreaWorkspaceUpdatedEvent) => void): () => void;
   github: {
     getViewer(): Promise<Viewer>;
     getAccountProfile(input?: AccountProfileInput): Promise<GitHubAccountProfile>;
@@ -283,10 +357,46 @@ export const ipcChannels = {
   listPinnedRepositories: "control:list-pinned-repositories",
   pinRepository: "control:pin-repository",
   unpinRepository: "control:unpin-repository",
+  listRepositoryPins: "control:list-repository-pins",
+  pinAreaRepository: "control:pin-area-repository",
+  unpinAreaRepository: "control:unpin-area-repository",
   listRecentItems: "control:list-recent-items",
   recordRecentItem: "control:record-recent-item",
   githubRepositoriesUpdated: "github:repositories-updated",
   githubAuthUpdated: "github:auth-updated",
+  areasList: "areas:list",
+  areasGet: "areas:get",
+  areasSelect: "areas:select",
+  areasCreateLocal: "areas:create-local",
+  areasCreateSsh: "areas:create-ssh",
+  areasUpdate: "areas:update",
+  areasRemove: "areas:remove",
+  areasRefresh: "areas:refresh",
+  areasSearch: "areas:search",
+  areaRepositories: "areas:repositories",
+  areaRepository: "areas:repository",
+  areaContents: "areas:contents",
+  areaFileContent: "areas:file-content",
+  areaBranches: "areas:branches",
+  areaRemotes: "areas:remotes",
+  areaStatus: "areas:status",
+  areaActivity: "areas:activity",
+  areaWorkspaces: "areas:workspaces",
+  areaWorkspace: "areas:workspace",
+  areaGitHubRepository: "areas:github-repository",
+  areaGitHubIssues: "areas:github-issues",
+  areaGitHubPullRequests: "areas:github-pull-requests",
+  areaGitHubActions: "areas:github-actions",
+  areaGitHubReleases: "areas:github-releases",
+  areaGitHubContributors: "areas:github-contributors",
+  areaSyncStatus: "areas:sync-status",
+  areaPrepareGatewayOperation: "areas:prepare-gateway-operation",
+  areaRunGatewayOperation: "areas:run-gateway-operation",
+  areaStopGateway: "areas:stop-gateway",
+  areaOpenLocalFolderPicker: "areas:open-local-folder-picker",
+  areasUpdated: "areas:updated",
+  areaRepositoryUpdated: "areas:repository-updated",
+  areaWorkspaceUpdated: "areas:workspace-updated",
   githubViewer: "github:viewer",
   githubAccountProfile: "github:account-profile",
   githubAccountProfileWithStatus: "github:account-profile-with-status",

@@ -1,10 +1,11 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createLocalStore } from "./storage";
+import type { AreaRepositorySummary, AreaSummary } from "@shared/areas";
 
 const tempDirs: string[] = [];
 
@@ -105,5 +106,195 @@ describe("LocalStore repository pins", () => {
 
     expect(store.getCache("github", "notifications:unread:all:none:none:30")).toBeNull();
     expect(store.getCache("github", "repositories")).toEqual([{ id: "repo-1" }]);
+  });
+
+  it("creates default and local Areas with repository storage parity", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "control-store-"));
+    tempDirs.push(tempDir);
+    const store = await createLocalStore(tempDir);
+
+    const githubArea = store.ensureDefaultGitHubArea("control-user");
+    const localArea = store.createLocalArea({ rootPath: join(tempDir, "src"), label: "Source" });
+    const now = new Date().toISOString();
+    const repository: AreaRepositorySummary = {
+      id: "repo:local:test",
+      areaId: localArea.id,
+      kind: "git",
+      name: "control",
+      owner: null,
+      displayName: "control",
+      path: join(tempDir, "src", "control"),
+      defaultBranch: "main",
+      currentBranch: "main",
+      isDirty: false,
+      isPrivate: null,
+      description: null,
+      connection: null,
+      capabilities: {
+        supportsBranches: true,
+        supportsBookmarks: false,
+        supportsWorkspaces: false,
+        supportsOperationLog: false,
+        supportsSparse: false,
+        isGitBacked: true,
+        isColocated: false,
+        supportsGitHubEnrichment: false
+      },
+      health: { status: "ready", message: null, checkedAt: now },
+      updatedAt: now,
+      scannedAt: now
+    };
+
+    store.upsertAreaRepository(repository);
+
+    expect(githubArea.id).toBe("github:default");
+    expect(store.listAreas().map((area: AreaSummary) => area.id)).toEqual(
+      expect.arrayContaining(["github:default", localArea.id])
+    );
+    expect(store.listAreaRepositories({ areaId: localArea.id })).toEqual([
+      expect.objectContaining({ id: repository.id, kind: "git" })
+    ]);
+    expect(store.getAreaRepository({ areaId: localArea.id, repositoryId: repository.id })).toEqual(
+      expect.objectContaining({ id: repository.id, branches: [] })
+    );
+  });
+
+  it("updates Area metadata and defaults empty SSH labels to the host", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "control-store-"));
+    tempDirs.push(tempDir);
+    const store = await createLocalStore(tempDir);
+
+    const githubArea = store.ensureDefaultGitHubArea("NarukeAlpha");
+    const localArea = store.createLocalArea({ rootPath: "/Users/example/Projects", label: "Work" });
+    const sshArea = store.createSshArea({ host: "delta-wsl", rootPath: "~/controltest", label: "" });
+
+    expect(sshArea.label).toBe("delta-wsl");
+    expect(store.updateArea({ areaId: githubArea.id, label: "Main GitHub" })).toEqual(
+      expect.objectContaining({ label: "Main GitHub" })
+    );
+    expect(store.updateArea({ areaId: localArea.id, label: "", rootPath: "/Users/example/Code" })).toEqual(
+      expect.objectContaining({ label: "Code", rootPath: "/Users/example/Code" })
+    );
+    expect(
+      store.updateArea({
+        areaId: sshArea.id,
+        label: "",
+        host: "delta-wsl",
+        rootPath: "~/other",
+        username: null,
+        port: null
+      })
+    ).toEqual(expect.objectContaining({ label: "delta-wsl", rootPath: "~/other" }));
+  });
+
+  it("migrates legacy GitHub pins and recents into default Area identity", async () => {
+    let Database: typeof import("better-sqlite3");
+    try {
+      Database = (await import("better-sqlite3")).default;
+    } catch {
+      return;
+    }
+
+    const tempDir = mkdtempSync(join(tmpdir(), "control-store-"));
+    tempDirs.push(tempDir);
+    const dbDir = join(tempDir, "Control");
+    mkdirSync(dbDir, { recursive: true });
+    let db: import("better-sqlite3").Database;
+    try {
+      db = new Database(join(dbDir, "control.sqlite"));
+    } catch {
+      return;
+    }
+    db.exec(`
+      CREATE TABLE pinned_repositories (
+        name_with_owner TEXT PRIMARY KEY,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE recent_items (
+        kind TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        item_key TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (kind, provider, item_key)
+      );
+    `);
+    db.prepare("INSERT INTO pinned_repositories (name_with_owner, created_at) VALUES (?, ?)").run(
+      "apple/swift",
+      "2026-05-01T00:00:00.000Z"
+    );
+    db.prepare(
+      `INSERT INTO recent_items (kind, provider, item_key, payload, updated_at)
+       VALUES (?, ?, ?, ?, ?)`
+    ).run(
+      "repository",
+      "github",
+      "apple/swift",
+      JSON.stringify({
+        nameWithOwner: "apple/swift",
+        description: "The Swift Programming Language",
+        htmlUrl: "https://github.com/apple/swift"
+      }),
+      "2026-05-02T00:00:00.000Z"
+    );
+    db.close();
+
+    const store = await createLocalStore(tempDir);
+
+    expect(store.listAreaRepositoryPins()).toEqual([
+      expect.objectContaining({
+        areaId: "github:default",
+        repositoryId: "github:default:apple/swift",
+        workspaceId: null,
+        nameWithOwner: "apple/swift"
+      })
+    ]);
+    expect(store.listRecentItems({ kind: "repository" })).toEqual([
+      expect.objectContaining({
+        provider: "github",
+        itemKey: "apple/swift",
+        areaId: "github:default",
+        repositoryId: "github:default:apple/swift",
+        workspaceId: null
+      })
+    ]);
+  });
+
+  it("preserves workspace identity on Area pins and local recents", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "control-store-"));
+    tempDirs.push(tempDir);
+    const store = await createLocalStore(tempDir);
+
+    store.pinAreaRepository({
+      areaId: "local:area",
+      repositoryId: "repo:jj",
+      workspaceId: "workspace:docs",
+      nameWithOwner: null,
+      createdAt: null
+    });
+    store.addRecentItem("repository", "local", "local:area:repo:jj:workspace:docs", {
+      title: "docs",
+      areaId: "local:area",
+      repositoryId: "repo:jj",
+      workspaceId: "workspace:docs"
+    });
+
+    expect(store.listAreaRepositoryPins()).toEqual([
+      expect.objectContaining({
+        areaId: "local:area",
+        repositoryId: "repo:jj",
+        workspaceId: "workspace:docs"
+      })
+    ]);
+    expect(store.listRecentItems({ kind: "repository" })).toEqual([
+      expect.objectContaining({
+        provider: "local",
+        itemKey: "local:area:repo:jj:workspace:docs",
+        areaId: "local:area",
+        repositoryId: "repo:jj",
+        workspaceId: "workspace:docs"
+      })
+    ]);
   });
 });

@@ -54,4 +54,3 @@ export function firstMarkdownHeading(markdown: string | null): string {
 
   return heading?.replace(/^#\s+/, "").trim() || "README";
 }
-

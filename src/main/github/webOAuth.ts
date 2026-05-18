@@ -132,10 +132,7 @@ export async function pollGitHubDeviceAuthorization(input: {
   throw new Error("GitHub did not return an access token.");
 }
 
-function githubOAuthErrorMessage(payload: {
-  error?: unknown;
-  error_description?: unknown;
-}): string {
+function githubOAuthErrorMessage(payload: { error?: unknown; error_description?: unknown }): string {
   if (typeof payload.error_description === "string" && payload.error_description.trim()) {
     return payload.error_description;
   }

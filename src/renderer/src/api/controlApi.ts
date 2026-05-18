@@ -4,4 +4,3 @@ import { mockControlApi } from "../data/mock";
 export function getControlApi(): ControlApi {
   return window.control ?? mockControlApi;
 }
-

@@ -8,9 +8,15 @@ test.describe("github/pull-requests", () => {
     benchmarkTelemetry
   }) => {
     for (const phase of ["cold", "warm"] satisfies BenchmarkPhase[]) {
-      await benchmarkTelemetry.measure("search_repository", phase, () => driver.searchRepository(providerFixture));
-      await benchmarkTelemetry.measure("open_repository", phase, () => driver.openRepository(providerFixture));
-      await benchmarkTelemetry.measure("open_pull_requests", phase, () => driver.openPullRequests(providerFixture));
+      await benchmarkTelemetry.measure("search_repository", phase, () =>
+        driver.searchRepository(providerFixture)
+      );
+      await benchmarkTelemetry.measure("open_repository", phase, () =>
+        driver.openRepository(providerFixture)
+      );
+      await benchmarkTelemetry.measure("open_pull_requests", phase, () =>
+        driver.openPullRequests(providerFixture)
+      );
       const data = await benchmarkTelemetry.measure("open_first_pull_request", phase, () =>
         driver.openFirstPullRequest(providerFixture)
       );

@@ -4,9 +4,15 @@ import type { BenchmarkPhase } from "../support/types";
 test.describe("github/repositories", () => {
   test("loads repository overview", async ({ driver, providerFixture, benchmarkTelemetry }) => {
     for (const phase of ["cold", "warm"] satisfies BenchmarkPhase[]) {
-      await benchmarkTelemetry.measure("search_repository", phase, () => driver.searchRepository(providerFixture));
-      await benchmarkTelemetry.measure("open_repository", phase, () => driver.openRepository(providerFixture));
-      await benchmarkTelemetry.measure("render_header", phase, () => driver.waitForRepositoryHeader(providerFixture));
+      await benchmarkTelemetry.measure("search_repository", phase, () =>
+        driver.searchRepository(providerFixture)
+      );
+      await benchmarkTelemetry.measure("open_repository", phase, () =>
+        driver.openRepository(providerFixture)
+      );
+      await benchmarkTelemetry.measure("render_header", phase, () =>
+        driver.waitForRepositoryHeader(providerFixture)
+      );
       await benchmarkTelemetry.measure("render_file_list", phase, () => driver.waitForFileList());
       await benchmarkTelemetry.measure("render_readme", phase, () => driver.waitForReadme());
 

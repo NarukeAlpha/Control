@@ -39,6 +39,7 @@
     "test:e2e:github:contributors": "npm run build && playwright test -c playwright.github.config.ts tests/e2e/benchmarks/github/contributors.spec.ts",
     "test:e2e:github:security-quality": "npm run build && playwright test -c playwright.github.config.ts tests/e2e/benchmarks/github/security-quality.spec.ts",
     "compare:e2e:github": "node scripts/compare-e2e-github.cjs",
+    "format:check": "prettier --check .",
     "format": "prettier --write ."
   },
   "dependencies": {

@@ -71,4 +71,3 @@ Use the same Control shell:
 - PR iteration APIs for changed files.
 - Work item relation expansion and cross-project links.
 - Azure DevOps Server/on-prem version differences.
-

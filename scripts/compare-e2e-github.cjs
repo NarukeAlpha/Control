@@ -173,8 +173,7 @@ function compareRows(batchId, rows) {
     const baseline = group.baseline;
     const candidate = group.candidate;
     const durationDeltaMs = candidate.durationMs - baseline.durationMs;
-    const durationDeltaPercent =
-      baseline.durationMs > 0 ? (durationDeltaMs / baseline.durationMs) * 100 : 0;
+    const durationDeltaPercent = baseline.durationMs > 0 ? (durationDeltaMs / baseline.durationMs) * 100 : 0;
     const signaturesMatch = signaturesCompatible(baseline, candidate);
     const failed =
       baseline.caseStatus !== "passed" ||

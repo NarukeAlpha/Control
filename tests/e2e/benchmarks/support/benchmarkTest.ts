@@ -3,11 +3,7 @@ import { mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import { ControlElectronDriver, GitHubWebDriver, type BenchmarkDriver } from "./drivers";
-import {
-  BenchmarkRunStore,
-  getBenchmarkBatchId,
-  getProjectArtifactDir
-} from "./runStore";
+import { BenchmarkRunStore, getBenchmarkBatchId, getProjectArtifactDir } from "./runStore";
 import { BenchmarkTelemetry } from "./telemetry";
 import {
   getGithubFixture,

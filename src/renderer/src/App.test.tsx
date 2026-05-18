@@ -1,6 +1,6 @@
 import React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -307,6 +307,30 @@ const localArea: AreaSummary = {
   accountLogin: null,
   health: readyAreaHealth,
   repositoryCount: 2,
+  selected: false,
+  createdAt: "2026-05-01T00:00:00.000Z",
+  updatedAt: "2026-05-01T00:00:00.000Z"
+};
+
+const sshArea: AreaSummary = {
+  id: "ssh:delta",
+  kind: "ssh",
+  label: "Delta WSL",
+  subtitle: "alpha@delta-wsl:2222:~/controltest",
+  rootPath: "~/controltest",
+  accountLogin: null,
+  gateway: {
+    status: "ready",
+    version: "0.1.0",
+    apiUrl: "http://127.0.0.1:35525",
+    adminUrl: "http://127.0.0.1:35526",
+    serviceName: "control-gateway-ssh-delta",
+    lastStartedAt: "2026-05-01T00:00:00.000Z",
+    lastSeenAt: "2026-05-01T00:00:00.000Z",
+    message: null
+  },
+  health: readyAreaHealth,
+  repositoryCount: 1,
   selected: false,
   createdAt: "2026-05-01T00:00:00.000Z",
   updatedAt: "2026-05-01T00:00:00.000Z"
@@ -731,6 +755,158 @@ describe("Control renderer routing", () => {
       expect(createLocalArea).toHaveBeenCalledWith({ rootPath: "/Users/ashley/Projects/new-area" });
       expect(useUiStore.getState().selectedAreaId).toBe("local:new-area");
     });
+  });
+
+  it("opens an in-app SSH Area dialog from the topbar selector", async () => {
+    const createSshArea = vi.fn<ControlApi["areas"]["createSshArea"]>(async (input) => ({
+      ...localArea,
+      id: "ssh:delta-wsl",
+      kind: "ssh",
+      label: input.label ?? input.host,
+      subtitle: `${input.host}:${input.rootPath}`,
+      rootPath: input.rootPath,
+      selected: true,
+      repositoryCount: 0,
+      gateway: {
+        status: "starting",
+        version: null,
+        apiUrl: null,
+        adminUrl: null,
+        serviceName: null,
+        lastStartedAt: null,
+        lastSeenAt: null,
+        message: "Starting remote gateway."
+      }
+    }));
+
+    useUiStore.setState({ ...defaultUiState, selectedAreaId: "github:default" });
+    renderControl({
+      ...makeApi(),
+      areas: {
+        ...mockControlApi.areas,
+        listAreas: async () => [githubArea],
+        createSshArea
+      }
+    });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Select Area" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Add SSH Area" }));
+
+    expect(await screen.findByRole("heading", { name: "Add SSH Area" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Host")).toHaveValue("delta-wsl");
+    expect(screen.getByLabelText("Root path")).toHaveValue("~/controltest");
+    expect(createSshArea).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Add SSH Area" }));
+
+    await waitFor(() => {
+      expect(createSshArea).toHaveBeenCalledWith({
+        host: "delta-wsl",
+        rootPath: "~/controltest",
+        username: null,
+        label: "delta-wsl",
+        port: null
+      });
+      expect(useUiStore.getState().selectedAreaId).toBe("ssh:delta-wsl");
+    });
+  });
+
+  it("edits an SSH Area from the topbar action menu", async () => {
+    const updateArea = vi.fn<ControlApi["areas"]["updateArea"]>(async (input) => ({
+      ...sshArea,
+      label: input.label ?? sshArea.label,
+      rootPath: input.rootPath ?? sshArea.rootPath,
+      subtitle: `${input.username ? `${input.username}@` : ""}${input.host}:${input.port}:${input.rootPath}`
+    }));
+
+    renderControl({
+      ...makeApi(),
+      areas: {
+        ...mockControlApi.areas,
+        listAreas: async () => [githubArea, sshArea],
+        updateArea
+      }
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Select Area" }));
+    expect(await screen.findByRole("menuitem", { name: /Delta WSL/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Area actions for Delta WSL" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Edit Area" }));
+
+    const dialog = await screen.findByRole("heading", { name: "Edit Area" });
+    expect(dialog).toBeInTheDocument();
+    expect(screen.getByLabelText("Label")).toHaveValue("Delta WSL");
+    expect(screen.getByLabelText("Host")).toHaveValue("delta-wsl");
+    expect(screen.getByLabelText("Root path")).toHaveValue("~/controltest");
+    expect(screen.getByLabelText("Username")).toHaveValue("alpha");
+    expect(screen.getByLabelText("Port")).toHaveValue("2222");
+
+    fireEvent.change(screen.getByLabelText("Label"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Area" }));
+
+    await waitFor(() =>
+      expect(updateArea).toHaveBeenCalledWith({
+        areaId: sshArea.id,
+        label: "delta-wsl",
+        host: "delta-wsl",
+        rootPath: "~/controltest",
+        username: "alpha",
+        port: 2222
+      })
+    );
+  });
+
+  it("requires the Area delete action to be hovered until armed before confirmation", async () => {
+    const removeArea = vi.fn<ControlApi["areas"]["removeArea"]>(async () => [
+      { ...githubArea, selected: true }
+    ]);
+    useUiStore.setState({ ...defaultUiState, selectedAreaId: localArea.id });
+    renderControl({
+      ...makeApi(),
+      areas: {
+        ...mockControlApi.areas,
+        listAreas: async () => [
+          { ...githubArea, selected: false },
+          { ...localArea, selected: true }
+        ],
+        removeArea
+      }
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Select Area" }));
+    expect(await screen.findByRole("menuitem", { name: /Laptop Projects/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Area actions for Laptop Projects" }));
+    const deleteAction = screen.getByRole("menuitem", { name: "Delete Area" });
+
+    expect(deleteAction).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(deleteAction);
+    expect(screen.queryByRole("heading", { name: "Delete Area" })).not.toBeInTheDocument();
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.mouseEnter(deleteAction);
+      act(() => {
+        vi.advanceTimersByTime(2_999);
+      });
+      expect(deleteAction).toHaveAttribute("aria-disabled", "true");
+      fireEvent.click(deleteAction);
+      expect(screen.queryByRole("heading", { name: "Delete Area" })).not.toBeInTheDocument();
+
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(deleteAction).toHaveAttribute("aria-disabled", "false");
+      expect(screen.queryByRole("heading", { name: "Delete Area" })).not.toBeInTheDocument();
+
+      fireEvent.click(deleteAction);
+      expect(screen.getByText("Are you sure you want to delete this area?")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+    fireEvent.click(screen.getByRole("button", { name: "Delete Area" }));
+
+    await waitFor(() => expect(removeArea).toHaveBeenCalledWith(localArea.id));
+    expect(useUiStore.getState().selectedAreaId).toBe(githubArea.id);
   });
 
   it("refetches local Area repositories from Area repository update events", async () => {

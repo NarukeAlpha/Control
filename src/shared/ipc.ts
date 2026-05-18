@@ -30,7 +30,8 @@ import type {
   CreateSshAreaInput,
   ListAreaRepositoriesInput,
   ListAreaWorkspacesInput,
-  StopAreaGatewayInput
+  StopAreaGatewayInput,
+  UpdateAreaInput
 } from "./areas";
 import type {
   AccountIssueListInput,
@@ -202,6 +203,7 @@ export interface ControlApi {
     selectArea(areaId: string): Promise<AreaSummary[]>;
     createLocalArea(input: CreateLocalAreaInput): Promise<AreaSummary>;
     createSshArea(input: CreateSshAreaInput): Promise<AreaSummary>;
+    updateArea(input: UpdateAreaInput): Promise<AreaSummary>;
     removeArea(areaId: string): Promise<AreaSummary[]>;
     refreshArea(areaId: string): Promise<AreaSummary | null>;
     searchAreas(input: AreaSearchInput): Promise<AreaSearchResult>;
@@ -367,6 +369,7 @@ export const ipcChannels = {
   areasSelect: "areas:select",
   areasCreateLocal: "areas:create-local",
   areasCreateSsh: "areas:create-ssh",
+  areasUpdate: "areas:update",
   areasRemove: "areas:remove",
   areasRefresh: "areas:refresh",
   areasSearch: "areas:search",

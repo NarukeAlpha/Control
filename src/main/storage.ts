@@ -12,7 +12,8 @@ import type {
   CreateLocalAreaInput,
   CreateSshAreaInput,
   ListAreaRepositoriesInput,
-  ListAreaWorkspacesInput
+  ListAreaWorkspacesInput,
+  UpdateAreaInput
 } from "@shared/areas";
 import type { ControlSettings, RepositoryDetail, RepositorySummary } from "@shared/github";
 import type {
@@ -127,6 +128,7 @@ export interface LocalStore {
   ensureDefaultGitHubArea(accountLogin?: string | null): AreaSummary;
   createLocalArea(input: CreateLocalAreaInput): AreaSummary;
   createSshArea(input: CreateSshAreaInput): AreaSummary;
+  updateArea(input: UpdateAreaInput): AreaSummary;
   upsertArea(area: AreaSummary): void;
   listAreas(): AreaSummary[];
   getArea(areaId: string): AreaSummary | null;
@@ -521,7 +523,11 @@ class SqliteLocalStore implements LocalStore {
     const selected =
       existing?.selected ?? !this.db.prepare("SELECT 1 FROM areas WHERE selected = 1 LIMIT 1").get();
     const area = createDefaultGitHubArea(accountLogin ?? existing?.accountLogin ?? null, selected);
-    this.upsertArea({ ...area, createdAt: existing?.createdAt ?? area.createdAt });
+    this.upsertArea({
+      ...area,
+      label: existing?.label ?? area.label,
+      createdAt: existing?.createdAt ?? area.createdAt
+    });
     return this.getArea(defaultGitHubAreaId) ?? area;
   }
 
@@ -531,7 +537,7 @@ class SqliteLocalStore implements LocalStore {
     const area: AreaSummary = {
       id: localAreaId(rootPath),
       kind: "local",
-      label: input.label?.trim() || basename(rootPath) || rootPath,
+      label: localAreaLabel(rootPath, input.label),
       subtitle: rootPath,
       rootPath,
       accountLogin: null,
@@ -555,8 +561,8 @@ class SqliteLocalStore implements LocalStore {
     const area: AreaSummary = {
       id: sshAreaId({ host, rootPath, username, port }),
       kind: "ssh",
-      label: input.label?.trim() || `${host}:${rootPath}`,
-      subtitle: `${username ? `${username}@` : ""}${host}:${rootPath}`,
+      label: sshAreaLabel(host, input.label),
+      subtitle: sshAreaSubtitle({ host, rootPath, username, port }),
       rootPath,
       accountLogin: null,
       gateway: null,
@@ -568,6 +574,23 @@ class SqliteLocalStore implements LocalStore {
     };
     this.upsertArea(area);
     return this.getArea(area.id) ?? area;
+  }
+
+  updateArea(input: UpdateAreaInput): AreaSummary {
+    const existing = this.getArea(input.areaId);
+    if (!existing) {
+      throw new Error("Area does not exist.");
+    }
+    const updated = updateAreaSummary(existing, input, this.getAreaGateway(existing.id));
+    this.upsertArea(updated);
+    const gateway = this.getAreaGateway(updated.id);
+    if (gateway && (updated.kind === "local" || updated.kind === "ssh")) {
+      const nextGateway = updatedGatewayRecord(gateway, updated, input);
+      if (nextGateway) {
+        this.setAreaGateway(nextGateway);
+      }
+    }
+    return this.getArea(updated.id) ?? updated;
   }
 
   upsertArea(area: AreaSummary): void {
@@ -1443,6 +1466,7 @@ class MemoryLocalStore implements LocalStore {
         accountLogin ?? existing?.accountLogin ?? null,
         existing?.selected ?? this.selectedAreaIsMissing()
       ),
+      label: existing?.label ?? "GitHub",
       createdAt: existing?.createdAt ?? new Date().toISOString()
     };
     this.upsertArea(area);
@@ -1454,7 +1478,7 @@ class MemoryLocalStore implements LocalStore {
     const area: AreaSummary = {
       id: localAreaId(input.rootPath),
       kind: "local",
-      label: input.label?.trim() || basename(input.rootPath) || input.rootPath,
+      label: localAreaLabel(input.rootPath, input.label),
       subtitle: input.rootPath,
       rootPath: input.rootPath,
       accountLogin: null,
@@ -1478,8 +1502,8 @@ class MemoryLocalStore implements LocalStore {
     const area: AreaSummary = {
       id: sshAreaId({ host, rootPath, username, port }),
       kind: "ssh",
-      label: input.label?.trim() || `${host}:${rootPath}`,
-      subtitle: `${username ? `${username}@` : ""}${host}:${rootPath}`,
+      label: sshAreaLabel(host, input.label),
+      subtitle: sshAreaSubtitle({ host, rootPath, username, port }),
       rootPath,
       accountLogin: null,
       gateway: null,
@@ -1491,6 +1515,23 @@ class MemoryLocalStore implements LocalStore {
     };
     this.upsertArea(area);
     return this.areas.get(area.id) ?? area;
+  }
+
+  updateArea(input: UpdateAreaInput): AreaSummary {
+    const existing = this.getArea(input.areaId);
+    if (!existing) {
+      throw new Error("Area does not exist.");
+    }
+    const updated = updateAreaSummary(existing, input, this.areaGateways.get(existing.id) ?? null);
+    this.upsertArea(updated);
+    const gateway = this.areaGateways.get(updated.id);
+    if (gateway && (updated.kind === "local" || updated.kind === "ssh")) {
+      const nextGateway = updatedGatewayRecord(gateway, updated, input);
+      if (nextGateway) {
+        this.areaGateways.set(updated.id, nextGateway);
+      }
+    }
+    return this.getArea(updated.id) ?? updated;
   }
 
   upsertArea(area: AreaSummary): void {
@@ -1975,6 +2016,156 @@ function areaGatewaySummary(record: AreaGatewayRecord): AreaSummary["gateway"] {
     lastSeenAt: record.lastSeenAt,
     message: record.message
   };
+}
+
+function updateAreaSummary(
+  existing: AreaSummary,
+  input: UpdateAreaInput,
+  gateway: AreaGatewayRecord | null
+): AreaSummary {
+  const now = new Date().toISOString();
+  if (existing.kind === "github") {
+    return {
+      ...existing,
+      label: labelFromUpdate(input.label, existing.label, "GitHub"),
+      updatedAt: now
+    };
+  }
+
+  if (existing.kind === "local") {
+    const rootPath = pathFromUpdate(input.rootPath, existing.rootPath);
+    const rootChanged = rootPath !== existing.rootPath;
+    return {
+      ...existing,
+      label: input.label === undefined ? existing.label : localAreaLabel(rootPath, input.label),
+      subtitle: rootPath,
+      rootPath,
+      health: rootChanged
+        ? { status: "scanning", message: "Scanning local repositories.", checkedAt: now }
+        : existing.health,
+      updatedAt: now
+    };
+  }
+
+  const rootPath = pathFromUpdate(input.rootPath, existing.rootPath);
+  const host = labelFromUpdate(input.host, gateway?.host ?? sshHostFromSubtitle(existing.subtitle), null);
+  if (!host) {
+    throw new Error("SSH Area requires a host.");
+  }
+  const username =
+    input.username === undefined ? (gateway?.username ?? null) : input.username?.trim() || null;
+  const port = input.port === undefined ? (gateway?.port ?? null) : (input.port ?? null);
+  const configChanged =
+    rootPath !== existing.rootPath ||
+    host !== gateway?.host ||
+    username !== (gateway?.username ?? null) ||
+    port !== (gateway?.port ?? null);
+
+  return {
+    ...existing,
+    label: input.label === undefined ? existing.label : sshAreaLabel(host, input.label),
+    subtitle: sshAreaSubtitle({ host, rootPath, username, port }),
+    rootPath,
+    health: configChanged
+      ? { status: "scanning", message: "Starting remote gateway.", checkedAt: now }
+      : existing.health,
+    updatedAt: now
+  };
+}
+
+function updatedGatewayRecord(
+  gateway: AreaGatewayRecord,
+  area: AreaSummary,
+  input: UpdateAreaInput
+): AreaGatewayRecord | null {
+  if (area.kind === "local") {
+    const rootPath = pathFromUpdate(input.rootPath, gateway.rootPath);
+    return rootPath === gateway.rootPath
+      ? null
+      : resetGatewayRecord(gateway, { rootPath, host: null, username: null, port: null });
+  }
+
+  if (area.kind !== "ssh") {
+    return null;
+  }
+
+  const rootPath = pathFromUpdate(input.rootPath, gateway.rootPath);
+  const host = labelFromUpdate(input.host, gateway.host, null);
+  const username = input.username === undefined ? gateway.username : input.username?.trim() || null;
+  const port = input.port === undefined ? gateway.port : (input.port ?? null);
+  if (
+    rootPath === gateway.rootPath &&
+    host === gateway.host &&
+    username === gateway.username &&
+    port === gateway.port
+  ) {
+    return null;
+  }
+  return resetGatewayRecord(gateway, { rootPath, host, username, port });
+}
+
+function resetGatewayRecord(
+  gateway: AreaGatewayRecord,
+  input: Pick<AreaGatewayRecord, "rootPath" | "host" | "username" | "port">
+): AreaGatewayRecord {
+  return {
+    ...gateway,
+    ...input,
+    apiUrl: null,
+    adminUrl: null,
+    serviceName: null,
+    version: null,
+    status: "not-installed",
+    pid: null,
+    processId: null,
+    message: null,
+    lastStartedAt: null,
+    lastSeenAt: null,
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function pathFromUpdate(value: string | null | undefined, fallback: string | null): string {
+  const normalized = value?.trim() || fallback?.trim() || "";
+  if (!normalized) {
+    throw new Error("Area requires a root path.");
+  }
+  return normalized;
+}
+
+function labelFromUpdate(
+  value: string | null | undefined,
+  fallback: string | null,
+  defaultValue: string | null
+): string {
+  return value?.trim() || fallback?.trim() || defaultValue || "";
+}
+
+function localAreaLabel(rootPath: string, label?: string | null): string {
+  return label?.trim() || basename(rootPath) || rootPath;
+}
+
+function sshAreaLabel(host: string, label?: string | null): string {
+  return label?.trim() || host;
+}
+
+function sshAreaSubtitle(input: {
+  host: string;
+  rootPath: string;
+  username: string | null;
+  port: number | null;
+}): string {
+  const userPrefix = input.username ? `${input.username}@` : "";
+  const portSuffix = input.port ? `:${input.port}` : "";
+  return `${userPrefix}${input.host}${portSuffix}:${input.rootPath}`;
+}
+
+function sshHostFromSubtitle(subtitle: string | null): string | null {
+  if (!subtitle) {
+    return null;
+  }
+  const authority = subtitle.split(":")[0] ?? "";
+  return authority.split("@").pop()?.trim() || null;
 }
 
 function areaRepositoryRowInput(

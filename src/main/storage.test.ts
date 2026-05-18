@@ -159,6 +159,34 @@ describe("LocalStore repository pins", () => {
     );
   });
 
+  it("updates Area metadata and defaults empty SSH labels to the host", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "control-store-"));
+    tempDirs.push(tempDir);
+    const store = await createLocalStore(tempDir);
+
+    const githubArea = store.ensureDefaultGitHubArea("NarukeAlpha");
+    const localArea = store.createLocalArea({ rootPath: "/Users/example/Projects", label: "Work" });
+    const sshArea = store.createSshArea({ host: "delta-wsl", rootPath: "~/controltest", label: "" });
+
+    expect(sshArea.label).toBe("delta-wsl");
+    expect(store.updateArea({ areaId: githubArea.id, label: "Main GitHub" })).toEqual(
+      expect.objectContaining({ label: "Main GitHub" })
+    );
+    expect(store.updateArea({ areaId: localArea.id, label: "", rootPath: "/Users/example/Code" })).toEqual(
+      expect.objectContaining({ label: "Code", rootPath: "/Users/example/Code" })
+    );
+    expect(
+      store.updateArea({
+        areaId: sshArea.id,
+        label: "",
+        host: "delta-wsl",
+        rootPath: "~/other",
+        username: null,
+        port: null
+      })
+    ).toEqual(expect.objectContaining({ label: "delta-wsl", rootPath: "~/other" }));
+  });
+
   it("migrates legacy GitHub pins and recents into default Area identity", async () => {
     let Database: typeof import("better-sqlite3");
     try {

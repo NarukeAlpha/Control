@@ -24,6 +24,7 @@ import {
   Lock,
   MessageSquare,
   MoreHorizontal,
+  Pencil,
   Pin,
   PlayCircle,
   Plus,
@@ -34,6 +35,7 @@ import {
   Star,
   SquareKanban,
   Tag,
+  Trash2,
   Users,
   Workflow,
   X
@@ -144,7 +146,9 @@ import type {
   AreaRepositoryDetail,
   AreaRepositorySummary,
   AreaSyncStatus,
-  AreaSummary
+  AreaSummary,
+  CreateSshAreaInput,
+  UpdateAreaInput
 } from "@shared/areas";
 import type {
   LocalRecentItem,
@@ -4046,6 +4050,9 @@ export function App(): JSX.Element {
   const setSettingsOpen = useUiStore((state) => state.setSettingsOpen);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [addRepositoryOpen, setAddRepositoryOpen] = useState(false);
+  const [sshAreaOpen, setSshAreaOpen] = useState(false);
+  const [editingArea, setEditingArea] = useState<AreaSummary | null>(null);
+  const [deletingArea, setDeletingArea] = useState<AreaSummary | null>(null);
   const [repositoryRefs, setRepositoryRefs] = useState<Record<string, string | null>>(() =>
     readRepositoryRefs()
   );
@@ -6762,17 +6769,31 @@ export function App(): JSX.Element {
     await queryClient.invalidateQueries({ queryKey: ["area-repositories", area.id] });
   }
 
-  async function addSshArea(): Promise<void> {
-    const target = window.prompt("SSH target", "delta-wsl:~/controltest")?.trim();
-    if (!target) {
-      return;
-    }
-    const targetMatch = /^(?:(?<username>[^@:\s]+)@)?(?<host>[^:\s]+):(?<rootPath>.+)$/.exec(target);
-    const host = targetMatch?.groups?.host ?? target;
-    const username = targetMatch?.groups?.username ?? null;
-    const rootPath = targetMatch?.groups?.rootPath ?? "~/controltest";
-    const area = await api.areas.createSshArea({ host, username, rootPath, label: host });
+  async function createSshArea(input: CreateSshAreaInput): Promise<void> {
+    const area = await api.areas.createSshArea(input);
     selectAreaInStore(area.id);
+    await queryClient.invalidateQueries({ queryKey: ["areas"] });
+    await queryClient.invalidateQueries({ queryKey: ["area-repositories", area.id] });
+  }
+
+  async function updateArea(input: UpdateAreaInput): Promise<void> {
+    const area = await api.areas.updateArea(input);
+    await queryClient.invalidateQueries({ queryKey: ["areas"] });
+    await queryClient.invalidateQueries({ queryKey: ["area-repositories", area.id] });
+  }
+
+  async function deleteArea(area: AreaSummary): Promise<void> {
+    const remainingAreas = await api.areas.removeArea(area.id);
+    if (selectedAreaId === area.id) {
+      const fallbackArea =
+        remainingAreas.find((candidate) => candidate.selected) ??
+        remainingAreas.find((candidate) => candidate.kind === "github") ??
+        remainingAreas[0] ??
+        null;
+      if (fallbackArea) {
+        selectAreaInStore(fallbackArea.id);
+      }
+    }
     await queryClient.invalidateQueries({ queryKey: ["areas"] });
     await queryClient.invalidateQueries({ queryKey: ["area-repositories", area.id] });
   }
@@ -9267,7 +9288,9 @@ export function App(): JSX.Element {
           githubReady={githubReady}
           onSelectArea={(areaId) => void selectArea(areaId)}
           onAddLocalArea={() => void addLocalArea()}
-          onAddSshArea={() => void addSshArea()}
+          onAddSshArea={() => setSshAreaOpen(true)}
+          onEditArea={(area) => setEditingArea(area)}
+          onDeleteArea={(area) => setDeletingArea(area)}
           onGoRepository={() => {
             if (effectiveRepository) {
               openRepositoryInApp(effectiveRepository);
@@ -10001,6 +10024,38 @@ export function App(): JSX.Element {
             githubReady={githubReady}
             onClose={() => setAddRepositoryOpen(false)}
             onOpenRepository={openRepositoryInApp}
+          />
+        )}
+
+        {sshAreaOpen && (
+          <SshAreaDialog
+            onClose={() => setSshAreaOpen(false)}
+            onCreate={async (input) => {
+              await createSshArea(input);
+              setSshAreaOpen(false);
+            }}
+          />
+        )}
+
+        {editingArea && (
+          <AreaEditDialog
+            area={editingArea}
+            onClose={() => setEditingArea(null)}
+            onSave={async (input) => {
+              await updateArea(input);
+              setEditingArea(null);
+            }}
+          />
+        )}
+
+        {deletingArea && (
+          <AreaDeleteDialog
+            area={deletingArea}
+            onClose={() => setDeletingArea(null)}
+            onDelete={async () => {
+              await deleteArea(deletingArea);
+              setDeletingArea(null);
+            }}
           />
         )}
 
@@ -11372,15 +11427,20 @@ function AreaTopbarSelector({
   selectedAreaId,
   onSelectArea,
   onAddLocalArea,
-  onAddSshArea
+  onAddSshArea,
+  onEditArea,
+  onDeleteArea
 }: {
   areas: AreaSummary[];
   selectedAreaId: string | null;
   onSelectArea(areaId: string): void;
   onAddLocalArea(): void;
   onAddSshArea(): void;
+  onEditArea(area: AreaSummary): void;
+  onDeleteArea(area: AreaSummary): void;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
+  const [actionAreaId, setActionAreaId] = useState<string | null>(null);
   const selectedArea =
     areas.find((area) => area.id === selectedAreaId) ??
     areas.find((area) => area.selected) ??
@@ -11412,28 +11472,86 @@ function AreaTopbarSelector({
       </button>
       {open && (
         <div className="area-topbar-menu" role="menu">
-          {areas.map((area) => (
-            <button
-              className={`area-menu-item ${selectedArea?.id === area.id ? "selected" : ""}`}
-              key={area.id}
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                onSelectArea(area.id);
-                setOpen(false);
-              }}
-            >
-              <span className="repo-avatar">
-                {area.kind === "github" ? "G" : area.kind === "ssh" ? "S" : "L"}
-              </span>
-              <span className="repo-copy">
-                <span className="repo-name">{area.label}</span>
-                <span className="repo-meta">
-                  {isGatewayAreaKind(area.kind) ? `${area.repositoryCount} repositories` : area.subtitle}
-                </span>
-              </span>
-            </button>
-          ))}
+          {areas.map((area) => {
+            const actionsOpen = actionAreaId === area.id;
+            return (
+              <div
+                className={`area-menu-row ${selectedArea?.id === area.id ? "selected" : ""}`}
+                key={area.id}
+                role="none"
+              >
+                <button
+                  className="area-menu-item"
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    onSelectArea(area.id);
+                    setOpen(false);
+                    setActionAreaId(null);
+                  }}
+                >
+                  <span className="repo-avatar">
+                    {area.kind === "github" ? "G" : area.kind === "ssh" ? "S" : "L"}
+                  </span>
+                  <span className="repo-copy">
+                    <span className="repo-name">{area.label}</span>
+                    <span className="repo-meta">
+                      {isGatewayAreaKind(area.kind) ? `${area.repositoryCount} repositories` : area.subtitle}
+                    </span>
+                  </span>
+                </button>
+                <button
+                  className="area-menu-more"
+                  type="button"
+                  aria-label={`Area actions for ${area.label}`}
+                  aria-expanded={actionsOpen}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setActionAreaId(actionsOpen ? null : area.id);
+                  }}
+                >
+                  <MoreHorizontal size={15} />
+                </button>
+                {actionsOpen && (
+                  <div className="area-actions-menu" role="menu" onClick={(event) => event.stopPropagation()}>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        onEditArea(area);
+                        setActionAreaId(null);
+                        setOpen(false);
+                      }}
+                    >
+                      <Pencil size={14} />
+                      <span>Edit Area</span>
+                    </button>
+                    {area.kind === "github" ? (
+                      <button
+                        className="area-action-delete"
+                        type="button"
+                        role="menuitem"
+                        aria-disabled="true"
+                        title="Default GitHub Area cannot be deleted"
+                      >
+                        <Trash2 size={14} />
+                        <span>Delete Area</span>
+                      </button>
+                    ) : (
+                      <AreaArmedDeleteAction
+                        area={area}
+                        onDelete={() => {
+                          onDeleteArea(area);
+                          setActionAreaId(null);
+                          setOpen(false);
+                        }}
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
           <button
             className="area-menu-add"
             type="button"
@@ -11464,6 +11582,379 @@ function AreaTopbarSelector({
   );
 }
 
+function AreaArmedDeleteAction({ area, onDelete }: { area: AreaSummary; onDelete(): void }): JSX.Element {
+  const [armed, setArmed] = useState(false);
+  const armTimer = useRef<number | null>(null);
+
+  function clearTimer(): void {
+    if (armTimer.current) {
+      window.clearTimeout(armTimer.current);
+      armTimer.current = null;
+    }
+  }
+
+  function beginArming(): void {
+    if (armed || armTimer.current) {
+      return;
+    }
+    setArmed(false);
+    armTimer.current = window.setTimeout(() => {
+      setArmed(true);
+      armTimer.current = null;
+    }, 3_000);
+  }
+
+  function cancelArming(): void {
+    clearTimer();
+    setArmed(false);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (armTimer.current) {
+        window.clearTimeout(armTimer.current);
+      }
+    };
+  }, []);
+
+  return (
+    <button
+      className={`area-action-delete ${armed ? "armed" : ""}`}
+      type="button"
+      role="menuitem"
+      aria-disabled={!armed}
+      title={armed ? `Delete ${area.label}` : "Hover for 3 seconds to enable delete"}
+      onMouseEnter={beginArming}
+      onMouseLeave={cancelArming}
+      onFocus={beginArming}
+      onBlur={cancelArming}
+      onClick={(event) => {
+        if (!armed) {
+          event.preventDefault();
+          return;
+        }
+        onDelete();
+      }}
+    >
+      <Trash2 size={14} />
+      <span>Delete Area</span>
+    </button>
+  );
+}
+
+function SshAreaDialog({
+  onClose,
+  onCreate
+}: {
+  onClose(): void;
+  onCreate(input: CreateSshAreaInput): Promise<void>;
+}): JSX.Element {
+  const [host, setHost] = useState("delta-wsl");
+  const [rootPath, setRootPath] = useState("~/controltest");
+  const [username, setUsername] = useState("");
+  const [port, setPort] = useState("");
+  const [label, setLabel] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const normalizedHost = host.trim();
+    const normalizedRootPath = rootPath.trim();
+    const normalizedPort = port.trim();
+
+    if (!normalizedHost || !normalizedRootPath) {
+      setError("Host and root path are required.");
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onCreate({
+        host: normalizedHost,
+        rootPath: normalizedRootPath,
+        username: username.trim() || null,
+        label: label.trim() || normalizedHost,
+        port: normalizedPort ? Number(normalizedPort) : null
+      });
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : "SSH Area could not be created.");
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <form
+        className="settings-panel ssh-area-dialog"
+        aria-labelledby="ssh-area-dialog-title"
+        onMouseDown={(event) => event.stopPropagation()}
+        onSubmit={(event) => void submit(event)}
+      >
+        <header>
+          <div>
+            <h2 id="ssh-area-dialog-title">Add SSH Area</h2>
+            <p>Start a gateway for a remote territory.</p>
+          </div>
+          <button className="icon-button" type="button" aria-label="Close SSH Area dialog" onClick={onClose}>
+            <X size={16} />
+          </button>
+        </header>
+        <label>
+          Label
+          <input autoFocus value={label} onChange={(event) => setLabel(event.target.value)} />
+        </label>
+        <label>
+          Host
+          <input value={host} onChange={(event) => setHost(event.target.value)} />
+        </label>
+        <label>
+          Root path
+          <input value={rootPath} onChange={(event) => setRootPath(event.target.value)} />
+        </label>
+        <label>
+          Username
+          <input value={username} onChange={(event) => setUsername(event.target.value)} />
+        </label>
+        <label>
+          Port
+          <input
+            inputMode="numeric"
+            value={port}
+            onChange={(event) => setPort(event.target.value.replace(/\D/g, ""))}
+          />
+        </label>
+        {error && <div className="error-state">{error}</div>}
+        <footer>
+          <button className="secondary-button" type="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" disabled={submitting}>
+            <Plus size={16} /> {submitting ? "Adding" : "Add SSH Area"}
+          </button>
+        </footer>
+      </form>
+    </div>
+  );
+}
+
+function AreaEditDialog({
+  area,
+  onClose,
+  onSave
+}: {
+  area: AreaSummary;
+  onClose(): void;
+  onSave(input: UpdateAreaInput): Promise<void>;
+}): JSX.Element {
+  const sshDefaults = sshDefaultsFromArea(area);
+  const [label, setLabel] = useState(area.label);
+  const [rootPath, setRootPath] = useState(area.rootPath ?? "");
+  const [host, setHost] = useState(sshDefaults.host);
+  const [username, setUsername] = useState(sshDefaults.username ?? "");
+  const [port, setPort] = useState(sshDefaults.port ? String(sshDefaults.port) : "");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const normalizedLabel = label.trim();
+    const normalizedRootPath = rootPath.trim();
+    const normalizedHost = host.trim();
+    const normalizedPort = port.trim();
+
+    if (area.kind === "local" && !normalizedRootPath) {
+      setError("Root path is required.");
+      return;
+    }
+    if (area.kind === "ssh" && (!normalizedHost || !normalizedRootPath)) {
+      setError("Host and root path are required.");
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      if (area.kind === "github") {
+        await onSave({ areaId: area.id, label: normalizedLabel || "GitHub" });
+      } else if (area.kind === "local") {
+        await onSave({
+          areaId: area.id,
+          label: normalizedLabel || null,
+          rootPath: normalizedRootPath
+        });
+      } else {
+        await onSave({
+          areaId: area.id,
+          label: normalizedLabel || normalizedHost,
+          host: normalizedHost,
+          rootPath: normalizedRootPath,
+          username: username.trim() || null,
+          port: normalizedPort ? Number(normalizedPort) : null
+        });
+      }
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Area could not be saved.");
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <form
+        className="settings-panel area-edit-dialog"
+        aria-labelledby="area-edit-dialog-title"
+        onMouseDown={(event) => event.stopPropagation()}
+        onSubmit={(event) => void submit(event)}
+      >
+        <header>
+          <div>
+            <h2 id="area-edit-dialog-title">Edit Area</h2>
+            <p>{area.kind === "github" ? "Update this GitHub Area." : "Update this territory mount."}</p>
+          </div>
+          <button className="icon-button" type="button" aria-label="Close Area edit dialog" onClick={onClose}>
+            <X size={16} />
+          </button>
+        </header>
+        <label>
+          Label
+          <input autoFocus value={label} onChange={(event) => setLabel(event.target.value)} />
+        </label>
+        {area.kind === "ssh" && (
+          <label>
+            Host
+            <input value={host} onChange={(event) => setHost(event.target.value)} />
+          </label>
+        )}
+        {area.kind !== "github" && (
+          <label>
+            Root path
+            <input value={rootPath} onChange={(event) => setRootPath(event.target.value)} />
+          </label>
+        )}
+        {area.kind === "ssh" && (
+          <>
+            <label>
+              Username
+              <input value={username} onChange={(event) => setUsername(event.target.value)} />
+            </label>
+            <label>
+              Port
+              <input
+                inputMode="numeric"
+                value={port}
+                onChange={(event) => setPort(event.target.value.replace(/\D/g, ""))}
+              />
+            </label>
+          </>
+        )}
+        {error && <div className="error-state">{error}</div>}
+        <footer>
+          <button className="secondary-button" type="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" disabled={submitting}>
+            <Pencil size={16} /> {submitting ? "Saving" : "Save Area"}
+          </button>
+        </footer>
+      </form>
+    </div>
+  );
+}
+
+function AreaDeleteDialog({
+  area,
+  onClose,
+  onDelete
+}: {
+  area: AreaSummary;
+  onClose(): void;
+  onDelete(): Promise<void>;
+}): JSX.Element {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function confirmDelete(): Promise<void> {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onDelete();
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Area could not be deleted.");
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <section
+        className="settings-panel area-confirm-dialog"
+        aria-labelledby="area-delete-dialog-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header>
+          <div>
+            <h2 id="area-delete-dialog-title">Delete Area</h2>
+            <p>Are you sure you want to delete this area?</p>
+          </div>
+          <button
+            className="icon-button"
+            type="button"
+            aria-label="Close Area delete dialog"
+            onClick={onClose}
+          >
+            <X size={16} />
+          </button>
+        </header>
+        <div className="area-delete-summary">
+          <strong>{area.label}</strong>
+          <span>{area.subtitle ?? area.rootPath ?? area.kind}</span>
+        </div>
+        {error && <div className="error-state">{error}</div>}
+        <footer>
+          <button className="secondary-button" type="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            className="danger-button"
+            type="button"
+            disabled={submitting}
+            onClick={() => void confirmDelete()}
+          >
+            <Trash2 size={16} /> {submitting ? "Deleting" : "Delete Area"}
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function sshDefaultsFromArea(area: AreaSummary): {
+  host: string;
+  username: string | null;
+  port: number | null;
+} {
+  if (area.kind !== "ssh") {
+    return { host: "", username: null, port: null };
+  }
+  const suffix = area.rootPath ? `:${area.rootPath}` : "";
+  const authority =
+    suffix && area.subtitle?.endsWith(suffix)
+      ? area.subtitle.slice(0, -suffix.length)
+      : (area.subtitle?.split(":")[0] ?? area.label);
+  const [usernamePart, hostPart = usernamePart] = authority.includes("@")
+    ? authority.split("@", 2)
+    : ["", authority];
+  const portSeparator = hostPart.lastIndexOf(":");
+  const portValue = portSeparator > -1 ? Number(hostPart.slice(portSeparator + 1)) : null;
+  return {
+    host: portSeparator > -1 ? hostPart.slice(0, portSeparator) : hostPart,
+    username: usernamePart || null,
+    port: portValue && Number.isInteger(portValue) ? portValue : null
+  };
+}
+
 function TopBar({
   viewer,
   route,
@@ -11475,6 +11966,8 @@ function TopBar({
   onSelectArea,
   onAddLocalArea,
   onAddSshArea,
+  onEditArea,
+  onDeleteArea,
   onGoRepository,
   onOpenRepository,
   onOpenLocalRepository,
@@ -11494,6 +11987,8 @@ function TopBar({
   onSelectArea(areaId: string): void;
   onAddLocalArea(): void;
   onAddSshArea(): void;
+  onEditArea(area: AreaSummary): void;
+  onDeleteArea(area: AreaSummary): void;
   onGoRepository(): void;
   onOpenRepository(nameWithOwner: string): void;
   onOpenLocalRepository(repository: AreaRepositorySummary): void;
@@ -11612,6 +12107,8 @@ function TopBar({
           onSelectArea={onSelectArea}
           onAddLocalArea={onAddLocalArea}
           onAddSshArea={onAddSshArea}
+          onEditArea={onEditArea}
+          onDeleteArea={onDeleteArea}
         />
       </div>
 

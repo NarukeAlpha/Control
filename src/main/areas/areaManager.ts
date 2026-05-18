@@ -29,7 +29,8 @@ import type {
   CreateSshAreaInput,
   ListAreaRepositoriesInput,
   ListAreaWorkspacesInput,
-  StopAreaGatewayInput
+  StopAreaGatewayInput,
+  UpdateAreaInput
 } from "@shared/areas";
 import type {
   ContributorListResult,
@@ -42,7 +43,7 @@ import type {
 } from "@shared/github";
 
 import type { GitHubProviderManager } from "../github/provider";
-import type { LocalStore } from "../storage";
+import type { AreaGatewayRecord, LocalStore } from "../storage";
 import type { GatewayManager } from "./gatewayManager";
 import { defaultGitHubAreaId } from "./areaIds";
 import { discoverLocalRepositories } from "./localDiscovery";
@@ -132,8 +133,56 @@ export class AreaManager {
     return area;
   }
 
+  async updateArea(input: UpdateAreaInput): Promise<AreaSummary> {
+    const existing = this.store.getArea(input.areaId);
+    if (!existing) {
+      throw new Error("Area does not exist.");
+    }
+    const gateway = this.store.getAreaGateway(input.areaId);
+    const normalizedInput =
+      existing.kind === "local" && input.rootPath
+        ? { ...input, rootPath: await realpath(input.rootPath) }
+        : input;
+    const gatewayChanged = areaUpdateChangesGateway(existing, gateway, normalizedInput);
+    if (gatewayChanged && this.gateway) {
+      await this.gateway.stopGateway({ areaId: input.areaId }).catch(() => null);
+    }
+
+    const area = this.store.updateArea(normalizedInput);
+    this.events.onAreasUpdated({ areaId: area.id });
+
+    if (gatewayChanged && isGatewayAreaKind(area.kind)) {
+      void this.refreshArea(area.id).catch((error) => {
+        const current = this.store.getArea(area.id);
+        if (!current) {
+          return;
+        }
+        this.store.upsertArea({
+          ...current,
+          health: {
+            status: "error",
+            message: error instanceof Error ? error.message : "Area refresh failed.",
+            checkedAt: new Date().toISOString()
+          },
+          updatedAt: new Date().toISOString()
+        });
+        this.events.onAreasUpdated({ areaId: area.id });
+      });
+    }
+
+    return area;
+  }
+
   removeArea(areaId: string): AreaSummary[] {
+    const existing = this.store.getArea(areaId);
     this.store.removeArea(areaId);
+    if (existing?.selected && existing.kind !== "github") {
+      const areas = this.store.listAreas();
+      const fallback = areas.find((area) => area.kind === "github") ?? areas[0] ?? null;
+      if (fallback) {
+        this.store.selectArea(fallback.id);
+      }
+    }
     this.events.onAreasUpdated({ areaId });
     return this.listAreas();
   }
@@ -535,6 +584,33 @@ function unavailableGitHubEnrichment(): GitHubReadAvailability {
 function areaMatches(area: AreaSummary, query: string): boolean {
   return (
     !query || [area.label, area.subtitle, area.rootPath].some((value) => value?.toLowerCase().includes(query))
+  );
+}
+
+function isGatewayAreaKind(kind: AreaSummary["kind"]): boolean {
+  return kind === "local" || kind === "ssh";
+}
+
+function areaUpdateChangesGateway(
+  area: AreaSummary,
+  gateway: AreaGatewayRecord | null,
+  input: UpdateAreaInput
+): boolean {
+  if (!gateway || area.kind === "github") {
+    return false;
+  }
+  if (area.kind === "local") {
+    return Boolean(input.rootPath && input.rootPath !== gateway.rootPath);
+  }
+  const nextRootPath = input.rootPath ?? gateway.rootPath;
+  const nextHost = input.host ?? gateway.host;
+  const nextUsername = input.username === undefined ? gateway.username : input.username;
+  const nextPort = input.port === undefined ? gateway.port : input.port;
+  return (
+    nextRootPath !== gateway.rootPath ||
+    nextHost !== gateway.host ||
+    (nextUsername || null) !== (gateway.username || null) ||
+    (nextPort ?? null) !== (gateway.port ?? null)
   );
 }
 

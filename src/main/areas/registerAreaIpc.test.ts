@@ -24,6 +24,7 @@ function createAreaManager(): AreaManager {
     selectArea: vi.fn(() => []),
     createLocalArea: vi.fn(),
     createSshArea: vi.fn(),
+    updateArea: vi.fn(),
     removeArea: vi.fn(() => []),
     refreshArea: vi.fn(),
     searchAreas: vi.fn(() => ({ areas: [], repositories: [], workspaces: [] })),
@@ -120,6 +121,28 @@ describe("registerAreaIpc", () => {
       rootPath: "~/controltest",
       label: "Delta",
       username: "gabriel",
+      port: 2222
+    });
+  });
+
+  it("normalizes update area input before calling the manager", async () => {
+    const areaManager = await loadRegisteredHandlers();
+
+    handler(ipcChannels.areasUpdate)(null, {
+      areaId: " ssh:delta ",
+      label: " Delta ",
+      host: " delta-wsl ",
+      rootPath: " ~/controltest ",
+      username: " alpha ",
+      port: 2222
+    });
+
+    expect(areaManager.updateArea).toHaveBeenCalledWith({
+      areaId: "ssh:delta",
+      label: "Delta",
+      host: "delta-wsl",
+      rootPath: "~/controltest",
+      username: "alpha",
       port: 2222
     });
   });

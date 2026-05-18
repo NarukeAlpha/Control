@@ -16,7 +16,8 @@ import type {
   CreateSshAreaInput,
   ListAreaRepositoriesInput,
   ListAreaWorkspacesInput,
-  StopAreaGatewayInput
+  StopAreaGatewayInput,
+  UpdateAreaInput
 } from "@shared/areas";
 import { ipcChannels } from "@shared/ipc";
 
@@ -35,6 +36,9 @@ export function registerAreaIpc(areaManager: AreaManager): void {
   );
   ipcMain.handle(ipcChannels.areasCreateSsh, (_event, input: CreateSshAreaInput) =>
     areaManager.createSshArea(requireCreateSshAreaInput(input))
+  );
+  ipcMain.handle(ipcChannels.areasUpdate, (_event, input: UpdateAreaInput) =>
+    areaManager.updateArea(requireUpdateAreaInput(input))
   );
   ipcMain.handle(ipcChannels.areasRemove, (_event, areaId: string) =>
     areaManager.removeArea(requireString(areaId))
@@ -129,6 +133,38 @@ function requireCreateSshAreaInput(input: CreateSshAreaInput): CreateSshAreaInpu
     username: optionalString(input?.username),
     port:
       typeof input?.port === "number" && Number.isInteger(input.port) && input.port > 0 ? input.port : null
+  };
+}
+
+function requireUpdateAreaInput(input: UpdateAreaInput): UpdateAreaInput {
+  const value = (input ?? {}) as Partial<UpdateAreaInput>;
+  return {
+    areaId: requireString(value.areaId),
+    label:
+      "label" in value && typeof value.label === "string"
+        ? value.label.trim()
+        : value.label === null
+          ? null
+          : undefined,
+    rootPath:
+      "rootPath" in value && typeof value.rootPath === "string"
+        ? value.rootPath.trim()
+        : value.rootPath === null
+          ? null
+          : undefined,
+    host:
+      "host" in value && typeof value.host === "string"
+        ? value.host.trim()
+        : value.host === null
+          ? null
+          : undefined,
+    username: "username" in value ? optionalString(value.username) : undefined,
+    port:
+      "port" in value
+        ? typeof value.port === "number" && Number.isInteger(value.port) && value.port > 0
+          ? value.port
+          : null
+        : undefined
   };
 }
 

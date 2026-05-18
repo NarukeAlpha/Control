@@ -8,7 +8,7 @@ use anyhow::{bail, Context, Result};
 use async_graphql::{Enum, SimpleObject};
 use serde::Serialize;
 
-const MAX_DISCOVERY_DEPTH: usize = 5;
+const MAX_DISCOVERY_DEPTH: usize = 8;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Enum, Serialize)]
 pub enum VcsKind {
@@ -52,9 +52,10 @@ pub struct RepositoryCatalog {
 
 impl RepositoryCatalog {
     pub fn new(root: PathBuf) -> Result<Self> {
-        let root = root
+        let requested_root = root.clone();
+        let root = expand_home(root)
             .canonicalize()
-            .with_context(|| format!("cannot resolve root {}", root.display()))?;
+            .with_context(|| format!("cannot resolve root {}", requested_root.display()))?;
         if !root.is_dir() {
             bail!("root is not a directory: {}", root.display());
         }
@@ -185,6 +186,19 @@ impl RepositoryCatalog {
     }
 }
 
+fn expand_home(path: PathBuf) -> PathBuf {
+    let value = path.to_string_lossy();
+    if value == "~" {
+        return std::env::var_os("HOME").map(PathBuf::from).unwrap_or(path);
+    }
+    if let Some(rest) = value.strip_prefix("~/") {
+        return std::env::var_os("HOME")
+            .map(|home| PathBuf::from(home).join(rest))
+            .unwrap_or(path);
+    }
+    path
+}
+
 fn resolve_inside(root: &Path, relative: &str) -> Result<PathBuf> {
     let joined = root.join(relative);
     let canonical = joined
@@ -212,7 +226,7 @@ fn is_ignored_dir(path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
+    use std::{fs, path::PathBuf};
 
     use tempfile::tempdir;
 
@@ -230,6 +244,37 @@ mod tests {
         assert_eq!(repos.len(), 2);
         assert_eq!(repos[0].id, "git-repo");
         assert_eq!(repos[1].id, "jj-repo");
+    }
+
+    #[test]
+    fn expands_home_in_root_path() {
+        let home = tempdir().unwrap();
+        let previous_home = std::env::var_os("HOME");
+        std::env::set_var("HOME", home.path());
+        fs::create_dir_all(home.path().join("controltest/repo/.git")).unwrap();
+
+        let catalog = RepositoryCatalog::new(PathBuf::from("~/controltest")).unwrap();
+        let repos = catalog.discover().unwrap();
+
+        assert_eq!(repos.len(), 1);
+        assert_eq!(repos[0].id, "repo");
+        if let Some(previous_home) = previous_home {
+            std::env::set_var("HOME", previous_home);
+        } else {
+            std::env::remove_var("HOME");
+        }
+    }
+
+    #[test]
+    fn discovers_repositories_at_depth_eight() {
+        let root = tempdir().unwrap();
+        fs::create_dir_all(root.path().join("a/b/c/d/e/f/g/repo/.git")).unwrap();
+
+        let catalog = RepositoryCatalog::new(root.path().to_path_buf()).unwrap();
+        let repos = catalog.discover().unwrap();
+
+        assert_eq!(repos.len(), 1);
+        assert_eq!(repos[0].id, "a/b/c/d/e/f/g/repo");
     }
 
     #[test]

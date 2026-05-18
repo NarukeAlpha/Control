@@ -27,6 +27,7 @@ const controlApi: ControlApi = {
     selectArea: (areaId) => ipcRenderer.invoke(ipcChannels.areasSelect, areaId),
     createLocalArea: (input) => ipcRenderer.invoke(ipcChannels.areasCreateLocal, input),
     createSshArea: (input) => ipcRenderer.invoke(ipcChannels.areasCreateSsh, input),
+    updateArea: (input) => ipcRenderer.invoke(ipcChannels.areasUpdate, input),
     removeArea: (areaId) => ipcRenderer.invoke(ipcChannels.areasRemove, areaId),
     refreshArea: (areaId) => ipcRenderer.invoke(ipcChannels.areasRefresh, areaId),
     searchAreas: (input) => ipcRenderer.invoke(ipcChannels.areasSearch, input),

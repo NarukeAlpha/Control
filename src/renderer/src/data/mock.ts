@@ -3384,6 +3384,20 @@ export const mockControlApi: ControlApi = {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     }),
+    updateArea: async (input) => ({
+      id: input.areaId,
+      kind: input.host ? "ssh" : input.rootPath ? "local" : "github",
+      label: input.label ?? input.host ?? "Mock Area",
+      subtitle: input.host && input.rootPath ? `${input.host}:${input.rootPath}` : (input.rootPath ?? null),
+      rootPath: input.rootPath ?? null,
+      accountLogin: null,
+      gateway: null,
+      health: { status: "ready", message: null, checkedAt: new Date().toISOString() },
+      repositoryCount: 0,
+      selected: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }),
     removeArea: async () => [],
     refreshArea: async () => null,
     searchAreas: async () => ({ areas: [], repositories: [], workspaces: [] }),

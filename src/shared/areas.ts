@@ -36,6 +36,15 @@ export interface CreateSshAreaInput {
   port?: number | null;
 }
 
+export interface UpdateAreaInput {
+  areaId: string;
+  label?: string | null;
+  rootPath?: string | null;
+  host?: string | null;
+  username?: string | null;
+  port?: number | null;
+}
+
 export type AreaGatewayStatus = "not-installed" | "starting" | "ready" | "stopped" | "error";
 
 export interface AreaGatewaySummary {

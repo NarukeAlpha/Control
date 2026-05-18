@@ -627,7 +627,7 @@ body:not(.no-liquid-glass) .code-toolbar {
   padding: 8px;
 }
 
-.area-menu-item,
+.area-menu-row,
 .area-menu-add {
   display: grid;
   min-height: 42px;
@@ -640,8 +640,34 @@ body:not(.no-liquid-glass) .code-toolbar {
   text-align: left;
 }
 
+.area-menu-row {
+  position: relative;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  padding-right: 4px;
+}
+
 .area-menu-item {
+  display: grid;
+  min-width: 0;
   grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink);
+  padding: 0;
+  text-align: left;
+}
+
+.area-menu-more {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  color: #5c6f88;
+  opacity: 0;
 }
 
 .area-menu-add {
@@ -650,10 +676,68 @@ body:not(.no-liquid-glass) .code-toolbar {
   font-weight: 700;
 }
 
-.area-menu-item:hover,
-.area-menu-item.selected,
+.area-menu-row:hover,
+.area-menu-row.selected,
 .area-menu-add:hover {
   background: rgba(255, 255, 255, 0.72);
+}
+
+.area-menu-row:hover .area-menu-more,
+.area-menu-more:focus-visible,
+.area-menu-more[aria-expanded="true"] {
+  opacity: 1;
+}
+
+.area-menu-more:hover,
+.area-menu-more[aria-expanded="true"] {
+  background: rgba(21, 38, 61, 0.08);
+}
+
+.area-actions-menu {
+  position: absolute;
+  top: 8px;
+  right: -132px;
+  z-index: 25;
+  display: grid;
+  width: 128px;
+  gap: 2px;
+  border: 1px solid rgba(108, 128, 156, 0.22);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.96);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.16);
+  padding: 6px;
+}
+
+.area-actions-menu button {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 8px;
+  border-radius: 8px;
+  background: transparent;
+  color: #334963;
+  padding: 0 8px;
+  text-align: left;
+}
+
+.area-actions-menu button:hover {
+  background: rgba(21, 38, 61, 0.08);
+}
+
+.area-actions-menu .area-action-delete {
+  color: #8794a8;
+}
+
+.area-actions-menu .area-action-delete[aria-disabled="true"] {
+  cursor: default;
+}
+
+.area-actions-menu .area-action-delete.armed {
+  color: #b42318;
+}
+
+.area-actions-menu .area-action-delete.armed:hover {
+  background: rgba(180, 35, 24, 0.1);
 }
 
 .titlebar-action-button.icon-only {
@@ -4433,11 +4517,33 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 
 .settings-panel input,
 .settings-panel select {
+  width: 100%;
+  min-width: 0;
   min-height: 40px;
+  box-sizing: border-box;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.72);
   padding: 0 12px;
+}
+
+.ssh-area-dialog,
+.area-edit-dialog,
+.area-confirm-dialog {
+  width: min(460px, calc(100vw - 40px));
+}
+
+.area-delete-summary {
+  display: grid;
+  gap: 4px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.54);
+  padding: 12px;
+}
+
+.area-delete-summary span {
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .settings-inline-actions {
@@ -4451,6 +4557,16 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
   flex: 1 1 180px;
   color: var(--muted);
   font-size: 13px;
+}
+
+.settings-panel .danger-button {
+  border-color: rgba(180, 35, 24, 0.22);
+  background: rgba(180, 35, 24, 0.1);
+  color: #b42318;
+}
+
+.settings-panel .danger-button:hover:not(:disabled) {
+  background: rgba(180, 35, 24, 0.16);
 }
 
 .settings-inline-code {

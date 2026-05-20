@@ -21,100 +21,185 @@ import type {
 } from "@shared/areas";
 import { ipcChannels } from "@shared/ipc";
 
+import { createIpcInvokeRoute, registerIpcRoutes, type IpcInvokeRoute } from "../ipc/ipcRouter";
 import type { AreaManager } from "./areaManager";
 
 export function registerAreaIpc(areaManager: AreaManager): void {
-  ipcMain.handle(ipcChannels.areasList, () => areaManager.listAreas());
-  ipcMain.handle(ipcChannels.areasGet, (_event, areaId: string) =>
-    areaManager.getArea(requireString(areaId))
-  );
-  ipcMain.handle(ipcChannels.areasSelect, (_event, areaId: string) =>
-    areaManager.selectArea(requireString(areaId))
-  );
-  ipcMain.handle(ipcChannels.areasCreateLocal, (_event, input: CreateLocalAreaInput) =>
-    areaManager.createLocalArea(requireCreateLocalAreaInput(input))
-  );
-  ipcMain.handle(ipcChannels.areasCreateSsh, (_event, input: CreateSshAreaInput) =>
-    areaManager.createSshArea(requireCreateSshAreaInput(input))
-  );
-  ipcMain.handle(ipcChannels.areasUpdate, (_event, input: UpdateAreaInput) =>
-    areaManager.updateArea(requireUpdateAreaInput(input))
-  );
-  ipcMain.handle(ipcChannels.areasRemove, (_event, areaId: string) =>
-    areaManager.removeArea(requireString(areaId))
-  );
-  ipcMain.handle(ipcChannels.areasRefresh, (_event, areaId: string) =>
-    areaManager.refreshArea(requireString(areaId))
-  );
-  ipcMain.handle(ipcChannels.areasSearch, (_event, input: AreaSearchInput) =>
-    areaManager.searchAreas(requireAreaSearchInput(input))
-  );
-  ipcMain.handle(ipcChannels.areaRepositories, (_event, input: ListAreaRepositoriesInput) =>
-    areaManager.listRepositories(requireListRepositoriesInput(input))
-  );
-  ipcMain.handle(ipcChannels.areaRepository, (_event, input: AreaRepositoryInput) =>
-    areaManager.getRepository(requireRepositoryInput(input))
-  );
-  ipcMain.handle(ipcChannels.areaContents, (_event, input: AreaContentsInput) =>
-    areaManager.listContents(requireContentsInput(input))
-  );
-  ipcMain.handle(ipcChannels.areaFileContent, (_event, input: AreaFileContentInput) =>
-    areaManager.getFileContent(requireFileContentInput(input))
-  );
-  ipcMain.handle(ipcChannels.areaBranches, (_event, input: AreaRefInput) =>
-    areaManager.listBranches(requireRefInput(input))
-  );
-  ipcMain.handle(ipcChannels.areaRemotes, (_event, input: AreaRepositoryInput) =>
-    areaManager.listRemotes(requireRepositoryInput(input))
-  );
-  ipcMain.handle(ipcChannels.areaStatus, (_event, input: AreaRepositoryInput) =>
-    areaManager.getStatus(requireRepositoryInput(input))
-  );
-  ipcMain.handle(ipcChannels.areaActivity, (_event, input: AreaRefInput) =>
-    areaManager.listActivity(requireRefInput(input))
-  );
-  ipcMain.handle(ipcChannels.areaWorkspaces, (_event, input: ListAreaWorkspacesInput) =>
-    areaManager.listWorkspaces(requireWorkspacesInput(input))
-  );
-  ipcMain.handle(ipcChannels.areaWorkspace, (_event, input: { areaId: string; workspaceId: string }) =>
-    areaManager.getWorkspace({
-      areaId: requireString(input?.areaId),
-      workspaceId: requireString(input?.workspaceId)
+  registerIpcRoutes(ipcMain, createAreaIpcRoutes(areaManager));
+}
+
+export function createAreaIpcRoutes(areaManager: AreaManager): IpcInvokeRoute[] {
+  return [
+    createIpcInvokeRoute<void, ReturnType<AreaManager["listAreas"]>>({
+      channel: ipcChannels.areasList,
+      parse: () => undefined,
+      handle: () => areaManager.listAreas()
+    }),
+    areaRoute<string, ReturnType<AreaManager["getArea"]>>(
+      ipcChannels.areasGet,
+      ([areaId]) => requireString(areaId),
+      (input) => areaManager.getArea(input)
+    ),
+    areaRoute<string, ReturnType<AreaManager["selectArea"]>>(
+      ipcChannels.areasSelect,
+      ([areaId]) => requireString(areaId),
+      (input) => areaManager.selectArea(input)
+    ),
+    areaRoute<CreateLocalAreaInput, ReturnType<AreaManager["createLocalArea"]>>(
+      ipcChannels.areasCreateLocal,
+      ([input]) => requireCreateLocalAreaInput(input as CreateLocalAreaInput),
+      (input) => areaManager.createLocalArea(input)
+    ),
+    areaRoute<CreateSshAreaInput, ReturnType<AreaManager["createSshArea"]>>(
+      ipcChannels.areasCreateSsh,
+      ([input]) => requireCreateSshAreaInput(input as CreateSshAreaInput),
+      (input) => areaManager.createSshArea(input)
+    ),
+    areaRoute<UpdateAreaInput, ReturnType<AreaManager["updateArea"]>>(
+      ipcChannels.areasUpdate,
+      ([input]) => requireUpdateAreaInput(input as UpdateAreaInput),
+      (input) => areaManager.updateArea(input)
+    ),
+    areaRoute<string, ReturnType<AreaManager["removeArea"]>>(
+      ipcChannels.areasRemove,
+      ([areaId]) => requireString(areaId),
+      (input) => areaManager.removeArea(input)
+    ),
+    areaRoute<string, ReturnType<AreaManager["refreshArea"]>>(
+      ipcChannels.areasRefresh,
+      ([areaId]) => requireString(areaId),
+      (input) => areaManager.refreshArea(input)
+    ),
+    areaRoute<AreaSearchInput, ReturnType<AreaManager["searchAreas"]>>(
+      ipcChannels.areasSearch,
+      ([input]) => requireAreaSearchInput(input as AreaSearchInput),
+      (input) => areaManager.searchAreas(input)
+    ),
+    areaRoute<ListAreaRepositoriesInput, ReturnType<AreaManager["listRepositories"]>>(
+      ipcChannels.areaRepositories,
+      ([input]) => requireListRepositoriesInput(input as ListAreaRepositoriesInput),
+      (input) => areaManager.listRepositories(input)
+    ),
+    areaRoute<AreaRepositoryInput, ReturnType<AreaManager["getRepository"]>>(
+      ipcChannels.areaRepository,
+      ([input]) => requireRepositoryInput(input as AreaRepositoryInput),
+      (input) => areaManager.getRepository(input)
+    ),
+    areaRoute<AreaContentsInput, ReturnType<AreaManager["listContents"]>>(
+      ipcChannels.areaContents,
+      ([input]) => requireContentsInput(input as AreaContentsInput),
+      (input) => areaManager.listContents(input)
+    ),
+    areaRoute<AreaFileContentInput, ReturnType<AreaManager["getFileContent"]>>(
+      ipcChannels.areaFileContent,
+      ([input]) => requireFileContentInput(input as AreaFileContentInput),
+      (input) => areaManager.getFileContent(input)
+    ),
+    areaRoute<AreaRefInput, ReturnType<AreaManager["listBranches"]>>(
+      ipcChannels.areaBranches,
+      ([input]) => requireRefInput(input as AreaRefInput),
+      (input) => areaManager.listBranches(input)
+    ),
+    areaRoute<AreaRepositoryInput, ReturnType<AreaManager["listRemotes"]>>(
+      ipcChannels.areaRemotes,
+      ([input]) => requireRepositoryInput(input as AreaRepositoryInput),
+      (input) => areaManager.listRemotes(input)
+    ),
+    areaRoute<AreaRepositoryInput, ReturnType<AreaManager["getStatus"]>>(
+      ipcChannels.areaStatus,
+      ([input]) => requireRepositoryInput(input as AreaRepositoryInput),
+      (input) => areaManager.getStatus(input)
+    ),
+    areaRoute<AreaRefInput, ReturnType<AreaManager["listActivity"]>>(
+      ipcChannels.areaActivity,
+      ([input]) => requireRefInput(input as AreaRefInput),
+      (input) => areaManager.listActivity(input)
+    ),
+    areaRoute<ListAreaWorkspacesInput, ReturnType<AreaManager["listWorkspaces"]>>(
+      ipcChannels.areaWorkspaces,
+      ([input]) => requireWorkspacesInput(input as ListAreaWorkspacesInput),
+      (input) => areaManager.listWorkspaces(input)
+    ),
+    areaRoute<{ areaId: string; workspaceId: string }, ReturnType<AreaManager["getWorkspace"]>>(
+      ipcChannels.areaWorkspace,
+      ([input]) => ({
+        areaId: requireString((input as { areaId?: unknown } | null | undefined)?.areaId),
+        workspaceId: requireString((input as { workspaceId?: unknown } | null | undefined)?.workspaceId)
+      }),
+      (input) => areaManager.getWorkspace(input)
+    ),
+    areaRoute<AreaGitHubRepositoryInput, ReturnType<AreaManager["getGitHubRepository"]>>(
+      ipcChannels.areaGitHubRepository,
+      ([input]) => requireAreaGitHubRepositoryInput(input as AreaGitHubRepositoryInput),
+      (input) => areaManager.getGitHubRepository(input)
+    ),
+    areaRoute<AreaGitHubIssuesInput, ReturnType<AreaManager["listGitHubIssues"]>>(
+      ipcChannels.areaGitHubIssues,
+      ([input]) => requireAreaGitHubIssuesInput(input as AreaGitHubIssuesInput),
+      (input) => areaManager.listGitHubIssues(input)
+    ),
+    areaRoute<AreaGitHubPullRequestsInput, ReturnType<AreaManager["listGitHubPullRequests"]>>(
+      ipcChannels.areaGitHubPullRequests,
+      ([input]) => requireAreaGitHubPullRequestsInput(input as AreaGitHubPullRequestsInput),
+      (input) => areaManager.listGitHubPullRequests(input)
+    ),
+    areaRoute<AreaGitHubListInput, ReturnType<AreaManager["listGitHubActions"]>>(
+      ipcChannels.areaGitHubActions,
+      ([input]) => requireAreaGitHubListInput(input as AreaGitHubListInput),
+      (input) => areaManager.listGitHubActions(input)
+    ),
+    areaRoute<AreaGitHubListInput, ReturnType<AreaManager["listGitHubReleases"]>>(
+      ipcChannels.areaGitHubReleases,
+      ([input]) => requireAreaGitHubListInput(input as AreaGitHubListInput),
+      (input) => areaManager.listGitHubReleases(input)
+    ),
+    areaRoute<AreaGitHubListInput, ReturnType<AreaManager["listGitHubContributors"]>>(
+      ipcChannels.areaGitHubContributors,
+      ([input]) => requireAreaGitHubListInput(input as AreaGitHubListInput),
+      (input) => areaManager.listGitHubContributors(input)
+    ),
+    areaRoute<AreaRepositoryInput, ReturnType<AreaManager["getSyncStatus"]>>(
+      ipcChannels.areaSyncStatus,
+      ([input]) => requireSyncStatusInput(input as AreaRepositoryInput),
+      (input) => areaManager.getSyncStatus(input)
+    ),
+    areaRoute<AreaGatewayOperationInput, ReturnType<AreaManager["prepareGatewayOperation"]>>(
+      ipcChannels.areaPrepareGatewayOperation,
+      ([input]) => requireGatewayOperationInput(input as AreaGatewayOperationInput),
+      (input) => areaManager.prepareGatewayOperation(input)
+    ),
+    areaRoute<AreaGatewayRunOperationInput, ReturnType<AreaManager["runGatewayOperation"]>>(
+      ipcChannels.areaRunGatewayOperation,
+      ([input]) => requireRunGatewayOperationInput(input as AreaGatewayRunOperationInput),
+      (input) => areaManager.runGatewayOperation(input)
+    ),
+    areaRoute<StopAreaGatewayInput, ReturnType<AreaManager["stopGateway"]>>(
+      ipcChannels.areaStopGateway,
+      ([input]) => ({
+        areaId: requireString((input as StopAreaGatewayInput | null | undefined)?.areaId)
+      }),
+      (input) => areaManager.stopGateway(input)
+    ),
+    createIpcInvokeRoute<void, Promise<string | null>>({
+      channel: ipcChannels.areaOpenLocalFolderPicker,
+      parse: () => undefined,
+      handle: async () => {
+        const result = await dialog.showOpenDialog({ properties: ["openDirectory"] });
+        return result.canceled ? null : (result.filePaths[0] ?? null);
+      }
     })
-  );
-  ipcMain.handle(ipcChannels.areaGitHubRepository, (_event, input: AreaGitHubRepositoryInput) =>
-    areaManager.getGitHubRepository(requireAreaGitHubRepositoryInput(input))
-  );
-  ipcMain.handle(ipcChannels.areaGitHubIssues, (_event, input: AreaGitHubIssuesInput) =>
-    areaManager.listGitHubIssues(requireAreaGitHubIssuesInput(input))
-  );
-  ipcMain.handle(ipcChannels.areaGitHubPullRequests, (_event, input: AreaGitHubPullRequestsInput) =>
-    areaManager.listGitHubPullRequests(requireAreaGitHubPullRequestsInput(input))
-  );
-  ipcMain.handle(ipcChannels.areaGitHubActions, (_event, input: AreaGitHubListInput) =>
-    areaManager.listGitHubActions(requireAreaGitHubListInput(input))
-  );
-  ipcMain.handle(ipcChannels.areaGitHubReleases, (_event, input: AreaGitHubListInput) =>
-    areaManager.listGitHubReleases(requireAreaGitHubListInput(input))
-  );
-  ipcMain.handle(ipcChannels.areaGitHubContributors, (_event, input: AreaGitHubListInput) =>
-    areaManager.listGitHubContributors(requireAreaGitHubListInput(input))
-  );
-  ipcMain.handle(ipcChannels.areaSyncStatus, (_event, input) =>
-    areaManager.getSyncStatus(requireSyncStatusInput(input))
-  );
-  ipcMain.handle(ipcChannels.areaPrepareGatewayOperation, (_event, input: AreaGatewayOperationInput) =>
-    areaManager.prepareGatewayOperation(requireGatewayOperationInput(input))
-  );
-  ipcMain.handle(ipcChannels.areaRunGatewayOperation, (_event, input: AreaGatewayRunOperationInput) =>
-    areaManager.runGatewayOperation(requireRunGatewayOperationInput(input))
-  );
-  ipcMain.handle(ipcChannels.areaStopGateway, (_event, input: StopAreaGatewayInput) =>
-    areaManager.stopGateway({ areaId: requireString(input?.areaId) })
-  );
-  ipcMain.handle(ipcChannels.areaOpenLocalFolderPicker, async () => {
-    const result = await dialog.showOpenDialog({ properties: ["openDirectory"] });
-    return result.canceled ? null : (result.filePaths[0] ?? null);
+  ];
+}
+
+function areaRoute<TInput, TOutput>(
+  channel: string,
+  parse: (args: readonly unknown[]) => TInput,
+  handle: (input: TInput) => TOutput
+): IpcInvokeRoute {
+  return createIpcInvokeRoute<TInput, TOutput>({
+    channel,
+    parse,
+    handle
   });
 }
 

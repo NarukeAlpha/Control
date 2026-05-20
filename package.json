@@ -45,6 +45,7 @@
   "dependencies": {
     "@tanstack/react-query": "^5.100.9",
     "@tanstack/react-virtual": "^3.13.24",
+    "effect": "^3.21.2",
     "electron-liquid-glass": "^1.1.1",
     "lucide-react": "^1.14.0",
     "octokit": "^5.0.5",

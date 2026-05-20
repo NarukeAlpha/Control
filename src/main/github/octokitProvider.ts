@@ -40,6 +40,7 @@ import type {
   GitHubReadAvailability,
   GitHubAccountProfile,
   GitHubMutationInput,
+  GitHubMutationFields,
   GitHubMutationResult,
   GitHubProvider,
   IssueDetail,
@@ -176,6 +177,9 @@ import type {
   WorkflowRunLogsSummary,
   WorkflowRunSummary
 } from "@shared/github";
+import { GitHubRequestLimiter } from "./rateLimit";
+
+type GitHubMutationRuntimePayload = GitHubMutationInput & Partial<GitHubMutationFields>;
 
 const githubRestApiVersion = "2022-11-28";
 const githubJsonAccept = "application/vnd.github+json";
@@ -262,6 +266,7 @@ const githubProfileFragment = `
 
 export class OctokitProvider implements GitHubProvider {
   private readonly octokit: Octokit;
+  private readonly requestLimiter = new GitHubRequestLimiter();
 
   constructor(token: string) {
     this.octokit = new Octokit({
@@ -3610,7 +3615,8 @@ export class OctokitProvider implements GitHubProvider {
   }
 
   private async performMutation(input: GitHubMutationInput): Promise<unknown> {
-    const { owner, repo, payload = {} } = input;
+    const { owner, repo } = input;
+    const payload = input as GitHubMutationRuntimePayload;
 
     switch (input.action) {
       case "star":
@@ -4284,7 +4290,7 @@ export class OctokitProvider implements GitHubProvider {
         });
       }
       default:
-        throw new Error(`Unsupported GitHub action: ${input.action}`);
+        throw new Error(`Unsupported GitHub action: ${(input as { action: string }).action}`);
     }
   }
 
@@ -4292,7 +4298,7 @@ export class OctokitProvider implements GitHubProvider {
     query: string,
     variables: Record<string, string | number | boolean | null> = {}
   ): Promise<T> {
-    return this.octokit.graphql<T>(query, variables);
+    return this.requestLimiter.run(() => this.octokit.graphql<T>(query, variables));
   }
 
   private async restPaginatedArray<T>(
@@ -4344,7 +4350,9 @@ export class OctokitProvider implements GitHubProvider {
   }
 
   private async rest<T>(route: string, params: Record<string, unknown> = {}): Promise<T> {
-    const response = await this.octokit.request(route, withGitHubRestHeaders(params));
+    const response = await this.requestLimiter.run(() =>
+      this.octokit.request(route, withGitHubRestHeaders(params))
+    );
     return response.data as T;
   }
 
@@ -4352,7 +4360,9 @@ export class OctokitProvider implements GitHubProvider {
     route: string,
     params: Record<string, unknown> = {}
   ): Promise<{ data: T; headers: Record<string, string | number | undefined> }> {
-    const response = await this.octokit.request(route, withGitHubRestHeaders(params));
+    const response = await this.requestLimiter.run(() =>
+      this.octokit.request(route, withGitHubRestHeaders(params))
+    );
     return {
       data: response.data as T,
       headers: response.headers as Record<string, string | number | undefined>
@@ -4360,7 +4370,9 @@ export class OctokitProvider implements GitHubProvider {
   }
 
   private async restText(route: string, params: Record<string, unknown> = {}): Promise<string> {
-    const response = await this.octokit.request(route, withGitHubRestHeaders(params));
+    const response = await this.requestLimiter.run(() =>
+      this.octokit.request(route, withGitHubRestHeaders(params))
+    );
     return response.data as string;
   }
 
@@ -4414,7 +4426,7 @@ function getResponseHeader(
   return typeof value === "string" && value ? value : null;
 }
 
-function getNumber(payload: Record<string, unknown>, key: string): number {
+function getNumber(payload: GitHubMutationRuntimePayload, key: keyof GitHubMutationFields): number {
   const value = payload[key];
   if (typeof value !== "number" || Number.isNaN(value)) {
     throw new Error(`GitHub action payload requires numeric ${key}.`);
@@ -4422,7 +4434,7 @@ function getNumber(payload: Record<string, unknown>, key: string): number {
   return value;
 }
 
-function getString(payload: Record<string, unknown>, key: string): string {
+function getString(payload: GitHubMutationRuntimePayload, key: keyof GitHubMutationFields): string {
   const value = payload[key];
   if (typeof value !== "string" || !value.trim()) {
     throw new Error(`GitHub action payload requires string ${key}.`);
@@ -4430,7 +4442,10 @@ function getString(payload: Record<string, unknown>, key: string): string {
   return value;
 }
 
-function pick(payload: Record<string, unknown>, keys: string[]): Record<string, unknown> {
+function pick(
+  payload: GitHubMutationRuntimePayload,
+  keys: Array<keyof GitHubMutationFields>
+): Record<string, unknown> {
   return keys.reduce<Record<string, unknown>>((acc, key) => {
     if (payload[key] !== undefined) {
       acc[key] = payload[key];
@@ -6438,47 +6453,74 @@ function mapProjectV2ItemFieldValues(item: GitHubProjectV2ItemNode) {
     });
 }
 
-function mapProjectV2Owner(owner: GitHubProjectV2OwnerNode | null | undefined) {
+type ProjectV2OwnerSummary = Pick<ProjectSummary, "ownerLogin" | "ownerKind" | "ownerHtmlUrl">;
+
+function mapProjectV2Owner(owner: GitHubProjectV2OwnerNode | null | undefined): ProjectV2OwnerSummary {
   if (!owner) {
-    return {
-      ownerLogin: null,
-      ownerKind: "unknown" as const,
-      ownerHtmlUrl: null
-    };
+    return mapUnknownProjectV2Owner();
   }
 
-  if (owner.__typename === "Repository") {
-    const repositoryOwner = owner as Extract<GitHubProjectV2OwnerNode, { __typename: "Repository" }>;
-    return {
-      ownerLogin: repositoryOwner.nameWithOwner ?? null,
-      ownerKind: "repository" as const,
-      ownerHtmlUrl: repositoryOwner.url ?? null
-    };
+  if (isGitHubProjectV2RepositoryOwner(owner)) {
+    return mapRepositoryProjectV2Owner(owner);
   }
 
-  if (owner.__typename === "Organization") {
-    const organizationOwner = owner as Extract<GitHubProjectV2OwnerNode, { __typename: "Organization" }>;
-    return {
-      ownerLogin: organizationOwner.login ?? null,
-      ownerKind: "organization" as const,
-      ownerHtmlUrl: organizationOwner.url ?? null
-    };
+  if (isGitHubProjectV2OrganizationOwner(owner)) {
+    return mapOrganizationProjectV2Owner(owner);
   }
 
-  if (owner.__typename === "User") {
-    const userOwner = owner as Extract<GitHubProjectV2OwnerNode, { __typename: "User" }>;
-    return {
-      ownerLogin: userOwner.login ?? null,
-      ownerKind: "user" as const,
-      ownerHtmlUrl: userOwner.url ?? null
-    };
+  if (isGitHubProjectV2UserOwner(owner)) {
+    return mapUserProjectV2Owner(owner);
   }
 
+  return mapUnknownProjectV2Owner();
+}
+
+function mapRepositoryProjectV2Owner(owner: GitHubProjectV2RepositoryOwnerNode): ProjectV2OwnerSummary {
+  return {
+    ownerLogin: owner.nameWithOwner ?? null,
+    ownerKind: "repository",
+    ownerHtmlUrl: owner.url ?? null
+  };
+}
+
+function mapOrganizationProjectV2Owner(owner: GitHubProjectV2OrganizationOwnerNode): ProjectV2OwnerSummary {
+  return {
+    ownerLogin: owner.login ?? null,
+    ownerKind: "organization",
+    ownerHtmlUrl: owner.url ?? null
+  };
+}
+
+function mapUserProjectV2Owner(owner: GitHubProjectV2UserOwnerNode): ProjectV2OwnerSummary {
+  return {
+    ownerLogin: owner.login ?? null,
+    ownerKind: "user",
+    ownerHtmlUrl: owner.url ?? null
+  };
+}
+
+function mapUnknownProjectV2Owner(): ProjectV2OwnerSummary {
   return {
     ownerLogin: null,
-    ownerKind: "unknown" as const,
+    ownerKind: "unknown",
     ownerHtmlUrl: null
   };
+}
+
+function isGitHubProjectV2RepositoryOwner(
+  owner: GitHubProjectV2OwnerNode
+): owner is GitHubProjectV2RepositoryOwnerNode {
+  return owner.__typename === "Repository";
+}
+
+function isGitHubProjectV2OrganizationOwner(
+  owner: GitHubProjectV2OwnerNode
+): owner is GitHubProjectV2OrganizationOwnerNode {
+  return owner.__typename === "Organization";
+}
+
+function isGitHubProjectV2UserOwner(owner: GitHubProjectV2OwnerNode): owner is GitHubProjectV2UserOwnerNode {
+  return owner.__typename === "User";
 }
 
 function mapPullRequestTimelineEvent(
@@ -7399,24 +7441,32 @@ type GitHubProjectV2ItemContentNode =
     };
 
 type GitHubProjectV2OwnerNode =
-  | {
-      __typename: "Organization";
-      login?: string | null;
-      url?: string | null;
-    }
-  | {
-      __typename: "User";
-      login?: string | null;
-      url?: string | null;
-    }
-  | {
-      __typename: "Repository";
-      nameWithOwner?: string | null;
-      url?: string | null;
-    }
-  | {
-      __typename: string;
-    };
+  | GitHubProjectV2OrganizationOwnerNode
+  | GitHubProjectV2UserOwnerNode
+  | GitHubProjectV2RepositoryOwnerNode
+  | GitHubProjectV2UnknownOwnerNode;
+
+interface GitHubProjectV2OrganizationOwnerNode {
+  __typename: "Organization";
+  login?: string | null;
+  url?: string | null;
+}
+
+interface GitHubProjectV2UserOwnerNode {
+  __typename: "User";
+  login?: string | null;
+  url?: string | null;
+}
+
+interface GitHubProjectV2RepositoryOwnerNode {
+  __typename: "Repository";
+  nameWithOwner?: string | null;
+  url?: string | null;
+}
+
+interface GitHubProjectV2UnknownOwnerNode {
+  __typename: string;
+}
 
 interface GitHubIssueTimelineSourceIssue {
   number?: number | null;

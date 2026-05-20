@@ -198,20 +198,35 @@ export interface RepoListInput {
   forceRefresh?: boolean;
 }
 
-export interface RepositoryListResult {
-  items: RepositorySummary[];
+export type JsonPrimitive = string | number | boolean | null;
+
+export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+
+export type JsonObject = { [key: string]: JsonValue };
+
+export interface GitHubAvailabilityResult {
   availability: GitHubReadAvailability;
 }
 
-export interface AccountRepositoryListResult {
-  items: RepositorySummary[];
-  availability: GitHubReadAvailability;
+export interface GitHubPageInfo {
+  hasNextPage: boolean;
+  endCursor: string | null;
 }
 
-export interface RepositorySearchResult {
-  items: RepositorySummary[];
-  availability: GitHubReadAvailability;
-}
+export type GitHubListResult<T> = GitHubAvailabilityResult & {
+  items: T[];
+  pageInfo?: GitHubPageInfo | null;
+};
+
+export type GitHubNullableResult<TKey extends string, TValue> = GitHubAvailabilityResult & {
+  [K in TKey]: TValue | null;
+};
+
+export type RepositoryListResult = GitHubListResult<RepositorySummary>;
+
+export type AccountRepositoryListResult = GitHubListResult<RepositorySummary>;
+
+export type RepositorySearchResult = GitHubListResult<RepositorySummary>;
 
 export interface AccountProfileInput {
   login?: string | null;
@@ -257,10 +272,7 @@ export interface OrganizationSummary {
   viewerCanCreateTeams: boolean;
 }
 
-export interface OrganizationListResult {
-  items: OrganizationSummary[];
-  availability: GitHubReadAvailability;
-}
+export type OrganizationListResult = GitHubListResult<OrganizationSummary>;
 
 export interface OrganizationTeamsInput {
   org: string;
@@ -348,20 +360,11 @@ export interface OrganizationTeamRepositorySummary {
 
 export type OrganizationRepositorySummary = OrganizationTeamRepositorySummary;
 
-export interface OrganizationTeamsResult {
-  items: TeamSummary[];
-  availability: GitHubReadAvailability;
-}
+export type OrganizationTeamsResult = GitHubListResult<TeamSummary>;
 
-export interface OrganizationRepositoriesResult {
-  items: OrganizationRepositorySummary[];
-  availability: GitHubReadAvailability;
-}
+export type OrganizationRepositoriesResult = GitHubListResult<OrganizationRepositorySummary>;
 
-export interface OrganizationTeamRepositoriesResult {
-  items: OrganizationTeamRepositorySummary[];
-  availability: GitHubReadAvailability;
-}
+export type OrganizationTeamRepositoriesResult = GitHubListResult<OrganizationTeamRepositorySummary>;
 
 export interface TeamMemberSummary {
   id: string;
@@ -373,15 +376,9 @@ export interface TeamMemberSummary {
 
 export type OrganizationMemberSummary = TeamMemberSummary;
 
-export interface OrganizationTeamMembersResult {
-  items: TeamMemberSummary[];
-  availability: GitHubReadAvailability;
-}
+export type OrganizationTeamMembersResult = GitHubListResult<TeamMemberSummary>;
 
-export interface OrganizationMembersResult {
-  items: OrganizationMemberSummary[];
-  availability: GitHubReadAvailability;
-}
+export type OrganizationMembersResult = GitHubListResult<OrganizationMemberSummary>;
 
 export interface AccountIssueListInput {
   login?: string | null;
@@ -399,15 +396,9 @@ export interface AccountPullRequestListInput {
   cacheOnly?: boolean;
 }
 
-export interface AccountIssueListResult {
-  items: IssueSummary[];
-  availability: GitHubReadAvailability;
-}
+export type AccountIssueListResult = GitHubListResult<IssueSummary>;
 
-export interface AccountPullRequestListResult {
-  items: PullRequestSummary[];
-  availability: GitHubReadAvailability;
-}
+export type AccountPullRequestListResult = GitHubListResult<PullRequestSummary>;
 
 export interface NotificationListInput {
   all?: boolean;
@@ -448,10 +439,7 @@ export interface NotificationSummary {
   htmlUrl: string | null;
 }
 
-export interface NotificationListResult {
-  items: NotificationSummary[];
-  availability: GitHubReadAvailability;
-}
+export type NotificationListResult = GitHubListResult<NotificationSummary>;
 
 export interface NotificationThreadInput {
   threadId: string;
@@ -475,10 +463,7 @@ export interface RepositoryForksInput extends RepoDetailInput {
   limit?: number;
 }
 
-export interface RepositoryForksResult {
-  items: RepositoryRef[];
-  availability: GitHubReadAvailability;
-}
+export type RepositoryForksResult = GitHubListResult<RepositoryRef>;
 
 export interface BranchListInput extends RepoDetailInput {
   limit?: number;
@@ -501,15 +486,9 @@ export interface TagSummary {
   tarballUrl: string | null;
 }
 
-export interface BranchListResult {
-  items: BranchSummary[];
-  availability: GitHubReadAvailability;
-}
+export type BranchListResult = GitHubListResult<BranchSummary>;
 
-export interface TagListResult {
-  items: TagSummary[];
-  availability: GitHubReadAvailability;
-}
+export type TagListResult = GitHubListResult<TagSummary>;
 
 export interface RepoTreeInput extends RepoDetailInput {
   ref?: string | null;
@@ -768,10 +747,7 @@ export interface IssueListInput extends RepoDetailInput {
   limit?: number;
 }
 
-export interface IssueListResult {
-  items: IssueSummary[];
-  availability: GitHubReadAvailability;
-}
+export type IssueListResult = GitHubListResult<IssueSummary>;
 
 export interface IssueDetailInput extends RepoDetailInput {
   issueNumber: number;
@@ -835,10 +811,7 @@ export interface PullRequestListInput extends RepoDetailInput {
   limit?: number;
 }
 
-export interface PullRequestListResult {
-  items: PullRequestSummary[];
-  availability: GitHubReadAvailability;
-}
+export type PullRequestListResult = GitHubListResult<PullRequestSummary>;
 
 export interface PullRequestDetailInput extends RepoDetailInput {
   pullNumber: number;
@@ -1049,35 +1022,17 @@ export interface GitHubReadAvailability {
   message: string | null;
 }
 
-export interface RepositoryLabelListResult {
-  items: LabelSummary[];
-  availability: GitHubReadAvailability;
-}
+export type RepositoryLabelListResult = GitHubListResult<LabelSummary>;
 
-export interface AssignableUserListResult {
-  items: AssignableUserSummary[];
-  availability: GitHubReadAvailability;
-}
+export type AssignableUserListResult = GitHubListResult<AssignableUserSummary>;
 
-export interface RepositoryMilestoneListResult {
-  items: MilestoneSummary[];
-  availability: GitHubReadAvailability;
-}
+export type RepositoryMilestoneListResult = GitHubListResult<MilestoneSummary>;
 
-export interface DiscussionListResult {
-  items: DiscussionSummary[];
-  availability: GitHubReadAvailability;
-}
+export type DiscussionListResult = GitHubListResult<DiscussionSummary>;
 
-export interface DiscussionCategoryListResult {
-  items: DiscussionCategorySummary[];
-  availability: GitHubReadAvailability;
-}
+export type DiscussionCategoryListResult = GitHubListResult<DiscussionCategorySummary>;
 
-export interface RepoContentsResult {
-  items: RepoEntry[];
-  availability: GitHubReadAvailability;
-}
+export type RepoContentsResult = GitHubListResult<RepoEntry>;
 
 export interface RepoFileContentResult {
   item: RepoFileContent | null;
@@ -1089,10 +1044,7 @@ export interface RepoTreeReadResult {
   availability: GitHubReadAvailability;
 }
 
-export interface RepositoryCommitListResult {
-  items: RepositoryCommitSummary[];
-  availability: GitHubReadAvailability;
-}
+export type RepositoryCommitListResult = GitHubListResult<RepositoryCommitSummary>;
 
 export interface DiscussionCommentSummary extends TimelineCommentSummary {
   replies: TimelineCommentSummary[];
@@ -1170,10 +1122,7 @@ export interface ActionsInput extends RepoDetailInput {
   limit?: number;
 }
 
-export interface WorkflowRunListResult {
-  items: WorkflowRunSummary[];
-  availability: GitHubReadAvailability;
-}
+export type WorkflowRunListResult = GitHubListResult<WorkflowRunSummary>;
 
 export interface WorkflowListInput extends RepoDetailInput {
   ref?: string | null;
@@ -1206,10 +1155,7 @@ export interface WorkflowDefinitionSummary {
   inputsUnavailableMessage: string | null;
 }
 
-export interface WorkflowDefinitionListResult {
-  items: WorkflowDefinitionSummary[];
-  availability: GitHubReadAvailability;
-}
+export type WorkflowDefinitionListResult = GitHubListResult<WorkflowDefinitionSummary>;
 
 export interface WorkflowRunDetailInput extends RepoDetailInput {
   runId: number;
@@ -1403,10 +1349,7 @@ export interface ProjectsInput extends RepoDetailInput {
   limit?: number;
 }
 
-export interface ProjectListResult {
-  items: ProjectSummary[];
-  availability: GitHubReadAvailability;
-}
+export type ProjectListResult = GitHubListResult<ProjectSummary>;
 
 export interface BranchProtectionInput extends RepoDetailInput {
   branch: string;
@@ -1461,10 +1404,7 @@ export interface DependabotAlertsInput extends RepoDetailInput {
   limit?: number;
 }
 
-export interface DependabotAlertsResult {
-  items: DependabotAlertSummary[];
-  availability: GitHubReadAvailability;
-}
+export type DependabotAlertsResult = GitHubListResult<DependabotAlertSummary>;
 
 export interface CodeScanningAlertSummary {
   number: number;
@@ -1491,10 +1431,7 @@ export interface CodeScanningAlertsInput extends RepoDetailInput {
   limit?: number;
 }
 
-export interface CodeScanningAlertsResult {
-  items: CodeScanningAlertSummary[];
-  availability: GitHubReadAvailability;
-}
+export type CodeScanningAlertsResult = GitHubListResult<CodeScanningAlertSummary>;
 
 export interface SecretScanningAlertSummary {
   number: number;
@@ -1521,10 +1458,7 @@ export interface SecretScanningAlertsInput extends RepoDetailInput {
   limit?: number;
 }
 
-export interface SecretScanningAlertsResult {
-  items: SecretScanningAlertSummary[];
-  availability: GitHubReadAvailability;
-}
+export type SecretScanningAlertsResult = GitHubListResult<SecretScanningAlertSummary>;
 
 export interface RepositoryRulesetSummary {
   id: number;
@@ -1569,10 +1503,7 @@ export interface RepositoryRulesetsInput extends RepoDetailInput {
   limit?: number;
 }
 
-export interface RepositoryRulesetsResult {
-  items: RepositoryRulesetSummary[];
-  availability: GitHubReadAvailability;
-}
+export type RepositoryRulesetsResult = GitHubListResult<RepositoryRulesetSummary>;
 
 export interface RepositorySecurityAdvisorySummary {
   ghsaId: string;
@@ -1597,10 +1528,7 @@ export interface RepositorySecurityAdvisoriesInput extends RepoDetailInput {
   limit?: number;
 }
 
-export interface RepositorySecurityAdvisoriesResult {
-  items: RepositorySecurityAdvisorySummary[];
-  availability: GitHubReadAvailability;
-}
+export type RepositorySecurityAdvisoriesResult = GitHubListResult<RepositorySecurityAdvisorySummary>;
 
 export interface RepositorySecurityPolicyInput extends RepoDetailInput {
   ref?: string | null;
@@ -1652,10 +1580,7 @@ export interface ReleasesInput extends RepoDetailInput {
   limit?: number;
 }
 
-export interface ReleaseListResult {
-  items: ReleaseSummary[];
-  availability: GitHubReadAvailability;
-}
+export type ReleaseListResult = GitHubListResult<ReleaseSummary>;
 
 export interface ContributorSummary {
   id: number;
@@ -1669,10 +1594,7 @@ export interface ContributorsInput extends RepoDetailInput {
   limit?: number;
 }
 
-export interface ContributorListResult {
-  items: ContributorSummary[];
-  availability: GitHubReadAvailability;
-}
+export type ContributorListResult = GitHubListResult<ContributorSummary>;
 
 export interface RepositoryDetailResult {
   detail: RepositoryDetail | null;
@@ -1684,84 +1606,321 @@ export interface SearchInput {
   limit?: number;
 }
 
-export type GitHubAction =
-  | "star"
-  | "unstar"
-  | "watch"
-  | "unwatch"
-  | "fork"
-  | "editRepository"
-  | "createIssue"
-  | "editIssue"
-  | "closeIssue"
-  | "reopenIssue"
-  | "addComment"
-  | "editComment"
-  | "deleteComment"
-  | "editReviewComment"
-  | "deleteReviewComment"
-  | "addLabels"
-  | "removeLabel"
-  | "setAssignees"
-  | "removeAssignees"
-  | "mergePullRequest"
-  | "createPullRequest"
-  | "closePullRequest"
-  | "reopenPullRequest"
-  | "approvePullRequest"
-  | "commentPullRequestReview"
-  | "requestChanges"
-  | "requestReviewers"
-  | "removeReviewers"
-  | "rerunWorkflow"
-  | "rerunFailedWorkflowJobs"
-  | "rerunWorkflowJob"
-  | "dispatchWorkflow"
-  | "cancelWorkflow"
-  | "createRelease"
-  | "editRelease"
-  | "deleteRelease"
-  | "deleteReleaseAsset"
-  | "updateBranchProtection"
-  | "deleteBranchProtection"
-  | "addRepositoryCollaborator"
-  | "removeRepositoryCollaborator"
-  | "updateCollaboratorPermission"
-  | "addRepositoryTeam"
-  | "removeRepositoryTeam"
-  | "updateTeamPermission"
-  | "createRepositoryRuleset"
-  | "updateRepositoryRuleset"
-  | "deleteRepositoryRuleset"
-  | "createDiscussion"
-  | "editDiscussion"
-  | "closeDiscussion"
-  | "reopenDiscussion"
-  | "addDiscussionComment"
-  | "editDiscussionComment"
-  | "deleteDiscussionComment"
-  | "createProjectV2"
-  | "updateProjectV2"
-  | "deleteProjectV2"
-  | "addProjectV2Item"
-  | "updateProjectV2Item"
-  | "deleteProjectV2Item"
-  | "createWikiPage"
-  | "editWikiPage"
-  | "deleteWikiPage";
+export const githubActions = [
+  "star",
+  "unstar",
+  "watch",
+  "unwatch",
+  "fork",
+  "editRepository",
+  "createIssue",
+  "editIssue",
+  "closeIssue",
+  "reopenIssue",
+  "addComment",
+  "editComment",
+  "deleteComment",
+  "editReviewComment",
+  "deleteReviewComment",
+  "addLabels",
+  "removeLabel",
+  "setAssignees",
+  "removeAssignees",
+  "mergePullRequest",
+  "createPullRequest",
+  "closePullRequest",
+  "reopenPullRequest",
+  "approvePullRequest",
+  "commentPullRequestReview",
+  "requestChanges",
+  "requestReviewers",
+  "removeReviewers",
+  "rerunWorkflow",
+  "rerunFailedWorkflowJobs",
+  "rerunWorkflowJob",
+  "dispatchWorkflow",
+  "cancelWorkflow",
+  "createRelease",
+  "editRelease",
+  "deleteRelease",
+  "deleteReleaseAsset",
+  "updateBranchProtection",
+  "deleteBranchProtection",
+  "addRepositoryCollaborator",
+  "removeRepositoryCollaborator",
+  "updateCollaboratorPermission",
+  "addRepositoryTeam",
+  "removeRepositoryTeam",
+  "updateTeamPermission",
+  "createRepositoryRuleset",
+  "updateRepositoryRuleset",
+  "deleteRepositoryRuleset",
+  "createDiscussion",
+  "editDiscussion",
+  "closeDiscussion",
+  "reopenDiscussion",
+  "addDiscussionComment",
+  "editDiscussionComment",
+  "deleteDiscussionComment",
+  "createProjectV2",
+  "updateProjectV2",
+  "deleteProjectV2",
+  "addProjectV2Item",
+  "updateProjectV2Item",
+  "deleteProjectV2Item",
+  "createWikiPage",
+  "editWikiPage",
+  "deleteWikiPage"
+] as const;
 
-export interface GitHubMutationInput {
-  action: GitHubAction;
+export type GitHubAction = (typeof githubActions)[number];
+
+export interface GitHubMutationFields {
+  description?: string | null;
+  homepage?: string | null;
+  default_branch?: string | null;
+  archived?: boolean;
+  has_issues?: boolean;
+  has_projects?: boolean;
+  has_wiki?: boolean;
+  has_discussions?: boolean;
+  allow_merge_commit?: boolean;
+  allow_squash_merge?: boolean;
+  allow_rebase_merge?: boolean;
+  allow_auto_merge?: boolean;
+  delete_branch_on_merge?: boolean;
+  allow_update_branch?: boolean;
+  allow_forking?: boolean;
+  web_commit_signoff_required?: boolean;
+  topics?: string[];
+  title?: string;
+  body?: string;
+  labels?: string[];
+  assignees?: string[];
+  milestone?: number | null;
+  issueNumber?: number;
+  state?: string;
+  stateReason?: string;
+  commentId?: string | number;
+  name?: string | null;
+  head?: string;
+  base?: string;
+  draft?: boolean;
+  maintainer_can_modify?: boolean;
+  pullNumber?: number;
+  commit_title?: string;
+  commit_message?: string;
+  merge_method?: string;
+  sha?: string;
+  reviewers?: string[];
+  teamReviewers?: string[];
+  runId?: number;
+  jobId?: number;
+  workflowId?: string;
+  ref?: string;
+  inputs?: JsonObject;
+  tag_name?: string;
+  target_commitish?: string;
+  prerelease?: boolean;
+  make_latest?: string;
+  releaseId?: number;
+  assetId?: number;
+  branch?: string;
+  required_status_checks?: JsonValue;
+  enforce_admins?: boolean | null;
+  required_pull_request_reviews?: JsonValue;
+  restrictions?: JsonValue;
+  required_linear_history?: boolean;
+  allow_force_pushes?: boolean;
+  allow_deletions?: boolean;
+  block_creations?: boolean;
+  required_conversation_resolution?: boolean;
+  lock_branch?: boolean;
+  allow_fork_syncing?: boolean;
+  username?: string;
+  permission?: string;
+  teamSlug?: string;
+  rulesetId?: number;
+  target?: string;
+  enforcement?: string;
+  bypass_actors?: JsonValue[];
+  conditions?: JsonObject;
+  rules?: JsonValue[];
+  categoryId?: string;
+  discussionId?: string;
+  projectId?: string;
+  shortDescription?: string | null;
+  readme?: string | null;
+  contentId?: string;
+  itemId?: string;
+  fieldId?: string;
+  value?: JsonValue;
+  content?: string;
+  pagePath?: string;
+}
+
+type GitHubMutationBase<TAction extends GitHubAction> = {
+  action: TAction;
   owner: string;
   repo: string;
-  payload?: Record<string, unknown>;
-}
+};
+
+type MutationFields<TKey extends keyof GitHubMutationFields> = Pick<GitHubMutationFields, TKey>;
+type RequiredMutationFields<TKey extends keyof GitHubMutationFields> = Required<
+  Pick<GitHubMutationFields, TKey>
+>;
+
+type RepositoryToggleMutationInput = GitHubMutationBase<"star" | "unstar" | "watch" | "unwatch" | "fork">;
+
+type RepositorySettingsMutationInput = GitHubMutationBase<"editRepository"> &
+  MutationFields<
+    | "description"
+    | "homepage"
+    | "default_branch"
+    | "archived"
+    | "has_issues"
+    | "has_projects"
+    | "has_wiki"
+    | "has_discussions"
+    | "allow_merge_commit"
+    | "allow_squash_merge"
+    | "allow_rebase_merge"
+    | "allow_auto_merge"
+    | "delete_branch_on_merge"
+    | "allow_update_branch"
+    | "allow_forking"
+    | "web_commit_signoff_required"
+    | "topics"
+  >;
+
+type IssueMutationInput =
+  | (GitHubMutationBase<"createIssue"> &
+      RequiredMutationFields<"title"> &
+      MutationFields<"body" | "labels" | "assignees" | "milestone">)
+  | (GitHubMutationBase<"editIssue"> &
+      RequiredMutationFields<"issueNumber"> &
+      MutationFields<"title" | "body" | "state" | "labels" | "assignees" | "milestone">)
+  | (GitHubMutationBase<"closeIssue"> & RequiredMutationFields<"issueNumber"> & MutationFields<"stateReason">)
+  | (GitHubMutationBase<"reopenIssue"> & RequiredMutationFields<"issueNumber">)
+  | (GitHubMutationBase<"addComment"> & RequiredMutationFields<"issueNumber" | "body">)
+  | (GitHubMutationBase<"editComment"> & RequiredMutationFields<"commentId" | "body">)
+  | (GitHubMutationBase<"deleteComment"> & RequiredMutationFields<"commentId">)
+  | (GitHubMutationBase<"addLabels"> & RequiredMutationFields<"issueNumber" | "labels">)
+  | (GitHubMutationBase<"removeLabel"> & RequiredMutationFields<"issueNumber" | "name">)
+  | (GitHubMutationBase<"setAssignees" | "removeAssignees"> &
+      RequiredMutationFields<"issueNumber" | "assignees">);
+
+type PullRequestMutationInput =
+  | (GitHubMutationBase<"createPullRequest"> &
+      RequiredMutationFields<"title" | "head" | "base"> &
+      MutationFields<"body" | "draft" | "maintainer_can_modify">)
+  | (GitHubMutationBase<"mergePullRequest"> &
+      RequiredMutationFields<"pullNumber"> &
+      MutationFields<"commit_title" | "commit_message" | "merge_method" | "sha">)
+  | (GitHubMutationBase<"closePullRequest" | "reopenPullRequest"> & RequiredMutationFields<"pullNumber">)
+  | (GitHubMutationBase<"approvePullRequest" | "commentPullRequestReview" | "requestChanges"> &
+      RequiredMutationFields<"pullNumber"> &
+      MutationFields<"body">)
+  | (GitHubMutationBase<"requestReviewers" | "removeReviewers"> &
+      RequiredMutationFields<"pullNumber"> &
+      MutationFields<"reviewers" | "teamReviewers">)
+  | (GitHubMutationBase<"editReviewComment"> & RequiredMutationFields<"commentId" | "body">)
+  | (GitHubMutationBase<"deleteReviewComment"> & RequiredMutationFields<"commentId">);
+
+type WorkflowMutationInput =
+  | (GitHubMutationBase<"rerunWorkflow" | "rerunFailedWorkflowJobs" | "cancelWorkflow"> &
+      RequiredMutationFields<"runId">)
+  | (GitHubMutationBase<"rerunWorkflowJob"> & RequiredMutationFields<"jobId">)
+  | (GitHubMutationBase<"dispatchWorkflow"> &
+      RequiredMutationFields<"workflowId" | "ref"> &
+      MutationFields<"inputs">);
+
+type ReleaseMutationInput =
+  | (GitHubMutationBase<"createRelease"> &
+      RequiredMutationFields<"tag_name"> &
+      MutationFields<"target_commitish" | "name" | "body" | "draft" | "prerelease" | "make_latest">)
+  | (GitHubMutationBase<"editRelease"> &
+      RequiredMutationFields<"releaseId"> &
+      MutationFields<
+        "tag_name" | "target_commitish" | "name" | "body" | "draft" | "prerelease" | "make_latest"
+      >)
+  | (GitHubMutationBase<"deleteRelease"> & RequiredMutationFields<"releaseId">)
+  | (GitHubMutationBase<"deleteReleaseAsset"> & RequiredMutationFields<"assetId">);
+
+type RepositoryAdministrationMutationInput =
+  | (GitHubMutationBase<"updateBranchProtection"> &
+      RequiredMutationFields<"branch"> &
+      MutationFields<
+        | "required_status_checks"
+        | "enforce_admins"
+        | "required_pull_request_reviews"
+        | "restrictions"
+        | "required_linear_history"
+        | "allow_force_pushes"
+        | "allow_deletions"
+        | "block_creations"
+        | "required_conversation_resolution"
+        | "lock_branch"
+        | "allow_fork_syncing"
+      >)
+  | (GitHubMutationBase<"deleteBranchProtection"> & RequiredMutationFields<"branch">)
+  | (GitHubMutationBase<"addRepositoryCollaborator" | "updateCollaboratorPermission"> &
+      RequiredMutationFields<"username"> &
+      MutationFields<"permission">)
+  | (GitHubMutationBase<"removeRepositoryCollaborator"> & RequiredMutationFields<"username">)
+  | (GitHubMutationBase<"addRepositoryTeam" | "updateTeamPermission"> &
+      RequiredMutationFields<"teamSlug"> &
+      MutationFields<"permission">)
+  | (GitHubMutationBase<"removeRepositoryTeam"> & RequiredMutationFields<"teamSlug">)
+  | (GitHubMutationBase<"createRepositoryRuleset"> &
+      RequiredMutationFields<"name" | "enforcement"> &
+      MutationFields<"target" | "bypass_actors" | "conditions" | "rules">)
+  | (GitHubMutationBase<"updateRepositoryRuleset"> &
+      RequiredMutationFields<"rulesetId" | "name" | "enforcement"> &
+      MutationFields<"target" | "bypass_actors" | "conditions" | "rules">)
+  | (GitHubMutationBase<"deleteRepositoryRuleset"> & RequiredMutationFields<"rulesetId">);
+
+type DiscussionMutationInput =
+  | (GitHubMutationBase<"createDiscussion"> & RequiredMutationFields<"categoryId" | "title" | "body">)
+  | (GitHubMutationBase<"editDiscussion"> & RequiredMutationFields<"discussionId" | "title" | "body">)
+  | (GitHubMutationBase<"closeDiscussion" | "reopenDiscussion"> & RequiredMutationFields<"discussionId">)
+  | (GitHubMutationBase<"addDiscussionComment"> & RequiredMutationFields<"discussionId" | "body">)
+  | (GitHubMutationBase<"editDiscussionComment"> & RequiredMutationFields<"commentId" | "body">)
+  | (GitHubMutationBase<"deleteDiscussionComment"> & RequiredMutationFields<"commentId">);
+
+type ProjectMutationInput =
+  | (GitHubMutationBase<"createProjectV2"> & RequiredMutationFields<"title">)
+  | (GitHubMutationBase<"updateProjectV2"> &
+      RequiredMutationFields<"projectId" | "title"> &
+      MutationFields<"shortDescription" | "readme">)
+  | (GitHubMutationBase<"deleteProjectV2"> & RequiredMutationFields<"projectId">)
+  | (GitHubMutationBase<"addProjectV2Item"> & RequiredMutationFields<"projectId" | "contentId">)
+  | (GitHubMutationBase<"updateProjectV2Item"> &
+      RequiredMutationFields<"projectId" | "itemId" | "fieldId" | "value">)
+  | (GitHubMutationBase<"deleteProjectV2Item"> & RequiredMutationFields<"projectId" | "itemId">);
+
+type WikiMutationInput =
+  | (GitHubMutationBase<"createWikiPage"> & RequiredMutationFields<"title" | "content">)
+  | (GitHubMutationBase<"editWikiPage"> & RequiredMutationFields<"pagePath" | "content">)
+  | (GitHubMutationBase<"deleteWikiPage"> & RequiredMutationFields<"pagePath">);
+
+export type GitHubMutationInput =
+  | RepositoryToggleMutationInput
+  | RepositorySettingsMutationInput
+  | IssueMutationInput
+  | PullRequestMutationInput
+  | WorkflowMutationInput
+  | ReleaseMutationInput
+  | RepositoryAdministrationMutationInput
+  | DiscussionMutationInput
+  | ProjectMutationInput
+  | WikiMutationInput;
 
 export interface GitHubMutationResult {
   ok: boolean;
   action: GitHubAction;
   message: string;
-  data?: unknown;
+  data?: JsonValue;
 }
 
 export interface GitHubProvider {

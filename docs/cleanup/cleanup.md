@@ -117,6 +117,21 @@ behavior.
 - Changing renderer-facing return shapes.
 - Starting storage, provider, or IPC rewrites inside this foundation task.
 
+**Deeper implementation notes:**
+
+- Start with the two live handlers in `src/main/index.ts`: `ipcChannels.getSettings` currently calls
+  `store.getSettings()` directly, and `ipcChannels.openExternal` validates `url.startsWith("https://")` before
+  `shell.openExternal(url)`.
+- Build the Effect layer from the already-created bootstrap dependencies: `store`, `github`, and an external-link
+  opener wrapping `shell.openExternal`. Wire it immediately before IPC registration.
+- Preserve the current `ControlApi` contract by returning success payloads unchanged and rejecting with deterministic
+  plain `Error` messages. Do not return `{ ok, error }` unions from these existing channels.
+- Do not import `src/main/index.ts` directly in tests unless startup side effects have been separated. Prefer pure
+  tests for `src/main/effect/ipcBridge.ts`, `src/main/effect/appLayer.ts`, or an extracted registration helper.
+- Minimum first-slice tests: bridge success, tagged failure encoding, sanitized defects, rejected unknowns,
+  `getSettings` through the `LocalStore` service, and `openExternal` rejecting non-HTTPS input before the opener is
+  called.
+
 ### 2. Refactor Storage Layer With Effect
 
 **Problem:** `SqliteLocalStore` mixes schema creation, migrations, SQL execution, serialization, cache policy, Area
@@ -184,6 +199,23 @@ compatibility interface for current callers.
 - Creating one giant `StorageService` module.
 - Making all callers async or Effect-native.
 - Swallowing database failures silently.
+
+**Deeper implementation notes:**
+
+- This task is blocked until task 1 adds `effect` to `package.json` and the lockfile.
+- The first mergeable slice should add `errors.ts`, `database.ts`, `schema.ts`, `serializers.ts`, and extract only
+  settings, accounts, and cache from `src/main/storage.ts` while keeping `src/main/storage.ts` as the sync
+  compatibility facade.
+- Move the `SqliteLocalStore` constructor bootstrap into `schema.ts` without changing order: WAL pragma, table
+  creation, default GitHub Area creation, legacy pin migration, then legacy GitHub recent migration.
+- `DatabaseError` should fail at the SQLite adapter seam and be thrown by the sync facade when an operation fails.
+  Keep memory fallback only for SQLite store creation failure, not later operation failures.
+- Preserve subtle current behavior: invalid cache expiry counts as expired, `getCache(..., { allowExpired: true })`
+  can return expired payloads, summary-only repository upserts preserve detail/readme fields,
+  `upsertGitHubRepositoryReadme` is a no-op for unknown repositories, and storage-local Area IDs must not change
+  accidentally by importing normalized helpers from `src/main/areas/areaIds.ts`.
+- Useful guard command: `rg -n "better-sqlite3|\\.prepare\\(|\\.transaction\\(|\\.pragma\\(|\\.exec\\("
+src/main/storage.ts src/main/storage` should leave raw SQLite usage only in adapter/schema files.
 
 ### 3. Deepen GitHub Provider Architecture With Effect
 
@@ -253,6 +285,22 @@ deeper main-process modules.
 - Moving cache boilerplate into copied domain helpers.
 - Letting Effect leak into shared, preload, or renderer modules.
 - Claiming Effect request caching replaces durable SQLite TTL caching.
+
+**Deeper implementation notes:**
+
+- Do not start this task until task 1 has added Effect to `src/main`.
+- The first useful slice is only `listRepositoriesWithStatus`: extract the read-through behavior from
+  `GitHubProviderManager.listRepositoriesWithStatus`, `refreshRepositoriesWithStatus`, and dedupe into a GitHub
+  read-cache module.
+- Leave `GitHubProviderManager` as the public `GitHubProvider` facade and leave IPC/preload/shared types unchanged.
+- Preserve the current two-source cache order exactly: `LocalStore.listGitHubRepositoriesWithMetadata(limit)` wins
+  before generic `repositories-with-status:${limit}` cache entries.
+- Preserve current cache semantics: `cacheOnly` beats `forceRefresh`; stale repository rows/results return
+  immediately and refresh in the background; live refresh writes summaries and the generic status result only when
+  availability is `available`; repository update events fire only on material item changes.
+- Minimum first-slice tests: fresh hit, cache-only hit, cache-only miss, generic cached-result fallback, stale plus
+  background refresh, force refresh, live error with no cache, concurrent dedupe, request-identity invalidation, and
+  unchanged-list no-op event emission.
 
 ### 4. Streamline IPC And Preload Architecture
 
@@ -325,6 +373,20 @@ typed adapter.
 - Renaming monolithic PR detail without reducing payload depth.
 - Moving validation to the renderer.
 
+**Deeper implementation notes:**
+
+- The current code has no `src/main/ipc` layer: `src/main/index.ts` owns direct `ipcMain.handle` calls,
+  `src/main/areas/registerAreaIpc.ts` owns more direct handlers, and `src/preload/index.ts` repeats the bridge with
+  direct `ipcRenderer.invoke` calls.
+- Start with a Promise-based router if task 1 has not landed yet.
+- The first slice should add `src/main/ipc/ipcRouter.ts` with duplicate-channel rejection, event exclusion, handler
+  invocation, and error propagation tests.
+- Then add `src/main/ipc/registerControlIpc.ts` and migrate only app/local/auth routes from `registerIpc`, plus one
+  GitHub statusful read such as `githubRepositoriesWithStatus` and one mutation such as `githubMutate`.
+- Leave Area IPC untouched until the shared dispatcher is proven.
+- Do not begin PR detail decomposition in the first slice; the current monolith spans shared types, provider fanout,
+  renderer queries, mocks, and App tests.
+
 ### 5. Deepen The UI Architecture: Deconstruct `App.tsx`
 
 **Problem:** `App.tsx` is a large renderer module that mixes app shell state, routing, repository tab queries,
@@ -393,6 +455,26 @@ hide its query/rendering implementation behind a narrow typed interface.
 - Changing query keys casually.
 - Extracting primitives before repeated usage proves the seam is real.
 
+**Deeper implementation notes:**
+
+- The first slice should be repository context wiring plus one live tab-query migration, not a broad component move.
+- Add `src/renderer/src/components/repository/RepositoryContext.tsx` and
+  `src/renderer/src/hooks/useRepositoryContext.ts`, exposing only `{ owner, repo, nameWithOwner, githubReady, api,
+queryClient }`.
+- Wrap repository and code-browser render paths from `App()` after `effectiveRepository`, `owner`, `repo`, and
+  `githubReady` are computed.
+- Then migrate the existing `IssuesTab` issue-detail query into an issue-owned hook such as
+  `src/renderer/src/components/repository/issues/useIssueDetail.ts`, called by the current `IssuesTab`. Keep the
+  visual `IssuesTab` in `App.tsx` for this first slice if extracting it requires pulling markdown, mutation, and
+  list primitives too.
+- Do not move shared repository refs into Code-tab ownership first. Branches and tags are used by Code, Pulls,
+  Actions, Releases, SecurityQuality, Settings, CodeBrowser, FileFinder, and markdown link routing.
+- Preserve warm prefetch: `repositoryWarmPrefetchTabs` currently preloads Code, Issues, Pulls, and Actions even when
+  only one tab is visible. Moving queries only into mounted tab modules can silently remove that behavior.
+- Minimum first-slice tests: `useRepositoryContext` provider values and missing-provider invariant, plus existing
+  App tests around high-traffic prefetch, repository mutations, cache-only unauthenticated reads, and routed pull
+  selection when the loaded list does not contain the pull.
+
 ### 6. Eliminate Defensive Types
 
 **Problem:** Renderer code defends against raw GraphQL and REST shapes that should already be normalized by the
@@ -457,6 +539,25 @@ types.
 - Moving Octokit raw response shapes into `src/shared`.
 - Preserving old raw-shape compatibility "just in case".
 - Combining this with task 5 or task 8.
+
+**Deeper implementation notes:**
+
+- Start with the repository-detail parity slice, not discussions, projects, or PR threads.
+- Current provider code already returns normalized `RepositoryDetail` data: languages are mapped privately,
+  repository counts are normalized, fork refs are mapped, and viewer state is in the shared contract.
+- The first implementation should delete renderer compatibility types in `App.tsx`, including `RepositoryWithParity`,
+  local language/ref/viewer types, local count aliases, and `firstNumber`.
+- Make `getRepositoryCounts()`, `getViewerRepositoryState()`, `getForkMetadata()`, and the language rail read
+  `RepositoryDetail`/`RepositorySummary` fields directly.
+- Preserve edge cases: zero language `totalSize` maps to `percent: 0`; empty `languages` renders the existing empty
+  language state; REST fork metadata may be unavailable and should stay `null` or GraphQL-backed; and
+  `viewerState.subscription === "SUBSCRIBED"` remains the only normalized watching state.
+- Minimum first-slice tests: provider language-edge mapping to `LanguageStat[]` with `size` and `percent`, and a
+  renderer language-rail case proving the UI reads `RepositoryDetail.languages` without raw `totalSize`, `edges`, or
+  `nodes` compatibility.
+- Useful absence checks after implementation:
+  `rg -n "RepositoryWithParity|rawLanguages|graphLanguages|totalSize" src/renderer/src/App.tsx` and
+  `rg -n "interface LanguageStat|languages\\?: unknown" src/renderer/src/App.tsx`.
 
 ### 7. Refactor Renderer Utilities And State
 
@@ -525,6 +626,33 @@ decomposition or mock-domain split.
 - Adding more local guards in `mock.ts` instead of a storage adapter.
 - Changing route semantics.
 - Splitting repository tabs from `App.tsx`.
+
+**Deeper implementation notes:**
+
+- First slice: extract the markdown runtime path, not only the `useControlApi()` wrapper.
+- Move `MarkdownBody`, `MarkdownUrlHandlerContext`, `MarkdownUrlContext`, safe URL helpers, markdown URL-context
+  builders, and inline/block render helpers from `src/renderer/src/App.tsx` into
+  `src/renderer/src/components/MarkdownBody.tsx`. Keep `App.tsx` responsible for the `openMarkdownUrl` routing
+  callback and provider placement only.
+- Preserve current markdown behavior: only `https:` URLs are clickable/rendered; root-relative links resolve through
+  `rootUrl`; ordinary relative links resolve through `baseUrl`; unsafe links render as `markdown-unsafe`; unsafe
+  images render fallback text instead of `<img>`; autolink trailing punctuation is excluded from the URL; and `@user`
+  / `#123` references use repository context when available.
+- After markdown extraction, add `src/renderer/src/hooks/useControlApi.ts` as the stable
+  `useMemo(() => getControlApi(), [])` wrapper and replace every direct `getControlApi()` call in `App.tsx`. Do not
+  introduce a provider or context in this task.
+- In `uiStore.ts`, add one store-local adapter such as `stateForRoute(route, previousState)` and make `navigate`,
+  `goToRepository`, `goToLocalRepository`, `openCodeBrowser`, and `setRepositoryTab` delegate through it. Preserve
+  current semantics where non-repository routes keep the last selected repository/local repository.
+- For `firstMarkdownHeading`, use a module-level multiline regex based on horizontal whitespace, not `\s`, so the
+  match does not cross lines.
+- `mockStorage.ts` is the storage helper owner. Task 9 should build domain mocks on top of it rather than adding a
+  second storage adapter in `data/mocks/shared.ts`.
+- Useful absence checks after implementation:
+  `rg -n "getControlApi\\(" src/renderer/src/App.tsx`,
+  `rg -n "^function MarkdownBody|function safeMarkdownUrl|function renderInlineMarkdown|MarkdownUrlHandlerContext = createContext" src/renderer/src/App.tsx`,
+  `rg -n "localStorage|JSON\\.parse" src/renderer/src/data/mock.ts`, and
+  `rg -n "setSelectedRepository" src/renderer/src`.
 
 ### 8. Deduplicate Shared Contracts
 
@@ -596,6 +724,25 @@ and mutation call sites while preserving runtime behavior and IPC channel names.
 - Hiding drift behind mapped types that make the adapter seam unreadable.
 - Copying the provider interface into a new local interface under another name.
 - Changing runtime behavior while doing type cleanup.
+
+**Deeper implementation notes:**
+
+- Start with a read-contract slice before mutation union work.
+- Add `GitHubAvailabilityResult` and `GitHubListResult<T>` in `src/shared/github.ts`, then convert only exact
+  `items + availability` result interfaces to public aliases. Do not force detail, tree, file-content, access, or
+  wiki results into generic shapes just to look complete.
+- In `src/shared/ipc.ts`, derive `GitHubIpcApi` from `GitHubProvider` with explicit overrides for optional no-arg
+  renderer calls, `getRepository`/`getRepositoryWithStatus` object-input IPC adapters, and concrete non-generic
+  `mutate`.
+- Add a `githubIpcRouteChannels` map typed with `satisfies Record<keyof GitHubIpcApi, ...>` and use it from
+  preload/main so route coverage is checked by TypeScript without renaming IPC channels.
+- Preserve `cacheOnly` and `forceRefresh` when adapting `RepoDetailInput` to provider `getRepository(owner, repo,
+options)`.
+- Do not start by rewriting mutation payloads. Convert mutation input after route coverage is enforced.
+- When mutation input becomes a discriminated union, preserve current field names unless intentionally taking on a
+  separate naming migration. Keep `owner`, `repo`, and `action` top-level for provider-manager cache invalidation.
+- Mutation tests should cover at least create issue, edit issue, dispatch workflow, and create release. Preserve
+  explicit `false` booleans such as `draft: false`, `prerelease: false`, and workflow checkbox values.
 
 ### 9. Normalize Tests And Mocks
 
@@ -671,3 +818,21 @@ typed factory seams.
 - Loosening types with broad `unknown`, `any`, or assertion-heavy builders.
 - Deleting Playwright coverage without equivalent RTL assertions.
 - Replacing behavioral checks with snapshots.
+
+**Deeper implementation notes:**
+
+- Start with the notifications mock slice. It avoids task 8's mutation payload churn while still changing a real
+  runtime path.
+- Current `mock.ts` owns storage helpers, notification fixtures, notification list filtering, read/unsubscribe
+  mutations, and `mockControlApi` wiring. Move only notification behavior into
+  `src/renderer/src/data/mocks/notifications.ts` first, while keeping `src/renderer/src/data/mock.ts` as a
+  compatibility export.
+- Reuse the storage adapter from task 7 if it has landed. If it has not, keep task 9's shared mock helper limited to
+  constants and availability helpers so it does not create a competing `localStorage` seam.
+- Preserve the existing `control:mock:notifications` key and the distinction between absent/corrupt storage, which
+  falls back to `mockNotifications`, and an explicit stored `[]`, which means no notifications.
+- Preserve notification filters and mutations: `all`, `participating`, `limit`, `markNotificationThreadRead`
+  updating `unread` and `lastReadAt`, and unsubscribe removing only the matching thread.
+- Put runnable tests under `src/renderer/src/data/mocks/*.test.ts`; `tests/factories/*` should contain imported
+  helpers only because the current Vitest config includes `src/**/*.test.ts(x)`.
+- Do not start with issue, pull, release, or action mutation extraction until task 8's mutation input cleanup lands.

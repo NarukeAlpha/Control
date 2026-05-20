@@ -47,8 +47,13 @@ Every implementation branch should include this evidence in its summary:
 1. Task 1 must land before Effect-based storage, provider, or IPC work.
 2. Task 2 should land before broad GitHub provider and IPC Effect migration.
 3. Task 8 should land before task 4 if possible, because a deeper shared contract gives IPC cleanup better leverage.
-4. Tasks 5, 7, and 9 can proceed independently, but task 7's utility seams should land before the largest renderer
-   extractions in task 5.
+4. Task 7's renderer utility seams should land before the largest renderer extractions in task 5.
+5. Task 9 can start independently only with read-only fixtures or the notifications mock slice. Issue, pull,
+   release, and action mutation mock extraction waits for task 8's mutation contract cleanup.
+6. Task 9 must reuse task 7's mock storage adapter when that adapter exists. If task 7 has not landed, task 9 may
+   add shared mock constants and availability helpers but must not create a competing `localStorage` seam.
+7. Do not delete Playwright coverage solely because an RTL state assertion exists. Keep Playwright cases that prove
+   layout, z-index, focus, bubbling, or pointer behavior.
 
 ## Architectural Initiatives
 
@@ -82,8 +87,15 @@ behavior.
 - [ ] Add `Context.Tag` interfaces for existing concrete dependencies such as local store, GitHub manager, and
       external-link opening.
 - [ ] Build an `AppLayer` from existing bootstrap dependencies. Do not use globals or a hidden service locator.
+- [ ] Create one managed `Runtime<AppLayer>` during bootstrap and reuse it for IPC invocations. Do not rebuild the
+      layer per request.
 - [ ] Add an IPC bridge that runs Effect through `Effect.runPromiseExit` and converts success/failure back to the
       current Electron promise contract.
+- [ ] Convert typed failures to JSON-safe payloads or native `Error` instances before crossing Electron IPC. Never
+      reject with a raw `Data.TaggedError`, `Cause`, or arbitrary Effect failure object.
+- [ ] Log unexpected defects with backend diagnostic detail before returning a sanitized renderer-facing error.
+- [ ] Define the cancellation policy for long-running Effects. If cross-IPC cancellation is not implemented in this
+      slice, document that renderer unmounts do not interrupt the running Effect.
 - [ ] Migrate one local synchronous pilot, such as `getSettings`.
 - [ ] Migrate one low-risk async pilot, such as `openExternal`.
 - [ ] Remove any duplicate direct handlers for the migrated pilot channels.
@@ -93,13 +105,20 @@ behavior.
 - Effect imports are localized to `src/main/effect` and narrow `src/main/index.ts` wiring.
 - The pilots preserve the existing `ControlApi` shape.
 - Typed failures keep expected error details; unexpected defects are sanitized.
+- Electron IPC never receives raw Effect failure objects that structured clone can reduce to `{}`.
+- Unexpected defects are logged before sanitization.
+- The `AppLayer` runtime is built once during bootstrap, not once per IPC call.
+- Long-running handler interruption behavior is explicit and tested or intentionally deferred.
 - Existing cache/auth/provider behavior is unchanged.
 
 **Required tests:**
 
 - `ipcBridge` returns success payloads unchanged.
 - `ipcBridge` maps tagged failures to deterministic IPC-safe failures.
-- `ipcBridge` sanitizes defects and rejected unknown values.
+- `ipcBridge` does not serialize tagged failures into empty renderer-side objects.
+- `ipcBridge` sanitizes defects and rejected unknown values while calling the backend logger with the unsanitized
+  cause.
+- `appLayer` or registration tests prove the managed runtime is created once and reused.
 - `openExternal` still rejects non-HTTPS URLs.
 - `getSettings` returns store settings through the Effect adapter.
 
@@ -125,7 +144,12 @@ behavior.
 - Build the Effect layer from the already-created bootstrap dependencies: `store`, `github`, and an external-link
   opener wrapping `shell.openExternal`. Wire it immediately before IPC registration.
 - Preserve the current `ControlApi` contract by returning success payloads unchanged and rejecting with deterministic
-  plain `Error` messages. Do not return `{ ok, error }` unions from these existing channels.
+  native `Error` instances or a JSON-safe error payload that preload turns into a native `Error`. Do not return
+  `{ ok, error }` unions from these existing channels.
+- Treat Electron structured clone as hostile to custom prototypes: a bridge that lets `Data.TaggedError` or `Cause`
+  cross the process seam is incomplete, even when TypeScript compiles.
+- Use a small backend logger interface in the Effect bridge tests so defect logging is observable without binding the
+  first slice to a telemetry product.
 - Do not import `src/main/index.ts` directly in tests unless startup side effects have been separated. Prefer pure
   tests for `src/main/effect/ipcBridge.ts`, `src/main/effect/appLayer.ts`, or an extracted registration helper.
 - Minimum first-slice tests: bridge success, tagged failure encoding, sanitized defects, rejected unknowns,
@@ -159,14 +183,24 @@ compatibility interface for current callers.
 
 - [ ] Stop if task 1 has not added `effect`.
 - [ ] Add `DatabaseError` as a typed failure at the SQLite adapter seam.
+- [ ] Add a distinct serialization/cache-corruption failure policy. Do not wrap corrupted JSON rows as generic
+      database I/O failures.
 - [ ] Add a `SqliteDatabase` module interface for `exec`, `pragma`, `get`, `all`, `run`, and transactions.
 - [ ] Wrap raw `better-sqlite3` operations in the SQLite adapter, not in every domain module.
+- [ ] Keep the existing `LocalStore` compatibility facade synchronous. Any Effect executed through this facade must
+      be sync-only; no promise, fiber sleep, async retry, or yielding operation may enter a `runSync` path.
+- [ ] Model SQLite transactions as a synchronous storage primitive or transaction combinator that preserves Effect
+      dependency injection and typed errors inside the transaction.
+- [ ] Model SQLite open/close lifecycle with acquire/release or an equivalent scoped module and close the database
+      deterministically on app exit.
 - [ ] Move schema bootstrap and legacy migrations into `schema.ts`.
 - [ ] Extract settings, accounts, and cache into separate storage modules.
 - [ ] Extract recents and repository pins with shared serializers/mappers.
 - [ ] Extract Area, gateway, workspace, repository detail, and snapshot storage by domain.
 - [ ] Extract GitHub repository read model storage while preserving summary/detail/readme upsert semantics.
 - [ ] Keep `MemoryLocalStore` behavior equivalent through a memory adapter or parity module.
+- [ ] Use one shared parameterized contract suite for SQLite and Memory implementations instead of separate,
+      drifting tests.
 - [ ] Keep all current imports of `createLocalStore` and `LocalStore` compiling.
 
 **Acceptance criteria:**
@@ -174,17 +208,22 @@ compatibility interface for current callers.
 - `src/main/storage.ts` is a thin facade, not the implementation.
 - Raw SQLite calls exist only in the SQLite adapter/schema layer.
 - Store modules fail with `DatabaseError`, not raw SQLite exceptions.
+- JSON serialization failures are typed distinctly or handled as explicit cache misses where that is the documented
+  behavior.
 - Shared serializers/mappers own JSON parsing/stringifying and row conversion.
 - The existing sync `LocalStore` interface remains stable.
+- The sync facade cannot accidentally execute asynchronous Effects.
+- SQLite connections are closed through the modeled lifecycle on shutdown.
 
 **Required tests:**
 
 - SQLite adapter converts a failing operation into `DatabaseError`.
+- Corrupted serialized cache rows follow the documented corruption policy without masquerading as SQLite I/O errors.
 - Fresh database creates all tables and default GitHub Area.
 - Legacy pinned repositories and GitHub recents migrate into the default Area.
 - Settings, account, cache, recents, pins, Area, gateway, workspace, snapshot, and GitHub repository read models
   preserve existing behavior.
-- Memory store passes the same contract cases as SQLite for covered operations.
+- One shared contract test suite runs against both SQLite and Memory stores for covered operations.
 
 **Validation:**
 
@@ -206,10 +245,19 @@ compatibility interface for current callers.
 - The first mergeable slice should add `errors.ts`, `database.ts`, `schema.ts`, `serializers.ts`, and extract only
   settings, accounts, and cache from `src/main/storage.ts` while keeping `src/main/storage.ts` as the sync
   compatibility facade.
+- Because `better-sqlite3` is synchronous, any Effect pipeline behind the compatibility facade must remain
+  synchronous. `Effect.runSync` should never be handed an Effect that can suspend.
+- Keep `.transaction()` callbacks synchronous. If a domain module needs transactional behavior, expose that as a
+  storage adapter operation or a transaction combinator; do not pass an unexecuted Effect object into
+  `better-sqlite3.transaction()`.
 - Move the `SqliteLocalStore` constructor bootstrap into `schema.ts` without changing order: WAL pragma, table
   creation, default GitHub Area creation, legacy pin migration, then legacy GitHub recent migration.
 - `DatabaseError` should fail at the SQLite adapter seam and be thrown by the sync facade when an operation fails.
   Keep memory fallback only for SQLite store creation failure, not later operation failures.
+- Treat JSON corruption as a different failure mode from SQLite I/O. For cache tables, the preferred behavior is an
+  explicit cache miss plus cleanup/invalidation; for durable user data, return a typed serialization failure.
+- Add database teardown to the app lifecycle. A refactor that opens a `SqliteDatabase` but never closes it is not
+  complete.
 - Preserve subtle current behavior: invalid cache expiry counts as expired, `getCache(..., { allowExpired: true })`
   can return expired payloads, summary-only repository upserts preserve detail/readme fields,
   `upsertGitHubRepositoryReadme` is a no-op for unknown repositories, and storage-local Area IDs must not change
@@ -245,11 +293,21 @@ deeper main-process modules.
 - [ ] Stop if task 1 has not established Effect in `src/main`.
 - [ ] Create a `GitHubReadCache` module with one interface for read-through, cache-only reads, force refresh, stale
       fallback, and invalidation.
+- [ ] Add a shared GitHub concurrency/rate-limit module, such as a semaphore and retry schedule, used across domain
+      modules instead of per-domain throttles.
 - [ ] Use Effect request identity for in-flight dedupe. Keep SQLite-backed `LocalStore` as the durable TTL cache.
 - [ ] Port one endpoint first: `listRepositoriesWithStatus`.
+- [ ] Make multi-step cache writes transactional when one logical cache entry spans repository summary, metadata,
+      status, detail, or generic result rows.
+- [ ] Define cross-domain invalidation rules for mutations. A mutation in pulls, issues, releases, actions, or
+      repository settings must declare which repository and list caches it invalidates.
+- [ ] Add negative caching for permanent misses such as `404 Not Found`, with a short TTL and explicit invalidation
+      on related mutations.
 - [ ] Extract a repository domain module for list/detail/readme/forks/refs/tree/contents/file content.
 - [ ] Extract issue and pull request domain modules, including PR partial availability aggregation.
 - [ ] Replace raw `setTimeout` device polling with an Effect `Schedule`-driven auth module.
+- [ ] Device-flow polling must retry transient network errors until device-code expiry instead of failing the flow on
+      a single offline `fetch` failure.
 - [ ] Move remaining domains one at a time: account, organizations, notifications, discussions, actions/workflows,
       projects, security, releases, contributors, search, and mutations.
 - [ ] Collapse `GitHubProviderManager` into a thin compatibility adapter after duplicated wrappers are removed.
@@ -261,15 +319,21 @@ deeper main-process modules.
 - Manual `inFlight` maps are gone from completed read paths.
 - Auth polling uses Effect scheduling, not raw `setTimeout`.
 - Cache keys, TTLs, stale fallback, cache-only unavailable results, and mutation invalidation are equivalent.
+- GitHub primary and secondary rate-limit behavior is coordinated through one shared module across domains.
+- Cache writes that represent one logical result cannot leave half-updated state after a process crash.
+- Permanent misses are cached deliberately and do not spam GitHub.
 
 **Required tests:**
 
 - Cache module covers fresh hit, cache-only hit, cache-only miss, stale plus background refresh, live error with stale
   fallback, live error with no stale data, force refresh, dedupe, and invalidation.
+- Cache module covers transactional write failure and proves readers do not observe a half-written result.
+- Cache module covers negative `404` caching, TTL expiry, and explicit invalidation.
+- Rate-limit module tests cover shared concurrency across two domains and retry/backoff on `403`/`429`.
 - Provider facade delegates to domain modules while preserving inputs.
 - Repository, issue, PR, auth schedule, and Octokit adapter tests preserve current behavior.
-- Auth schedule tests cover pending retry, slow-down interval, expiry, cancel, success token save, and auth update
-  emission.
+- Auth schedule tests cover pending retry, slow-down interval, transient offline retry, expiry, cancel, success token
+  save, and auth update emission.
 
 **Validation:**
 
@@ -298,6 +362,13 @@ deeper main-process modules.
 - Preserve current cache semantics: `cacheOnly` beats `forceRefresh`; stale repository rows/results return
   immediately and refresh in the background; live refresh writes summaries and the generic status result only when
   availability is `available`; repository update events fire only on material item changes.
+- The first read-cache module should call into one transactional storage operation for summary/status/generic result
+  writes. If task 2 has not exposed that primitive yet, keep the write sequence local and document the temporary
+  inconsistency risk instead of pretending it is solved.
+- Add negative cache keys only for permanent misses. Do not cache transient auth, rate-limit, network, or server
+  failures as negative results.
+- Device-flow auth should distinguish protocol responses (`authorization_pending`, `slow_down`, `expired_token`) from
+  transient transport errors. Transport errors retry until expiry.
 - Minimum first-slice tests: fresh hit, cache-only hit, cache-only miss, generic cached-result fallback, stale plus
   background refresh, force refresh, live error with no cache, concurrent dedupe, request-identity invalidation, and
   unchanged-list no-op event emission.
@@ -328,6 +399,9 @@ typed adapter.
 
 - [ ] Inventory IPC routes and classify them as app/local, Area, GitHub statusful read, GitHub mutation, or event.
 - [ ] Define a route catalog with unique channel names and explicit input/output types.
+- [ ] Catalog main-to-renderer push events, not just `ipcMain.handle` request/response routes.
+- [ ] Add runtime payload validation at the IPC router seam for untrusted inputs before calling main-process
+      handlers. TypeScript types alone do not count.
 - [ ] Remove renderer-exposed raw GitHub read twins where a statusful read exists.
 - [ ] Keep resultful reads that do not have statusful replacements, such as readme, blame, access/security/wiki,
       and workflow logs.
@@ -335,28 +409,33 @@ typed adapter.
       registration modules.
 - [ ] Add a preload invoke/listener adapter so `src/preload/index.ts` does not repeat `ipcRenderer.invoke` for every
       route.
-- [ ] Decompose `PullRequestDetail` into statusful routes for core metadata, files, commits, reviews, review
-      threads, checks, timeline, linked issues, and comments.
+- [ ] Preload listener adapters must strip the raw `IpcRendererEvent` before invoking renderer callbacks.
+- [ ] Treat `PullRequestDetail` decomposition as a follow-up design slice. Do not split the payload until the route
+      catalog, concurrent renderer composition plan, and latency tests exist.
 - [ ] Migrate Area IPC only after the shared dispatcher proves duplicate-channel rejection and validation locality.
 
 **Acceptance criteria:**
 
 - `src/main/index.ts` has no direct `ipcMain.handle` calls.
 - `src/preload/index.ts` has at most helper-level direct `ipcRenderer.invoke` usage.
+- Preload listener callbacks never receive raw Electron event objects.
 - No renderer `ControlApi.github` raw read method remains when a statusful equivalent exists.
 - Every IPC route is declared once, registered once, and exposed once.
-- Pull request inspection data is no longer fetched as one monolithic detail payload.
+- Main-to-renderer events are typed and routed through the same catalog discipline as invokes.
+- Runtime IPC input validation happens in main before route handlers consume payloads.
+- Pull request detail remains behaviorally unchanged until a separate decomposition slice proves concurrent query
+  composition and avoids renderer waterfalls.
 - Sandbox, context isolation, token isolation, HTTPS external-link validation, cache-only reads, and stale-data
   behavior are unchanged.
 
 **Required tests:**
 
 - `src/main/ipc/ipcRouter.test.ts`: registration, duplicate-channel rejection, handler invocation, error propagation,
-  and event exclusion.
+  event routing/exclusion, and runtime payload validation failure.
 - `src/main/ipc/registerControlIpc.test.ts`: settings, pins/recents, external-link validation, GitHub statusful
   reads, and mutations.
-- Preload tests for invoke mapping and listener unsubscribe.
-- Renderer and provider tests updated for decomposed PR detail routes.
+- Preload tests for invoke mapping, listener unsubscribe, and proving raw `IpcRendererEvent` is not exposed.
+- Route parity tests proving runtime channel strings match registered handlers.
 
 **Validation:**
 
@@ -372,6 +451,8 @@ typed adapter.
 - Leaving raw reads as aliases for compatibility.
 - Renaming monolithic PR detail without reducing payload depth.
 - Moving validation to the renderer.
+- Passing raw Electron events through context isolation.
+- Starting PR detail decomposition before the IPC catalog and concurrency plan exist.
 
 **Deeper implementation notes:**
 
@@ -380,12 +461,14 @@ typed adapter.
   direct `ipcRenderer.invoke` calls.
 - Start with a Promise-based router if task 1 has not landed yet.
 - The first slice should add `src/main/ipc/ipcRouter.ts` with duplicate-channel rejection, event exclusion, handler
-  invocation, and error propagation tests.
+  invocation, runtime validation, and error propagation tests.
 - Then add `src/main/ipc/registerControlIpc.ts` and migrate only app/local/auth routes from `registerIpc`, plus one
   GitHub statusful read such as `githubRepositoriesWithStatus` and one mutation such as `githubMutate`.
+- Event cataloging should include the current `webContents.send` channels and the preload listener API shape. The
+  renderer callback receives only the event payload.
 - Leave Area IPC untouched until the shared dispatcher is proven.
 - Do not begin PR detail decomposition in the first slice; the current monolith spans shared types, provider fanout,
-  renderer queries, mocks, and App tests.
+  renderer queries, mocks, and App tests. Splitting it without concurrent composition can create a slower waterfall.
 
 ### 5. Deepen The UI Architecture: Deconstruct `App.tsx`
 
@@ -420,6 +503,14 @@ hide its query/rendering implementation behind a narrow typed interface.
 - [ ] Extract remaining tabs in risk order: Discussions, Projects, Releases, Contributors, Wiki, SecurityQuality,
       and Settings.
 - [ ] Move tab-specific `useQuery` hooks into their owning tab modules.
+- [ ] Export pure tab prefetch functions for any tab whose warm prefetch was previously initiated by the shell.
+      `App.tsx` or `RepositoryShell` should call these functions without mounting the tab.
+- [ ] Preserve transient tab state. Do not switch from hidden-but-mounted tabs to conditional unmounting unless scroll
+      positions, drafts, expanded rows, and in-flight form state are moved to stable state first.
+- [ ] Wrap extracted repository tab surfaces in ErrorBoundary, and Suspense where query loading mode requires it, so
+      one tab crash does not take down the whole repository shell.
+- [ ] Keep shared UI primitives presentational. Banners, empty states, badges, and list primitives must receive props
+      rather than calling `useRepositoryContext` directly.
 - [ ] Extract repository shell pieces only after tab modules no longer require large prop bundles.
 - [ ] Leave CollectionView, LocalRepositoryPage, and broad app shell decomposition for follow-up unless blocking.
 
@@ -431,6 +522,11 @@ hide its query/rendering implementation behind a narrow typed interface.
 - Repository tab query hooks live with their tab modules, not in `App()`.
 - Extracted module interfaces are narrow and typed. No giant context dump and no 100-prop pass-through module.
 - Query keys, enabled gates, cache-only mode, and warm prefetch behavior are equivalent.
+- Warm prefetch is preserved through exported prefetch functions or an equivalent explicit shell hook, not by relying
+  on hidden mounted components.
+- Tab extraction does not drop transient state on tab switches.
+- Extracted tab crashes are contained by repository-level error boundaries.
+- Shared primitives remain reusable outside repository pages.
 - Existing renderer tests still cover routing, mutations, command palette, repository tabs, cache-only behavior, and
   availability states.
 
@@ -440,6 +536,10 @@ hide its query/rendering implementation behind a narrow typed interface.
 - Add `useRepositoryContext.test.tsx` for stable context values and missing-provider invariant.
 - Add targeted tab tests where extraction risks behavior: Code ref selection, Issues/Pulls mutation adapters, Actions
   workflow dispatch/rerun state, and inactive-tab query gating or warm prefetch.
+- Add tests proving warm prefetch still runs when a tab is not mounted, and stateful tabs do not lose local state on
+  tab switches.
+- Add an ErrorBoundary test or App integration case proving an extracted tab failure does not blank the shell.
+- Add primitive tests that pass data by props without requiring `RepositoryContext`.
 - Add `useExpandableList.test.ts` if expandable list logic is extracted.
 
 **Validation:**
@@ -459,8 +559,8 @@ hide its query/rendering implementation behind a narrow typed interface.
 
 - The first slice should be repository context wiring plus one live tab-query migration, not a broad component move.
 - Add `src/renderer/src/components/repository/RepositoryContext.tsx` and
-  `src/renderer/src/hooks/useRepositoryContext.ts`, exposing only `{ owner, repo, nameWithOwner, githubReady, api,
-queryClient }`.
+  `src/renderer/src/hooks/useRepositoryContext.ts`, exposing only `owner`, `repo`, `nameWithOwner`, `githubReady`,
+  `api`, and `queryClient`.
 - Wrap repository and code-browser render paths from `App()` after `effectiveRepository`, `owner`, `repo`, and
   `githubReady` are computed.
 - Then migrate the existing `IssuesTab` issue-detail query into an issue-owned hook such as
@@ -470,7 +570,13 @@ queryClient }`.
 - Do not move shared repository refs into Code-tab ownership first. Branches and tags are used by Code, Pulls,
   Actions, Releases, SecurityQuality, Settings, CodeBrowser, FileFinder, and markdown link routing.
 - Preserve warm prefetch: `repositoryWarmPrefetchTabs` currently preloads Code, Issues, Pulls, and Actions even when
-  only one tab is visible. Moving queries only into mounted tab modules can silently remove that behavior.
+  only one tab is visible. Moving queries only into mounted tab modules can silently remove that behavior. For each
+  migrated tab, export a pure `prefetch<Domain>Tab()` helper or equivalent query plan that the shell can call without
+  rendering the tab module.
+- Preserve the current tab mounting semantics. If the extraction introduces conditional rendering by active tab, move
+  local state to a stable owner first or keep inactive tabs mounted and hidden.
+- Place ErrorBoundary at the tab surface, not inside shared primitives, so failures have repository context while
+  primitives stay reusable.
 - Minimum first-slice tests: `useRepositoryContext` provider values and missing-provider invariant, plus existing
   App tests around high-traffic prefetch, repository mutations, cache-only unauthenticated reads, and routed pull
   selection when the loaded list does not contain the pull.
@@ -503,10 +609,18 @@ types.
       languages.
 - [ ] Delete renderer-local parity interfaces such as local language/ref/viewer compatibility types.
 - [ ] Keep raw language GraphQL shapes private to `octokitProvider.ts`; return shared `LanguageStat[]`.
+- [ ] Treat GitHub GraphQL `T | null` as a first-class adapter concern. Do not use non-null assertions or casts to
+      force strict shared types.
+- [ ] Preserve pagination metadata for paginated domains. Flattening `edges/nodes` must not drop `pageInfo` when a
+      "Load More" path needs it.
 - [ ] Replace discussion comment casts with explicit preview comment and loaded detail comment types.
 - [ ] Remove rich PR review thread compatibility casts by deepening the shared review thread interface or deriving
       display data from typed comments.
 - [ ] Give Project V2 mapping functions explicit shared return types.
+- [ ] Audit Issues, Actions, Commit Statuses, and other shared GitHub domains for defensive `unknown`, not only the
+      four domains called out in the first slice.
+- [ ] Define a cache migration or invalidation strategy for old raw GraphQL shapes stored in SQLite or renderer
+      storage before removing renderer compatibility fallbacks.
 - [ ] Remove dead helpers and fallback chains that only supported obsolete defensive shapes.
 
 **Acceptance criteria:**
@@ -514,12 +628,16 @@ types.
 - `App.tsx` no longer contains raw GraphQL language handling through `totalSize`, `edges`, or `nodes`.
 - `App.tsx` no longer contains `as Partial<DiscussionCommentSummary>` or similar domain casts.
 - `src/shared/github.ts` has no domain `unknown` except mutation boundary fields.
+- Paginated shared types retain cursor/page-info fields where the UI can request more data.
+- Old cached raw shapes cannot crash the renderer after compatibility code is removed.
 - Provider mapping functions return shared types explicitly at the main-to-renderer seam.
 - Renderer display code reads normalized fields, not raw adapter shapes.
 
 **Required tests:**
 
 - Provider tests prove repository language edges map to `LanguageStat[]` with expected `size` and `percent`.
+- Provider tests cover partial or missing GraphQL fields and prove mapper behavior without non-null assertions.
+- Paginated domain tests prove `pageInfo` survives mapping where the UI has "Load More" behavior.
 - Renderer tests prove the language rail renders from `RepositoryDetail.languages`.
 - Renderer tests distinguish discussion preview comments from loaded detail comments with replies.
 - Project V2 provider tests cover text, number, date, single-select, iteration, unsupported field values, and owner
@@ -536,8 +654,10 @@ types.
 **Do not count as done:**
 
 - Fixing type errors with `as any`, wider `unknown`, or `Record<string, unknown>`.
+- Fixing type errors with non-null assertions against raw GitHub responses.
 - Moving Octokit raw response shapes into `src/shared`.
 - Preserving old raw-shape compatibility "just in case".
+- Dropping pagination metadata while flattening GraphQL shapes.
 - Combining this with task 5 or task 8.
 
 **Deeper implementation notes:**
@@ -552,6 +672,10 @@ types.
 - Preserve edge cases: zero language `totalSize` maps to `percent: 0`; empty `languages` renders the existing empty
   language state; REST fork metadata may be unavailable and should stay `null` or GraphQL-backed; and
   `viewerState.subscription === "SUBSCRIBED"` remains the only normalized watching state.
+- Add explicit mapper behavior for nullable GraphQL fields. The preferred shape is a deliberate default, omission, or
+  typed unavailable state, not `!`.
+- Before deleting old renderer fallbacks, invalidate or migrate caches that may still contain raw GraphQL shapes. At
+  minimum, bump the relevant cache key/version and add a regression test using an old-shape fixture.
 - Minimum first-slice tests: provider language-edge mapping to `LanguageStat[]` with `size` and `percent`, and a
   renderer language-rail case proving the UI reads `RepositoryDetail.languages` without raw `totalSize`, `edges`, or
   `nodes` compatibility.
@@ -591,9 +715,13 @@ decomposition or mock-domain split.
 - [ ] Centralize route-to-selected-state derivation inside `uiStore.ts`.
 - [ ] Make `navigate`, `goToRepository`, `goToLocalRepository`, `openCodeBrowser`, and `setRepositoryTab` share the
       same store-local route adapter.
+- [ ] Include global route actions such as `goHome` and `goToMailbox` in the same route derivation path so the store
+      does not keep separate routing semantics.
 - [ ] Remove `setSelectedRepository` if unused, or make it delegate through the same route builder.
-- [ ] Rewrite `firstMarkdownHeading` with a compiled multiline regex while preserving the `README` fallback.
+- [ ] Rewrite `firstMarkdownHeading` with a single-pass scanner or parser-aware helper that ignores fenced code
+      blocks, handles Setext `===` headings, and preserves the `README` fallback.
 - [ ] Extract localStorage access and JSON parsing into `data/mockStorage.ts`.
+- [ ] Define mock storage write-failure behavior, including quota errors, and make callers use that contract.
 - [ ] Keep `unknown` contained at the mock storage adapter seam.
 
 **Acceptance criteria:**
@@ -601,17 +729,22 @@ decomposition or mock-domain split.
 - `App.tsx` no longer calls `getControlApi()` directly.
 - `App.tsx` no longer owns markdown rendering internals.
 - Repository route construction has one store-local source of truth.
-- `firstMarkdownHeading` avoids per-line array allocation.
+- Repository and global route actions share one store-local source of truth.
+- `firstMarkdownHeading` avoids per-line array allocation while ignoring headings inside fenced code blocks.
+- Mock storage callers have deterministic behavior when writes throw.
 - `mock.ts` has no direct `localStorage`, `JSON.parse`, or duplicated serialized-read blocks.
 
 **Required tests:**
 
 - `format.test.ts`: null/empty fallback, first H1, indented H1, ignores H2, ignores bare `#`.
-- `uiStore.test.ts`: route actions update selected repository/local repository consistently.
+- `format.test.ts`: ignores `#` headings inside fenced code blocks and supports Setext `===` headings.
+- `uiStore.test.ts`: repository and global route actions update selected repository/local repository consistently.
 - `mockStorage.test.ts`: absent key fallback, invalid JSON fallback, wrong-shape fallback, write/read round trip, and
   fresh fallback factory values.
+- `mockStorage.test.ts`: write failures such as `QuotaExceededError` follow the documented fallback contract.
 - `MarkdownBody.test.tsx`: safe HTTPS links route through callback, unsafe links/images render safely, and basic
   headings/lists/code still render.
+- `MarkdownBody.test.tsx`: repository-context links for `@user` and `#123` preserve the current routing behavior.
 
 **Validation:**
 
@@ -642,10 +775,13 @@ decomposition or mock-domain split.
   `useMemo(() => getControlApi(), [])` wrapper and replace every direct `getControlApi()` call in `App.tsx`. Do not
   introduce a provider or context in this task.
 - In `uiStore.ts`, add one store-local adapter such as `stateForRoute(route, previousState)` and make `navigate`,
-  `goToRepository`, `goToLocalRepository`, `openCodeBrowser`, and `setRepositoryTab` delegate through it. Preserve
-  current semantics where non-repository routes keep the last selected repository/local repository.
-- For `firstMarkdownHeading`, use a module-level multiline regex based on horizontal whitespace, not `\s`, so the
-  match does not cross lines.
+  `goHome`, `goToMailbox`, `goToRepository`, `goToLocalRepository`, `openCodeBrowser`, and `setRepositoryTab`
+  delegate through it. Preserve current semantics where non-repository routes keep the last selected
+  repository/local repository.
+- For `firstMarkdownHeading`, prefer a small scanner over a broad multiline regex. It should skip fenced code blocks
+  and support Setext headings so shell snippets and Python comments do not become document titles.
+- `mockStorage.ts` should expose a write contract. Either return a result that callers can ignore safely or fall back
+  to in-memory defaults; do not let quota errors create partial mock state.
 - `mockStorage.ts` is the storage helper owner. Task 9 should build domain mocks on top of it rather than adding a
   second storage adapter in `data/mocks/shared.ts`.
 - Useful absence checks after implementation:
@@ -681,14 +817,17 @@ and mutation call sites while preserving runtime behavior and IPC channel names.
 **Checklist:**
 
 - [ ] Add shared result primitives: `GitHubAvailabilityResult`, `GitHubListResult<T>`, and narrow item/detail result
-      helpers.
+      helpers. `GitHubListResult<T>` must support optional pagination metadata for endpoints that can load more.
 - [ ] Convert simple `items + availability` result interfaces to exported aliases while preserving public type names.
 - [ ] Define `GitHubIpcApi` in `src/shared/ipc.ts`, derived from `GitHubProvider` with explicit adapter overrides for
       IPC shape differences.
 - [ ] Replace the manual `ControlApi.github` declaration with `github: GitHubIpcApi`.
 - [ ] Add a typed GitHub route map or equivalent adapter seam so preload/main coverage is checked against
       `keyof GitHubIpcApi`.
-- [ ] Replace `GitHubMutationInput` with a discriminated union grouped by action domain.
+- [ ] Replace `GitHubMutationInput` with a discriminated union grouped by action domain, including repository-scoped
+      and non-repository/user-scoped actions.
+- [ ] Enforce JSON-serializable IPC contracts at the type seam so `Date`, `Map`, functions, class instances, and
+      other non-clone-safe values cannot leak from provider types into preload.
 - [ ] Update provider, manager, renderer mutation call sites, and mocks to consume action-specific fields instead of
       arbitrary `payload` key reads.
 
@@ -698,7 +837,10 @@ and mutation call sites while preserving runtime behavior and IPC channel names.
   explicit adapter overrides.
 - Public result type names remain stable.
 - Simple list results use `GitHubListResult<T>`.
+- Paginated list results retain `pageInfo` or equivalent cursor metadata where needed.
 - `GitHubMutationInput` has no `Record<string, unknown>` payload escape hatch.
+- Mutation inputs represent non-repository actions without fake `owner`/`repo` values.
+- `ControlApi` IPC shapes are JSON-serializable by type.
 - Existing IPC channel names and renderer method names stay stable.
 - TypeScript catches missing preload/main GitHub route coverage.
 
@@ -706,6 +848,8 @@ and mutation call sites while preserving runtime behavior and IPC channel names.
 
 - `src/shared/ipc.test.ts`: type-level assertions that `GitHubIpcApi` covers intended provider keys and adapter
   exceptions are explicit.
+- `src/shared/ipc.test.ts`: JSON-serializability assertions reject non-clone-safe provider fields.
+- Runtime IPC route-map parity tests prove channel string values match registered main/preload handlers.
 - `src/main/github/octokitProvider.test.ts`: mutation route tests use the discriminated union and cover touched
   action groups.
 - `src/renderer/src/App.test.tsx`: create issue, edit issue, dispatch workflow, and create release assert the new
@@ -722,6 +866,7 @@ and mutation call sites while preserving runtime behavior and IPC channel names.
 
 - Replacing `Record<string, unknown>` with `any`, wider `unknown`, or repeated casts.
 - Hiding drift behind mapped types that make the adapter seam unreadable.
+- Allowing non-serializable provider return values to become renderer IPC types.
 - Copying the provider interface into a new local interface under another name.
 - Changing runtime behavior while doing type cleanup.
 
@@ -729,18 +874,22 @@ and mutation call sites while preserving runtime behavior and IPC channel names.
 
 - Start with a read-contract slice before mutation union work.
 - Add `GitHubAvailabilityResult` and `GitHubListResult<T>` in `src/shared/github.ts`, then convert only exact
-  `items + availability` result interfaces to public aliases. Do not force detail, tree, file-content, access, or
-  wiki results into generic shapes just to look complete.
+  `items + availability` result interfaces to public aliases. Include optional pagination metadata in the primitive
+  so paginated endpoints do not lose cursors. Do not force detail, tree, file-content, access, or wiki results into
+  generic shapes just to look complete.
 - In `src/shared/ipc.ts`, derive `GitHubIpcApi` from `GitHubProvider` with explicit overrides for optional no-arg
   renderer calls, `getRepository`/`getRepositoryWithStatus` object-input IPC adapters, and concrete non-generic
   `mutate`.
 - Add a `githubIpcRouteChannels` map typed with `satisfies Record<keyof GitHubIpcApi, ...>` and use it from
   preload/main so route coverage is checked by TypeScript without renaming IPC channels.
-- Preserve `cacheOnly` and `forceRefresh` when adapting `RepoDetailInput` to provider `getRepository(owner, repo,
-options)`.
+- Preserve `cacheOnly` and `forceRefresh` when adapting `RepoDetailInput` to provider
+  `getRepository(owner, repo, options)`.
 - Do not start by rewriting mutation payloads. Convert mutation input after route coverage is enforced.
 - When mutation input becomes a discriminated union, preserve current field names unless intentionally taking on a
-  separate naming migration. Keep `owner`, `repo`, and `action` top-level for provider-manager cache invalidation.
+  separate naming migration. Keep `owner`, `repo`, and `action` top-level for repository-scoped mutations, but model
+  user-scoped or global mutations without fake repository fields.
+- Type-level route coverage is not enough. Add a runtime route-map test that compares declared channel strings with
+  registered handlers so a typo in the value string cannot hide behind `satisfies`.
 - Mutation tests should cover at least create issue, edit issue, dispatch workflow, and create release. Preserve
   explicit `false` booleans such as `draft: false`, `prerelease: false`, and workflow checkbox values.
 
@@ -771,8 +920,11 @@ typed factory seams.
 
 **Checklist:**
 
-- [ ] Add `src/renderer/src/data/mocks/shared.ts` for shared constants, availability helpers, and storage helpers.
+- [ ] Add `src/renderer/src/data/mocks/shared.ts` for shared constants and availability helpers only. Storage helper
+      ownership belongs to task 7's `mockStorage.ts` when that task has landed.
 - [ ] Keep `src/renderer/src/data/mock.ts` exporting the same names during migration.
+- [ ] Add a shared mock state coordinator for cross-domain identity so issues, pulls, notifications, releases, and
+      repositories cannot reference missing repository fixtures.
 - [ ] Move read-only fixtures by domain: repository, refs, contents, organizations, contributors, discussions,
       projects, wiki, and security.
 - [ ] Move mutable domains by behavior: notifications, issues, pulls, releases, and workflow runs.
@@ -782,24 +934,32 @@ typed factory seams.
 - [ ] Remove local duplicated `makeApi`, `renderControl`, Area fixtures, and command helpers from renderer tests.
 - [ ] Split renderer tests into workflow files such as routing, areas, command palette, mailbox, repository code,
       issues, pulls, actions, releases, and security quality.
-- [ ] Port state-heavy Playwright cases to RTL before pruning matching Playwright coverage.
+- [ ] Add strict `beforeEach`/`afterEach` cleanup for split RTL files: mock storage, query clients, timers, DOM, and
+      any module-level mock state.
+- [ ] Port state-heavy Playwright cases to RTL before pruning matching Playwright coverage, but keep Playwright cases
+      that prove layout, z-index, focus, bubbling, or pointer behavior.
 - [ ] Remove all large fixture literals and mutation logic from `mock.ts`.
 
 **Acceptance criteria:**
 
 - `mock.ts` is either removed or only a small compatibility export surface.
 - Mock data has domain locality under `src/renderer/src/data/mocks`.
+- Cross-domain fixture references are validated or constructed through one coordinator.
 - `mockControlApi` remains available to browser fallback through `getControlApi()`.
 - Renderer tests use shared factories instead of duplicated local setup.
+- Split RTL tests reset storage, query clients, timers, DOM, and mock state between cases.
 - No renderer test file remains a broad catch-all monolith.
 - Playwright state tests are not deleted until equivalent RTL tests pass.
+- Playwright interaction/layout coverage is kept when RTL cannot observe the behavior.
 - `ControlApi` and shared contracts remain unchanged.
 
 **Required tests:**
 
 - Mock storage helpers: empty storage fallback, read/write round trip, and corrupt JSON fallback.
 - Domain mutation tests for notifications, issues, pulls, releases, and actions.
+- Cross-domain fixture integrity tests prove referenced repositories, issues, pulls, and notifications exist.
 - API adapter tests proving `*WithStatus` methods return matching data plus availability.
+- Renderer workflow tests prove cleanup hooks prevent jsdom/localStorage/query-cache leakage across split files.
 - Renderer RTL replacements for each pruned Playwright state workflow.
 
 **Validation:**

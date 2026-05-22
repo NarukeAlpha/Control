@@ -4,12 +4,12 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createLocalStore, type AreaGatewayRecord } from "./storage";
+import { createLocalStore, type AreaGatewayRecord, type LocalStore } from "./storage";
 import type { AreaRepositorySummary, AreaSummary, AreaWorkspaceSummary } from "@shared/areas";
 import type { RepositoryDetail, RepositoryListResult, RepositorySummary } from "@shared/github";
 import { writeCacheEntry } from "./storage/cacheStore";
 import { createStorageDatabaseAdapter, type SqliteDatabase } from "./storage/database";
-import { DatabaseError, SerializationError } from "./storage/errors";
+import { DatabaseError } from "./storage/errors";
 import { MemoryLocalStore } from "./storage/memoryStore";
 import { runStorageSync } from "./storage/runtime";
 
@@ -46,6 +46,9 @@ describe("LocalStore repository pins", () => {
     } as unknown as SqliteDatabase);
 
     expect(() => db.get("SELECT 1")).toThrow(DatabaseError);
+    expect(() => db.get("SELECT 1")).toThrow(
+      expect.objectContaining({ code: "STORAGE_IO_ERROR", kind: "io" })
+    );
     expect(() => db.operation("test.failure", () => db.get("SELECT 1"))).toThrow(
       expect.objectContaining({ operation: "test.failure" })
     );
@@ -229,7 +232,10 @@ describe("LocalStore repository pins", () => {
     ).toThrow(
       expect.objectContaining({
         operation: "cache.write",
-        cause: expect.any(SerializationError)
+        cause: expect.objectContaining({
+          code: "STORAGE_SERIALIZATION_ERROR",
+          kind: "serialization"
+        })
       })
     );
   });
@@ -261,6 +267,18 @@ describe("LocalStore repository pins", () => {
         isExpired: false
       })
     );
+  });
+
+  it("keeps cache and repository-status contracts aligned for SQLite and memory adapters", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "control-store-"));
+    tempDirs.push(tempDir);
+    const stores: LocalStore[] = [new MemoryLocalStore(), await createLocalStore(tempDir)];
+
+    for (const store of stores) {
+      assertLocalStoreCacheContract(store);
+      store.close();
+      store.close();
+    }
   });
 
   it("treats corrupted cache rows as cache misses and removes them", async () => {
@@ -817,6 +835,45 @@ function repositorySummary(nameWithOwner: string): RepositorySummary {
     avatarUrl: null,
     defaultBranch: "main"
   };
+}
+
+function assertLocalStoreCacheContract(store: LocalStore): void {
+  const repository = repositorySummary("NarukeAlpha/control");
+
+  store.setCache({
+    provider: "github",
+    cacheKey: "contract:cache",
+    payload: { ok: true },
+    etag: "cache-etag",
+    expiresAt: new Date(Date.now() + 60_000).toISOString()
+  });
+  expect(store.getCache("github", "contract:cache")).toEqual({ ok: true });
+  expect(store.getCacheEntry("github", "contract:cache")).toEqual(
+    expect.objectContaining({
+      payload: { ok: true },
+      etag: "cache-etag",
+      isExpired: false
+    })
+  );
+
+  store.setGitHubRepositoriesWithStatusCache({
+    repositories: [repository],
+    cacheKey: "repositories-with-status:contract",
+    result: { items: [repository], availability: { status: "available", message: null } },
+    etag: "status-etag",
+    expiresAt: new Date(Date.now() + 60_000).toISOString()
+  });
+  expect(store.getGitHubRepository("NarukeAlpha/control")).toEqual(repository);
+  expect(store.getCacheEntry<RepositoryListResult>("github", "repositories-with-status:contract")).toEqual(
+    expect.objectContaining({
+      payload: expect.objectContaining({ items: [repository] }),
+      etag: "status-etag",
+      isExpired: false
+    })
+  );
+
+  store.clearCacheByPrefix("github", "repositories-with-status:");
+  expect(store.getCache("github", "repositories-with-status:contract")).toBeNull();
 }
 
 function repositoryDetail(nameWithOwner: string): RepositoryDetail {

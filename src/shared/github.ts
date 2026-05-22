@@ -817,6 +817,26 @@ export interface PullRequestDetailInput extends RepoDetailInput {
   pullNumber: number;
 }
 
+export interface PullRequestDetailReadInput extends PullRequestDetailInput {
+  cacheOnly?: boolean;
+  forceRefresh?: boolean;
+}
+
+export interface PullRequestDetailPageInput extends PullRequestDetailReadInput {
+  limit?: number;
+  cursor?: string | null;
+}
+
+export type PullRequestOverviewInput = PullRequestDetailReadInput;
+export type PullRequestCommentsInput = PullRequestDetailPageInput;
+export type PullRequestFilesInput = PullRequestDetailPageInput;
+export type PullRequestCommitsInput = PullRequestDetailPageInput;
+export type PullRequestReviewsInput = PullRequestDetailPageInput;
+export type PullRequestChecksInput = PullRequestDetailReadInput;
+export type PullRequestReviewThreadsInput = PullRequestDetailPageInput;
+export type PullRequestTimelineInput = PullRequestDetailPageInput;
+export type PullRequestLinkedIssuesInput = PullRequestDetailReadInput;
+
 export interface PullRequestDetailResult {
   detail: PullRequestDetail | null;
   availability: GitHubReadAvailability;
@@ -934,6 +954,37 @@ export interface PullRequestTimelineEventSummary {
   sourceIssue: PullRequestTimelineEventSourceIssue | null;
 }
 
+export interface PullRequestOverview extends PullRequestSummary {
+  body: string | null;
+  labels: LabelSummary[];
+  assignees: AssignableUserSummary[];
+  milestone: MilestoneSummary | null;
+  requestedReviewers: AssignableUserSummary[];
+  requestedTeams: PullRequestRequestedTeamSummary[];
+  latestReviewState: string | null;
+  reviewDecisionAvailability: GitHubReadAvailability;
+}
+
+export type PullRequestOverviewResult = GitHubNullableResult<"overview", PullRequestOverview>;
+export type PullRequestCommentsResult = GitHubListResult<TimelineCommentSummary>;
+export type PullRequestFilesResult = GitHubListResult<PullRequestFileSummary>;
+export type PullRequestCommitsResult = GitHubListResult<PullRequestCommitSummary>;
+export type PullRequestReviewsResult = GitHubListResult<PullRequestReviewSummary>;
+
+export type PullRequestChecksResult = GitHubAvailabilityResult & {
+  items: PullRequestCheckSummary[];
+};
+
+export type PullRequestReviewThreadsResult = GitHubListResult<PullRequestReviewThreadSummary> & {
+  statesAvailability: GitHubReadAvailability;
+};
+
+export type PullRequestTimelineResult = GitHubListResult<PullRequestTimelineEventSummary>;
+
+export type PullRequestLinkedIssuesResult = GitHubAvailabilityResult & {
+  items: PullRequestLinkedIssueSummary[];
+};
+
 export interface PullRequestDetail extends PullRequestSummary {
   body: string | null;
   labels: LabelSummary[];
@@ -1011,6 +1062,7 @@ export type GitHubReadAvailabilityStatus =
   | "available"
   | "feature_disabled"
   | "not_loaded"
+  | "stale"
   | "offline"
   | "permission_denied"
   | "rate_limited"
@@ -1989,6 +2041,19 @@ export interface GitHubProvider {
   listPullRequestsWithStatus(input: PullRequestListInput): Promise<PullRequestListResult>;
   getPullRequestDetail(input: PullRequestDetailInput): Promise<PullRequestDetail>;
   getPullRequestDetailWithStatus(input: PullRequestDetailInput): Promise<PullRequestDetailResult>;
+  getPullRequestOverviewWithStatus(input: PullRequestOverviewInput): Promise<PullRequestOverviewResult>;
+  listPullRequestCommentsWithStatus(input: PullRequestCommentsInput): Promise<PullRequestCommentsResult>;
+  listPullRequestFilesWithStatus(input: PullRequestFilesInput): Promise<PullRequestFilesResult>;
+  listPullRequestCommitsWithStatus(input: PullRequestCommitsInput): Promise<PullRequestCommitsResult>;
+  listPullRequestReviewsWithStatus(input: PullRequestReviewsInput): Promise<PullRequestReviewsResult>;
+  listPullRequestChecksWithStatus(input: PullRequestChecksInput): Promise<PullRequestChecksResult>;
+  listPullRequestReviewThreadsWithStatus(
+    input: PullRequestReviewThreadsInput
+  ): Promise<PullRequestReviewThreadsResult>;
+  listPullRequestTimelineWithStatus(input: PullRequestTimelineInput): Promise<PullRequestTimelineResult>;
+  listPullRequestLinkedIssuesWithStatus(
+    input: PullRequestLinkedIssuesInput
+  ): Promise<PullRequestLinkedIssuesResult>;
   listDiscussions(input: DiscussionListInput): Promise<DiscussionSummary[]>;
   listDiscussionsWithStatus(input: DiscussionListInput): Promise<DiscussionListResult>;
   listDiscussionCategoriesWithStatus(

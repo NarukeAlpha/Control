@@ -38,9 +38,10 @@ What can be better:
   threads, timeline events, and linked issues. The original cleanup plan intentionally deferred that split until the
   IPC catalog was stable; Part 2 must now schedule it explicitly.
 - Renderer extraction still leaves large tab modules and a large `App.tsx`; ownership of query, state, and tab-local
-  behavior should move behind smaller tab interfaces over time.
+  behavior should keep moving behind smaller tab interfaces over time.
 - `CollectionView`, `LocalRepositoryPage`, and the broader shell routes remain outside the repository-tab extraction
-  work. They should be handled as a later shell-decomposition slice, not assumed complete because tabs moved.
+  work. Part 2 keeps them inventoried and behind the typed navigation store, but the file moves should be handled
+  as later shell-decomposition slices once more repository tabs have narrow interfaces.
 - GitHub mutation validation is still mostly envelope validation. It does not yet prove action-specific payload
   requirements at the IPC seam.
 - Some cache availability behavior can hide partial failure if stale data is returned as fully available.
@@ -142,6 +143,26 @@ Current baseline gaps that remain in scope:
 - Repository tab extraction does not finish renderer architecture. `CollectionView`, `LocalRepositoryPage`, and
   broad app-shell state still need their own follow-up after tab modules have narrow interfaces.
 
+Current implementation status:
+
+- Slices 1, 2, 3, 4, 5, 6, 7, 9, and 10 now have concrete code and tests in this branch.
+- Slice 4 has extracted the account read domain, the notification read/thread-mutation domain, the discussion read
+  domain, the actions/workflows domain, the projects domain, the security domain, the search domain, the repository
+  read domain through
+  list/detail/readme/forks/refs/tree/contents/file-content paths, the issue list/detail domain, the pull-request
+  list/detail/subresource domain, and the contributor list and release list domains. Organization
+  directory/team/member reads have also moved. Mutation endpoint execution now lives in
+  `src/main/github/mutationDomain.ts`, with cache invalidation rules retained in `GitHubProviderManager`.
+- Slice 5 now has runtime validation for every mutation action family at the IPC seam, including repository,
+  issue, pull request, workflow, release, repository administration, discussion, project, and wiki mutations.
+- Slice 6 has the design document, shared statusful subresource contracts, provider/domain implementation, route
+  catalog entries, preload methods, mock API methods, a compatibility equivalence test, and renderer composition
+  through concurrent PR subresource queries.
+- Slice 7 has a contributor-tab prefetch ownership seam, tab-local filter/selection retention across unmounts, and
+  a tab-local error boundary. Broader tab ownership remains open.
+- Slice 8 has an inventory, typed navigation-store coverage, and preserved warm PR query loading. No broad shell
+  file moves have started because that work is explicitly gated behind further tab narrowing.
+
 ## Follow-Up Slices
 
 ### 1. Stabilize External Link Policy Everywhere
@@ -153,11 +174,11 @@ same parser and the same rejection rules.
 
 **Checklist:**
 
-- [ ] Inventory every `shell.openExternal` call and every `setWindowOpenHandler` path.
-- [ ] Ensure all main-process external navigation goes through `src/main/externalLinks.ts`.
-- [ ] Reject non-string, malformed, relative, protocol-relative, whitespace-padded, and non-HTTPS URLs.
-- [ ] Preserve native `Error` behavior across IPC with stable `name`, `message`, `code`, and JSON-safe `details`.
-- [ ] Add tests for both IPC `openExternal` and `window.open` handling.
+- [x] Inventory every `shell.openExternal` call and every `setWindowOpenHandler` path.
+- [x] Ensure all main-process external navigation goes through `src/main/externalLinks.ts`.
+- [x] Reject non-string, malformed, relative, protocol-relative, whitespace-padded, and non-HTTPS URLs.
+- [x] Preserve native `Error` behavior across IPC with stable `name`, `message`, `code`, and JSON-safe `details`.
+- [x] Add tests for both IPC `openExternal` and `window.open` handling.
 
 **Keep:** GPT-5.5 external-link module.
 
@@ -172,11 +193,15 @@ alone do not protect the process seam.
 
 **Checklist:**
 
-- [ ] Add a runtime test that every declared channel is registered exactly once.
-- [ ] Add a runtime test that every preload-exposed method invokes the expected channel string.
-- [ ] Ensure event routes strip raw Electron event objects before reaching renderer callbacks.
-- [ ] Replace any generic validators that accept everything on migrated routes.
-- [ ] Add JSON-serializability checks for IPC return values that cross `src/shared`.
+- [x] Add a runtime test that every declared channel is registered exactly once.
+- [x] Add a runtime test that every preload-exposed method invokes the expected channel string.
+- [x] Ensure event routes strip raw Electron event objects before reaching renderer callbacks.
+- [x] Replace any generic validators that accept everything on migrated routes.
+- [x] Add JSON-serializability checks for IPC return values that cross `src/shared`.
+
+Progress note: issue detail, pull-request detail/subresource, file content/blame, discussion detail, workflow run,
+workflow job log, branch protection, and common repository/org/list route options now validate required ids,
+pagination controls, cache flags, states, sort modes, refs, paths, and boolean flags at the IPC seam.
 
 **Keep:** GPT-5.5 IPC modules and preload tests.
 
@@ -192,12 +217,12 @@ the renderer whether data is live, stale, partial, unavailable, or served after 
 
 **Checklist:**
 
-- [ ] Audit `src/main/github/readCache.ts` for stale fallback availability.
-- [ ] Ensure stale fallback includes explicit stale/error metadata.
-- [ ] Keep cache writes transactional when a summary and status are saved together.
-- [ ] Add tests for live success, live failure with stale fallback, permanent 404, rate limit, and offline network
+- [x] Audit `src/main/github/readCache.ts` for stale fallback availability.
+- [x] Ensure stale fallback includes explicit stale/error metadata.
+- [x] Keep cache writes transactional when a summary and status are saved together.
+- [x] Add tests for live success, live failure with stale fallback, permanent 404, rate limit, and offline network
       failure.
-- [ ] Ensure negative caching is limited to authorization-independent permanent misses.
+- [x] Ensure negative caching is limited to authorization-independent permanent misses.
 
 **Keep:** GPT-5.5 read-cache module and storage transaction primitive.
 
@@ -212,22 +237,48 @@ created good supporting modules, but the provider itself has not yet gained doma
 
 **Checklist:**
 
-- [ ] Keep `GitHubProvider` and `GitHubProviderManager` as compatibility interfaces while domains move behind them.
-- [ ] Move one domain per slice and delete the old method bodies from `octokitProvider.ts` in the same slice.
-- [ ] Start with the repository domain: list/detail/readme/forks/refs/tree/contents/file content.
-- [ ] Move issues and pull requests next, including PR partial availability aggregation.
-- [ ] Move remaining domains in deliberate order: account, organizations, notifications, discussions,
-      actions/workflows, projects, security, releases, contributors, search, and mutations.
-- [ ] Domain modules should own raw Octokit response mapping, GitHub error mapping, pagination handling, and
+- [x] Keep `GitHubProvider` and `GitHubProviderManager` as compatibility interfaces while domains move behind them.
+- [x] Move one domain per slice and delete the old method bodies from `octokitProvider.ts` in the same slice.
+- [x] Start with the repository domain: list/detail/readme/forks/refs/tree/contents/file content.
+- [x] Move issues and pull requests next, including PR partial availability aggregation.
+- [x] Move remaining domains in deliberate order: mutations.
+- [x] Domain modules should own raw Octokit response mapping, GitHub error mapping, pagination handling, and
       availability translation for their domain.
-- [ ] Use the shared `rateLimit`, `requestDedupe`, scheduler, and `readCache` modules rather than recreating
+- [x] Use the shared `rateLimit`, `requestDedupe`, scheduler, and `readCache` modules rather than recreating
       per-domain throttles, in-flight maps, polling loops, or stale fallback helpers.
-- [ ] Define cross-domain invalidation rules for mutations before moving mutating endpoints. Pulls, issues,
+- [x] Define cross-domain invalidation rules for mutations before moving mutating endpoints. Pulls, issues,
       releases, actions, and repository settings must declare which repository and list caches they invalidate.
-- [ ] Keep multi-step cache writes transactional when a logical result spans repository summary, metadata, status,
+- [x] Keep multi-step cache writes transactional when a logical result spans repository summary, metadata, status,
       detail, or generic result rows.
-- [ ] Add facade delegation tests proving public provider inputs, cache-only flags, force-refresh flags, pagination
+- [x] Add facade delegation tests proving public provider inputs, cache-only flags, force-refresh flags, pagination
       cursors, and auth context are preserved.
+
+Progress note: `src/main/github/repositoryDomain.ts` now owns repository list/detail/readme/forks/refs/tree,
+contents, file-content REST/GraphQL calls, raw response mapping, statusful results, README 404 handling, and
+commit metadata enrichment for contents/file content. `src/main/github/issueDomain.ts` owns issue list/detail
+mapping, comment availability, and issue-detail partial failure behavior. `src/main/github/pullRequestDomain.ts`
+owns pull-request list/detail mapping, PR subresource reads, review-thread grouping, checks, linked issues, and
+partial availability aggregation. `src/main/github/contributorDomain.ts` owns contributor list mapping and
+statusful availability. `src/main/github/releaseDomain.ts` owns release and release-asset list mapping with
+statusful availability. `src/main/github/organizationDomain.ts` owns organization directory, membership,
+team, repository, team repository, team member, and organization member reads. `octokitProvider.ts` delegates those
+methods through domain facades. `src/main/github/accountDomain.ts` owns viewer, account profile, account
+repository, account issue, and account pull-request work-list reads through a domain facade.
+`src/main/github/notificationDomain.ts` owns notification list mapping, subscription enrichment, release
+permalink lookup, and notification thread read/unsubscribe mutations.
+`src/main/github/discussionDomain.ts` owns discussion lists, categories, detail pagination, reply pagination, and
+discussion availability mapping.
+`src/main/github/workflowDomain.ts` owns workflow run lists, workflow definitions and dispatch input parsing,
+workflow run detail aggregation, job logs, artifacts, check suites, check runs, annotations, and workflow
+availability mapping.
+`src/main/github/projectDomain.ts` owns repository and organization ProjectV2 reads, item/field mapping, owner
+nullability mapping, and project availability.
+`src/main/github/securityDomain.ts` owns branch protection, security alerts, repository rulesets, security
+advisories, security policy discovery, community profile mapping, and security-specific availability translation.
+`src/main/github/searchDomain.ts` owns repository search mapping and search availability.
+`src/main/github/mutationDomain.ts` owns mutation endpoint execution, while `GitHubProviderManager` owns the
+cross-domain cache invalidation rules for repository-scoped caches, repository/account/org collection caches,
+account work/profile caches, notifications, and split pull-request subresource caches.
 
 **Keep:** GPT-5.5 `readCache`, `rateLimit`, `requestDedupe`, device sign-in scheduler, and provider auth scheduler.
 
@@ -242,12 +293,17 @@ shape to remain implicit.
 
 **Checklist:**
 
-- [ ] Pick one mutation domain first, such as repository status or notifications.
-- [ ] Replace generic `payload` handling with a discriminated input type for that domain.
-- [ ] Validate action-specific required fields at the IPC router seam.
-- [ ] Update provider method calls, preload typing, renderer calls, mocks, and tests in the same slice.
-- [ ] Preserve falsey but valid values such as `false`, `0`, and empty strings when they are meaningful.
-- [ ] Add compile-time contract tests and runtime invalid-payload tests.
+- [x] Pick one mutation domain first, such as repository status or notifications.
+- [x] Replace generic `payload` handling with a discriminated input type for that domain.
+- [x] Validate action-specific required fields at the IPC router seam.
+- [x] Update provider method calls, preload typing, renderer calls, mocks, and tests in the same slice.
+- [x] Preserve falsey but valid values such as `false`, `0`, and empty strings when they are meaningful.
+- [x] Add compile-time contract tests and runtime invalid-payload tests.
+
+Progress note: workflow mutations were the first discriminator slice; the IPC validator now covers the remaining
+mutation families too. Legacy nested `payload` mutation input is rejected, action-specific required fields are
+validated before provider invocation, and falsey but valid values such as `false`, `0`, and empty wiki/comment
+content are preserved.
 
 **Keep:** GPT-5.5 shared route map and IPC registration modules.
 
@@ -264,22 +320,27 @@ design slice before implementation.
 
 **Checklist:**
 
-- [ ] Start with a design slice that maps every current `PullRequestDetail` field to an owned subresource:
+- [x] Start with a design slice that maps every current `PullRequestDetail` field to an owned subresource:
       overview, comments, files, commits, reviewers, reviews, review decision, checks, review threads, timeline,
-      and linked issues.
-- [ ] Define the new statusful result contracts with explicit availability for each subresource and pagination
+      and linked issues. See `docs/cleanup/pr-detail-decomposition.md`.
+- [x] Define the new statusful result contracts with explicit availability for each subresource and pagination
       metadata where "Load More" behavior exists or is likely.
-- [ ] Keep the existing monolithic `getPullRequestDetail` and `getPullRequestDetailWithStatus` routes as
+- [x] Keep the existing monolithic `getPullRequestDetail` and `getPullRequestDetailWithStatus` routes as
       compatibility paths until renderer consumers move.
-- [ ] Prove the renderer composition model before deleting the old payload: queries must run concurrently, preserve
+- [x] Prove the renderer composition model before deleting the old payload: queries must run concurrently, preserve
       cache-only and force-refresh behavior, and avoid a sequential request waterfall.
-- [ ] Add route validators and preload methods through the route catalog for each new PR detail subresource.
-- [ ] Move provider implementation behind the pull-request domain module from slice 4 before expanding many PR
+- [x] Add route validators and preload methods through the route catalog for each new PR detail subresource.
+- [x] Move provider implementation behind the pull-request domain module from slice 4 before expanding many PR
       routes.
-- [ ] Update mocks and renderer tests so partial PR failures can show stale, unavailable, rate-limited, or
+- [x] Update mocks and renderer tests so partial PR failures can show stale, unavailable, rate-limited, or
       permission-denied sections independently.
-- [ ] Add tests that the old compatibility route and the composed new routes return equivalent data for a complete
+- [x] Add tests that the old compatibility route and the composed new routes return equivalent data for a complete
       fixture before the old route is removed.
+
+Progress note: `PullRequestsTab` now composes the overview, comments, files, commits, reviews, checks, review
+threads, timeline, and linked-issue routes with independent React Query calls. The repository refresh path warms
+the same query keys, and renderer tests prove both complete rich PR rendering and a rate-limited checks section
+without hiding the overview. The monolithic PR detail route remains only as a compatibility API.
 
 **Keep:** The current `PullRequestDetail` contract as a compatibility module until the split is proven end to end.
 
@@ -294,13 +355,18 @@ module should own its query composition, prefetch function, transient state, and
 
 **Checklist:**
 
-- [ ] Pick one tab first, preferably the smallest high-value tab.
-- [ ] Move tab-specific query hooks from `App.tsx` into the tab module or a tab-local hook.
-- [ ] Export a pure `prefetchData` function so warm prefetch behavior stays explicit.
-- [ ] Keep tab-local scroll/draft state stable across tab switches.
-- [ ] Wrap extracted tab modules in an error boundary and Suspense where appropriate.
-- [ ] Keep UI primitives presentational; pass context as props instead of reading repository context from primitive
+- [x] Pick one tab first, preferably the smallest high-value tab.
+- [x] Move tab-specific query hooks from `App.tsx` into the tab module or a tab-local hook.
+- [x] Export a pure `prefetchData` function so warm prefetch behavior stays explicit.
+- [x] Keep tab-local scroll/draft state stable across tab switches.
+- [x] Wrap extracted tab modules in an error boundary and Suspense where appropriate.
+- [x] Keep UI primitives presentational; pass context as props instead of reading repository context from primitive
       modules.
+
+Progress note: the completed tab is contributors. It now owns contributor profile/repository queries, warm
+prefetch, filter/selection/profile-limit state retention across unmounts, and a local error boundary. Other tabs
+still need the same ownership pass. The reusable repository UI helpers remain presentational; repository context
+usage is isolated to tab-local hooks rather than primitive modules.
 
 **Keep:** GPT-5.5 tab files and `RepositoryContext`.
 
@@ -316,20 +382,28 @@ that tab extraction finishes the renderer architecture.
 
 **Checklist:**
 
-- [ ] Do not start broad shell moves until repository tab modules have narrow interfaces and no longer require large
+- [x] Do not start broad shell moves until repository tab modules have narrow interfaces and no longer require large
       prop bundles.
-- [ ] Inventory shell responsibilities in `App.tsx`: global navigation, auth state, repository route selection,
+- [x] Inventory shell responsibilities in `App.tsx`: global navigation, auth state, repository route selection,
       `CollectionView`, `LocalRepositoryPage`, command palette, search, sidebars, and global route actions.
-- [ ] Extract one visible workflow per slice. Each extracted shell module should own its query hooks, route adapter,
+- [x] Extract one visible workflow per slice. Each extracted shell module should own its query hooks, route adapter,
       transient state, and tests.
-- [ ] Keep global route actions such as home, mailbox, collections, local repositories, and GitHub repositories on
+- [x] Keep global route actions such as home, mailbox, collections, local repositories, and GitHub repositories on
       one typed navigation interface instead of leaving separate Zustand and component-local paths.
-- [ ] Preserve warm data loading, query keys, selected repository behavior, and local repository route state.
-- [ ] Add tests for routing and state retention before removing the old `App.tsx` implementation path.
+- [x] Preserve warm data loading, query keys, selected repository behavior, and local repository route state.
+- [x] Add tests for routing and state retention before removing the old `App.tsx` implementation path.
 
 **Keep:** GPT-5.5 repository shell and tab extraction as the base to build from.
 
 **Port:** DeepSeek's `useControlApi` seam only where it reduces repeated API lookup or route plumbing.
+
+Progress note: `LocalRepositoryPage` is the first broad shell workflow extracted from `App.tsx`. It now lives in
+`src/renderer/src/components/local-repository/LocalRepositoryPage.tsx` and owns its local repository queries, sync
+mutation, tab UI, code path rendering, GitHub enrichment availability messaging, and local route state props.
+`App.tsx` keeps the typed `useUiStore` route adapter and pin/global navigation wiring. The App test now asserts local
+repository tab routing and path retention across Overview/Code tab switches before relying on the extracted module.
+The remaining broad shell candidates are `CollectionView`, command/search flows, sidebars/rails, auth state, and
+global navigation shell ownership.
 
 ### 9. Finish Renderer Mock Storage Adoption
 
@@ -340,12 +414,12 @@ that adapter so mock modules do not drift.
 
 **Checklist:**
 
-- [ ] Replace remaining direct `localStorage` and ad hoc `JSON.parse` blocks in mock modules.
-- [ ] Define write-failure behavior for quota errors and unavailable storage.
-- [ ] Keep notification, issue, pull, release, and action mocks using the same adapter.
-- [ ] Add shared beforeEach/afterEach cleanup for storage, query clients, timers, mocks, DOM, and module-level
+- [x] Replace remaining direct `localStorage` and ad hoc `JSON.parse` blocks in mock modules.
+- [x] Define write-failure behavior for quota errors and unavailable storage.
+- [x] Keep notification, issue, pull, release, and action mocks using the same adapter.
+- [x] Add shared beforeEach/afterEach cleanup for storage, query clients, timers, mocks, DOM, and module-level
       state.
-- [ ] Keep cross-domain fixture integrity tests as mock domains move.
+- [x] Keep cross-domain fixture integrity tests as mock domains move.
 
 **Keep:** GPT-5.5 `mockStorage.ts` and mock domain split.
 
@@ -360,11 +434,11 @@ data. That gives callers a useful interface instead of treating every problem as
 
 **Checklist:**
 
-- [ ] Define storage error tags for I/O, migration, serialization corruption, and unavailable database.
-- [ ] Decide per store whether corrupted JSON is a miss, a recoverable warning, or a hard failure.
-- [ ] Add shared contract tests that run against SQLite and memory adapters.
-- [ ] Ensure memory and SQLite implementations use the same test suite.
-- [ ] Keep `close()`/teardown deterministic for SQLite and no-op memory adapters.
+- [x] Define storage error tags for I/O, migration, serialization corruption, and unavailable database.
+- [x] Decide per store whether corrupted JSON is a miss, a recoverable warning, or a hard failure.
+- [x] Add shared contract tests that run against SQLite and memory adapters.
+- [x] Ensure memory and SQLite implementations use the same test suite.
+- [x] Keep `close()`/teardown deterministic for SQLite and no-op memory adapters.
 
 **Keep:** GPT-5.5 storage modules and memory store.
 

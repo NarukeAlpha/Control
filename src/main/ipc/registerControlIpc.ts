@@ -28,8 +28,18 @@ import type {
   OrganizationTeamRepositoriesInput,
   OrganizationTeamsInput,
   ProjectsInput,
+  PullRequestChecksInput,
+  PullRequestCommentsInput,
+  PullRequestCommitsInput,
   PullRequestDetailInput,
+  PullRequestDetailReadInput,
+  PullRequestFilesInput,
+  PullRequestLinkedIssuesInput,
   PullRequestListInput,
+  PullRequestOverviewInput,
+  PullRequestReviewsInput,
+  PullRequestReviewThreadsInput,
+  PullRequestTimelineInput,
   ReleasesInput,
   RepoContentsInput,
   RepoDetailInput,
@@ -249,10 +259,12 @@ export function createControlIpcRoutes({
     githubRepoRoute<RepoContentsInput>(ipcChannels.githubContentsWithStatus, (input) =>
       github.listContentsWithStatus(input)
     ),
-    githubRepoRoute<RepoFileContentInput>(ipcChannels.githubFileContentWithStatus, (input) =>
+    githubRepoPathRoute<RepoFileContentInput>(ipcChannels.githubFileContentWithStatus, (input) =>
       github.getFileContentWithStatus(input)
     ),
-    githubRepoRoute<RepoFileBlameInput>(ipcChannels.githubFileBlame, (input) => github.getFileBlame(input)),
+    githubRepoPathRoute<RepoFileBlameInput>(ipcChannels.githubFileBlame, (input) =>
+      github.getFileBlame(input)
+    ),
     githubRepoRoute<RepositoryWikiInput>(ipcChannels.githubRepositoryWiki, (input) =>
       github.getRepositoryWiki(input)
     ),
@@ -274,14 +286,51 @@ export function createControlIpcRoutes({
     githubRepoRoute<IssueListInput>(ipcChannels.githubIssuesWithStatus, (input) =>
       github.listIssuesWithStatus(input)
     ),
-    githubRepoRoute<IssueDetailInput>(ipcChannels.githubIssueDetailWithStatus, (input) =>
+    githubIssueDetailRoute<IssueDetailInput>(ipcChannels.githubIssueDetailWithStatus, (input) =>
       github.getIssueDetailWithStatus(input)
     ),
     githubRepoRoute<PullRequestListInput>(ipcChannels.githubPullRequestsWithStatus, (input) =>
       github.listPullRequestsWithStatus(input)
     ),
-    githubRepoRoute<PullRequestDetailInput>(ipcChannels.githubPullRequestDetailWithStatus, (input) =>
-      github.getPullRequestDetailWithStatus(input)
+    githubPullRequestDetailRoute<PullRequestDetailInput>(
+      ipcChannels.githubPullRequestDetailWithStatus,
+      (input) => github.getPullRequestDetailWithStatus(input)
+    ),
+    githubPullRequestDetailRoute<PullRequestOverviewInput>(
+      ipcChannels.githubPullRequestOverviewWithStatus,
+      (input) => github.getPullRequestOverviewWithStatus(input)
+    ),
+    githubPullRequestDetailRoute<PullRequestCommentsInput>(
+      ipcChannels.githubPullRequestCommentsWithStatus,
+      (input) => github.listPullRequestCommentsWithStatus(input)
+    ),
+    githubPullRequestDetailRoute<PullRequestFilesInput>(
+      ipcChannels.githubPullRequestFilesWithStatus,
+      (input) => github.listPullRequestFilesWithStatus(input)
+    ),
+    githubPullRequestDetailRoute<PullRequestCommitsInput>(
+      ipcChannels.githubPullRequestCommitsWithStatus,
+      (input) => github.listPullRequestCommitsWithStatus(input)
+    ),
+    githubPullRequestDetailRoute<PullRequestReviewsInput>(
+      ipcChannels.githubPullRequestReviewsWithStatus,
+      (input) => github.listPullRequestReviewsWithStatus(input)
+    ),
+    githubPullRequestDetailRoute<PullRequestChecksInput>(
+      ipcChannels.githubPullRequestChecksWithStatus,
+      (input) => github.listPullRequestChecksWithStatus(input)
+    ),
+    githubPullRequestDetailRoute<PullRequestReviewThreadsInput>(
+      ipcChannels.githubPullRequestReviewThreadsWithStatus,
+      (input) => github.listPullRequestReviewThreadsWithStatus(input)
+    ),
+    githubPullRequestDetailRoute<PullRequestTimelineInput>(
+      ipcChannels.githubPullRequestTimelineWithStatus,
+      (input) => github.listPullRequestTimelineWithStatus(input)
+    ),
+    githubPullRequestDetailRoute<PullRequestLinkedIssuesInput>(
+      ipcChannels.githubPullRequestLinkedIssuesWithStatus,
+      (input) => github.listPullRequestLinkedIssuesWithStatus(input)
     ),
     githubRepoRoute<DiscussionListInput>(ipcChannels.githubDiscussionsWithStatus, (input) =>
       github.listDiscussionsWithStatus(input)
@@ -289,7 +338,7 @@ export function createControlIpcRoutes({
     githubRepoRoute<DiscussionCategoryListInput>(ipcChannels.githubDiscussionCategoriesWithStatus, (input) =>
       github.listDiscussionCategoriesWithStatus(input)
     ),
-    githubRepoRoute<DiscussionDetailInput>(ipcChannels.githubDiscussionDetail, (input) =>
+    githubDiscussionDetailRoute<DiscussionDetailInput>(ipcChannels.githubDiscussionDetail, (input) =>
       github.getDiscussionDetail(input)
     ),
     githubRepoRoute<ActionsInput>(ipcChannels.githubActionsWithStatus, (input) =>
@@ -298,16 +347,17 @@ export function createControlIpcRoutes({
     githubRepoRoute<WorkflowListInput>(ipcChannels.githubWorkflowsWithStatus, (input) =>
       github.listWorkflowsWithStatus(input)
     ),
-    githubRepoRoute<WorkflowRunDetailInput>(ipcChannels.githubWorkflowRunDetailWithStatus, (input) =>
-      github.getWorkflowRunDetailWithStatus(input)
+    githubWorkflowRunDetailRoute<WorkflowRunDetailInput>(
+      ipcChannels.githubWorkflowRunDetailWithStatus,
+      (input) => github.getWorkflowRunDetailWithStatus(input)
     ),
-    githubRepoRoute<WorkflowJobLogsInput>(ipcChannels.githubWorkflowJobLogs, (input) =>
+    githubWorkflowJobLogsRoute<WorkflowJobLogsInput>(ipcChannels.githubWorkflowJobLogs, (input) =>
       github.getWorkflowJobLogs(input)
     ),
     githubRepoRoute<ProjectsInput>(ipcChannels.githubProjectsWithStatus, (input) =>
       github.listProjectsWithStatus(input)
     ),
-    githubRepoRoute<BranchProtectionInput>(ipcChannels.githubBranchProtection, (input) =>
+    githubBranchProtectionRoute<BranchProtectionInput>(ipcChannels.githubBranchProtection, (input) =>
       github.getBranchProtection(input)
     ),
     githubRepoRoute<DependabotAlertsInput>(ipcChannels.githubDependabotAlerts, (input) =>
@@ -376,6 +426,132 @@ function githubRepoRoute<TInput extends RepoDetailInput, TOutput = unknown>(
   });
 }
 
+function githubRepoPathRoute<TInput extends RepoFileContentInput, TOutput = unknown>(
+  channel: string,
+  handle: (input: TInput) => TOutput
+): IpcInvokeRoute {
+  return controlRoute<TInput, TOutput>({
+    channel,
+    parse: ([input]) => {
+      const record = requireRepoScopedInput<RepoFileContentInput & { maxRanges?: number }>(input);
+      return {
+        ...record,
+        path: requireTrimmedText(record.path, "GitHub file input requires a path."),
+        maxRanges: optionalPositiveInteger(
+          record.maxRanges,
+          "GitHub file blame range limit must be positive."
+        )
+      } as unknown as TInput;
+    },
+    handle
+  });
+}
+
+function githubBranchProtectionRoute<TInput extends BranchProtectionInput, TOutput = unknown>(
+  channel: string,
+  handle: (input: TInput) => TOutput
+): IpcInvokeRoute {
+  return controlRoute<TInput, TOutput>({
+    channel,
+    parse: ([input]) => {
+      const record = requireRepoScopedInput<BranchProtectionInput>(input);
+      return {
+        ...record,
+        branch: requireTrimmedText(record.branch, "GitHub branch protection input requires a branch.")
+      } as TInput;
+    },
+    handle
+  });
+}
+
+function githubDiscussionDetailRoute<TInput extends DiscussionDetailInput, TOutput = unknown>(
+  channel: string,
+  handle: (input: TInput) => TOutput
+): IpcInvokeRoute {
+  return controlRoute<TInput, TOutput>({
+    channel,
+    parse: ([input]) => {
+      const record = requireRepoScopedInput<DiscussionDetailInput>(input);
+      return {
+        ...record,
+        discussionNumber: requirePositiveInteger(
+          record.discussionNumber,
+          "GitHub discussion input requires a number."
+        ),
+        commentsLimit: optionalPositiveInteger(
+          record.commentsLimit,
+          "GitHub discussion comments limit must be positive."
+        ),
+        repliesLimit: optionalPositiveInteger(
+          record.repliesLimit,
+          "GitHub discussion replies limit must be positive."
+        )
+      } as TInput;
+    },
+    handle
+  });
+}
+
+function githubWorkflowRunDetailRoute<TInput extends WorkflowRunDetailInput, TOutput = unknown>(
+  channel: string,
+  handle: (input: TInput) => TOutput
+): IpcInvokeRoute {
+  return controlRoute<TInput, TOutput>({
+    channel,
+    parse: ([input]) => {
+      const record = requireRepoScopedInput<WorkflowRunDetailInput>(input);
+      return {
+        ...record,
+        runId: requirePositiveInteger(record.runId, "GitHub workflow run input requires a run id.")
+      } as TInput;
+    },
+    handle
+  });
+}
+
+function githubWorkflowJobLogsRoute<TInput extends WorkflowJobLogsInput, TOutput = unknown>(
+  channel: string,
+  handle: (input: TInput) => TOutput
+): IpcInvokeRoute {
+  return controlRoute<TInput, TOutput>({
+    channel,
+    parse: ([input]) => {
+      const record = requireRepoScopedInput<WorkflowJobLogsInput>(input);
+      return {
+        ...record,
+        jobId: requirePositiveInteger(record.jobId, "GitHub workflow job logs input requires a job id."),
+        maxCharacters: optionalPositiveInteger(
+          record.maxCharacters,
+          "GitHub workflow job logs maxCharacters must be positive."
+        )
+      } as TInput;
+    },
+    handle
+  });
+}
+
+function githubPullRequestDetailRoute<TInput extends PullRequestDetailReadInput, TOutput = unknown>(
+  channel: string,
+  handle: (input: TInput) => TOutput
+): IpcInvokeRoute {
+  return controlRoute<TInput, TOutput>({
+    channel,
+    parse: ([input]) => requirePullRequestDetailInput<TInput>(input),
+    handle
+  });
+}
+
+function githubIssueDetailRoute<TInput extends IssueDetailInput, TOutput = unknown>(
+  channel: string,
+  handle: (input: TInput) => TOutput
+): IpcInvokeRoute {
+  return controlRoute<TInput, TOutput>({
+    channel,
+    parse: ([input]) => requireIssueDetailInput<TInput>(input),
+    handle
+  });
+}
+
 function githubOrgRoute<TInput extends { org: string }, TOutput = unknown>(
   channel: string,
   handle: (input: TInput) => TOutput
@@ -387,10 +563,10 @@ function githubOrgRoute<TInput extends { org: string }, TOutput = unknown>(
         input,
         "GitHub organization input must be an object."
       );
-      return {
+      return normalizeKnownGitHubReadFields({
         ...record,
         org: requireTrimmedText(record.org, "GitHub organization input requires an org.")
-      } as TInput;
+      }) as TInput;
     },
     handle
   });
@@ -407,11 +583,11 @@ function githubOrgTeamRoute<TInput extends { org: string; teamSlug: string }, TO
         input,
         "GitHub team input must be an object."
       );
-      return {
+      return normalizeKnownGitHubReadFields({
         ...record,
         org: requireTrimmedText(record.org, "GitHub team input requires an org."),
         teamSlug: requireTrimmedText(record.teamSlug, "GitHub team input requires a team slug.")
-      } as TInput;
+      }) as TInput;
     },
     handle
   });
@@ -443,7 +619,8 @@ function requireOptionalRecordInput<TInput extends object>(input: unknown = {}):
   if (input === undefined) {
     return {} as TInput;
   }
-  return requireRecordInput<TInput>(input, "IPC input must be an object.");
+  const record = requireRecordInput<Record<string, unknown>>(input, "IPC input must be an object.");
+  return normalizeKnownGitHubReadFields(record) as TInput;
 }
 
 function requireRecordInput<TInput extends object>(input: unknown, message: string): TInput {
@@ -458,11 +635,119 @@ function requireRepoScopedInput<TInput extends RepoDetailInput>(input: unknown):
     input,
     "GitHub repository input must be an object."
   );
-  return {
+  return normalizeKnownGitHubReadFields({
     ...record,
     owner: requireTrimmedText(record.owner, "GitHub repository input requires an owner."),
     repo: requireTrimmedText(record.repo, "GitHub repository input requires a repo.")
-  } as TInput;
+  }) as TInput;
+}
+
+function normalizeKnownGitHubReadFields(record: Record<string, unknown>): Record<string, unknown> {
+  const normalized = {
+    ...record,
+    cacheOnly: optionalBoolean(record.cacheOnly, "GitHub cacheOnly must be a boolean."),
+    forceRefresh: optionalBoolean(record.forceRefresh, "GitHub forceRefresh must be a boolean.")
+  };
+
+  setOptional(normalized, record, "limit", (value) =>
+    optionalPositiveInteger(value, "GitHub limit must be a positive integer.")
+  );
+  setOptional(normalized, record, "commentsLimit", (value) =>
+    optionalPositiveInteger(value, "GitHub comments limit must be a positive integer.")
+  );
+  setOptional(normalized, record, "repliesLimit", (value) =>
+    optionalPositiveInteger(value, "GitHub replies limit must be a positive integer.")
+  );
+  setOptional(normalized, record, "maxRanges", (value) =>
+    optionalPositiveInteger(value, "GitHub maxRanges must be a positive integer.")
+  );
+  setOptional(normalized, record, "maxCharacters", (value) =>
+    optionalPositiveInteger(value, "GitHub maxCharacters must be a positive integer.")
+  );
+  setOptional(normalized, record, "ref", (value) =>
+    optionalNullableText(value, "GitHub ref must be a string or null.")
+  );
+  setOptional(normalized, record, "path", (value) => optionalText(value, "GitHub path must be a string."));
+  setOptional(normalized, record, "pagePath", (value) =>
+    optionalNullableText(value, "GitHub wiki page path must be a string or null.")
+  );
+  setOptional(normalized, record, "since", (value) =>
+    optionalNullableText(value, "GitHub since cursor must be a string or null.")
+  );
+  setOptional(normalized, record, "before", (value) =>
+    optionalNullableText(value, "GitHub before cursor must be a string or null.")
+  );
+  setOptional(normalized, record, "recursive", (value) =>
+    optionalBoolean(value, "GitHub recursive flag must be a boolean.")
+  );
+  setOptional(normalized, record, "all", (value) =>
+    optionalBoolean(value, "GitHub notification all flag must be a boolean.")
+  );
+  setOptional(normalized, record, "participating", (value) =>
+    optionalBoolean(value, "GitHub notification participating flag must be a boolean.")
+  );
+  setOptional(normalized, record, "includesParents", (value) =>
+    optionalBoolean(value, "GitHub ruleset includesParents flag must be a boolean.")
+  );
+  setOptional(normalized, record, "state", (value) =>
+    optionalKnownValue(value, "GitHub state is not supported.", [
+      "open",
+      "closed",
+      "all",
+      "dismissed",
+      "fixed",
+      "auto_dismissed",
+      "resolved"
+    ])
+  );
+  setOptional(normalized, record, "sort", (value) =>
+    optionalKnownValue(value, "GitHub sort is not supported.", ["newest", "oldest", "stargazers"])
+  );
+  setOptional(normalized, record, "affiliation", (value) =>
+    optionalKnownValue(value, "GitHub affiliation is not supported.", ["all", "direct", "outside"])
+  );
+  setOptional(normalized, record, "permission", (value) =>
+    optionalKnownValue(value, "GitHub permission is not supported.", [
+      "admin",
+      "maintain",
+      "push",
+      "triage",
+      "pull"
+    ])
+  );
+
+  return normalized;
+}
+
+function requirePullRequestDetailInput<TInput extends PullRequestDetailReadInput>(input: unknown): TInput {
+  const record = requireRecordInput<Record<string, unknown>>(
+    input,
+    "GitHub pull request input must be an object."
+  );
+  const repoInput = requireRepoScopedInput<PullRequestDetailReadInput>(record);
+  return {
+    ...record,
+    owner: repoInput.owner,
+    repo: repoInput.repo,
+    pullNumber: requirePositiveInteger(record.pullNumber, "GitHub pull request input requires a number."),
+    cacheOnly: optionalBoolean(record.cacheOnly, "GitHub pull request cacheOnly must be a boolean."),
+    forceRefresh: optionalBoolean(record.forceRefresh, "GitHub pull request forceRefresh must be a boolean."),
+    limit: optionalPositiveInteger(record.limit, "GitHub pull request limit must be a positive integer."),
+    cursor: optionalCursor(record.cursor)
+  } as unknown as TInput;
+}
+
+function requireIssueDetailInput<TInput extends IssueDetailInput>(input: unknown): TInput {
+  const record = requireRecordInput<Record<string, unknown>>(input, "GitHub issue input must be an object.");
+  const repoInput = requireRepoScopedInput<IssueDetailInput>(record);
+  return {
+    ...record,
+    owner: repoInput.owner,
+    repo: repoInput.repo,
+    issueNumber: requirePositiveInteger(record.issueNumber, "GitHub issue input requires a number."),
+    cacheOnly: optionalBoolean(record.cacheOnly, "GitHub issue cacheOnly must be a boolean."),
+    forceRefresh: optionalBoolean(record.forceRefresh, "GitHub issue forceRefresh must be a boolean.")
+  } as unknown as TInput;
 }
 
 function requireSearchInput(input: unknown): SearchInput {
@@ -583,6 +868,91 @@ function requireTrimmedText(value: unknown, message: string): string {
   }
 
   return value.trim();
+}
+
+function requirePositiveInteger(value: unknown, message: string): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+    throw new Error(message);
+  }
+  return value;
+}
+
+function optionalPositiveInteger(value: unknown, message: string): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  return requirePositiveInteger(value, message);
+}
+
+function optionalText(value: unknown, message: string): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "string") {
+    throw new Error(message);
+  }
+  return value;
+}
+
+function optionalNullableText(value: unknown, message: string): string | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return null;
+  }
+  if (typeof value !== "string") {
+    throw new Error(message);
+  }
+  return value;
+}
+
+function optionalBoolean(value: unknown, message: string): boolean | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "boolean") {
+    throw new Error(message);
+  }
+  return value;
+}
+
+function optionalKnownValue<TValue extends string>(
+  value: unknown,
+  message: string,
+  supportedValues: readonly TValue[]
+): TValue | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "string" || !supportedValues.includes(value as TValue)) {
+    throw new Error(message);
+  }
+  return value as TValue;
+}
+
+function setOptional(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>,
+  key: string,
+  parse: (value: unknown) => unknown
+): void {
+  if (source[key] !== undefined) {
+    target[key] = parse(source[key]);
+  }
+}
+
+function optionalCursor(value: unknown): string | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return null;
+  }
+  if (typeof value !== "string") {
+    throw new Error("GitHub pull request cursor must be a string or null.");
+  }
+  return value;
 }
 
 function optionalTrimmedText(value: unknown): string | null {

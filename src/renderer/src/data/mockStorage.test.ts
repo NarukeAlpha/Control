@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { readMockArray, readMockStorageValue, writeMockArray, writeMockStorageValue } from "./mockStorage";
+import {
+  clearMockStorage,
+  readMockArray,
+  readMockStorageValue,
+  writeMockArray,
+  writeMockStorageValue
+} from "./mockStorage";
 
 const originalLocalStorageDescriptor = Object.getOwnPropertyDescriptor(window, "localStorage");
 
@@ -25,6 +31,14 @@ describe("mockStorage", () => {
     expect(writeMockArray("items", ["one", "two"])).toEqual({ ok: true });
 
     expect(readMockArray<string>("items")).toEqual(["one", "two"]);
+  });
+
+  it("clears storage through the mock adapter", () => {
+    expect(writeMockArray("items", ["one", "two"])).toEqual({ ok: true });
+
+    expect(clearMockStorage()).toEqual({ ok: true });
+
+    expect(readMockArray<string>("items")).toEqual([]);
   });
 
   it("returns fresh fallback factory values", () => {
@@ -69,6 +83,7 @@ describe("mockStorage", () => {
     });
 
     expect(writeMockStorageValue("blocked", ["value"]).ok).toBe(false);
+    expect(clearMockStorage().ok).toBe(false);
 
     const storage = {
       getItem: vi.fn(() => null),
@@ -76,13 +91,16 @@ describe("mockStorage", () => {
         throw new Error("write failed");
       }),
       removeItem: vi.fn(),
-      clear: vi.fn(),
+      clear: vi.fn(() => {
+        throw new Error("clear failed");
+      }),
       key: vi.fn(),
       length: 0
     } satisfies Storage;
     Object.defineProperty(window, "localStorage", { configurable: true, value: storage });
 
     expect(writeMockStorageValue("write-fails", ["value"]).ok).toBe(false);
+    expect(clearMockStorage().ok).toBe(false);
 
     storage.setItem.mockImplementation(() => {
       throw new DOMException("Quota exceeded", "QuotaExceededError");

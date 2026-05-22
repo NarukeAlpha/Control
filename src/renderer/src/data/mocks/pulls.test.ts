@@ -1,15 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { mockPullRequests, mutateMockPullRequests, readMockPullRequests } from "./pulls";
+import { installMockDomainTestCleanup } from "./testCleanup";
 
 describe("pull request mocks", () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-  });
+  installMockDomainTestCleanup();
 
   it("creates pull requests through the persisted pull domain", () => {
     vi.useFakeTimers();

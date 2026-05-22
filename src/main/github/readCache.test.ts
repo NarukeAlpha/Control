@@ -146,7 +146,57 @@ describe("GitHubReadCache", () => {
       cache.listRepositoriesWithStatus({ forceRefresh: true }, dependencies(store, { refreshLive }))
     ).resolves.toEqual({
       items: [repository],
-      availability: { status: "available", message: null }
+      availability: {
+        status: "stale",
+        message:
+          "Showing cached repository data because GitHub refresh failed with error: GitHub is unavailable."
+      }
+    });
+  });
+
+  it("preserves stale metadata when a rate-limited live refresh falls back to rows", async () => {
+    const repository = repositorySummary("NarukeAlpha/stale");
+    const store = createStore({
+      repositoryRows: { items: [repository], syncedAt: "2020-01-01T00:00:00.000Z" }
+    });
+    const refreshLive = vi.fn(
+      async (): Promise<RepositoryListResult> => ({
+        items: [],
+        availability: { status: "rate_limited", message: "Retry after 60 seconds." }
+      })
+    );
+    const cache = new GitHubReadCache();
+
+    await expect(
+      cache.listRepositoriesWithStatus({ forceRefresh: true }, dependencies(store, { refreshLive }))
+    ).resolves.toEqual({
+      items: [repository],
+      availability: {
+        status: "stale",
+        message:
+          "Showing cached repository data because GitHub refresh failed with rate_limited: Retry after 60 seconds."
+      }
+    });
+  });
+
+  it("preserves stale metadata when an offline refresh throws and cached rows exist", async () => {
+    const repository = repositorySummary("NarukeAlpha/stale");
+    const store = createStore({
+      repositoryRows: { items: [repository], syncedAt: "2020-01-01T00:00:00.000Z" }
+    });
+    const refreshLive = vi.fn(async () => {
+      throw new Error("Network offline.");
+    });
+    const cache = new GitHubReadCache();
+
+    await expect(
+      cache.listRepositoriesWithStatus({ forceRefresh: true }, dependencies(store, { refreshLive }))
+    ).resolves.toEqual({
+      items: [repository],
+      availability: {
+        status: "stale",
+        message: "Showing cached repository data because GitHub refresh failed with error: Network offline."
+      }
     });
   });
 
@@ -304,7 +354,10 @@ describe("GitHubReadCache", () => {
     await expect(cache.listRepositoriesWithStatus({}, dependencies(store, { refreshLive }))).resolves.toEqual(
       {
         items: [staleRepository],
-        availability: { status: "available", message: null }
+        availability: {
+          status: "stale",
+          message: "Showing cached repository data while Control refreshes it from GitHub."
+        }
       }
     );
 

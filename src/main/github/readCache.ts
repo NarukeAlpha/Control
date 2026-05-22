@@ -64,11 +64,15 @@ export class GitHubReadCache {
     if (cached.items.length > 0) {
       if (repositoryCacheIsFresh(cached, dependencies.ttlMs)) {
         dependencies.log("repository list status cache hit", { count: cached.items.length });
+        return { items: cached.items, availability: repositoryStatusAvailability };
       } else {
         dependencies.log("repository list status stale hit", { count: cached.items.length });
         this.refreshInBackground(() => this.refreshRepositoriesWithStatus(input, dependencies));
+        return repositoryStatusStaleRows(
+          cached.items,
+          "Showing cached repository data while Control refreshes it from GitHub."
+        );
       }
-      return { items: cached.items, availability: repositoryStatusAvailability };
     }
 
     if (cachedResult) {
@@ -77,12 +81,16 @@ export class GitHubReadCache {
           count: cachedResult.payload.items.length
         });
         this.refreshInBackground(() => this.refreshRepositoriesWithStatus(input, dependencies));
+        return repositoryStatusStaleResult(
+          cachedResult.payload,
+          "Showing cached repository data while Control refreshes it from GitHub."
+        );
       } else {
         dependencies.log("repository list status cache result", {
           count: cachedResult.payload.items.length
         });
+        return cachedResult.payload;
       }
-      return cachedResult.payload;
     }
 
     if (cachedNegativeResult && !cachedNegativeResult.isExpired) {
@@ -303,7 +311,10 @@ function staleRepositoryStatusFallback(
       count: cached.items.length,
       status: liveResult.availability.status
     });
-    return { items: cached.items, availability: repositoryStatusAvailability };
+    return repositoryStatusStaleRows(
+      cached.items,
+      repositoryStatusStaleFallbackMessage(liveResult.availability)
+    );
   }
 
   if (cachedResult) {
@@ -311,10 +322,44 @@ function staleRepositoryStatusFallback(
       count: cachedResult.payload.items.length,
       status: liveResult.availability.status
     });
-    return cachedResult.payload;
+    return repositoryStatusStaleResult(
+      cachedResult.payload,
+      repositoryStatusStaleFallbackMessage(liveResult.availability)
+    );
   }
 
   return liveResult;
+}
+
+function repositoryStatusStaleRows(items: RepositorySummary[], message: string): RepositoryListResult {
+  return {
+    items,
+    availability: {
+      status: "stale",
+      message
+    }
+  };
+}
+
+function repositoryStatusStaleResult(result: RepositoryListResult, message: string): RepositoryListResult {
+  return {
+    ...result,
+    availability: {
+      status: "stale",
+      message
+    }
+  };
+}
+
+function repositoryStatusStaleFallbackMessage(availability: GitHubReadAvailability): string {
+  const reason = availability.message
+    ? `${availability.status}: ${availability.message}`
+    : availability.status;
+  return `Showing cached repository data because GitHub refresh failed with ${trimTerminalPeriod(reason)}.`;
+}
+
+function trimTerminalPeriod(value: string): string {
+  return value.endsWith(".") ? value.slice(0, -1) : value;
 }
 
 function isPermanentNotFound(availability: GitHubReadAvailability): boolean {

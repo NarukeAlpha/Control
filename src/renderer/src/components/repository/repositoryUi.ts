@@ -49,13 +49,15 @@ export function readAvailabilityMessage(
       ? `${feature} is disabled or not enabled for this repository.`
       : availability.status === "not_loaded"
         ? `${feature} was not loaded.`
-        : availability.status === "permission_denied"
-          ? `The current GitHub token cannot access ${feature.toLowerCase()}.`
-          : availability.status === "rate_limited"
-            ? `GitHub rate-limited the ${feature.toLowerCase()} request.`
-            : availability.status === "graphql_error"
-              ? `GitHub returned a GraphQL error for ${feature.toLowerCase()}.`
-              : `${feature} could not be loaded.`;
+        : availability.status === "stale"
+          ? `${feature} is showing cached data.`
+          : availability.status === "permission_denied"
+            ? `The current GitHub token cannot access ${feature.toLowerCase()}.`
+            : availability.status === "rate_limited"
+              ? `GitHub rate-limited the ${feature.toLowerCase()} request.`
+              : availability.status === "graphql_error"
+                ? `GitHub returned a GraphQL error for ${feature.toLowerCase()}.`
+                : `${feature} could not be loaded.`;
 
   return availability.message ? `${reason} ${availability.message}` : reason;
 }
@@ -70,6 +72,9 @@ export function readAvailabilityStatusLabel(availability: GitHubReadAvailability
   }
   if (availability.status === "not_loaded") {
     return "not loaded";
+  }
+  if (availability.status === "stale") {
+    return "stale";
   }
   if (availability.status === "permission_denied") {
     return "no access";

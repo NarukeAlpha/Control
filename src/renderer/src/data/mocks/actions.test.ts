@@ -1,15 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { mockActions, mockWorkflows, mutateMockWorkflowRuns, readMockWorkflowRuns } from "./actions";
+import { installMockDomainTestCleanup } from "./testCleanup";
 
 describe("action mocks", () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-  });
+  installMockDomainTestCleanup();
 
   it("dispatches workflow runs through the persisted actions domain", () => {
     vi.useFakeTimers();

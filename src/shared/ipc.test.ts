@@ -1,6 +1,19 @@
 import { describe, expect, it } from "vitest";
 
-import { githubActions, type GitHubAction, type GitHubMutationInput } from "./github";
+import {
+  githubActions,
+  type GitHubAction,
+  type GitHubMutationInput,
+  type GitHubPageInfo,
+  type GitHubReadAvailability,
+  type PullRequestChecksInput,
+  type PullRequestChecksResult,
+  type PullRequestCommentsInput,
+  type PullRequestCommentsResult,
+  type PullRequestFilesResult,
+  type PullRequestOverviewResult,
+  type PullRequestReviewThreadsResult
+} from "./github";
 import { githubIpcRouteChannels, ipcChannels, type GitHubIpcApi, type JsonSerializable } from "./ipc";
 
 type Equal<TLeft, TRight> =
@@ -44,6 +57,38 @@ type _GitHubIpcResultIsJsonSerializable = Expect<
     true
   >
 >;
+type _PullRequestCommentsInputCarriesPagination = Expect<
+  Equal<PullRequestCommentsInput extends { limit?: number; cursor?: string | null } ? true : false, true>
+>;
+type _PullRequestChecksInputOmitsPagination = Expect<
+  Equal<"cursor" extends keyof PullRequestChecksInput ? true : false, false>
+>;
+type _PullRequestPagedResultCarriesPageInfo = Expect<
+  Equal<PullRequestFilesResult extends { pageInfo?: GitHubPageInfo | null } ? true : false, true>
+>;
+type _PullRequestChecksResultOmitsPageInfo = Expect<
+  Equal<"pageInfo" extends keyof PullRequestChecksResult ? true : false, false>
+>;
+type _PullRequestReviewThreadsExposeStateAvailability = Expect<
+  Equal<
+    PullRequestReviewThreadsResult extends { statesAvailability: GitHubReadAvailability } ? true : false,
+    true
+  >
+>;
+type _PullRequestSubresourceResultsAreJsonSerializable = Expect<
+  Equal<
+    JsonSerializable<
+      | PullRequestOverviewResult
+      | PullRequestCommentsResult
+      | PullRequestFilesResult
+      | PullRequestChecksResult
+      | PullRequestReviewThreadsResult
+    > extends never
+      ? false
+      : true,
+    true
+  >
+>;
 
 const githubIpcRouteKeys = {
   getViewer: true,
@@ -81,6 +126,15 @@ const githubIpcRouteKeys = {
   getIssueDetailWithStatus: true,
   listPullRequestsWithStatus: true,
   getPullRequestDetailWithStatus: true,
+  getPullRequestOverviewWithStatus: true,
+  listPullRequestCommentsWithStatus: true,
+  listPullRequestFilesWithStatus: true,
+  listPullRequestCommitsWithStatus: true,
+  listPullRequestReviewsWithStatus: true,
+  listPullRequestChecksWithStatus: true,
+  listPullRequestReviewThreadsWithStatus: true,
+  listPullRequestTimelineWithStatus: true,
+  listPullRequestLinkedIssuesWithStatus: true,
   listDiscussionsWithStatus: true,
   listDiscussionCategoriesWithStatus: true,
   getDiscussionDetail: true,
@@ -145,6 +199,15 @@ describe("GitHubIpcApi route map", () => {
       getIssueDetailWithStatus: ipcChannels.githubIssueDetailWithStatus,
       listPullRequestsWithStatus: ipcChannels.githubPullRequestsWithStatus,
       getPullRequestDetailWithStatus: ipcChannels.githubPullRequestDetailWithStatus,
+      getPullRequestOverviewWithStatus: ipcChannels.githubPullRequestOverviewWithStatus,
+      listPullRequestCommentsWithStatus: ipcChannels.githubPullRequestCommentsWithStatus,
+      listPullRequestFilesWithStatus: ipcChannels.githubPullRequestFilesWithStatus,
+      listPullRequestCommitsWithStatus: ipcChannels.githubPullRequestCommitsWithStatus,
+      listPullRequestReviewsWithStatus: ipcChannels.githubPullRequestReviewsWithStatus,
+      listPullRequestChecksWithStatus: ipcChannels.githubPullRequestChecksWithStatus,
+      listPullRequestReviewThreadsWithStatus: ipcChannels.githubPullRequestReviewThreadsWithStatus,
+      listPullRequestTimelineWithStatus: ipcChannels.githubPullRequestTimelineWithStatus,
+      listPullRequestLinkedIssuesWithStatus: ipcChannels.githubPullRequestLinkedIssuesWithStatus,
       listDiscussionsWithStatus: ipcChannels.githubDiscussionsWithStatus,
       listDiscussionCategoriesWithStatus: ipcChannels.githubDiscussionCategoriesWithStatus,
       getDiscussionDetail: ipcChannels.githubDiscussionDetail,

@@ -1,6 +1,6 @@
 import { ExternalLink, Search } from "lucide-react";
-import { useMemo, useState, type JSX } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { Component, useMemo, useState, type ErrorInfo, type JSX, type ReactNode } from "react";
+import { useQuery, type QueryClient } from "@tanstack/react-query";
 
 import type {
   AccountProfileResult,
@@ -38,7 +38,124 @@ export interface ContributorsTabProps {
   onExpandContributors(): void;
 }
 
-export function ContributorsTab({
+export interface ContributorsTabPrefetchInput {
+  api: ReturnType<typeof useControlApi>;
+  githubReady: boolean;
+  contributors: ContributorSummary[];
+  focusedContributorLogin: string | null;
+  profileRepositoryLimit?: number;
+}
+
+interface ContributorsTabLocalState {
+  filter: string;
+  selectedContributorLogin: string | null;
+  profileRepositoryLimits: Record<string, number>;
+}
+
+const contributorsTabState = new Map<string, ContributorsTabLocalState>();
+
+export function clearContributorsTabStateForTests(): void {
+  contributorsTabState.clear();
+}
+
+function contributorsTabStateKey(
+  repository: RepositoryDetail,
+  focusedContributorLogin: string | null
+): string {
+  return `${repository.nameWithOwner}:${focusedContributorLogin ?? "default"}`;
+}
+
+function readContributorsTabState(key: string): ContributorsTabLocalState {
+  return (
+    contributorsTabState.get(key) ?? {
+      filter: "",
+      selectedContributorLogin: null,
+      profileRepositoryLimits: {}
+    }
+  );
+}
+
+function updateContributorsTabState(key: string, patch: Partial<ContributorsTabLocalState>): void {
+  contributorsTabState.set(key, {
+    ...readContributorsTabState(key),
+    ...patch
+  });
+}
+
+export async function prefetchContributorsTabData(
+  queryClient: QueryClient,
+  input: ContributorsTabPrefetchInput
+): Promise<void> {
+  const login = firstVisibleContributorLogin(input.contributors, input.focusedContributorLogin);
+  if (!login) {
+    return;
+  }
+
+  const repositoryLimit = input.profileRepositoryLimit ?? defaultContributorProfileRepositoryLimit;
+  await Promise.all([
+    queryClient.prefetchQuery({
+      queryKey: contributorProfileQueryKey(login),
+      queryFn: () =>
+        input.api.github.getAccountProfileWithStatus({
+          login,
+          cacheOnly: !input.githubReady
+        })
+    }),
+    queryClient.prefetchQuery({
+      queryKey: contributorRepositoriesQueryKey(login, repositoryLimit),
+      queryFn: () =>
+        input.api.github.listAccountRepositoriesWithStatus({
+          login,
+          limit: repositoryLimit,
+          cacheOnly: !input.githubReady
+        })
+    })
+  ]);
+}
+
+export function ContributorsTab({ repository, ...props }: ContributorsTabProps): JSX.Element {
+  const stateKey = contributorsTabStateKey(repository, props.focusedContributorLogin);
+  return (
+    <ContributorsTabBoundary resetKey={stateKey}>
+      <ContributorsTabContent key={stateKey} repository={repository} {...props} />
+    </ContributorsTabBoundary>
+  );
+}
+
+export class ContributorsTabBoundary extends Component<
+  { children: ReactNode; resetKey: string },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null };
+
+  static getDerivedStateFromError(error: Error): { error: Error } {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
+    console.error("Contributors tab crashed.", error, errorInfo);
+  }
+
+  componentDidUpdate(previousProps: { resetKey: string }): void {
+    if (this.state.error && previousProps.resetKey !== this.props.resetKey) {
+      this.setState({ error: null });
+    }
+  }
+
+  render(): ReactNode {
+    if (this.state.error) {
+      return (
+        <section className="table-panel github-surface">
+          <div className="error-state">Contributors unavailable: {this.state.error.message}</div>
+        </section>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+function ContributorsTabContent({
   repository,
   githubReady,
   contributors,
@@ -53,9 +170,30 @@ export function ContributorsTab({
   onExpandContributors
 }: ContributorsTabProps): JSX.Element {
   const api = useControlApi();
-  const [filter, setFilter] = useState("");
-  const [selectedContributorLogin, setSelectedContributorLogin] = useState<string | null>(null);
-  const [profileRepositoryLimits, setProfileRepositoryLimits] = useState<Record<string, number>>({});
+  const stateKey = contributorsTabStateKey(repository, focusedContributorLogin);
+  const initialState = readContributorsTabState(stateKey);
+  const [filter, setFilterValue] = useState(initialState.filter);
+  const [selectedContributorLogin, setSelectedContributorLoginValue] = useState<string | null>(
+    initialState.selectedContributorLogin
+  );
+  const [profileRepositoryLimits, setProfileRepositoryLimitsValue] = useState<Record<string, number>>(
+    initialState.profileRepositoryLimits
+  );
+
+  function setFilter(filterValue: string): void {
+    setFilterValue(filterValue);
+    updateContributorsTabState(stateKey, { filter: filterValue });
+  }
+
+  function setSelectedContributorLogin(login: string | null): void {
+    setSelectedContributorLoginValue(login);
+    updateContributorsTabState(stateKey, { selectedContributorLogin: login });
+  }
+
+  function setProfileRepositoryLimits(limits: Record<string, number>): void {
+    setProfileRepositoryLimitsValue(limits);
+    updateContributorsTabState(stateKey, { profileRepositoryLimits: limits });
+  }
   const filterParts = useMemo(() => normalizedSearchParts(filter), [filter]);
   const filteredContributors = useMemo(
     () =>
@@ -83,7 +221,7 @@ export function ContributorsTab({
     ? (profileRepositoryLimits[effectiveSelectedContributorLogin] ?? defaultContributorProfileRepositoryLimit)
     : defaultContributorProfileRepositoryLimit;
   const selectedProfile = useQuery<AccountProfileResult>({
-    queryKey: ["github-account-profile", effectiveSelectedContributorLogin],
+    queryKey: contributorProfileQueryKey(effectiveSelectedContributorLogin),
     queryFn: () =>
       api.github.getAccountProfileWithStatus({
         login: effectiveSelectedContributorLogin ?? undefined,
@@ -92,11 +230,10 @@ export function ContributorsTab({
     enabled: Boolean(effectiveSelectedContributorLogin)
   });
   const selectedRepositories = useQuery<AccountRepositoryListResult>({
-    queryKey: [
-      "github-account-repositories",
+    queryKey: contributorRepositoriesQueryKey(
       effectiveSelectedContributorLogin,
       selectedProfileRepositoryLimit
-    ],
+    ),
     queryFn: () =>
       api.github.listAccountRepositoriesWithStatus({
         login: effectiveSelectedContributorLogin ?? undefined,
@@ -133,14 +270,15 @@ export function ContributorsTab({
     if (!effectiveSelectedContributorLogin) {
       return;
     }
-    setProfileRepositoryLimits((limits) => {
-      const currentLimit =
-        limits[effectiveSelectedContributorLogin] ?? defaultContributorProfileRepositoryLimit;
-      if (currentLimit >= maxProfileRepositoryLimit) {
-        return limits;
-      }
-      const nextLimit = currentLimit < 50 ? 50 : maxProfileRepositoryLimit;
-      return { ...limits, [effectiveSelectedContributorLogin]: nextLimit };
+    const currentLimit =
+      profileRepositoryLimits[effectiveSelectedContributorLogin] ?? defaultContributorProfileRepositoryLimit;
+    if (currentLimit >= maxProfileRepositoryLimit) {
+      return;
+    }
+    const nextLimit = currentLimit < 50 ? 50 : maxProfileRepositoryLimit;
+    setProfileRepositoryLimits({
+      ...profileRepositoryLimits,
+      [effectiveSelectedContributorLogin]: nextLimit
     });
   }
 
@@ -382,4 +520,30 @@ export function ContributorsTab({
       )}
     </section>
   );
+}
+
+function firstVisibleContributorLogin(
+  contributors: ContributorSummary[],
+  focusedContributorLogin: string | null
+): string | null {
+  if (
+    focusedContributorLogin &&
+    contributors.some((contributor) => contributor.login === focusedContributorLogin)
+  ) {
+    return focusedContributorLogin;
+  }
+  return contributors[0]?.login ?? null;
+}
+
+function contributorProfileQueryKey(
+  login: string | null
+): readonly ["github-account-profile", string | null] {
+  return ["github-account-profile", login] as const;
+}
+
+function contributorRepositoriesQueryKey(
+  login: string | null,
+  limit: number
+): readonly ["github-account-repositories", string | null, number] {
+  return ["github-account-repositories", login, limit] as const;
 }

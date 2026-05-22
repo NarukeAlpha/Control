@@ -85,3 +85,17 @@ export function writeMockStorageValue(key: string, value: unknown): MockStorageW
 export function writeMockArray<T>(key: string, items: T[]): MockStorageWriteResult {
   return writeMockStorageValue(key, items);
 }
+
+export function clearMockStorage(): MockStorageWriteResult {
+  const storage = localStorageOrNull();
+  if (!storage) {
+    return { ok: false, error: new Error("localStorage is unavailable") };
+  }
+
+  try {
+    storage.clear();
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}

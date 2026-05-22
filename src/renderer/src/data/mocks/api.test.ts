@@ -1,11 +1,10 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { mockControlApi } from "./api";
+import { installMockDomainTestCleanup } from "./testCleanup";
 
 describe("mock control api", () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-  });
+  installMockDomainTestCleanup();
 
   it("returns matching data from repository list status adapters", async () => {
     const result = await mockControlApi.github.listRepositoriesWithStatus();

@@ -28,6 +28,6 @@ export function parseCacheJson<T>(value: string): { ok: true; value: T } | { ok:
   try {
     return { ok: true, value: JSON.parse(value) as T };
   } catch (cause) {
-    return { ok: false, cause };
+    return { ok: false, cause: new SerializationError("cache.payload", cause) };
   }
 }

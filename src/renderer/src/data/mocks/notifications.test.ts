@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   listMockNotifications,
@@ -7,15 +7,10 @@ import {
   mockNotificationsKey,
   unsubscribeMockNotification
 } from "./notifications";
+import { installMockDomainTestCleanup } from "./testCleanup";
 
 describe("notification mocks", () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-  });
+  installMockDomainTestCleanup();
 
   it("falls back to fixture notifications for absent or corrupt storage", () => {
     expect(listMockNotifications({ all: true })).toEqual(mockNotifications);

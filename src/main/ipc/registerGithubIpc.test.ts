@@ -111,14 +111,17 @@ describe("registerGithubIpc", () => {
         action: "createIssue",
         owner: " owner ",
         repo: " repo ",
-        title: "Flat issue",
-        payload: { title: "Issue" }
+        title: " Flat issue ",
+        body: "",
+        labels: [" bug "]
       })
     ).toEqual({
       action: "createIssue",
       owner: "owner",
       repo: "repo",
-      title: "Issue"
+      title: "Flat issue",
+      body: "",
+      labels: ["bug"]
     });
     expect(() => requireGitHubMutationInput(null)).toThrow("GitHub mutation input must be an object.");
     expect(() => requireGitHubMutationInput({ action: "createIssue", repo: "repo" })).toThrow(
@@ -144,8 +147,208 @@ describe("registerGithubIpc", () => {
         action: "createIssue",
         owner: "owner",
         repo: "repo",
+        payload: { title: "Issue" }
+      })
+    ).toThrow("GitHub mutation fields must be top-level.");
+    expect(() =>
+      requireGitHubMutationInput({
+        action: "createIssue",
+        owner: "owner",
+        repo: "repo",
+        body: "missing title"
+      })
+    ).toThrow("Issue creation requires a title.");
+    expect(() =>
+      requireGitHubMutationInput({
+        action: "createIssue",
+        owner: "owner",
+        repo: "repo",
         body: "x".repeat(128_001)
       })
     ).toThrow("GitHub mutation payload is too large.");
+  });
+
+  it("validates workflow mutation fields at the IPC seam", () => {
+    expect(
+      requireGitHubMutationInput({
+        action: "dispatchWorkflow",
+        owner: "owner",
+        repo: "repo",
+        workflowId: " build.yml ",
+        ref: " main ",
+        inputs: {
+          dryRun: false,
+          retries: 0,
+          note: ""
+        }
+      })
+    ).toEqual({
+      action: "dispatchWorkflow",
+      owner: "owner",
+      repo: "repo",
+      workflowId: "build.yml",
+      ref: "main",
+      inputs: {
+        dryRun: false,
+        retries: 0,
+        note: ""
+      }
+    });
+    expect(
+      requireGitHubMutationInput({
+        action: "rerunWorkflow",
+        owner: "owner",
+        repo: "repo",
+        runId: 123
+      })
+    ).toEqual({
+      action: "rerunWorkflow",
+      owner: "owner",
+      repo: "repo",
+      runId: 123
+    });
+
+    expect(() =>
+      requireGitHubMutationInput({
+        action: "dispatchWorkflow",
+        owner: "owner",
+        repo: "repo",
+        workflowId: "build.yml"
+      })
+    ).toThrow("Workflow dispatch requires a ref.");
+    expect(() =>
+      requireGitHubMutationInput({
+        action: "dispatchWorkflow",
+        owner: "owner",
+        repo: "repo",
+        payload: { workflowId: "build.yml", ref: "main" }
+      })
+    ).toThrow("GitHub mutation fields must be top-level.");
+    expect(() =>
+      requireGitHubMutationInput({
+        action: "dispatchWorkflow",
+        owner: "owner",
+        repo: "repo",
+        workflowId: "build.yml",
+        ref: "main",
+        inputs: new Date()
+      })
+    ).toThrow("Workflow dispatch inputs must be a JSON object.");
+    expect(() =>
+      requireGitHubMutationInput({
+        action: "rerunWorkflow",
+        owner: "owner",
+        repo: "repo",
+        runId: 0
+      })
+    ).toThrow("Workflow mutation runId must be a positive integer.");
+    expect(() =>
+      requireGitHubMutationInput({
+        action: "rerunWorkflowJob",
+        owner: "owner",
+        repo: "repo",
+        jobId: "123"
+      })
+    ).toThrow("Workflow mutation jobId must be a positive integer.");
+  });
+
+  it("validates non-workflow mutation domains without dropping falsey values", () => {
+    expect(
+      requireGitHubMutationInput({
+        action: "updateProjectV2Item",
+        owner: "owner",
+        repo: "repo",
+        projectId: " PVT_kw ",
+        itemId: " PVTI_kw ",
+        fieldId: " PVTSSF_kw ",
+        value: 0
+      })
+    ).toEqual({
+      action: "updateProjectV2Item",
+      owner: "owner",
+      repo: "repo",
+      projectId: "PVT_kw",
+      itemId: "PVTI_kw",
+      fieldId: "PVTSSF_kw",
+      value: 0
+    });
+    expect(
+      requireGitHubMutationInput({
+        action: "editWikiPage",
+        owner: "owner",
+        repo: "repo",
+        pagePath: " Home.md ",
+        content: ""
+      })
+    ).toEqual({
+      action: "editWikiPage",
+      owner: "owner",
+      repo: "repo",
+      pagePath: "Home.md",
+      content: ""
+    });
+    expect(
+      requireGitHubMutationInput({
+        action: "updateBranchProtection",
+        owner: "owner",
+        repo: "repo",
+        branch: " main ",
+        required_linear_history: false,
+        allow_force_pushes: false,
+        enforce_admins: null
+      })
+    ).toEqual({
+      action: "updateBranchProtection",
+      owner: "owner",
+      repo: "repo",
+      branch: "main",
+      required_linear_history: false,
+      allow_force_pushes: false,
+      enforce_admins: null
+    });
+
+    expect(() =>
+      requireGitHubMutationInput({
+        action: "mergePullRequest",
+        owner: "owner",
+        repo: "repo"
+      })
+    ).toThrow("Pull request mutation pullNumber must be a positive integer.");
+    expect(() =>
+      requireGitHubMutationInput({
+        action: "createRelease",
+        owner: "owner",
+        repo: "repo"
+      })
+    ).toThrow("Release creation requires a tag name.");
+    expect(() =>
+      requireGitHubMutationInput({
+        action: "updateCollaboratorPermission",
+        owner: "owner",
+        repo: "repo",
+        username: "octocat"
+      })
+    ).toThrow("Repository collaborator permission is required.");
+    expect(() =>
+      requireGitHubMutationInput({
+        action: "createDiscussion",
+        owner: "owner",
+        repo: "repo",
+        categoryId: "DIC_kw",
+        title: "Roadmap",
+        body: ""
+      })
+    ).toThrow("Discussion creation requires a body.");
+    expect(() =>
+      requireGitHubMutationInput({
+        action: "updateProjectV2Item",
+        owner: "owner",
+        repo: "repo",
+        projectId: "PVT_kw",
+        itemId: "PVTI_kw",
+        fieldId: "PVTSSF_kw",
+        value: new Date()
+      })
+    ).toThrow("Project item value must be JSON-safe.");
   });
 });

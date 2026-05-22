@@ -12,7 +12,15 @@ import type {
   LabelSummary,
   MilestoneSummary,
   PullRequestDetail,
-  PullRequestDetailResult,
+  PullRequestChecksResult,
+  PullRequestCommentsResult,
+  PullRequestCommitsResult,
+  PullRequestFilesResult,
+  PullRequestLinkedIssuesResult,
+  PullRequestOverviewResult,
+  PullRequestReviewsResult,
+  PullRequestReviewThreadsResult,
+  PullRequestTimelineResult,
   PullRequestCommitSummary,
   PullRequestLinkedIssueSummary,
   PullRequestReviewSummary,
@@ -47,6 +55,7 @@ type PullRequestLinkedIssue =
   | NonNullable<PullRequestTimelineEventSummary["sourceIssue"]>
   | PullRequestLinkedIssueSummary;
 const maxPullRequestListLimit = 100;
+const notLoadedAvailability: GitHubReadAvailability = { status: "not_loaded", message: null };
 
 function conversationCommentDisabledReason(
   repository: RepositoryDetail,
@@ -70,6 +79,154 @@ function githubNumericId(id: number | string): number | null {
     return Number(id);
   }
   return null;
+}
+
+function useComposedPullRequestDetail({
+  repository,
+  pullNumber,
+  githubReady,
+  enabled
+}: {
+  repository: RepositoryDetail;
+  pullNumber: number | null;
+  githubReady: boolean;
+  enabled: boolean;
+}): {
+  detail: PullRequestDetail | null;
+  availability: GitHubReadAvailability | null;
+  error: Error | null;
+  isLoading: boolean;
+  isFetching: boolean;
+} {
+  const api = useControlApi();
+  const detailInput = {
+    owner: repository.owner,
+    repo: repository.name,
+    pullNumber: pullNumber ?? 0,
+    cacheOnly: !githubReady
+  };
+  const queryEnabled = enabled && pullNumber !== null;
+  const overview = useQuery<PullRequestOverviewResult>({
+    queryKey: ["pull-detail", "overview", repository.owner, repository.name, pullNumber],
+    queryFn: () => api.github.getPullRequestOverviewWithStatus(detailInput),
+    enabled: queryEnabled
+  });
+  const comments = useQuery<PullRequestCommentsResult>({
+    queryKey: ["pull-detail", "comments", repository.owner, repository.name, pullNumber],
+    queryFn: () => api.github.listPullRequestCommentsWithStatus(detailInput),
+    enabled: queryEnabled
+  });
+  const files = useQuery<PullRequestFilesResult>({
+    queryKey: ["pull-detail", "files", repository.owner, repository.name, pullNumber],
+    queryFn: () => api.github.listPullRequestFilesWithStatus(detailInput),
+    enabled: queryEnabled
+  });
+  const commits = useQuery<PullRequestCommitsResult>({
+    queryKey: ["pull-detail", "commits", repository.owner, repository.name, pullNumber],
+    queryFn: () => api.github.listPullRequestCommitsWithStatus(detailInput),
+    enabled: queryEnabled
+  });
+  const reviews = useQuery<PullRequestReviewsResult>({
+    queryKey: ["pull-detail", "reviews", repository.owner, repository.name, pullNumber],
+    queryFn: () => api.github.listPullRequestReviewsWithStatus(detailInput),
+    enabled: queryEnabled
+  });
+  const checks = useQuery<PullRequestChecksResult>({
+    queryKey: ["pull-detail", "checks", repository.owner, repository.name, pullNumber],
+    queryFn: () => api.github.listPullRequestChecksWithStatus(detailInput),
+    enabled: queryEnabled
+  });
+  const reviewThreads = useQuery<PullRequestReviewThreadsResult>({
+    queryKey: ["pull-detail", "review-threads", repository.owner, repository.name, pullNumber],
+    queryFn: () => api.github.listPullRequestReviewThreadsWithStatus(detailInput),
+    enabled: queryEnabled
+  });
+  const timeline = useQuery<PullRequestTimelineResult>({
+    queryKey: ["pull-detail", "timeline", repository.owner, repository.name, pullNumber],
+    queryFn: () => api.github.listPullRequestTimelineWithStatus(detailInput),
+    enabled: queryEnabled
+  });
+  const linkedIssues = useQuery<PullRequestLinkedIssuesResult>({
+    queryKey: ["pull-detail", "linked-issues", repository.owner, repository.name, pullNumber],
+    queryFn: () => api.github.listPullRequestLinkedIssuesWithStatus(detailInput),
+    enabled: queryEnabled
+  });
+  const queries = [
+    overview,
+    comments,
+    files,
+    commits,
+    reviews,
+    checks,
+    reviewThreads,
+    timeline,
+    linkedIssues
+  ];
+
+  return {
+    detail: composePullRequestDetail({
+      overview: overview.data,
+      comments: comments.data,
+      files: files.data,
+      commits: commits.data,
+      reviews: reviews.data,
+      checks: checks.data,
+      reviewThreads: reviewThreads.data,
+      timeline: timeline.data,
+      linkedIssues: linkedIssues.data
+    }),
+    availability: overview.data?.availability ?? null,
+    error: queries.find((query) => query.error instanceof Error)?.error ?? null,
+    isLoading: queries.some((query) => query.isLoading),
+    isFetching: queries.some((query) => query.isFetching)
+  };
+}
+
+function composePullRequestDetail({
+  overview,
+  comments,
+  files,
+  commits,
+  reviews,
+  checks,
+  reviewThreads,
+  timeline,
+  linkedIssues
+}: {
+  overview: PullRequestOverviewResult | undefined;
+  comments: PullRequestCommentsResult | undefined;
+  files: PullRequestFilesResult | undefined;
+  commits: PullRequestCommitsResult | undefined;
+  reviews: PullRequestReviewsResult | undefined;
+  checks: PullRequestChecksResult | undefined;
+  reviewThreads: PullRequestReviewThreadsResult | undefined;
+  timeline: PullRequestTimelineResult | undefined;
+  linkedIssues: PullRequestLinkedIssuesResult | undefined;
+}): PullRequestDetail | null {
+  if (!overview?.overview) {
+    return null;
+  }
+
+  return {
+    ...overview.overview,
+    commentsList: comments?.items ?? [],
+    commentsAvailability: comments?.availability ?? notLoadedAvailability,
+    files: files?.items ?? [],
+    filesAvailability: files?.availability ?? notLoadedAvailability,
+    commitsList: commits?.items ?? [],
+    commitsAvailability: commits?.availability ?? notLoadedAvailability,
+    reviews: reviews?.items ?? [],
+    reviewsAvailability: reviews?.availability ?? notLoadedAvailability,
+    checks: checks?.items ?? [],
+    checksAvailability: checks?.availability ?? notLoadedAvailability,
+    reviewThreads: reviewThreads?.items ?? [],
+    reviewThreadsAvailability: reviewThreads?.availability ?? notLoadedAvailability,
+    reviewThreadStatesAvailability: reviewThreads?.statesAvailability ?? notLoadedAvailability,
+    timelineEvents: timeline?.items ?? [],
+    timelineAvailability: timeline?.availability ?? notLoadedAvailability,
+    linkedIssues: linkedIssues?.items ?? [],
+    linkedIssuesAvailability: linkedIssues?.availability ?? notLoadedAvailability
+  };
 }
 
 function commaSeparatedValues(value: string): string[] {
@@ -594,18 +751,13 @@ export function PullRequestsTab({
       : null) ?? (requestedPullNumber === null ? (filteredPulls[0] ?? null) : null);
   const selectedPullNumberForDetail = selectedPullFromList?.number ?? requestedPullNumber;
   const api = useControlApi();
-  const pullDetail = useQuery<PullRequestDetailResult>({
-    queryKey: ["pull-detail", repository.owner, repository.name, selectedPullNumberForDetail],
-    queryFn: () =>
-      api.github.getPullRequestDetailWithStatus({
-        owner: repository.owner,
-        repo: repository.name,
-        pullNumber: selectedPullNumberForDetail ?? 0,
-        cacheOnly: !githubReady
-      }),
-    enabled: !creating && selectedPullNumberForDetail !== null
+  const pullDetail = useComposedPullRequestDetail({
+    repository,
+    pullNumber: selectedPullNumberForDetail,
+    githubReady,
+    enabled: !creating
   });
-  const detail = pullDetail.data?.detail ?? null;
+  const detail = pullDetail.detail;
   const selectedPull = selectedPullFromList ?? detail;
   const selectedBaseBranchProtection = useQuery<BranchProtectionResult>({
     queryKey: ["branch-protection", repository.owner, repository.name, selectedPull?.baseRefName ?? "none"],
@@ -620,7 +772,7 @@ export function PullRequestsTab({
   });
   const pullDetailAvailabilityMessage = readAvailabilityMessage(
     "Pull request detail",
-    pullDetail.data?.availability ?? null
+    pullDetail.availability
   );
   const selectedPullForActions =
     selectedPull && detail

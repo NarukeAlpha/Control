@@ -11,7 +11,7 @@ import { GatewayManager } from "./areas/gatewayManager";
 import { registerAreaIpc } from "./areas/registerAreaIpc";
 import { createAppRuntime } from "./effect/appLayer";
 import { createEffectIpcBridge } from "./effect/ipcBridge";
-import { openExternalHttps } from "./externalLinks";
+import { denyAndOpenExternalHttps } from "./externalLinks";
 import { sendMainToRendererEvent } from "./ipc/events";
 import { registerControlIpc } from "./ipc/registerControlIpc";
 
@@ -61,12 +61,9 @@ function createWindow(): void {
     void mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
   }
 
-  mainWindow.webContents.setWindowOpenHandler(({ url }: { url: string }) => {
-    void openExternalHttps(url, shell).catch((error) => {
-      console.warn("Control blocked an external window-open URL.", error);
-    });
-    return { action: "deny" };
-  });
+  mainWindow.webContents.setWindowOpenHandler((request: { url: string }) =>
+    denyAndOpenExternalHttps(request, shell)
+  );
 
   mainWindow.webContents.once("did-finish-load", () => {
     applyLiquidGlass(mainWindow);

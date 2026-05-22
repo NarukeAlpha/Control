@@ -9,7 +9,16 @@ import type {
   OrganizationRepositoriesResult,
   OrganizationTeamMembersResult,
   OrganizationTeamsResult,
+  PullRequestChecksResult,
+  PullRequestCommentsResult,
+  PullRequestCommitsResult,
   PullRequestDetailResult,
+  PullRequestFilesResult,
+  PullRequestLinkedIssuesResult,
+  PullRequestOverviewResult,
+  PullRequestReviewsResult,
+  PullRequestReviewThreadsResult,
+  PullRequestTimelineResult,
   ReleaseListResult,
   RepositoryListResult,
   RepositorySearchResult,
@@ -442,6 +451,93 @@ export const mockControlApi: ControlApi = {
       detail:
         readMockPullRequests().find((item) => item.number === input.pullNumber) ??
         buildMockPullRequestDetail(mockPullRequests[0]),
+      availability: mockAvailable
+    }),
+    getPullRequestOverviewWithStatus: async (input): Promise<PullRequestOverviewResult> => {
+      const detail =
+        readMockPullRequests().find((item) => item.number === input.pullNumber) ??
+        buildMockPullRequestDetail(mockPullRequests[0]);
+      const {
+        commentsList: _commentsList,
+        commentsAvailability: _commentsAvailability,
+        files: _files,
+        filesAvailability: _filesAvailability,
+        commitsList: _commitsList,
+        commitsAvailability: _commitsAvailability,
+        reviews: _reviews,
+        reviewsAvailability: _reviewsAvailability,
+        checks: _checks,
+        checksAvailability: _checksAvailability,
+        reviewThreads: _reviewThreads,
+        reviewThreadsAvailability: _reviewThreadsAvailability,
+        reviewThreadStatesAvailability: _reviewThreadStatesAvailability,
+        timelineEvents: _timelineEvents,
+        timelineAvailability: _timelineAvailability,
+        linkedIssues: _linkedIssues,
+        linkedIssuesAvailability: _linkedIssuesAvailability,
+        ...overview
+      } = detail;
+      return {
+        overview,
+        availability: mockAvailable
+      };
+    },
+    listPullRequestCommentsWithStatus: async (input): Promise<PullRequestCommentsResult> => ({
+      items:
+        readMockPullRequests().find((item) => item.number === input.pullNumber)?.commentsList ??
+        buildMockPullRequestDetail(mockPullRequests[0]).commentsList,
+      availability: mockAvailable,
+      pageInfo: null
+    }),
+    listPullRequestFilesWithStatus: async (input): Promise<PullRequestFilesResult> => ({
+      items:
+        readMockPullRequests().find((item) => item.number === input.pullNumber)?.files ??
+        buildMockPullRequestDetail(mockPullRequests[0]).files,
+      availability: mockAvailable,
+      pageInfo: null
+    }),
+    listPullRequestCommitsWithStatus: async (input): Promise<PullRequestCommitsResult> => ({
+      items:
+        readMockPullRequests().find((item) => item.number === input.pullNumber)?.commitsList ??
+        buildMockPullRequestDetail(mockPullRequests[0]).commitsList,
+      availability: mockAvailable,
+      pageInfo: null
+    }),
+    listPullRequestReviewsWithStatus: async (input): Promise<PullRequestReviewsResult> => ({
+      items:
+        readMockPullRequests().find((item) => item.number === input.pullNumber)?.reviews ??
+        buildMockPullRequestDetail(mockPullRequests[0]).reviews,
+      availability: mockAvailable,
+      pageInfo: null
+    }),
+    listPullRequestChecksWithStatus: async (input): Promise<PullRequestChecksResult> => ({
+      items:
+        readMockPullRequests().find((item) => item.number === input.pullNumber)?.checks ??
+        buildMockPullRequestDetail(mockPullRequests[0]).checks,
+      availability: mockAvailable
+    }),
+    listPullRequestReviewThreadsWithStatus: async (input): Promise<PullRequestReviewThreadsResult> => {
+      const detail =
+        readMockPullRequests().find((item) => item.number === input.pullNumber) ??
+        buildMockPullRequestDetail(mockPullRequests[0]);
+      return {
+        items: detail.reviewThreads,
+        availability: mockAvailable,
+        statesAvailability: detail.reviewThreadStatesAvailability ?? mockAvailable,
+        pageInfo: null
+      };
+    },
+    listPullRequestTimelineWithStatus: async (input): Promise<PullRequestTimelineResult> => ({
+      items:
+        readMockPullRequests().find((item) => item.number === input.pullNumber)?.timelineEvents ??
+        buildMockPullRequestDetail(mockPullRequests[0]).timelineEvents,
+      availability: mockAvailable,
+      pageInfo: null
+    }),
+    listPullRequestLinkedIssuesWithStatus: async (input): Promise<PullRequestLinkedIssuesResult> => ({
+      items:
+        readMockPullRequests().find((item) => item.number === input.pullNumber)?.linkedIssues ??
+        buildMockPullRequestDetail(mockPullRequests[0]).linkedIssues,
       availability: mockAvailable
     }),
     listDiscussionsWithStatus: async (input) => ({

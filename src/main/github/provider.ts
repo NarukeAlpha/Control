@@ -68,12 +68,30 @@ import type {
   ProjectSummary,
   ProjectListResult,
   ProjectsInput,
+  PullRequestChecksInput,
+  PullRequestChecksResult,
+  PullRequestCommentsInput,
+  PullRequestCommentsResult,
+  PullRequestCommitsInput,
+  PullRequestCommitsResult,
   PullRequestDetail,
   PullRequestDetailInput,
   PullRequestDetailResult,
+  PullRequestFilesInput,
+  PullRequestFilesResult,
+  PullRequestLinkedIssuesInput,
+  PullRequestLinkedIssuesResult,
   PullRequestListInput,
   PullRequestListResult,
+  PullRequestOverviewInput,
+  PullRequestOverviewResult,
+  PullRequestReviewsInput,
+  PullRequestReviewsResult,
+  PullRequestReviewThreadsInput,
+  PullRequestReviewThreadsResult,
   PullRequestSummary,
+  PullRequestTimelineInput,
+  PullRequestTimelineResult,
   ReleaseSummary,
   ReleaseListResult,
   ReleasesInput,
@@ -151,7 +169,7 @@ const defaultGitHubOAuthClientId = "Ov23ctnQ2BrIJraiNh0c";
 
 const cacheTtlMs = {
   accountProfile: 120_000,
-  accountRepositories: 120_000,
+  accountRepositories: 600_000,
   organizationDirectory: 120_000,
   accountWork: 30_000,
   notifications: 15_000,
@@ -1328,6 +1346,99 @@ export class GitHubProviderManager implements GitHubProvider {
     );
   }
 
+  async getPullRequestOverviewWithStatus(
+    input: PullRequestOverviewInput
+  ): Promise<PullRequestOverviewResult> {
+    const key = `pull-overview-with-status:${input.owner}/${input.repo}:${input.pullNumber}`;
+    return this.withStatusCache(
+      key,
+      cacheTtlMs.pullDetail,
+      async () => (await this.provider()).getPullRequestOverviewWithStatus(input),
+      { overview: null },
+      { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
+    );
+  }
+
+  async listPullRequestCommentsWithStatus(
+    input: PullRequestCommentsInput
+  ): Promise<PullRequestCommentsResult> {
+    return this.withListStatusCache(
+      `pull-comments-with-status:${input.owner}/${input.repo}:${input.pullNumber}:${input.limit ?? "all"}:${input.cursor ?? ""}`,
+      cacheTtlMs.pullDetail,
+      async () => (await this.provider()).listPullRequestCommentsWithStatus(input),
+      { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
+    );
+  }
+
+  async listPullRequestFilesWithStatus(input: PullRequestFilesInput): Promise<PullRequestFilesResult> {
+    return this.withListStatusCache(
+      `pull-files-with-status:${input.owner}/${input.repo}:${input.pullNumber}:${input.limit ?? "all"}:${input.cursor ?? ""}`,
+      cacheTtlMs.pullDetail,
+      async () => (await this.provider()).listPullRequestFilesWithStatus(input),
+      { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
+    );
+  }
+
+  async listPullRequestCommitsWithStatus(input: PullRequestCommitsInput): Promise<PullRequestCommitsResult> {
+    return this.withListStatusCache(
+      `pull-commits-with-status:${input.owner}/${input.repo}:${input.pullNumber}:${input.limit ?? "all"}:${input.cursor ?? ""}`,
+      cacheTtlMs.pullDetail,
+      async () => (await this.provider()).listPullRequestCommitsWithStatus(input),
+      { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
+    );
+  }
+
+  async listPullRequestReviewsWithStatus(input: PullRequestReviewsInput): Promise<PullRequestReviewsResult> {
+    return this.withListStatusCache(
+      `pull-reviews-with-status:${input.owner}/${input.repo}:${input.pullNumber}:${input.limit ?? "all"}:${input.cursor ?? ""}`,
+      cacheTtlMs.pullDetail,
+      async () => (await this.provider()).listPullRequestReviewsWithStatus(input),
+      { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
+    );
+  }
+
+  async listPullRequestChecksWithStatus(input: PullRequestChecksInput): Promise<PullRequestChecksResult> {
+    return this.withListStatusCache(
+      `pull-checks-with-status:${input.owner}/${input.repo}:${input.pullNumber}`,
+      cacheTtlMs.pullDetail,
+      async () => (await this.provider()).listPullRequestChecksWithStatus(input),
+      { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
+    );
+  }
+
+  async listPullRequestReviewThreadsWithStatus(
+    input: PullRequestReviewThreadsInput
+  ): Promise<PullRequestReviewThreadsResult> {
+    return this.withListStatusCache(
+      `pull-review-threads-with-status:${input.owner}/${input.repo}:${input.pullNumber}:${input.limit ?? "all"}:${input.cursor ?? ""}`,
+      cacheTtlMs.pullDetail,
+      async () => (await this.provider()).listPullRequestReviewThreadsWithStatus(input),
+      { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
+    );
+  }
+
+  async listPullRequestTimelineWithStatus(
+    input: PullRequestTimelineInput
+  ): Promise<PullRequestTimelineResult> {
+    return this.withListStatusCache(
+      `pull-timeline-with-status:${input.owner}/${input.repo}:${input.pullNumber}:${input.limit ?? "all"}:${input.cursor ?? ""}`,
+      cacheTtlMs.pullDetail,
+      async () => (await this.provider()).listPullRequestTimelineWithStatus(input),
+      { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
+    );
+  }
+
+  async listPullRequestLinkedIssuesWithStatus(
+    input: PullRequestLinkedIssuesInput
+  ): Promise<PullRequestLinkedIssuesResult> {
+    return this.withListStatusCache(
+      `pull-linked-issues-with-status:${input.owner}/${input.repo}:${input.pullNumber}`,
+      cacheTtlMs.pullDetail,
+      async () => (await this.provider()).listPullRequestLinkedIssuesWithStatus(input),
+      { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
+    );
+  }
+
   async listDiscussions(input: DiscussionListInput): Promise<DiscussionSummary[]> {
     return this.withCache(
       `discussions:${input.owner}/${input.repo}:${input.limit ?? 30}`,
@@ -1756,6 +1867,15 @@ export class GitHubProviderManager implements GitHubProvider {
       `pulls-with-status:${scope}`,
       `pull-detail:${scope}`,
       `pull-detail-with-status:${scope}`,
+      `pull-overview-with-status:${scope}`,
+      `pull-comments-with-status:${scope}`,
+      `pull-files-with-status:${scope}`,
+      `pull-commits-with-status:${scope}`,
+      `pull-reviews-with-status:${scope}`,
+      `pull-checks-with-status:${scope}`,
+      `pull-review-threads-with-status:${scope}`,
+      `pull-timeline-with-status:${scope}`,
+      `pull-linked-issues-with-status:${scope}`,
       `discussions:${scope}`,
       `discussions-status:${scope}`,
       `discussion-categories-status:${scope}`,

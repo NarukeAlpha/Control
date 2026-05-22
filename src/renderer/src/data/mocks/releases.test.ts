@@ -1,15 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { mockReleases, mutateMockReleases, readMockReleases } from "./releases";
+import { installMockDomainTestCleanup } from "./testCleanup";
 
 describe("release mocks", () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-  });
+  installMockDomainTestCleanup();
 
   it("creates releases through the persisted release domain", () => {
     vi.useFakeTimers();

@@ -1,15 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { listMockIssues, mockIssues, mutateMockIssues, readMockIssues } from "./issues";
+import { installMockDomainTestCleanup } from "./testCleanup";
 
 describe("issue mocks", () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-  });
+  installMockDomainTestCleanup();
 
   it("creates issues through the persisted issue domain", () => {
     vi.useFakeTimers();

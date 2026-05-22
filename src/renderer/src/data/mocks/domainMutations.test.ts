@@ -1,19 +1,17 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { mutateMockWorkflowRuns, readMockWorkflowRuns } from "./actions";
 import { mutateMockIssues, readMockIssues } from "./issues";
 import { mutateMockPullRequests, readMockPullRequests } from "./pulls";
 import { mutateMockReleases, readMockReleases } from "./releases";
+import { installMockDomainTestCleanup } from "./testCleanup";
 
 describe("domain mutation mocks", () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-05-20T12:00:00.000Z"));
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
+  installMockDomainTestCleanup({
+    beforeEach: () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-05-20T12:00:00.000Z"));
+    }
   });
 
   it("creates issues through the issue mock storage path", () => {

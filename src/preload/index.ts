@@ -121,6 +121,24 @@ const controlApi: ControlApi = {
     listPullRequestsWithStatus: (input) => invoke(githubIpcRouteChannels.listPullRequestsWithStatus, input),
     getPullRequestDetailWithStatus: (input) =>
       invoke(githubIpcRouteChannels.getPullRequestDetailWithStatus, input),
+    getPullRequestOverviewWithStatus: (input) =>
+      invoke(githubIpcRouteChannels.getPullRequestOverviewWithStatus, input),
+    listPullRequestCommentsWithStatus: (input) =>
+      invoke(githubIpcRouteChannels.listPullRequestCommentsWithStatus, input),
+    listPullRequestFilesWithStatus: (input) =>
+      invoke(githubIpcRouteChannels.listPullRequestFilesWithStatus, input),
+    listPullRequestCommitsWithStatus: (input) =>
+      invoke(githubIpcRouteChannels.listPullRequestCommitsWithStatus, input),
+    listPullRequestReviewsWithStatus: (input) =>
+      invoke(githubIpcRouteChannels.listPullRequestReviewsWithStatus, input),
+    listPullRequestChecksWithStatus: (input) =>
+      invoke(githubIpcRouteChannels.listPullRequestChecksWithStatus, input),
+    listPullRequestReviewThreadsWithStatus: (input) =>
+      invoke(githubIpcRouteChannels.listPullRequestReviewThreadsWithStatus, input),
+    listPullRequestTimelineWithStatus: (input) =>
+      invoke(githubIpcRouteChannels.listPullRequestTimelineWithStatus, input),
+    listPullRequestLinkedIssuesWithStatus: (input) =>
+      invoke(githubIpcRouteChannels.listPullRequestLinkedIssuesWithStatus, input),
     listDiscussionsWithStatus: (input) => invoke(githubIpcRouteChannels.listDiscussionsWithStatus, input),
     listDiscussionCategoriesWithStatus: (input) =>
       invoke(githubIpcRouteChannels.listDiscussionCategoriesWithStatus, input),

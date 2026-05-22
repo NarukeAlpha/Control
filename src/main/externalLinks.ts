@@ -2,6 +2,18 @@ export interface ExternalLinkOpener {
   openExternal(url: string): Promise<void>;
 }
 
+export interface ExternalLinkLogger {
+  warn(message: string, error: unknown): void;
+}
+
+export interface ExternalWindowOpenRequest {
+  url: unknown;
+}
+
+export interface ExternalWindowOpenResult {
+  action: "deny";
+}
+
 export class ExternalLinkPolicyError extends Error {
   readonly code = "INVALID_EXTERNAL_URL";
 
@@ -36,4 +48,16 @@ export function requireExternalHttpsUrl(input: unknown): string {
 
 export async function openExternalHttps(input: unknown, opener: ExternalLinkOpener): Promise<void> {
   await opener.openExternal(requireExternalHttpsUrl(input));
+}
+
+export function denyAndOpenExternalHttps(
+  request: ExternalWindowOpenRequest,
+  opener: ExternalLinkOpener,
+  logger: ExternalLinkLogger = console
+): ExternalWindowOpenResult {
+  void openExternalHttps(request.url, opener).catch((error) => {
+    logger.warn("Control blocked an external window-open URL.", error);
+  });
+
+  return { action: "deny" };
 }

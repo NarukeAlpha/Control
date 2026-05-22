@@ -63,7 +63,10 @@ installControlTestCleanup();
 describe("Control renderer routing", () => {
   it("opens repositories from the sidebar pinned list", async () => {
     useUiStore.setState(defaultUiState);
-    renderControl(makeApi());
+    renderControl({
+      ...makeApi(),
+      listPinnedRepositories: async () => ["apple/swift"]
+    });
 
     await userEvent.click(await screen.findByRole("button", { name: /^apple\/swift/ }));
 
@@ -99,6 +102,30 @@ describe("Control renderer routing", () => {
         tab: "code"
       });
     });
+  });
+
+  it("does not advertise stale repository cache state on Home when cached rows are available", async () => {
+    useUiStore.setState(defaultUiState);
+    renderControl(
+      makeApi({
+        listRepositoriesWithStatus: async () => ({
+          items: mockRepositories,
+          availability: {
+            status: "stale",
+            message: "Showing cached repository data while Control refreshes it from GitHub."
+          }
+        })
+      })
+    );
+
+    const homeActivity = await screen.findByRole("heading", { name: "Latest repository activity" });
+    const homePanel = homeActivity.closest(".home-panel");
+    expect(homePanel).not.toBeNull();
+
+    expect(
+      await within(homePanel as HTMLElement).findByRole("button", { name: /apple\/swift/i })
+    ).toBeInTheDocument();
+    expect(within(homePanel as HTMLElement).queryByText(/showing cached data/i)).not.toBeInTheDocument();
   });
 
   it("opens repositories from the repositories surface", async () => {
@@ -611,6 +638,16 @@ describe("Control renderer routing", () => {
 
     const tabs = document.querySelector(".repo-tabs") as HTMLElement;
     await userEvent.click(within(tabs).getByRole("button", { name: /^Code$/ }));
+    await waitFor(() =>
+      expect(useUiStore.getState().route).toEqual({
+        kind: "localRepository",
+        areaId: localArea.id,
+        repositoryId: localJjRepository.id,
+        tab: "code",
+        workspaceId: null,
+        path: null
+      })
+    );
     await userEvent.click(await screen.findByRole("button", { name: /logo\.png/i }));
 
     await waitFor(() =>
@@ -621,9 +658,40 @@ describe("Control renderer routing", () => {
         path: "logo.png"
       })
     );
+    await waitFor(() =>
+      expect(useUiStore.getState().route).toEqual({
+        kind: "localRepository",
+        areaId: localArea.id,
+        repositoryId: localJjRepository.id,
+        tab: "code",
+        workspaceId: null,
+        path: "logo.png"
+      })
+    );
     expect(await screen.findByText("Binary file preview is unavailable.")).toBeInTheDocument();
 
+    await userEvent.click(within(tabs).getByRole("button", { name: /^Overview$/ }));
+    await waitFor(() =>
+      expect(useUiStore.getState().route).toEqual({
+        kind: "localRepository",
+        areaId: localArea.id,
+        repositoryId: localJjRepository.id,
+        tab: "overview",
+        workspaceId: null,
+        path: "logo.png"
+      })
+    );
     await userEvent.click(within(tabs).getByRole("button", { name: /^Code$/ }));
+    await waitFor(() =>
+      expect(useUiStore.getState().route).toEqual({
+        kind: "localRepository",
+        areaId: localArea.id,
+        repositoryId: localJjRepository.id,
+        tab: "code",
+        workspaceId: null,
+        path: "logo.png"
+      })
+    );
     await userEvent.click(await screen.findByRole("button", { name: /missing\.txt/i }));
     await waitFor(() =>
       expect(getFileContent).toHaveBeenCalledWith(
@@ -2441,8 +2509,8 @@ describe("Control renderer routing", () => {
     const getIssueDetailWithStatus = vi.fn<GitHubTestApi["getIssueDetailWithStatus"]>(
       mockControlApi.github.getIssueDetailWithStatus
     );
-    const getPullRequestDetailWithStatus = vi.fn<GitHubTestApi["getPullRequestDetailWithStatus"]>(
-      mockControlApi.github.getPullRequestDetailWithStatus
+    const getPullRequestOverviewWithStatus = vi.fn<GitHubTestApi["getPullRequestOverviewWithStatus"]>(
+      mockControlApi.github.getPullRequestOverviewWithStatus
     );
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
 
@@ -2450,7 +2518,7 @@ describe("Control renderer routing", () => {
       ...defaultUiState,
       route: { kind: "repository", nameWithOwner: "apple/swift", tab: "issues" }
     });
-    renderControl(makeApi({ mutate, getIssueDetailWithStatus, getPullRequestDetailWithStatus }));
+    renderControl(makeApi({ mutate, getIssueDetailWithStatus, getPullRequestOverviewWithStatus }));
 
     expect(await screen.findByText(/This issue reproduces/)).toBeInTheDocument();
     expect(getIssueDetailWithStatus).toHaveBeenCalledWith(
@@ -2482,7 +2550,7 @@ describe("Control renderer routing", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /^Pull requests/ }));
     expect(await screen.findByText(/This pull request updates/)).toBeInTheDocument();
-    expect(getPullRequestDetailWithStatus).toHaveBeenCalledWith({
+    expect(getPullRequestOverviewWithStatus).toHaveBeenCalledWith({
       owner: "apple",
       repo: "swift",
       pullNumber: mockPullRequests[0].number,
@@ -2692,6 +2760,12 @@ describe("Control renderer routing", () => {
 
   it("renders pull request reviews, timeline events, checks, commits, and changed files from rich PR detail", async () => {
     const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
+    const getPullRequestOverviewWithStatus = vi.fn<GitHubTestApi["getPullRequestOverviewWithStatus"]>(
+      mockControlApi.github.getPullRequestOverviewWithStatus
+    );
+    const listPullRequestFilesWithStatus = vi.fn<GitHubTestApi["listPullRequestFilesWithStatus"]>(
+      mockControlApi.github.listPullRequestFilesWithStatus
+    );
     const getPullRequestDetailWithStatus = vi.fn<GitHubTestApi["getPullRequestDetailWithStatus"]>(
       mockControlApi.github.getPullRequestDetailWithStatus
     );
@@ -2700,7 +2774,14 @@ describe("Control renderer routing", () => {
       ...defaultUiState,
       route: { kind: "repository", nameWithOwner: "apple/swift", tab: "pulls" }
     });
-    renderControl({ ...makeApi({ getPullRequestDetailWithStatus }), openExternal });
+    renderControl({
+      ...makeApi({
+        getPullRequestDetailWithStatus,
+        getPullRequestOverviewWithStatus,
+        listPullRequestFilesWithStatus
+      }),
+      openExternal
+    });
 
     expect(await screen.findByText("Add repository management controls")).toBeInTheDocument();
     expect(await screen.findByText("APPROVED by reviewer")).toBeInTheDocument();
@@ -2709,12 +2790,19 @@ describe("Control renderer routing", () => {
     expect(await screen.findByText("macOS build")).toBeInTheDocument();
     expect(screen.getByText(/All tests passed/)).toBeInTheDocument();
     expect((await screen.findAllByText("src/renderer/src/App.tsx")).length).toBeGreaterThan(0);
-    expect(getPullRequestDetailWithStatus).toHaveBeenCalledWith({
+    expect(getPullRequestOverviewWithStatus).toHaveBeenCalledWith({
       owner: "apple",
       repo: "swift",
       pullNumber: mockPullRequests[0].number,
       cacheOnly: false
     });
+    expect(listPullRequestFilesWithStatus).toHaveBeenCalledWith({
+      owner: "apple",
+      repo: "swift",
+      pullNumber: mockPullRequests[0].number,
+      cacheOnly: false
+    });
+    expect(getPullRequestDetailWithStatus).not.toHaveBeenCalled();
 
     const changedFilesPanel = screen.getByRole("heading", { name: "Changed files" }).closest("article");
     expect(changedFilesPanel).not.toBeNull();
@@ -2734,6 +2822,32 @@ describe("Control renderer routing", () => {
     expect(openExternal).toHaveBeenCalledWith(`${mockPullRequests[0].htmlUrl}/files#diff-app`);
   });
 
+  it("renders split pull request subresource availability without hiding the overview", async () => {
+    const listPullRequestChecksWithStatus = vi.fn<GitHubTestApi["listPullRequestChecksWithStatus"]>(
+      async () => ({
+        items: [],
+        availability: { status: "rate_limited", message: "Try again later." }
+      })
+    );
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "pulls" }
+    });
+    renderControl(makeApi({ listPullRequestChecksWithStatus }));
+
+    expect(await screen.findByText(/This pull request updates/)).toBeInTheDocument();
+    expect(
+      await screen.findByText("GitHub rate-limited the pull request checks request. Try again later.")
+    ).toBeInTheDocument();
+    expect(listPullRequestChecksWithStatus).toHaveBeenCalledWith({
+      owner: "apple",
+      repo: "swift",
+      pullNumber: mockPullRequests[0].number,
+      cacheOnly: false
+    });
+  });
+
   it("keeps the routed pull request selected when it is missing from the loaded pull list", async () => {
     const focusedPull = mockPullRequests[1];
     const largeFirstPull = {
@@ -2742,8 +2856,8 @@ describe("Control renderer routing", () => {
       changedFiles: 4096
     };
     const listPullRequests = vi.fn<GitHubTestApi["listPullRequests"]>(async () => [largeFirstPull]);
-    const getPullRequestDetailWithStatus = vi.fn<GitHubTestApi["getPullRequestDetailWithStatus"]>(
-      mockControlApi.github.getPullRequestDetailWithStatus
+    const getPullRequestOverviewWithStatus = vi.fn<GitHubTestApi["getPullRequestOverviewWithStatus"]>(
+      mockControlApi.github.getPullRequestOverviewWithStatus
     );
 
     useUiStore.setState({
@@ -2755,12 +2869,12 @@ describe("Control renderer routing", () => {
         pullNumber: focusedPull.number
       }
     });
-    renderControl(makeApi({ listPullRequests, getPullRequestDetailWithStatus }));
+    renderControl(makeApi({ listPullRequests, getPullRequestOverviewWithStatus }));
 
     expect(await screen.findByRole("heading", { name: focusedPull.title })).toBeInTheDocument();
     expect(screen.getByText(`${focusedPull.changedFiles} files changed`)).toBeInTheDocument();
     expect(screen.queryByText("4096 files changed")).not.toBeInTheDocument();
-    expect(getPullRequestDetailWithStatus).toHaveBeenCalledWith({
+    expect(getPullRequestOverviewWithStatus).toHaveBeenCalledWith({
       owner: "apple",
       repo: "swift",
       pullNumber: focusedPull.number,

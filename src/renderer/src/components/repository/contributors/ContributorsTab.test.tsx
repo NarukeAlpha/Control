@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type {
@@ -10,7 +10,13 @@ import type {
 } from "@shared/github";
 import type { ControlApi } from "@shared/ipc";
 import { mockRepository } from "../../../data/mocks/repository";
-import { ContributorsTab, type ContributorsTabProps } from "./ContributorsTab";
+import {
+  clearContributorsTabStateForTests,
+  ContributorsTab,
+  ContributorsTabBoundary,
+  prefetchContributorsTabData,
+  type ContributorsTabProps
+} from "./ContributorsTab";
 
 const available = { status: "available", message: null } satisfies GitHubReadAvailability;
 
@@ -116,6 +122,7 @@ function renderContributors(overrides: Partial<ContributorsTabProps> = {}): Cont
 
 afterEach(() => {
   delete (window as unknown as { control?: ControlApi }).control;
+  clearContributorsTabStateForTests();
 });
 
 describe("ContributorsTab", () => {
@@ -155,5 +162,62 @@ describe("ContributorsTab", () => {
       });
     });
     expect(props.onSelectContributor).toHaveBeenCalledWith(props.contributors[1]);
+  });
+
+  it("retains tab-local filter state across unmounts for the same repository focus", () => {
+    installControlApi();
+    const props = renderContributors();
+
+    fireEvent.change(screen.getByLabelText("Filter contributors"), { target: { value: "hubot" } });
+    expect(screen.queryByText("@octocat")).not.toBeInTheDocument();
+
+    cleanup();
+    renderContributors(props);
+
+    expect(screen.getByLabelText("Filter contributors")).toHaveValue("hubot");
+    expect(screen.queryByText("@octocat")).not.toBeInTheDocument();
+  });
+
+  it("contains render failures inside the contributors tab boundary", () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    function BrokenTab(): null {
+      throw new Error("Contributor panel crashed");
+    }
+
+    render(
+      <ContributorsTabBoundary resetKey="NarukeAlpha/control:default">
+        <BrokenTab />
+      </ContributorsTabBoundary>
+    );
+
+    expect(screen.getByText("Contributors unavailable: Contributor panel crashed")).toBeInTheDocument();
+    consoleError.mockRestore();
+  });
+
+  it("exports a pure prefetch function for shell-owned warm loading", async () => {
+    const api = installControlApi();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } }
+    });
+    const contributors = [makeContributor(), makeContributor({ id: 102, login: "hubot", contributions: 7 })];
+
+    await prefetchContributorsTabData(queryClient, {
+      api,
+      githubReady: false,
+      contributors,
+      focusedContributorLogin: "hubot",
+      profileRepositoryLimit: 20
+    });
+
+    expect(api.github.getAccountProfileWithStatus).toHaveBeenCalledWith({
+      login: "hubot",
+      cacheOnly: true
+    });
+    expect(api.github.listAccountRepositoriesWithStatus).toHaveBeenCalledWith({
+      login: "hubot",
+      limit: 20,
+      cacheOnly: true
+    });
   });
 });

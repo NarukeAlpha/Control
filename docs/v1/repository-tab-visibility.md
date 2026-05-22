@@ -13,6 +13,31 @@ configurable and data-aware.
 - Allow users to force-show optional tabs when they intentionally want access.
 - Avoid unnecessary fetches for tabs that are hidden.
 
+## Cleanup V2 Baseline
+
+cleanup-v2-gpt currently defines a static repository tab roster and a static
+warm-prefetch set. This document describes the next visibility layer on top of
+that baseline.
+
+Current implemented tab roster:
+
+- Code
+- Issues
+- Pull requests
+- Actions
+- Agents
+- Discussions
+- Projects
+- Releases
+- Contributors
+- Wiki
+- Security and Quality
+- Settings
+
+The static warm-prefetch set currently covers Code, Issues, Pull requests, and
+Actions. That is a reasonable default-fetch baseline, but it is not a visibility
+model.
+
 ## Default Tabs
 
 Every GitHub repository should show these tabs by default:
@@ -29,13 +54,14 @@ even when counts are zero or data is still loading.
 
 Secondary tabs should be configurable:
 
+- Agents
 - Discussions
 - Projects
 - Releases
-- Packages
-- Agents
-- Security
-- Insights or activity-oriented surfaces
+- Contributors
+- Wiki
+- Security and Quality
+- Settings
 
 An optional tab should be hidden by default when the repository has no valid data
 for that surface. For example:
@@ -44,6 +70,9 @@ for that surface. For example:
 - hide Projects when there are no visible projects
 - hide Releases when no releases exist
 - hide Agents when no agent data exists for that repository
+- hide Wiki when wiki is disabled or unavailable
+- hide Security and Quality when no supported security or quality data is
+  available
 
 The exact optional tab list should come from the current repository capabilities
 and Control's implemented surfaces, not from a hard-coded GitHub clone of every
@@ -72,6 +101,15 @@ Avoid using repeated failed fetches as the mechanism for deciding that a tab
 should be hidden. Capability and count data should be normalized into an
 intentional visibility model.
 
+The current static `repositoryWarmPrefetchTabs` set should remain the default
+for core tabs, but optional tab fetching should be driven by visibility:
+
+- `Auto` tabs can run lightweight capability/count checks
+- hidden tabs should not run full content queries
+- force-shown tabs can fetch their content even when empty
+- unavailable tabs should expose availability in the UI instead of retrying
+  aggressively
+
 ## Empty States
 
 If a user force-shows an optional tab that has no data, show a clear empty state
@@ -93,6 +131,9 @@ inside the tab. Do not hide the tab again while the user is actively viewing it.
 - User settings can force-show or hide optional tabs.
 - Hidden tabs do not trigger full tab-content refresh work.
 - Force-shown empty tabs render an intentional empty state.
+- The implemented roster matches Code, Issues, Pull requests, Actions, Agents,
+  Discussions, Projects, Releases, Contributors, Wiki, Security and Quality, and
+  Settings unless the product explicitly removes a tab.
 
 ## Validation
 

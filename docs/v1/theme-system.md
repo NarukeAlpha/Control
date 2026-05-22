@@ -14,6 +14,7 @@ configuration.
 - Keep the app visually coherent across repository, issue, PR, action, and code
   surfaces.
 - Avoid one-off component colors that cannot adapt to theme changes.
+- Keep theme settings compatible with Control's strict shared IPC contracts.
 
 ## Research First
 
@@ -53,6 +54,12 @@ Theme values should flow through CSS variables or the existing design system
 mechanism. Components should consume semantic tokens rather than hard-coded
 theme-specific values.
 
+Theme tokens shared across process boundaries should use explicit flat
+interfaces. Do not model shared theme tokens as loose dictionaries such as
+`Record<string, string>` or nested `Record<string, unknown>` payloads. If a
+token is configurable, name it in the shared type and keep its serialized value
+shape stable.
+
 ## User Controls
 
 The settings UI should expose a small number of choices:
@@ -65,6 +72,21 @@ The settings UI should expose a small number of choices:
 
 Avoid exposing dozens of raw color pickers in the first version. The goal is
 customization without making the app easy to visually break.
+
+Theme settings must be strictly `JsonSerializable` across IPC. Avoid loose
+settings payloads such as `Record<string, unknown>`, `unknown`, or optional
+opaque `payload` objects. Renderer settings, main-process settings, and shared
+settings types should agree on exact fields.
+
+Theme modes, preset names, density choices, and code-theme choices should be
+defined from runtime constant arrays:
+
+- define the allowed values with `as const`
+- derive the TypeScript literal union from the constant
+- use the same constant for validation and UI options
+
+This should match the cleanup-v2 pattern used for GitHub action and route
+literal unions instead of introducing unbounded string settings.
 
 ## Presets
 
@@ -93,6 +115,10 @@ Pay special attention to:
 - settings
 - empty and error states
 
+Settings persistence should keep theme config separate from CSS implementation
+details. Store a small typed theme preference object, then resolve it into CSS
+variables in the renderer.
+
 ## Out Of Scope
 
 - User-imported theme files.
@@ -112,6 +138,9 @@ Pay special attention to:
 
 - Light, dark, and system mode are supported.
 - Theme values are represented through shared tokens.
+- Shared theme tokens use explicit interfaces rather than loose dictionaries.
+- Theme settings are Json-serializable and validated through constant-derived
+  literal unions.
 - Core repository surfaces remain readable in every preset.
 - Code blocks and logs have intentional dark-mode styling.
 - Settings expose a small, coherent set of theme controls.
@@ -119,11 +148,14 @@ Pay special attention to:
 ## Validation
 
 Use screenshots during implementation to verify key surfaces in each preset.
+Add type-level tests for shared theme settings and IPC contracts using the
+existing `Expect<Equal<...>>` pattern from shared IPC tests. These tests should
+prove that renderer-facing theme settings remain compatible with
+`JsonSerializable` and do not drift from the shared contract.
 
 Required validation before closing implementation work:
 
+- `bun run test`
 - `bun run format`
 - `bun run lint`
 - `bun run typecheck`
-
-Run `bun run test` if theme logic or tested components change.

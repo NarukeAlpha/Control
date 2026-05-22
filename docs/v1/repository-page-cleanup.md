@@ -1,9 +1,10 @@
-# Repository Page Cleanup
+# Repository Page Cleanup And Modularization
 
-The repository page needs a focused cleanup pass before larger navigation and
-refresh work. This pass should remove duplicated information, fix spacing around
-the liquid search bar, and simplify repository actions that currently expose
-fallback naming or icons.
+The repository page cleanup is not only visual polish. cleanup-v2-gpt turns the
+old repository page into a more modular architecture, tightens shared IPC types,
+and breaks apart renderer mock data. The visual cleanup items still matter, but
+they should be documented alongside the architectural cleanup that makes the page
+maintainable.
 
 ## Goals
 
@@ -12,6 +13,24 @@ fallback naming or icons.
 - Keep the repository title clear of the liquid search bar.
 - Make GitHub actions visually direct and predictable.
 - Hide unfinished or broken repository controls until they are ready.
+- Split large repository surfaces into domain-specific tab components.
+- Keep repository data access on strict `*WithStatus` IPC routes.
+- Use shared result and mutation contracts instead of one-off renderer shapes.
+- Keep test and mock data modular by domain.
+
+## Cleanup V2 Baseline
+
+cleanup-v2-gpt changes the baseline in several important ways:
+
+- repository tabs are extracted into domain-specific modules instead of growing
+  the top-level app component
+- list reads are standardized around availability-bearing result shapes
+- mutations flow through strict shared discriminated input contracts
+- mock data is split by domain so tests do not depend on one monolithic data
+  file
+
+Future repository page cleanup should build on those boundaries rather than
+moving behavior back into a single component or loose mock object.
 
 ## Repository Header
 
@@ -58,10 +77,50 @@ as a broken user path.
 Blame can return in a later code-viewer pass after the product behavior is
 defined.
 
+## Component Split
+
+Repository UI changes should continue extracting cohesive tab and detail
+surfaces:
+
+- Code owns file tree, README, file content, and code-viewer state
+- Issues owns issue list, filters, preview, and detail context
+- Pull requests owns PR list, filters, preview, and detail context
+- Actions owns workflow runs, filters, run details, and log entry points
+- Releases, Discussions, Projects, Contributors, Wiki, Security and Quality,
+  Settings, and Agents own their own tab-specific state
+
+Shared layout primitives are fine, but tab-specific behavior should not be
+reintroduced into the app shell.
+
+## IPC And Strong Typing
+
+Repository cleanup should preserve strict shared contracts:
+
+- renderer reads use `*WithStatus` methods where availability matters
+- list data uses the shared availability-bearing list result shape
+- writes use discriminated mutation input unions
+- IPC payloads stay Json-serializable
+- provider metadata does not leak as loose renderer-only objects
+
+Avoid broad `unknown` payloads, generic mutation action strings, or local result
+interfaces that duplicate shared contracts.
+
+## Test And Mock Data
+
+Mock data should remain split by domain:
+
+- actions
+- issues
+- pull requests
+- releases
+- repository code
+- organizations and account surfaces
+
+Tests should import the smallest useful mock domain instead of depending on a
+single monolithic mock module.
+
 ## Out Of Scope
 
-- Implementing new repository tabs.
-- Reworking repository data fetching.
 - Adding a complete code viewer redesign.
 - Implementing blame.
 - Adding e2e tests.

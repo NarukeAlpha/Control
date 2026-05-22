@@ -13,6 +13,21 @@ and advanced diff viewing as deliberate follow-up decisions.
 - Hide broken blame behavior until it is implemented correctly.
 - Research a better diff viewer before committing to a custom implementation.
 
+## Cleanup V2 Baseline
+
+cleanup-v2-gpt already aligns with part of this plan:
+
+- file tree and path presentation have moved toward the Control visual system
+- markdown rendering is in better shape than the original raw-text path
+
+Two major gaps remain:
+
+- no syntax highlighting library or large-file highlighting fallback is wired in
+  yet
+- the blame path is still active through `getFileBlame` and `FileBlamePanel`
+
+Those gaps should be treated as implementation work, not as completed cleanup.
+
 ## File Rendering
 
 Opened code files should render with syntax highlighting based on filename or
@@ -49,7 +64,11 @@ Markdown rendering should not execute raw HTML.
 
 ## Blame
 
-The current blame path should be hidden if it is not correctly implemented.
+The current blame path should be hidden if it is not correctly implemented. In
+cleanup-v2-gpt, blame is still visible and still fetches through `getFileBlame`
+before rendering `FileBlamePanel`. That should be changed before this plan is
+considered complete.
+
 Known broken behavior, such as "no type blob for blame", should not remain
 visible as a normal user control.
 
@@ -97,7 +116,7 @@ The research outcome should recommend one of:
 - Large or unsupported files fall back to plain text predictably.
 - Markdown files render as formatted markdown when opened.
 - File tree and path UI match the Control visual system.
-- Broken blame controls are hidden.
+- Broken blame controls are hidden and inactive fetches are removed or gated.
 - Diff viewer direction is documented before implementation begins.
 
 ## Validation

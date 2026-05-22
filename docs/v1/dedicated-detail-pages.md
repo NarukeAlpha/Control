@@ -1,17 +1,31 @@
-# Dedicated Detail Pages
+# Dedicated Detail Surfaces
 
-Issues, pull requests, actions, agents, and releases need full detail pages
-instead of relying on cramped right-side panels. The right panel should become a
-preview surface, while opening an item should navigate to a dedicated page with
-the full conversation or operational detail.
+Issues, pull requests, actions, agents, and releases need dedicated detail
+surfaces instead of cramped right-side panels. In cleanup-v2-gpt, the v1
+architecture is repository-scoped split-pane tabs with contextual item
+parameters, not separate top-level routes. This document treats that split-pane
+architecture as the baseline and defines how it should grow.
 
 ## Goals
 
 - Increase usable space for item details.
 - Keep list browsing fast with lightweight previews.
 - Match the mental model users already have from GitHub detail pages.
-- Give each major repository object a durable route.
+- Give each major repository object a durable repository-scoped address.
 - Avoid forcing long conversations, logs, and review data into a narrow panel.
+- Build on the extracted tab modules instead of adding detail behavior back into
+  a monolithic app component.
+
+## Cleanup V2 Baseline
+
+The cleanup-v2-gpt branch extracts repository tabs into domain-specific modules
+such as IssuesTab, PullRequestsTab, ActionsTab, and related tab components. That
+module split is the baseline for this work.
+
+Do not re-centralize issue, pull request, action, release, or agent detail state
+inside the top-level app shell. Each tab should own its list/detail split,
+selection state, data dependencies, and empty/error states within the shared
+repository route contract.
 
 ## Preview Panel Behavior
 
@@ -29,7 +43,9 @@ full detail experience.
 
 ## Full Detail Pages
 
-Opening an item should navigate to a dedicated route:
+For v1, "dedicated" means a dedicated detail surface inside the repository tab,
+not a separate top-level application page. Opening an item should update the
+repository route context and show the tab's split-pane detail view:
 
 - issue detail page
 - pull request detail page
@@ -37,8 +53,9 @@ Opening an item should navigate to a dedicated route:
 - agent detail page
 - release detail page
 
-Each page should own the full-width reading and interaction experience for that
-object.
+Each detail surface should own the main reading and interaction experience for
+that object. A later release can promote these surfaces to full-width top-level
+routes if the split-pane model remains too constrained.
 
 ## Issue Pages
 
@@ -105,25 +122,33 @@ asset details.
 
 ## Routing Requirements
 
-Routes should be durable enough to reload and deep-link inside Control. If the
-user opens a detail page directly, Control should load the minimum required
-repository and item data rather than requiring prior list navigation.
+Routes should be durable enough to reload and deep-link inside Control. In v1,
+item identity should be represented as contextual parameters inside the
+repository route, such as `issueNumber`, `pullNumber`, workflow run id, release
+tag, or agent id.
+
+If the user opens a repository route with item context directly, Control should
+load the minimum required repository and item data rather than requiring prior
+list navigation. Do not assume the list query has already run before the detail
+query.
 
 ## Out Of Scope
 
 - Rebuilding every list view.
 - Implementing all write actions at once.
 - Completing advanced PR diff review.
+- Adding separate top-level routes for every item type in v1.
 - Adding e2e tests unless specifically requested.
 
 ## Acceptance Criteria
 
 - Selecting an item can still show a compact preview.
-- Opening an item navigates to a full detail page.
-- Detail pages can load from a direct route.
+- Opening an item updates repository-scoped item context.
+- Detail surfaces can load from a direct repository route with item context.
 - Issue, PR, action, agent, and release detail layouts are not constrained to
   the old right panel width.
 - Existing list navigation remains usable.
+- Detail logic lives in the extracted tab modules, not the top-level app shell.
 
 ## Validation
 

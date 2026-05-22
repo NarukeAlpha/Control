@@ -85,7 +85,7 @@ describe("registerAreaIpc", () => {
 
     expect(areaManager.getArea).toHaveBeenCalledWith("local:workspace");
 
-    expect(() => handler(ipcChannels.areasGet)(null, "   ")).toThrow(
+    await expect(handler(ipcChannels.areasGet)(null, "   ")).rejects.toThrow(
       "Area IPC input requires a non-empty string."
     );
     expect(areaManager.getArea).toHaveBeenCalledTimes(1);
@@ -205,13 +205,13 @@ describe("registerAreaIpc", () => {
       path: "README.md"
     });
 
-    expect(() =>
+    await expect(
       handler(ipcChannels.areaFileContent)(null, {
         areaId: "local",
         repositoryId: "repo",
         path: " "
       })
-    ).toThrow("Area IPC input requires a non-empty string.");
+    ).rejects.toThrow("Area IPC input requires a non-empty string.");
     expect(areaManager.getFileContent).toHaveBeenCalledTimes(1);
   });
 
@@ -247,12 +247,12 @@ describe("registerAreaIpc", () => {
       cacheOnly: true,
       forceRefresh: false
     });
-    expect(() =>
+    await expect(
       handler(ipcChannels.areaGitHubRepository)(null, {
         areaId: "local",
         repositoryId: " "
       })
-    ).toThrow("Area IPC input requires a non-empty string.");
+    ).rejects.toThrow("Area IPC input requires a non-empty string.");
     expect(areaManager.getGitHubRepository).toHaveBeenCalledTimes(1);
   });
 

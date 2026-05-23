@@ -3,14 +3,10 @@ import { useState, type JSX } from "react";
 import { useQuery, type QueryClient } from "@tanstack/react-query";
 
 import type {
-  AssignableUserSummary,
   GitHubAction,
   GitHubMutationFields,
-  GitHubReadAvailability,
   IssueListResult,
   IssueSummary,
-  LabelSummary,
-  MilestoneSummary,
   RepositoryDetail,
   TimelineCommentSummary
 } from "@shared/github";
@@ -196,25 +192,10 @@ function issueStateLabel(issue: IssueSummary): string {
 export function IssuesTab({
   repository,
   githubReady,
-  issues,
   issueListLimit,
-  availability,
   focusedIssueNumber,
   initialFilter,
   initialCreating,
-  labels,
-  labelsLoading,
-  labelsError,
-  labelsAvailability,
-  assignableUsers,
-  assignableUsersLoading,
-  assignableUsersError,
-  assignableUsersAvailability,
-  milestones,
-  milestonesLoading,
-  milestonesError,
-  milestonesAvailability,
-  loading,
   mutationAction,
   mutationPending,
   mutationSucceeded,
@@ -226,25 +207,10 @@ export function IssuesTab({
 }: {
   repository: RepositoryDetail;
   githubReady: boolean;
-  issues: IssueSummary[];
   issueListLimit: number;
-  availability: GitHubReadAvailability | null;
   focusedIssueNumber: number | null;
   initialFilter: string;
   initialCreating: boolean;
-  labels: LabelSummary[];
-  labelsLoading: boolean;
-  labelsError: Error | null;
-  labelsAvailability: GitHubReadAvailability | null;
-  assignableUsers: AssignableUserSummary[];
-  assignableUsersLoading: boolean;
-  assignableUsersError: Error | null;
-  assignableUsersAvailability: GitHubReadAvailability | null;
-  milestones: MilestoneSummary[];
-  milestonesLoading: boolean;
-  milestonesError: Error | null;
-  milestonesAvailability: GitHubReadAvailability | null;
-  loading: boolean;
   mutationAction: GitHubAction | null;
   mutationPending: boolean;
   mutationSucceeded: boolean;
@@ -274,6 +240,34 @@ export function IssuesTab({
   const [showAllIssueLabels, setShowAllIssueLabels] = useState(false);
   const [showAllIssueAssignableUsers, setShowAllIssueAssignableUsers] = useState(false);
   const [showAllIssueMilestones, setShowAllIssueMilestones] = useState(false);
+  const {
+    issues: issuesQuery,
+    labels: labelsQuery,
+    assignableUsers: assignableUsersQuery,
+    milestones: milestonesQuery,
+    labelItems: labels,
+    labelAvailability: labelsAvailability,
+    assignableUserItems: assignableUsers,
+    assignableUsersAvailability,
+    milestoneItems: milestones,
+    milestonesAvailability
+  } = useIssuesTabQueries({
+    owner: repository.owner,
+    repo: repository.name,
+    issueListLimit,
+    issuesEnabled: true,
+    resourcesEnabled: true,
+    githubReady
+  });
+  const issues = issuesQuery.data?.items ?? [];
+  const availability = issuesQuery.data?.availability ?? null;
+  const loading = issuesQuery.isLoading || issuesQuery.isFetching;
+  const labelsLoading = labelsQuery.isLoading || labelsQuery.isFetching;
+  const labelsError = labelsQuery.error;
+  const assignableUsersLoading = assignableUsersQuery.isLoading || assignableUsersQuery.isFetching;
+  const assignableUsersError = assignableUsersQuery.error;
+  const milestonesLoading = milestonesQuery.isLoading || milestonesQuery.isFetching;
+  const milestonesError = milestonesQuery.error;
   const labelsAvailabilityMessage = readAvailabilityMessage("Labels", labelsAvailability);
   const assignableUsersAvailabilityMessage = readAvailabilityMessage(
     "Assignable users",

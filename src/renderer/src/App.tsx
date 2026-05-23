@@ -2129,27 +2129,11 @@ export function App(): JSX.Element {
       isRepositoryRoute &&
       (shouldLoadRepositoryTab("issues") || activeRepositoryTab === "agents") &&
       hasRepositoryParts,
-    resourcesEnabled:
-      appState.isSuccess &&
-      isRepositoryRoute &&
-      (shouldLoadRepositoryTab("issues") || shouldLoadRepositoryTab("pulls")) &&
-      hasRepositoryParts,
+    resourcesEnabled: false,
     githubReady
   });
-  const {
-    issues,
-    labels,
-    assignableUsers,
-    milestones,
-    labelItems,
-    labelAvailability,
-    assignableUserItems,
-    assignableUsersAvailability,
-    milestoneItems,
-    milestonesAvailability
-  } = issueTabQueries;
+  const { issues } = issueTabQueries;
   const issueItems = issues.data?.items ?? [];
-  const issuesAvailability = issues.data?.availability ?? null;
 
   const { pulls } = usePullRequestsTabQueries({
     owner,
@@ -6315,19 +6299,6 @@ export function App(): JSX.Element {
                   issueListLimit={issueListLimit}
                   issuesLoading={issues.isLoading || issues.isFetching}
                   issuesError={issues.error}
-                  issuesAvailability={issuesAvailability}
-                  labels={labelItems}
-                  labelsLoading={labels.isLoading || labels.isFetching}
-                  labelsError={labels.error}
-                  labelsAvailability={labelAvailability}
-                  assignableUsers={assignableUserItems}
-                  assignableUsersLoading={assignableUsers.isLoading || assignableUsers.isFetching}
-                  assignableUsersError={assignableUsers.error}
-                  assignableUsersAvailability={assignableUsersAvailability}
-                  milestones={milestoneItems}
-                  milestonesLoading={milestones.isLoading || milestones.isFetching}
-                  milestonesError={milestones.error}
-                  milestonesAvailability={milestonesAvailability}
                   repositoryAccessLimit={repositoryAccessLimit}
                   forksLimit={forksLimit}
                   pulls={pullItems}

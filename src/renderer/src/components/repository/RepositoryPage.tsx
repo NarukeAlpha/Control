@@ -2,7 +2,6 @@ import { ChevronDown, ExternalLink, Eye, GitFork, Lock, Pin, RefreshCw, Star } f
 import type { JSX, ReactNode } from "react";
 
 import type {
-  AssignableUserSummary,
   BranchSummary,
   ContributorSummary,
   DiscussionSummary,
@@ -10,8 +9,6 @@ import type {
   GitHubMutationFields,
   GitHubReadAvailability,
   IssueSummary,
-  LabelSummary,
-  MilestoneSummary,
   ProjectSummary,
   PullRequestCommitSummary,
   PullRequestLinkedIssueSummary,
@@ -201,19 +198,6 @@ export function RepositoryPage({
   issueListLimit,
   issuesLoading,
   issuesError,
-  issuesAvailability,
-  labels,
-  labelsLoading,
-  labelsError,
-  labelsAvailability,
-  assignableUsers,
-  assignableUsersLoading,
-  assignableUsersError,
-  assignableUsersAvailability,
-  milestones,
-  milestonesLoading,
-  milestonesError,
-  milestonesAvailability,
   repositoryAccessLimit,
   forksLimit,
   pulls,
@@ -326,19 +310,6 @@ export function RepositoryPage({
   issueListLimit: number;
   issuesLoading: boolean;
   issuesError: Error | null;
-  issuesAvailability: GitHubReadAvailability | null;
-  labels: LabelSummary[];
-  labelsLoading: boolean;
-  labelsError: Error | null;
-  labelsAvailability: GitHubReadAvailability | null;
-  assignableUsers: AssignableUserSummary[];
-  assignableUsersLoading: boolean;
-  assignableUsersError: Error | null;
-  assignableUsersAvailability: GitHubReadAvailability | null;
-  milestones: MilestoneSummary[];
-  milestonesLoading: boolean;
-  milestonesError: Error | null;
-  milestonesAvailability: GitHubReadAvailability | null;
   repositoryAccessLimit: number;
   forksLimit: number;
   pulls: PullRequestSummary[];
@@ -774,25 +745,10 @@ export function RepositoryPage({
           key={`issues-${focusedIssueNumber ?? issueComposer ?? (issueFilter || "default")}`}
           repository={repo}
           githubReady={githubReady}
-          issues={issues}
           issueListLimit={issueListLimit}
-          availability={issuesAvailability}
           focusedIssueNumber={focusedIssueNumber}
           initialFilter={issueFilter}
           initialCreating={issueComposer === "create"}
-          labels={labels}
-          labelsLoading={labelsLoading}
-          labelsError={labelsError}
-          labelsAvailability={labelsAvailability}
-          assignableUsers={assignableUsers}
-          assignableUsersLoading={assignableUsersLoading}
-          assignableUsersError={assignableUsersError}
-          assignableUsersAvailability={assignableUsersAvailability}
-          milestones={milestones}
-          milestonesLoading={milestonesLoading}
-          milestonesError={milestonesError}
-          milestonesAvailability={milestonesAvailability}
-          loading={issuesLoading}
           mutationAction={mutationAction}
           mutationPending={mutationPending}
           mutationSucceeded={mutationSucceeded}

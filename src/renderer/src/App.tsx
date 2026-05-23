@@ -1,4 +1,3 @@
-import { Settings } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -16,27 +15,8 @@ import { RepositoriesRoute } from "./components/collection/RepositoriesRoute";
 import { MailboxRoute } from "./components/collection/MailboxRoute";
 import { OrganizationsRoute } from "./components/collection/OrganizationsRoute";
 import { useOrganizationsRouteState } from "./components/collection/useOrganizationsRouteState";
-import { CommandPalette, type CommandPaletteItem } from "./components/command-palette/CommandPalette";
-import {
-  appendAccountWorkCommandPaletteItems,
-  appendCurrentRepositoryCommandPaletteItems,
-  appendNotificationCommandPaletteItems,
-  appendOrganizationCommandPaletteItems,
-  appendPinnedRepositoryCommandPaletteItems,
-  appendRepositoryAdminCommandPaletteItems,
-  appendRepositoryContentCommandPaletteItems,
-  appendRepositoryReleaseCommandPaletteItems,
-  appendRepositorySecurityCommandPaletteItems,
-  appendRepositoryWorkflowCommandPaletteItems,
-  appendShellCommandPaletteItems,
-  cachedRepositoryAccess,
-  cachedRepositoryForks,
-  cachedRepositorySecurityCommandItems,
-  cachedWorkflowRunDetail,
-  appendRecentCommandPaletteItems,
-  appendRepositoryCommandPaletteItems,
-  cachedRepositoryWikiPages
-} from "./components/command-palette/commandPaletteItemBuilders";
+import { CommandPalette } from "./components/command-palette/CommandPalette";
+import { useCommandPaletteItems } from "./components/command-palette/useCommandPaletteItems";
 import { AddRepositoryDialog } from "./components/dialogs/AddRepositoryDialog";
 import { FileFinder } from "./components/file-finder/FileFinder";
 import { HomeDashboard } from "./components/home/HomeDashboard";
@@ -65,11 +45,7 @@ import {
 } from "./components/shell/appInvalidations";
 import { TopBar } from "./components/topbar/TopBar";
 
-import {
-  githubActionLabel,
-  readAvailabilityMessage,
-  repositoryMutationDisabledReason
-} from "./components/repository/repositoryUi";
+import { githubActionLabel, readAvailabilityMessage } from "./components/repository/repositoryUi";
 
 import { useAccountProfile } from "./hooks/useAccountProfile";
 import { useAccountWork } from "./hooks/useAccountWork";
@@ -88,10 +64,6 @@ import { useRepositorySurfaceLimits } from "./hooks/useRepositorySurfaceLimits";
 import { useRepositoryWarmPrefetch } from "./hooks/useRepositoryWarmPrefetch";
 import { useStoredRepositoryRefs } from "./hooks/useStoredRepositoryRefs";
 import { useUiStore, type AppRoute } from "./stores/uiStore";
-
-const commandPaletteGeneralSourceLimit = 50;
-const commandPaletteDenseSourceLimit = 30;
-const commandPaletteSecuritySourceLimit = 30;
 
 function routeTitle(route: AppRoute): string {
   switch (route.kind) {
@@ -604,275 +576,107 @@ export function App(): JSX.Element {
       await invalidateGitHubMutationQueries(queryClient, input);
     }
   });
-  const commandPaletteItems = (() => {
-    const repositoriesRefreshDisabledReason = repositories.isFetching
-      ? "Repositories are already refreshing."
-      : null;
-    const mailboxRefreshInFlight =
-      notifications.isFetching || accountIssues.isFetching || accountPulls.isFetching;
-    const mailboxRefreshDisabledReason = mailboxRefreshInFlight
-      ? "Mailbox data is already refreshing."
-      : null;
-    const loadedUnreadNotificationIds = notificationItems
-      .filter((notification) => notification.unread)
-      .map((notification) => notification.id);
-    const markLoadedNotificationsReadDisabledReason = markVisibleNotificationsRead.isPending
-      ? "Notifications are already being marked as read."
-      : !githubReady
-        ? "Sign in with GitHub to mark notifications as read."
-        : notifications.isLoading
-          ? "Notifications are still loading."
-          : loadedUnreadNotificationIds.length === 0
-            ? "No loaded unread notifications."
-            : null;
-    const organizationsRefreshDisabledReason = organizationsRouteState.refreshInFlight
-      ? "Organization data is already refreshing."
-      : null;
-
-    const items: CommandPaletteItem[] = [];
-    appendShellCommandPaletteItems(items, {
-      githubReady,
-      homeRefreshDisabledReason:
-        appState.isFetching || repositories.isFetching || accountProfile.isFetching
-          ? "Home data is already refreshing."
-          : null,
-      repositoriesRefreshDisabledReason,
-      organizationsRefreshDisabledReason,
-      mailboxRefreshDisabledReason,
-      markLoadedNotificationsReadDisabledReason,
-      onGoHome: goHome,
-      onOpenRepositories: goToRepositories,
-      onOpenAddRepository: () => setAddRepositoryOpen(true),
-      onRefreshHome: () => {
-        void refreshHomeNow();
-      },
-      onRefreshRepositories: () => {
-        void refreshRepositoriesNow();
-      },
-      onOpenOrganizations: organizationsRouteState.openOrganizations,
-      onRefreshOrganizations: () => {
-        void refreshOrganizationsNow();
-      },
-      onOpenMailbox: goToMailbox,
-      onRefreshMailbox: () => {
-        void refreshMailboxNow();
-      },
-      onMarkLoadedNotificationsRead: () => {
-        markVisibleNotificationsRead.mutate({ threadIds: loadedUnreadNotificationIds });
-      }
-    });
-
-    appendOrganizationCommandPaletteItems(items, {
-      organizationItems: organizationsRouteState.organizationItems,
-      organizationTeams: organizationsRouteState.organizationTeams,
-      organizationRepositories: organizationsRouteState.organizationRepositories,
-      organizationTeamRepositories: organizationsRouteState.organizationTeamRepositories,
-      organizationProjects: organizationsRouteState.organizationProjects,
-      organizationMembers: organizationsRouteState.organizationMembers,
-      organizationTeamMembers: organizationsRouteState.organizationTeamMembers,
-      selectedOrganization: organizationsRouteState.selectedOrganization,
-      selectedOrganizationTeam: organizationsRouteState.selectedOrganizationTeam,
-      generalSourceLimit: commandPaletteGeneralSourceLimit,
-      denseSourceLimit: commandPaletteDenseSourceLimit,
-      onOpenOrganization: organizationsRouteState.openOrganization,
-      onOpenTeam: organizationsRouteState.openTeam,
-      onOpenRepository: openRepositoryInApp,
-      onOpenOrganizationMember: organizationsRouteState.openOrganizationMember,
-      onOpenOrganizationTeamMember: organizationsRouteState.openOrganizationTeamMember,
-      onSelectOrganizationProject: selectOrganizationProjectInApp
-    });
-
-    appendNotificationCommandPaletteItems(items, {
-      notificationItems,
-      limit: commandPaletteGeneralSourceLimit,
-      onOpenNotification: openNotificationInApp
-    });
-    appendAccountWorkCommandPaletteItems(items, {
-      accountIssueItems,
-      accountPullItems,
-      limit: commandPaletteGeneralSourceLimit,
-      onOpenIssue: openIssueSummaryInApp,
-      onOpenPullRequest: openPullRequestSummaryInApp
-    });
-
-    items.push({
-      id: "command-settings",
-      title: "Settings",
-      subtitle: "Open Control settings",
-      group: "Commands",
-      icon: Settings,
-      keywords: ["account", "oauth", "preferences"],
-      run: () => setSettingsOpen(true)
-    });
-
-    if (effectiveRepository) {
-      const currentRepositoryMatches =
-        repositoryDetail?.nameWithOwner.toLowerCase() === effectiveRepository.toLowerCase();
-      const repositoryCommandDisabledReason = !githubReady
-        ? "Sign in with GitHub to run repository mutations."
-        : !repositoryDetail && (repository.isLoading || repository.isFetching)
-          ? "Repository details are still loading."
-          : !repositoryDetail && repository.error
-            ? `Repository details unavailable: ${repository.error.message}`
-            : !repositoryDetail && repositoryAvailabilityMessage
-              ? repositoryAvailabilityMessage
-              : currentRepositoryMatches
-                ? repositoryMutationDisabledReason(repositoryDetail)
-                : "Open the repository before running mutation commands.";
-      const repositoryRefreshDisabledReason = repository.isFetching
-        ? "Repository refresh is already running."
-        : null;
-      const currentRepositoryPinned = isRepositoryPinned(effectiveRepository);
-      const repositoryPinCommandDisabledReason = repositoryPinBusy
-        ? "Repository pin update is already running."
-        : null;
-      appendRepositoryContentCommandPaletteItems(items, {
-        effectiveRepository,
-        branchItems,
-        tagItems,
-        branchesLoaded: Boolean(branches.data),
-        tagsLoaded: Boolean(tags.data),
-        wikiPages: cachedRepositoryWikiPages(queryClient, effectiveRepository),
-        discussionItems: discussions.data?.items ?? [],
-        projectItems: projects.data?.items ?? [],
-        contributorItems,
-        generalSourceLimit: commandPaletteGeneralSourceLimit,
-        denseSourceLimit: commandPaletteDenseSourceLimit,
-        onSelectRepositoryRef: selectRepositoryRefInApp,
-        onSelectWikiPage: selectWikiPageInApp,
-        onSelectDiscussion: selectDiscussionInApp,
-        onSelectProject: selectProjectInApp,
-        onSelectContributor: selectContributorInApp
+  const commandPaletteItems = useCommandPaletteItems({
+    queryClient,
+    route,
+    githubReady,
+    appFetching: appState.isFetching,
+    accountProfileFetching: accountProfile.isFetching,
+    viewerLogin: appState.data?.viewer?.login ?? null,
+    repositoriesFetching: repositories.isFetching,
+    repositoryItems,
+    pinnedRepositoryNames,
+    recentItems: recentItems.data ?? [],
+    notificationsFetching: notifications.isFetching,
+    notificationsLoading: notifications.isLoading,
+    notificationItems,
+    accountIssuesFetching: accountIssues.isFetching,
+    accountIssueItems,
+    accountPullsFetching: accountPulls.isFetching,
+    accountPullItems,
+    markVisibleNotificationsReadPending: markVisibleNotificationsRead.isPending,
+    organizationsRouteState,
+    effectiveRepository,
+    owner,
+    repo,
+    repositoryDetail,
+    repository: {
+      isLoading: repository.isLoading,
+      isFetching: repository.isFetching,
+      error: repository.error
+    },
+    repositoryAvailabilityMessage,
+    repositoryPinBusy,
+    branchItems,
+    tagItems,
+    branchesLoaded: Boolean(branches.data),
+    tagsLoaded: Boolean(tags.data),
+    discussionItems: discussions.data?.items ?? [],
+    projectItems: projects.data?.items ?? [],
+    contributorItems,
+    releaseItems,
+    actionItems,
+    repositoryAccessLimit,
+    forksLimit,
+    dependabotAlertsLimit,
+    codeScanningAlertsLimit,
+    secretScanningAlertsLimit,
+    repositorySecurityAdvisoriesLimit,
+    repositoryRulesetsLimit,
+    isRepositoryPinned,
+    onGoHome: goHome,
+    onOpenRepositories: goToRepositories,
+    onOpenAddRepository: () => setAddRepositoryOpen(true),
+    onRefreshHome: () => {
+      void refreshHomeNow();
+    },
+    onRefreshRepositories: () => {
+      void refreshRepositoriesNow();
+    },
+    onRefreshOrganizations: () => {
+      void refreshOrganizationsNow();
+    },
+    onOpenMailbox: goToMailbox,
+    onRefreshMailbox: () => {
+      void refreshMailboxNow();
+    },
+    onMarkLoadedNotificationsRead: (threadIds) => {
+      markVisibleNotificationsRead.mutate({ threadIds });
+    },
+    onOpenSettings: () => setSettingsOpen(true),
+    onOpenRepository: openRepositoryInApp,
+    onOpenRepositoryRoute: openRepositoryRouteInApp,
+    onToggleRepositoryPin: toggleRepositoryPin,
+    onRefreshRepository: () => {
+      void refreshRepositorySurface();
+    },
+    onOpenFileFinder: (nameWithOwner) => {
+      openRepositoryRouteInApp({
+        kind: "repository",
+        nameWithOwner,
+        tab: "code"
       });
-
-      const commandPaletteRepositoryAccess = cachedRepositoryAccess(queryClient, {
-        owner,
-        repo,
-        limit: repositoryAccessLimit
-      });
-      appendRepositoryAdminCommandPaletteItems(items, {
-        effectiveRepository,
-        collaborators: commandPaletteRepositoryAccess?.collaborators ?? [],
-        teams: commandPaletteRepositoryAccess?.teams ?? [],
-        forks: cachedRepositoryForks(queryClient, { owner, repo, limit: forksLimit }),
-        currentRepositoryParent: repositoryDetail?.parent ?? null,
-        currentRepositorySource: repositoryDetail?.source ?? null,
-        denseSourceLimit: commandPaletteDenseSourceLimit,
-        forksLimit,
-        onSelectCollaborator: selectRepositorySettingsCollaboratorInApp,
-        onSelectTeam: openTeamInApp,
-        onOpenRepository: openRepositoryInApp
-      });
-
-      appendRepositoryReleaseCommandPaletteItems(items, {
-        effectiveRepository,
-        releaseItems,
-        limit: commandPaletteGeneralSourceLimit,
-        onSelectRelease: selectReleaseInApp,
-        onSelectReleaseAsset: selectReleaseAssetInApp
-      });
-
-      appendRepositoryWorkflowCommandPaletteItems(items, {
-        effectiveRepository,
-        actionItems,
-        focusedWorkflowRunDetail: cachedWorkflowRunDetail(queryClient, {
-          owner,
-          repo,
-          runId:
-            route.kind === "repository" && route.nameWithOwner === effectiveRepository
-              ? (route.workflowRunId ?? null)
-              : null
-        }),
-        limit: commandPaletteGeneralSourceLimit,
-        onSelectWorkflowRun: selectWorkflowRunInApp,
-        onSelectWorkflowArtifact: selectWorkflowArtifactInApp
-      });
-
-      appendRepositorySecurityCommandPaletteItems(items, {
-        effectiveRepository,
-        ...cachedRepositorySecurityCommandItems(queryClient, {
-          owner,
-          repo,
-          dependabotAlertsLimit,
-          codeScanningAlertsLimit,
-          secretScanningAlertsLimit,
-          repositorySecurityAdvisoriesLimit,
-          repositoryRulesetsLimit
-        }),
-        limit: commandPaletteSecuritySourceLimit,
-        onSelectSecurityItem: selectSecurityItemInApp
-      });
-
-      appendCurrentRepositoryCommandPaletteItems(items, {
-        effectiveRepository,
-        githubReady,
-        currentRepositoryPinned,
-        repositoryCommandDisabledReason,
-        repositoryRefreshDisabledReason,
-        repositoryPinCommandDisabledReason,
-        onOpenRepository: openRepositoryInApp,
-        onToggleRepositoryPin: toggleRepositoryPin,
-        onRefreshRepository: () => {
-          void refreshRepositorySurface();
-        },
-        onOpenFileFinder: (nameWithOwner) => {
-          openRepositoryRouteInApp({
-            kind: "repository",
-            nameWithOwner,
-            tab: "code"
-          });
-          setFileFinderOpen(true);
-        },
-        onCreateIssue: (nameWithOwner) =>
-          openRepositoryRouteInApp({
-            kind: "repository",
-            nameWithOwner,
-            tab: "issues",
-            issueComposer: "create"
-          }),
-        onCreatePullRequest: (nameWithOwner) =>
-          openRepositoryRouteInApp({
-            kind: "repository",
-            nameWithOwner,
-            tab: "pulls",
-            pullComposer: "create"
-          }),
-        onCreateRelease: (nameWithOwner) =>
-          openRepositoryRouteInApp({
-            kind: "repository",
-            nameWithOwner,
-            tab: "releases",
-            releaseComposer: "create"
-          }),
-        onRunWorkflow: (nameWithOwner) =>
-          openRepositoryRouteInApp({
-            kind: "repository",
-            nameWithOwner,
-            tab: "actions",
-            workflowComposer: "dispatch"
-          }),
-        onOpenExternalGitHub: (nameWithOwner) => void api.openExternal(`https://github.com/${nameWithOwner}`)
-      });
-    }
-
-    appendPinnedRepositoryCommandPaletteItems(items, {
-      pinnedRepositoryNames,
-      repositoryItems,
-      viewerLogin: appState.data?.viewer?.login ?? null,
-      onOpenRepository: openRepositoryInApp
-    });
-    appendRecentCommandPaletteItems(items, {
-      recentItems: recentItems.data ?? [],
-      onOpenRecent: openRecentItem
-    });
-    appendRepositoryCommandPaletteItems(items, {
-      repositoryItems,
-      viewerLogin: appState.data?.viewer?.login ?? null,
-      onOpenRepository: openRepositoryInApp
-    });
-
-    return items;
-  })();
+      setFileFinderOpen(true);
+    },
+    onOpenExternalGitHub: (nameWithOwner) => void api.openExternal(`https://github.com/${nameWithOwner}`),
+    onOpenRecent: openRecentItem,
+    onOpenNotification: openNotificationInApp,
+    onOpenIssue: openIssueSummaryInApp,
+    onOpenPullRequest: openPullRequestSummaryInApp,
+    onSelectRepositoryRef: selectRepositoryRefInApp,
+    onSelectWikiPage: selectWikiPageInApp,
+    onSelectDiscussion: selectDiscussionInApp,
+    onSelectProject: selectProjectInApp,
+    onSelectContributor: selectContributorInApp,
+    onSelectCollaborator: selectRepositorySettingsCollaboratorInApp,
+    onSelectTeam: openTeamInApp,
+    onSelectRelease: selectReleaseInApp,
+    onSelectReleaseAsset: selectReleaseAssetInApp,
+    onSelectWorkflowRun: selectWorkflowRunInApp,
+    onSelectWorkflowArtifact: selectWorkflowArtifactInApp,
+    onSelectSecurityItem: selectSecurityItemInApp,
+    onSelectOrganizationProject: selectOrganizationProjectInApp
+  });
 
   useEffect(() => {
     function handleCommandPaletteShortcut(event: KeyboardEvent): void {

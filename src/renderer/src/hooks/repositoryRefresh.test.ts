@@ -24,7 +24,9 @@ import { mockControlApi } from "../data/mock";
 import { accountProfileQueryKey, refreshAccountProfileData } from "./useAccountProfile";
 import { accountIssuesQueryKey, accountPullsQueryKey, refreshAccountWorkData } from "./useAccountWork";
 import { refreshMailboxNotificationsData } from "./useMailboxNotifications";
+import { recentItemsQueryKey, refreshRecentItemsData } from "./useRecentItems";
 import { refreshRepositoryDirectoryData, repositoryDirectoryQueryKey } from "./useRepositoryDirectory";
+import { refreshRepositoryDetailData, repositoryDetailQueryKey } from "./useRepositoryDetail";
 import { repositoryBranchesQueryKey, repositoryTagsQueryKey } from "./useRepositoryRefs";
 
 function makeQueryClient(): QueryClient {
@@ -78,6 +80,43 @@ describe("route refresh helpers", () => {
     });
     expect(queryClient.getQueryData(accountProfileQueryKey())).toBeDefined();
     expect(queryClient.getQueryData(repositoryDirectoryQueryKey(80))).toBeDefined();
+  });
+
+  it("refreshes local recents through local cache keys", async () => {
+    const queryClient = makeQueryClient();
+    const listRecentItems = vi.fn<ControlApi["listRecentItems"]>(mockControlApi.listRecentItems);
+    const api: ControlApi = {
+      ...mockControlApi,
+      listRecentItems
+    };
+
+    await refreshRecentItemsData(queryClient, { api, limit: 12 });
+
+    expect(listRecentItems).toHaveBeenCalledWith({ limit: 12 });
+    expect(queryClient.getQueryData(recentItemsQueryKey(12))).toBeDefined();
+  });
+
+  it("refreshes repository detail through repository-owned query keys", async () => {
+    const queryClient = makeQueryClient();
+    const getRepositoryWithStatus = vi.fn<ControlApi["github"]["getRepositoryWithStatus"]>(
+      mockControlApi.github.getRepositoryWithStatus
+    );
+    const api = makeApi({ getRepositoryWithStatus });
+
+    await refreshRepositoryDetailData(queryClient, {
+      api,
+      owner: "NarukeAlpha",
+      repo: "control",
+      githubReady: true
+    });
+
+    expect(getRepositoryWithStatus).toHaveBeenCalledWith({
+      owner: "NarukeAlpha",
+      repo: "control",
+      cacheOnly: false,
+      forceRefresh: true
+    });
+    expect(queryClient.getQueryData(repositoryDetailQueryKey("NarukeAlpha", "control"))).toBeDefined();
   });
 
   it("refreshes account work and notifications from cache while offline", async () => {

@@ -199,7 +199,9 @@ import { refreshAccountProfileData, useAccountProfile } from "./hooks/useAccount
 import { refreshAccountWorkData, useAccountWork } from "./hooks/useAccountWork";
 import { useControlApi } from "./hooks/useControlApi";
 import { refreshMailboxNotificationsData, useMailboxNotifications } from "./hooks/useMailboxNotifications";
+import { recentItemsQueryKey, refreshRecentItemsData, useRecentItems } from "./hooks/useRecentItems";
 import { refreshRepositoryDirectoryData, useRepositoryDirectory } from "./hooks/useRepositoryDirectory";
+import { refreshRepositoryDetailData, useRepositoryDetail } from "./hooks/useRepositoryDetail";
 import { useRepositoryRefs } from "./hooks/useRepositoryRefs";
 import { repositoryScopedQueryKeys } from "./queries/repositoryQueryKeys";
 import { useUiStore, type AppRoute, type LocalRepositoryTab, type RepositoryTab } from "./stores/uiStore";
@@ -1454,12 +1456,8 @@ export function App(): JSX.Element {
     [repositoryItems]
   );
 
-  const recentItemsQueryKey = useMemo(() => ["local-recents", recentItemLimit] as const, [recentItemLimit]);
-  const recentItems = useQuery({
-    queryKey: recentItemsQueryKey,
-    queryFn: () => api.listRecentItems({ limit: recentItemLimit }),
-    staleTime: 30_000
-  });
+  const activeRecentItemsQueryKey = recentItemsQueryKey(recentItemLimit);
+  const recentItems = useRecentItems(recentItemLimit, { enabled: appState.isSuccess });
 
   const accountProfile = useAccountProfile({ enabled: appState.isSuccess, githubReady });
   const accountProfileData = accountProfile.data?.profile ?? null;
@@ -1973,11 +1971,11 @@ export function App(): JSX.Element {
     });
   };
 
-  const repository = useQuery({
-    queryKey: ["repository", owner, repo],
-    queryFn: () => api.github.getRepositoryWithStatus({ owner, repo, cacheOnly: !githubReady }),
+  const repository = useRepositoryDetail({
+    owner,
+    repo,
     enabled: appState.isSuccess && isRepositoryContext && hasRepositoryParts,
-    staleTime: 120_000
+    githubReady
   });
   const repositoryDetail = repository.data?.detail ?? null;
   const repositoryAvailabilityMessage = readAvailabilityMessage(
@@ -2360,7 +2358,7 @@ export function App(): JSX.Element {
     mutationFn: api.recordRecentItem,
     onMutate: async (input) => {
       await queryClient.cancelQueries({ queryKey: ["local-recents"] });
-      const previousItems = queryClient.getQueryData<LocalRecentItem[]>(recentItemsQueryKey) ?? [];
+      const previousItems = queryClient.getQueryData<LocalRecentItem[]>(activeRecentItemsQueryKey) ?? [];
       const optimisticItem: LocalRecentItem = {
         kind: input.kind,
         provider: input.provider ?? "github",
@@ -2376,7 +2374,7 @@ export function App(): JSX.Element {
         updatedAt: new Date().toISOString()
       };
       queryClient.setQueryData(
-        recentItemsQueryKey,
+        activeRecentItemsQueryKey,
         [
           optimisticItem,
           ...previousItems.filter((item) => item.kind !== input.kind || item.itemKey !== input.itemKey)
@@ -2386,11 +2384,11 @@ export function App(): JSX.Element {
     },
     onError: (_error, _input, context) => {
       if (context?.previousItems) {
-        queryClient.setQueryData(recentItemsQueryKey, context.previousItems);
+        queryClient.setQueryData(activeRecentItemsQueryKey, context.previousItems);
       }
     },
     onSuccess: (items) => {
-      queryClient.setQueryData(recentItemsQueryKey, items.slice(0, recentItemLimit));
+      queryClient.setQueryData(activeRecentItemsQueryKey, items.slice(0, recentItemLimit));
     },
     onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: ["local-recents"] });
@@ -2448,11 +2446,7 @@ export function App(): JSX.Element {
           limit: defaultMailboxListLimit,
           githubReady
         }),
-        queryClient.fetchQuery({
-          queryKey: recentItemsQueryKey,
-          staleTime: 0,
-          queryFn: () => api.listRecentItems({ limit: recentItemLimit })
-        })
+        refreshRecentItemsData(queryClient, { api, limit: recentItemLimit })
       ]);
     } catch {
       // React Query owns the visible error state for this refresh.
@@ -2473,17 +2467,7 @@ export function App(): JSX.Element {
     }
 
     try {
-      await queryClient.fetchQuery({
-        queryKey: ["repository", owner, repo],
-        staleTime: 0,
-        queryFn: () =>
-          api.github.getRepositoryWithStatus({
-            owner,
-            repo,
-            cacheOnly: !githubReady,
-            forceRefresh: githubReady
-          })
-      });
+      await refreshRepositoryDetailData(queryClient, { api, owner, repo, githubReady });
     } catch {
       // React Query owns the visible error state for this refresh.
     }

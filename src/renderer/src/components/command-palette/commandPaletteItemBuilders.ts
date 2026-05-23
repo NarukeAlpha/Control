@@ -2,6 +2,7 @@ import {
   BookOpen,
   Bot,
   Building2,
+  CheckCircle2,
   CircleDot,
   Code2,
   Download,
@@ -11,6 +12,7 @@ import {
   GitBranch,
   GitFork,
   GitPullRequest,
+  Home,
   Inbox,
   Lock,
   MessageSquare,
@@ -208,6 +210,138 @@ export function cachedRepositorySecurityCommandItems(
         input.repositoryRulesetsLimit
       ])?.items ?? []
   };
+}
+
+export function appendShellCommandPaletteItems(
+  items: CommandPaletteItem[],
+  input: {
+    githubReady: boolean;
+    homeRefreshDisabledReason: string | null;
+    repositoriesRefreshDisabledReason: string | null;
+    organizationsRefreshDisabledReason: string | null;
+    mailboxRefreshDisabledReason: string | null;
+    markLoadedNotificationsReadDisabledReason: string | null;
+    onGoHome(): void;
+    onOpenRepositories(): void;
+    onOpenAddRepository(): void;
+    onRefreshHome(): void;
+    onRefreshRepositories(): void;
+    onOpenOrganizations(): void;
+    onRefreshOrganizations(): void;
+    onOpenMailbox(): void;
+    onRefreshMailbox(): void;
+    onMarkLoadedNotificationsRead(): void;
+  }
+): void {
+  items.push(
+    {
+      id: "command-home",
+      title: "Home",
+      subtitle: "Open the account dashboard",
+      group: "Commands",
+      icon: Home,
+      keywords: ["dashboard", "account"],
+      run: input.onGoHome
+    },
+    {
+      id: "command-refresh-home",
+      title: "Refresh Home",
+      subtitle: input.githubReady
+        ? "Refresh profile, repositories, assigned work, and recents"
+        : "Reload cached Home data",
+      group: "Refresh",
+      icon: RefreshCw,
+      keywords: ["refresh home", "reload home", "sync home", "stale"],
+      disabledReason: input.homeRefreshDisabledReason,
+      run: input.onRefreshHome
+    },
+    {
+      id: "command-repositories",
+      title: "Repositories",
+      subtitle: "Browse cached GitHub repositories",
+      group: "Commands",
+      icon: Code2,
+      keywords: ["repos", "local"],
+      run: input.onOpenRepositories
+    },
+    {
+      id: "command-add-repository",
+      title: "Add repository",
+      subtitle: "Search local and GitHub repositories to open in Control",
+      group: "Commands",
+      icon: Plus,
+      keywords: ["add repository", "repository picker", "repo search", "open repository"],
+      run: input.onOpenAddRepository
+    },
+    {
+      id: "command-refresh-repositories",
+      title: "Refresh repositories",
+      subtitle: input.githubReady ? "Refresh account repository data" : "Reload cached repository data",
+      group: "Refresh",
+      icon: RefreshCw,
+      keywords: ["refresh repositories", "reload repositories", "sync repositories", "stale"],
+      disabledReason: input.repositoriesRefreshDisabledReason,
+      run: input.onRefreshRepositories
+    },
+    {
+      id: "command-organizations",
+      title: "Organizations",
+      subtitle: "Open organization overview",
+      group: "Commands",
+      icon: Building2,
+      keywords: ["orgs", "teams"],
+      run: input.onOpenOrganizations
+    },
+    {
+      id: "command-refresh-organizations",
+      title: "Refresh organizations",
+      subtitle: input.githubReady
+        ? "Refresh organizations, repositories, teams, members, and projects"
+        : "Reload cached organization data",
+      group: "Refresh",
+      icon: RefreshCw,
+      keywords: [
+        "refresh organizations",
+        "reload orgs",
+        "repositories",
+        "teams",
+        "members",
+        "organization projects",
+        "stale"
+      ],
+      disabledReason: input.organizationsRefreshDisabledReason,
+      run: input.onRefreshOrganizations
+    },
+    {
+      id: "command-mailbox",
+      title: "Mailbox",
+      subtitle: "Open GitHub notifications and account work",
+      group: "Commands",
+      icon: Inbox,
+      keywords: ["notifications", "inbox"],
+      run: input.onOpenMailbox
+    },
+    {
+      id: "command-refresh-mailbox",
+      title: "Refresh mailbox",
+      subtitle: input.githubReady ? "Refresh notifications and assigned work" : "Reload cached mailbox data",
+      group: "Refresh",
+      icon: RefreshCw,
+      keywords: ["refresh mailbox", "refresh notifications", "reload inbox", "assigned work", "stale"],
+      disabledReason: input.mailboxRefreshDisabledReason,
+      run: input.onRefreshMailbox
+    },
+    {
+      id: "command-mark-loaded-notifications-read",
+      title: "Mark loaded notifications read",
+      subtitle: "Mark unread GitHub notifications currently loaded in Mailbox",
+      group: "Commands",
+      icon: CheckCircle2,
+      keywords: ["mark read", "notifications", "inbox", "mailbox", "unread"],
+      disabledReason: input.markLoadedNotificationsReadDisabledReason,
+      run: input.onMarkLoadedNotificationsRead
+    }
+  );
 }
 
 export function appendPinnedRepositoryCommandPaletteItems(

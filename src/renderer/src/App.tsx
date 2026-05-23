@@ -1,4 +1,4 @@
-import { Building2, CheckCircle2, Code2, Home, Inbox, Plus, RefreshCw, Settings } from "lucide-react";
+import { Settings } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -85,6 +85,7 @@ import {
   appendRepositoryReleaseCommandPaletteItems,
   appendRepositorySecurityCommandPaletteItems,
   appendRepositoryWorkflowCommandPaletteItems,
+  appendShellCommandPaletteItems,
   cachedRepositoryAccess,
   cachedRepositoryForks,
   cachedRepositorySecurityCommandItems,
@@ -2061,133 +2062,43 @@ export function App(): JSX.Element {
       ? "Organization data is already refreshing."
       : null;
 
-    const items: CommandPaletteItem[] = [
-      {
-        id: "command-home",
-        title: "Home",
-        subtitle: "Open the account dashboard",
-        group: "Commands",
-        icon: Home,
-        keywords: ["dashboard", "account"],
-        run: goHome
+    const items: CommandPaletteItem[] = [];
+    appendShellCommandPaletteItems(items, {
+      githubReady,
+      homeRefreshDisabledReason:
+        appState.isFetching || repositories.isFetching || accountProfile.isFetching
+          ? "Home data is already refreshing."
+          : null,
+      repositoriesRefreshDisabledReason,
+      organizationsRefreshDisabledReason,
+      mailboxRefreshDisabledReason,
+      markLoadedNotificationsReadDisabledReason,
+      onGoHome: goHome,
+      onOpenRepositories: goToRepositories,
+      onOpenAddRepository: () => setAddRepositoryOpen(true),
+      onRefreshHome: () => {
+        void refreshHomeNow();
       },
-      {
-        id: "command-refresh-home",
-        title: "Refresh Home",
-        subtitle: githubReady
-          ? "Refresh profile, repositories, assigned work, and recents"
-          : "Reload cached Home data",
-        group: "Refresh",
-        icon: RefreshCw,
-        keywords: ["refresh home", "reload home", "sync home", "stale"],
-        disabledReason:
-          appState.isFetching || repositories.isFetching || accountProfile.isFetching
-            ? "Home data is already refreshing."
-            : null,
-        run: () => {
-          void refreshHomeNow();
-        }
+      onRefreshRepositories: () => {
+        void refreshRepositoriesNow();
       },
-      {
-        id: "command-repositories",
-        title: "Repositories",
-        subtitle: "Browse cached GitHub repositories",
-        group: "Commands",
-        icon: Code2,
-        keywords: ["repos", "local"],
-        run: goToRepositories
+      onOpenOrganizations: () => {
+        setSelectedOrganizationTeamSlug(null);
+        setSelectedOrganizationMemberLogin(null);
+        setSelectedOrganizationProjectId(null);
+        goToOrganizations();
       },
-      {
-        id: "command-add-repository",
-        title: "Add repository",
-        subtitle: "Search local and GitHub repositories to open in Control",
-        group: "Commands",
-        icon: Plus,
-        keywords: ["add repository", "repository picker", "repo search", "open repository"],
-        run: () => setAddRepositoryOpen(true)
+      onRefreshOrganizations: () => {
+        void refreshOrganizationsNow();
       },
-      {
-        id: "command-refresh-repositories",
-        title: "Refresh repositories",
-        subtitle: githubReady ? "Refresh account repository data" : "Reload cached repository data",
-        group: "Refresh",
-        icon: RefreshCw,
-        keywords: ["refresh repositories", "reload repositories", "sync repositories", "stale"],
-        disabledReason: repositoriesRefreshDisabledReason,
-        run: () => {
-          void refreshRepositoriesNow();
-        }
+      onOpenMailbox: goToMailbox,
+      onRefreshMailbox: () => {
+        void refreshMailboxNow();
       },
-      {
-        id: "command-organizations",
-        title: "Organizations",
-        subtitle: "Open organization overview",
-        group: "Commands",
-        icon: Building2,
-        keywords: ["orgs", "teams"],
-        run: () => {
-          setSelectedOrganizationTeamSlug(null);
-          setSelectedOrganizationMemberLogin(null);
-          setSelectedOrganizationProjectId(null);
-          goToOrganizations();
-        }
-      },
-      {
-        id: "command-refresh-organizations",
-        title: "Refresh organizations",
-        subtitle: githubReady
-          ? "Refresh organizations, repositories, teams, members, and projects"
-          : "Reload cached organization data",
-        group: "Refresh",
-        icon: RefreshCw,
-        keywords: [
-          "refresh organizations",
-          "reload orgs",
-          "repositories",
-          "teams",
-          "members",
-          "organization projects",
-          "stale"
-        ],
-        disabledReason: organizationsRefreshDisabledReason,
-        run: () => {
-          void refreshOrganizationsNow();
-        }
-      },
-      {
-        id: "command-mailbox",
-        title: "Mailbox",
-        subtitle: "Open GitHub notifications and account work",
-        group: "Commands",
-        icon: Inbox,
-        keywords: ["notifications", "inbox"],
-        run: goToMailbox
-      },
-      {
-        id: "command-refresh-mailbox",
-        title: "Refresh mailbox",
-        subtitle: githubReady ? "Refresh notifications and assigned work" : "Reload cached mailbox data",
-        group: "Refresh",
-        icon: RefreshCw,
-        keywords: ["refresh mailbox", "refresh notifications", "reload inbox", "assigned work", "stale"],
-        disabledReason: mailboxRefreshDisabledReason,
-        run: () => {
-          void refreshMailboxNow();
-        }
-      },
-      {
-        id: "command-mark-loaded-notifications-read",
-        title: "Mark loaded notifications read",
-        subtitle: "Mark unread GitHub notifications currently loaded in Mailbox",
-        group: "Commands",
-        icon: CheckCircle2,
-        keywords: ["mark read", "notifications", "inbox", "mailbox", "unread"],
-        disabledReason: markLoadedNotificationsReadDisabledReason,
-        run: () => {
-          markVisibleNotificationsRead.mutate({ threadIds: loadedUnreadNotificationIds });
-        }
+      onMarkLoadedNotificationsRead: () => {
+        markVisibleNotificationsRead.mutate({ threadIds: loadedUnreadNotificationIds });
       }
-    ];
+    });
 
     appendOrganizationCommandPaletteItems(items, {
       organizationItems,

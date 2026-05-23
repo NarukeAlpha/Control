@@ -36,10 +36,7 @@ import { normalizeCodeLineNumber } from "./components/code-browser/codeBrowserUi
 import { notificationInAppTarget, notificationTargetUrl } from "./components/collection/notificationUi";
 import { RepositoriesRoute } from "./components/collection/RepositoriesRoute";
 import { MailboxRoute } from "./components/collection/MailboxRoute";
-import {
-  refreshOrganizationsRouteData,
-  useOrganizationsRouteQueries
-} from "./components/collection/organizationQueries";
+import { useOrganizationsRouteQueries } from "./components/collection/organizationQueries";
 import { OrganizationsRoute } from "./components/collection/OrganizationsRoute";
 import { CommandPalette, type CommandPaletteItem } from "./components/command-palette/CommandPalette";
 import {
@@ -137,13 +134,14 @@ import {
   repositoryMutationDisabledReason
 } from "./components/repository/repositoryUi";
 
-import { refreshAccountProfileData, useAccountProfile } from "./hooks/useAccountProfile";
-import { refreshAccountWorkData, useAccountWork } from "./hooks/useAccountWork";
+import { useAccountProfile } from "./hooks/useAccountProfile";
+import { useAccountWork } from "./hooks/useAccountWork";
+import { useCollectionRefreshActions } from "./hooks/useCollectionRefreshActions";
 import { useControlApi } from "./hooks/useControlApi";
-import { refreshMailboxNotificationsData, useMailboxNotifications } from "./hooks/useMailboxNotifications";
-import { refreshRecentItemsData, useRecentItems } from "./hooks/useRecentItems";
+import { useMailboxNotifications } from "./hooks/useMailboxNotifications";
+import { useRecentItems } from "./hooks/useRecentItems";
 import { useRecentRecorder } from "./hooks/useRecentRecorder";
-import { refreshRepositoryDirectoryData, useRepositoryDirectory } from "./hooks/useRepositoryDirectory";
+import { useRepositoryDirectory } from "./hooks/useRepositoryDirectory";
 import { useRepositoryDetail } from "./hooks/useRepositoryDetail";
 import { useRepositoryPins } from "./hooks/useRepositoryPins";
 import { useRepositoryRefs } from "./hooks/useRepositoryRefs";
@@ -691,6 +689,27 @@ export function App(): JSX.Element {
       repositoryAccessLimit,
       forksLimit
     });
+  const { refreshHomeNow, refreshRepositoriesNow, refreshMailboxNow, refreshOrganizationsNow } =
+    useCollectionRefreshActions({
+      appReady: appState.isSuccess,
+      githubReady,
+      authenticatedViewerLogin,
+      repositoryListLimit,
+      homeRefreshWorkLimit: maxHomeWorkLimit,
+      recentItemLimit,
+      mailboxWorkLimit,
+      notificationFilter,
+      notificationLimit,
+      organizationListLimit,
+      selectedOrganizationLogin: selectedOrganization?.login ?? null,
+      organizationRepositoryLimit,
+      organizationTeamLimit,
+      organizationMemberLimit,
+      organizationProjectLimit,
+      selectedOrganizationTeamSlug: selectedOrganizationTeam?.slug ?? null,
+      organizationTeamRepositoryLimit,
+      organizationTeamMemberLimit
+    });
 
   const mutation = useMutation({
     mutationFn: api.github.mutate,
@@ -705,84 +724,6 @@ export function App(): JSX.Element {
     }
 
     return repositoriesByName.get(normalized);
-  }
-
-  async function refreshHomeNow(): Promise<void> {
-    if (!appState.isSuccess) {
-      return;
-    }
-
-    try {
-      await Promise.all([
-        refreshAccountProfileData(queryClient, { api, githubReady }),
-        refreshRepositoryDirectoryData(queryClient, { api, limit: repositoryListLimit, githubReady }),
-        refreshAccountWorkData(queryClient, {
-          api,
-          login: authenticatedViewerLogin,
-          limit: maxHomeWorkLimit,
-          githubReady
-        }),
-        refreshRecentItemsData(queryClient, { api, limit: recentItemLimit })
-      ]);
-    } catch {
-      // React Query owns the visible error state for this refresh.
-    }
-  }
-
-  async function refreshRepositoriesNow(): Promise<void> {
-    try {
-      await refreshRepositoryDirectoryData(queryClient, { api, limit: repositoryListLimit, githubReady });
-    } catch {
-      // React Query owns the visible error state for this refresh.
-    }
-  }
-
-  async function refreshMailboxNow(): Promise<void> {
-    if (!appState.isSuccess) {
-      return;
-    }
-
-    try {
-      await Promise.all([
-        refreshAccountWorkData(queryClient, {
-          api,
-          login: authenticatedViewerLogin,
-          limit: mailboxWorkLimit,
-          githubReady
-        }),
-        refreshMailboxNotificationsData(queryClient, {
-          api,
-          filter: notificationFilter,
-          limit: notificationLimit,
-          githubReady
-        })
-      ]);
-    } catch {
-      // React Query owns the visible error state for this refresh.
-    }
-  }
-
-  async function refreshOrganizationsNow(): Promise<void> {
-    if (!appState.isSuccess) {
-      return;
-    }
-
-    await Promise.all([
-      refreshOrganizationsRouteData(queryClient, {
-        api,
-        githubReady,
-        organizationListLimit,
-        selectedOrganizationLogin: selectedOrganization?.login ?? null,
-        organizationRepositoryLimit,
-        organizationTeamLimit,
-        organizationMemberLimit,
-        organizationProjectLimit,
-        selectedOrganizationTeamSlug: selectedOrganizationTeam?.slug ?? null,
-        organizationTeamRepositoryLimit,
-        organizationTeamMemberLimit
-      }),
-      refreshRepositoriesNow()
-    ]);
   }
 
   function openRepositoryInApp(nameWithOwner: string, tab?: RepositoryTab): void {

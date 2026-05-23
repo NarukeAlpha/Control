@@ -3,15 +3,12 @@ import { useState, type JSX } from "react";
 import { useQuery, type QueryClient } from "@tanstack/react-query";
 
 import type {
-  BranchSummary,
   GitHubAction,
   GitHubMutationFields,
-  GitHubReadAvailability,
   ReleaseListResult,
   ReleaseAssetSummary,
   ReleaseSummary,
-  RepositoryDetail,
-  TagSummary
+  RepositoryDetail
 } from "@shared/github";
 import type { ControlApi } from "@shared/ipc";
 
@@ -25,6 +22,7 @@ import {
 } from "@renderer/components/repository/repositoryUi";
 
 import { useControlApi } from "@renderer/hooks/useControlApi";
+import { useRepositoryRefs } from "@renderer/hooks/useRepositoryRefs";
 
 import { formatCompactNumber, formatRelativeDate } from "@renderer/utils/format";
 type ReleaseMakeLatestOption = "unchanged" | "true" | "false" | "legacy";
@@ -88,19 +86,12 @@ export function ReleasesTab({
   repository,
   githubReady,
   selectedRef,
-  branches,
-  tags,
-  refsError,
-  refsAvailabilityMessage,
-  releases,
+  refListLimit,
   releasesLimit,
-  availability,
   focusedReleaseId,
   focusedReleaseTagName,
   focusedReleaseAssetId,
   initialCreating,
-  loading,
-  error,
   onOpenExternal,
   onOpenReleaseTarget,
   onSelectRelease,
@@ -115,19 +106,12 @@ export function ReleasesTab({
   repository: RepositoryDetail;
   githubReady: boolean;
   selectedRef: string | null;
-  branches: BranchSummary[];
-  tags: TagSummary[];
-  refsError: Error | null;
-  refsAvailabilityMessage: string | null;
-  releases: ReleaseSummary[];
+  refListLimit: number;
   releasesLimit: number;
-  availability: GitHubReadAvailability | null;
   focusedReleaseId: number | null;
   focusedReleaseTagName: string | null;
   focusedReleaseAssetId: number | null;
   initialCreating: boolean;
-  loading: boolean;
-  error: Error | null;
   onOpenExternal(url: string): void;
   onOpenReleaseTarget(ref: string): void;
   onSelectRelease(release: ReleaseSummary): void;
@@ -139,6 +123,23 @@ export function ReleasesTab({
   mutationError: Error | null;
   onMutate(action: GitHubAction, dangerous: boolean, payload?: GitHubMutationFields): void;
 }): JSX.Element {
+  const { releases: releasesQuery } = useReleasesTabQueries({
+    owner: repository.owner,
+    repo: repository.name,
+    limit: releasesLimit,
+    enabled: true,
+    githubReady
+  });
+  const {
+    branchItems: branches,
+    tagItems: tags,
+    error: refsError,
+    availabilityMessage: refsAvailabilityMessage
+  } = useRepositoryRefs(repository.owner, repository.name, true, refListLimit, { githubReady });
+  const releases = releasesQuery.data?.items ?? [];
+  const availability = releasesQuery.data?.availability ?? null;
+  const loading = releasesQuery.isLoading || releasesQuery.isFetching;
+  const error = releasesQuery.error;
   const focusedRelease =
     (focusedReleaseId !== null ? releases.find((release) => release.id === focusedReleaseId) : null) ??
     (focusedReleaseTagName ? releases.find((release) => release.tagName === focusedReleaseTagName) : null);

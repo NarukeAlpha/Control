@@ -10,7 +10,6 @@ import type {
   DiscussionSummary,
   GitHubAction,
   GitHubMutationFields,
-  GitHubReadAvailability,
   RepositoryDetail,
   TimelineCommentSummary
 } from "@shared/github";
@@ -87,13 +86,9 @@ export async function prefetchDiscussionsTabData(
 
 export function DiscussionsTab({
   repository,
-  discussions,
   discussionsLimit,
   focusedDiscussionNumber,
   githubReady,
-  loading,
-  availability,
-  error,
   onOpenExternal,
   onSelectDiscussion,
   onExpandDiscussions,
@@ -104,13 +99,9 @@ export function DiscussionsTab({
   onMutate
 }: {
   repository: RepositoryDetail;
-  discussions: DiscussionSummary[];
   discussionsLimit: number;
   focusedDiscussionNumber: number | null;
   githubReady: boolean;
-  loading: boolean;
-  availability: GitHubReadAvailability | null;
-  error: Error | null;
   onOpenExternal(url: string): void;
   onSelectDiscussion(discussion: DiscussionSummary): void;
   onExpandDiscussions(): void;
@@ -120,6 +111,17 @@ export function DiscussionsTab({
   mutationError: Error | null;
   onMutate(action: GitHubAction, dangerous: boolean, payload?: GitHubMutationFields): void;
 }): JSX.Element {
+  const { discussions: discussionsQuery } = useDiscussionsTabQueries({
+    owner: repository.owner,
+    repo: repository.name,
+    limit: discussionsLimit,
+    enabled: true,
+    githubReady
+  });
+  const discussions = discussionsQuery.data?.items ?? [];
+  const availability = discussionsQuery.data?.availability ?? null;
+  const loading = discussionsQuery.isLoading || discussionsQuery.isFetching;
+  const error = discussionsQuery.error;
   const api = useControlApi();
   const [filter, setFilter] = useState("");
   const [composingDiscussion, setComposingDiscussion] = useState(false);

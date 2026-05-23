@@ -204,32 +204,19 @@ export function RepositoryPage({
   pullRequestListLimit,
   pullsLoading,
   pullsError,
-  discussions,
   discussionsLimit,
-  discussionsLoading,
-  discussionsAvailability,
-  discussionsError,
   actions,
   actionsLimit,
   workflowDefinitionLimit,
   actionsLoading,
-  actionsAvailability,
   actionsError,
-  projects,
   projectsLimit,
-  projectsLoading,
-  projectsAvailability,
-  projectsError,
   dependabotAlertsLimit,
   codeScanningAlertsLimit,
   secretScanningAlertsLimit,
   repositoryRulesetsLimit,
   repositorySecurityAdvisoriesLimit,
-  releases,
   releasesLimit,
-  releasesLoading,
-  releasesAvailability,
-  releasesError,
   contributors,
   contributorLimit,
   contributorsLoading,
@@ -316,32 +303,19 @@ export function RepositoryPage({
   pullRequestListLimit: number;
   pullsLoading: boolean;
   pullsError: Error | null;
-  discussions: DiscussionSummary[];
   discussionsLimit: number;
-  discussionsLoading: boolean;
-  discussionsAvailability: GitHubReadAvailability | null;
-  discussionsError: Error | null;
   actions: WorkflowRunSummary[];
   actionsLimit: number;
   workflowDefinitionLimit: number;
   actionsLoading: boolean;
-  actionsAvailability: GitHubReadAvailability | null;
   actionsError: Error | null;
-  projects: ProjectSummary[];
   projectsLimit: number;
-  projectsLoading: boolean;
-  projectsAvailability: GitHubReadAvailability | null;
-  projectsError: Error | null;
   dependabotAlertsLimit: number;
   codeScanningAlertsLimit: number;
   secretScanningAlertsLimit: number;
   repositoryRulesetsLimit: number;
   repositorySecurityAdvisoriesLimit: number;
-  releases: ReleaseSummary[];
   releasesLimit: number;
-  releasesLoading: boolean;
-  releasesAvailability: GitHubReadAvailability | null;
-  releasesError: Error | null;
   contributors: ContributorSummary[];
   contributorLimit: number;
   contributorsLoading: boolean;
@@ -487,7 +461,7 @@ export function RepositoryPage({
     return <div className="loading-state">No repository selected.</div>;
   }
 
-  const counts = getRepositoryCounts(repo, { issues, pulls, discussions, projects });
+  const counts = getRepositoryCounts(repo, { issues, pulls, discussions: [], projects: [] });
   const viewerState = getViewerRepositoryState(repo);
   const forkMetadata = getForkMetadata(repo);
   const liveMutationDisabledReason = !githubReady ? "Sign in with GitHub to run GitHub actions." : null;
@@ -792,13 +766,9 @@ export function RepositoryPage({
         <DiscussionsTab
           key={`discussions-${focusedDiscussionNumber ?? "default"}`}
           repository={repo}
-          discussions={discussions}
           discussionsLimit={discussionsLimit}
           focusedDiscussionNumber={focusedDiscussionNumber}
           githubReady={githubReady}
-          loading={discussionsLoading}
-          availability={discussionsAvailability}
-          error={discussionsError}
           onOpenExternal={onOpenExternal}
           onSelectDiscussion={onSelectDiscussion}
           onExpandDiscussions={onExpandDiscussions}
@@ -814,14 +784,8 @@ export function RepositoryPage({
           key={`projects-${focusedProjectId ?? "default"}`}
           repository={repo}
           githubReady={githubReady}
-          issues={issues}
-          pulls={pulls}
-          projects={projects}
           projectsLimit={projectsLimit}
           focusedProjectId={focusedProjectId}
-          loading={projectsLoading}
-          availability={projectsAvailability}
-          error={projectsError}
           onOpenExternal={onOpenExternal}
           onSelectProject={onSelectProject}
           onExpandProjects={onExpandProjects}
@@ -840,19 +804,12 @@ export function RepositoryPage({
           repository={repo}
           githubReady={githubReady}
           selectedRef={selectedRef}
-          branches={branches}
-          tags={tags}
-          refsError={refsError}
-          refsAvailabilityMessage={refsAvailabilityMessage}
-          releases={releases}
+          refListLimit={refListLimit}
           releasesLimit={releasesLimit}
-          availability={releasesAvailability}
           focusedReleaseId={focusedReleaseId}
           focusedReleaseTagName={focusedReleaseTagName}
           focusedReleaseAssetId={focusedReleaseAssetId}
           initialCreating={releaseComposer === "create"}
-          loading={releasesLoading}
-          error={releasesError}
           mutationAction={mutationAction}
           mutationPending={mutationPending}
           mutationSucceeded={mutationSucceeded}
@@ -873,20 +830,13 @@ export function RepositoryPage({
           repository={repo}
           githubReady={githubReady}
           selectedRef={selectedRef}
-          branches={branches}
-          tags={tags}
-          refsError={refsError}
-          refsAvailabilityMessage={refsAvailabilityMessage}
-          actions={actions}
+          refListLimit={refListLimit}
           actionsLimit={actionsLimit}
           workflowDefinitionLimit={workflowDefinitionLimit}
-          availability={actionsAvailability}
           focusedWorkflowRunId={focusedWorkflowRunId}
           focusedWorkflowArtifactId={focusedWorkflowArtifactId}
           initialFilter={workflowFilter}
           initialDispatching={workflowComposer === "dispatch"}
-          loading={actionsLoading}
-          error={actionsError}
           mutationAction={mutationAction}
           mutationPending={mutationPending}
           mutationSucceeded={mutationSucceeded}

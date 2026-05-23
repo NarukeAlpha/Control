@@ -3,12 +3,9 @@ import { useState, type JSX } from "react";
 import { useQuery, type QueryClient } from "@tanstack/react-query";
 
 import type {
-  BranchSummary,
   GitHubAction,
   GitHubMutationFields,
-  GitHubReadAvailability,
   RepositoryDetail,
-  TagSummary,
   WorkflowDefinitionListResult,
   WorkflowDefinitionSummary,
   WorkflowDispatchInputSummary,
@@ -32,6 +29,7 @@ import {
 } from "@renderer/components/repository/repositoryUi";
 import { isWorkflowRunAttention } from "@renderer/components/repository/workflows/workflowRunState";
 import { useControlApi } from "@renderer/hooks/useControlApi";
+import { useRepositoryRefs } from "@renderer/hooks/useRepositoryRefs";
 
 import { formatCompactNumber, formatRelativeDate } from "@renderer/utils/format";
 const maxActionsLimit = 100;
@@ -354,20 +352,13 @@ export function ActionsTab({
   repository,
   githubReady,
   selectedRef,
-  branches,
-  tags,
-  refsError,
-  refsAvailabilityMessage,
-  actions,
+  refListLimit,
   actionsLimit,
   workflowDefinitionLimit,
-  availability,
   focusedWorkflowRunId,
   focusedWorkflowArtifactId,
   initialFilter,
   initialDispatching,
-  loading,
-  error,
   mutationAction,
   mutationPending,
   mutationSucceeded,
@@ -385,20 +376,13 @@ export function ActionsTab({
   repository: RepositoryDetail;
   githubReady: boolean;
   selectedRef: string | null;
-  branches: BranchSummary[];
-  tags: TagSummary[];
-  refsError: Error | null;
-  refsAvailabilityMessage: string | null;
-  actions: WorkflowRunSummary[];
+  refListLimit: number;
   actionsLimit: number;
   workflowDefinitionLimit: number;
-  availability: GitHubReadAvailability | null;
   focusedWorkflowRunId: number | null;
   focusedWorkflowArtifactId: number | null;
   initialFilter: string;
   initialDispatching: boolean;
-  loading: boolean;
-  error: Error | null;
   mutationAction: GitHubAction | null;
   mutationPending: boolean;
   mutationSucceeded: boolean;
@@ -428,6 +412,23 @@ export function ActionsTab({
   onExpandWorkflowDefinitions(): void;
   onMutate(action: GitHubAction, dangerous: boolean, payload?: GitHubMutationFields): void;
 }): JSX.Element {
+  const { actions: actionsQuery } = useActionsTabQueries({
+    owner: repository.owner,
+    repo: repository.name,
+    limit: actionsLimit,
+    enabled: true,
+    githubReady
+  });
+  const {
+    branchItems: branches,
+    tagItems: tags,
+    error: refsError,
+    availabilityMessage: refsAvailabilityMessage
+  } = useRepositoryRefs(repository.owner, repository.name, true, refListLimit, { githubReady });
+  const actions = actionsQuery.data?.items ?? [];
+  const availability = actionsQuery.data?.availability ?? null;
+  const loading = actionsQuery.isLoading || actionsQuery.isFetching;
+  const error = actionsQuery.error;
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
   const [filter, setFilter] = useState(initialFilter);
   const [dispatching, setDispatching] = useState(initialDispatching);

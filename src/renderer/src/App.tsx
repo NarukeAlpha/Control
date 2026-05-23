@@ -1,5 +1,4 @@
 import {
-  BellOff,
   Bot,
   Building2,
   BookOpen,
@@ -56,7 +55,6 @@ import type {
   IssueSummary,
   LabelSummary,
   MilestoneSummary,
-  NotificationListResult,
   NotificationSummary,
   OrganizationMembersResult,
   OrganizationMemberSummary,
@@ -129,16 +127,21 @@ import {
   isReadmeMarkdownPath,
   normalizeCodeLineNumber
 } from "./components/code-browser/codeBrowserUi";
+import { issueStateLabel } from "./components/collection/workItemUi";
 import {
-  issueStateLabel,
-  mailboxIssueMetadataParts,
-  mailboxPullRequestMetadataParts,
-  pullRequestMergeableStateLabel,
-  pullRequestReviewDecisionLabel,
-  pullRequestReviewDecisionTone
-} from "./components/collection/workItemUi";
+  notificationInAppTarget,
+  notificationQueryKey,
+  notificationReasonLabel,
+  notificationTargetUrl,
+  parseWorkflowRunIdFromUrl,
+  defaultMailboxListLimit,
+  maxMailboxListLimit,
+  type MailboxNotificationFilter,
+  type NotificationInAppTarget
+} from "./components/collection/notificationUi";
 import { RepositoriesRoute } from "./components/collection/RepositoriesRoute";
 import { matchesCollectionFilter } from "./components/collection/collectionUi";
+import { MailboxRoute } from "./components/collection/MailboxRoute";
 import { CommandPalette, type CommandPaletteItem } from "./components/command-palette/CommandPalette";
 import { AddRepositoryDialog } from "./components/dialogs/AddRepositoryDialog";
 import { FileFinder } from "./components/file-finder/FileFinder";
@@ -199,6 +202,7 @@ import {
 
 import { useAccountWork } from "./hooks/useAccountWork";
 import { useControlApi } from "./hooks/useControlApi";
+import { useMailboxNotifications } from "./hooks/useMailboxNotifications";
 import { useRepositoryDirectory } from "./hooks/useRepositoryDirectory";
 import { useRepositoryRefs } from "./hooks/useRepositoryRefs";
 import { repositoryScopedQueryKeys } from "./queries/repositoryQueryKeys";
@@ -228,7 +232,6 @@ function defaultGitHubAreaRepositoryId(nameWithOwner: string): string {
   return `github:default:${nameWithOwner.toLowerCase()}`;
 }
 
-type MailboxNotificationFilter = "unread" | "all" | "participating";
 type PullRequestLinkedIssue =
   | NonNullable<PullRequestTimelineEventSummary["sourceIssue"]>
   | PullRequestLinkedIssueSummary;
@@ -277,8 +280,6 @@ const defaultOrganizationTeamRepositoryLimit = 30;
 const maxOrganizationTeamRepositoryLimit = 100;
 const defaultOrganizationTeamMemberLimit = 30;
 const maxOrganizationTeamMemberLimit = 100;
-const defaultMailboxListLimit = 30;
-const maxMailboxListLimit = 100;
 const defaultRecentItemLimit = 12;
 const defaultIssueListLimit = 50;
 const maxIssueListLimit = 100;
@@ -1328,192 +1329,6 @@ function normalizeGitHubCodeRef(ref: string | null | undefined): string | null {
   return trimmedRef.replace(/^refs\/heads\//, "").replace(/^refs\/tags\//, "");
 }
 
-interface NotificationInAppTarget {
-  kind: "repository" | "commit" | "issue" | "pullRequest" | "discussion" | "release" | "workflowRun";
-  commitSha?: string;
-  number?: number;
-  releaseId?: number;
-  runId?: number;
-  tagName?: string;
-  tab: RepositoryTab;
-}
-
-function parseNotificationSubjectNumber(
-  notification: NotificationSummary,
-  pathName: "issues" | "pull" | "pulls" | "discussions"
-): number | null {
-  const sources = [
-    notification.subject.htmlUrl,
-    notification.htmlUrl,
-    notification.subject.apiUrl,
-    notification.subject.latestCommentApiUrl
-  ];
-  const pattern = new RegExp(`/${pathName}/(\\d+)(?:[/?#]|$)`);
-
-  for (const source of sources) {
-    const match = source?.match(pattern);
-    if (match?.[1]) {
-      return Number(match[1]);
-    }
-  }
-
-  return null;
-}
-
-function parseNotificationReleaseTagName(notification: NotificationSummary): string | null {
-  const sources = [notification.subject.htmlUrl, notification.htmlUrl, notification.subject.apiUrl];
-
-  for (const source of sources) {
-    const match = source?.match(/\/releases\/tag\/([^/?#]+)(?:[/?#]|$)/);
-    if (match?.[1]) {
-      return decodeURIComponent(match[1]);
-    }
-  }
-
-  return null;
-}
-
-function parseNotificationReleaseId(notification: NotificationSummary): number | null {
-  const sources = [notification.subject.apiUrl, notification.subject.htmlUrl, notification.htmlUrl];
-
-  for (const source of sources) {
-    const match = source?.match(/\/releases\/(\d+)(?:[/?#]|$)/);
-    if (match?.[1]) {
-      return Number(match[1]);
-    }
-  }
-
-  return null;
-}
-
-function parseNotificationCommitSha(notification: NotificationSummary): string | null {
-  const sources = [
-    notification.subject.htmlUrl,
-    notification.htmlUrl,
-    notification.subject.apiUrl,
-    notification.subject.latestCommentApiUrl
-  ];
-
-  for (const source of sources) {
-    const match = source?.match(/\/commits?\/([a-f0-9]{7,40})(?:[/?#]|$)/i);
-    if (match?.[1]) {
-      return match[1];
-    }
-  }
-
-  return null;
-}
-
-function parseWorkflowRunIdFromUrl(url: string | null | undefined): number | null {
-  const match = url?.match(/\/actions\/runs\/(\d+)(?:[/?#]|$)/);
-  if (!match?.[1]) {
-    return null;
-  }
-
-  return Number(match[1]);
-}
-
-function parseNotificationWorkflowRunId(notification: NotificationSummary): number | null {
-  const sources = [notification.subject.htmlUrl, notification.htmlUrl, notification.subject.apiUrl];
-
-  for (const source of sources) {
-    const runId = parseWorkflowRunIdFromUrl(source);
-    if (runId !== null) {
-      return runId;
-    }
-  }
-
-  return null;
-}
-
-function notificationInAppTarget(notification: NotificationSummary): NotificationInAppTarget | null {
-  const type = notification.subject.type.toLowerCase().replace(/[\s-]+/g, "_");
-  const pullNumber =
-    parseNotificationSubjectNumber(notification, "pull") ??
-    parseNotificationSubjectNumber(notification, "pulls");
-
-  if (pullNumber !== null && Number.isFinite(pullNumber)) {
-    return { kind: "pullRequest", number: pullNumber, tab: "pulls" };
-  }
-
-  const issueNumber = parseNotificationSubjectNumber(notification, "issues");
-  if ((type === "issue" || issueNumber !== null) && issueNumber !== null && Number.isFinite(issueNumber)) {
-    return { kind: "issue", number: issueNumber, tab: "issues" };
-  }
-
-  const discussionNumber = parseNotificationSubjectNumber(notification, "discussions");
-  if (
-    (type === "discussion" || discussionNumber !== null) &&
-    discussionNumber !== null &&
-    Number.isFinite(discussionNumber)
-  ) {
-    return { kind: "discussion", number: discussionNumber, tab: "discussions" };
-  }
-
-  if (type.includes("pull_request") || type.includes("pullrequest")) {
-    return { kind: "repository", tab: "pulls" };
-  }
-
-  if (type.includes("issue")) {
-    return { kind: "repository", tab: "issues" };
-  }
-
-  if (type.includes("discussion")) {
-    return { kind: "repository", tab: "discussions" };
-  }
-
-  const releaseTagName = parseNotificationReleaseTagName(notification);
-  const releaseId = parseNotificationReleaseId(notification);
-  if (
-    (type === "release" || releaseTagName || releaseId !== null) &&
-    (releaseTagName || releaseId !== null)
-  ) {
-    return {
-      kind: "release",
-      releaseId: releaseId ?? undefined,
-      tagName: releaseTagName ?? undefined,
-      tab: "releases"
-    };
-  }
-
-  if (type.includes("release")) {
-    return { kind: "repository", tab: "releases" };
-  }
-
-  const workflowRunId = parseNotificationWorkflowRunId(notification);
-  if (
-    (type.includes("workflow") || type.includes("check") || workflowRunId !== null) &&
-    workflowRunId !== null
-  ) {
-    return { kind: "workflowRun", runId: workflowRunId, tab: "actions" };
-  }
-
-  if (type.includes("workflow") || type.includes("check")) {
-    return { kind: "repository", tab: "actions" };
-  }
-
-  if (
-    type.includes("security") ||
-    type.includes("vulnerability") ||
-    type.includes("dependabot") ||
-    type.includes("secret_scanning") ||
-    type.includes("code_scanning")
-  ) {
-    return { kind: "repository", tab: "securityQuality" };
-  }
-
-  if (type.includes("commit") || type === "repository") {
-    const commitSha = parseNotificationCommitSha(notification);
-    if (commitSha) {
-      return { kind: "commit", commitSha, tab: "code" };
-    }
-
-    return { kind: "repository", tab: "code" };
-  }
-
-  return null;
-}
-
 function notificationRecentInput(
   notification: NotificationSummary,
   target: NotificationInAppTarget
@@ -1850,136 +1665,13 @@ export function App(): JSX.Element {
   const accountPullItems = accountPulls.data?.items ?? [];
   const accountPullsAvailability = accountPulls.data?.availability ?? null;
 
-  const notificationQueryKey = useMemo(
-    () => ["notifications", notificationFilter, notificationLimit] as const,
-    [notificationFilter, notificationLimit]
-  );
-  const notifications = useQuery({
-    queryKey: notificationQueryKey,
-    queryFn: () => {
-      const input = {
-        all: notificationFilter === "all",
-        limit: notificationLimit,
-        cacheOnly: !githubReady
-      };
-      return api.github.listNotificationsWithStatus(
-        notificationFilter === "participating" ? { ...input, participating: true } : input
-      );
-    },
-    enabled: appState.isSuccess && route.kind === "mailbox",
-    staleTime: 30_000
-  });
-  const notificationItems = notifications.data?.items ?? [];
-  const notificationsAvailability = notifications.data?.availability ?? null;
-  const markNotificationRead = useMutation({
-    mutationFn: api.github.markNotificationThreadRead,
-    onMutate: async (input) => {
-      await queryClient.cancelQueries({ queryKey: ["notifications"] });
-      const previousNotifications = queryClient.getQueryData<NotificationListResult>(notificationQueryKey);
-      queryClient.setQueryData<NotificationListResult>(notificationQueryKey, (current) => {
-        if (!current) {
-          return current;
-        }
-        if (notificationFilter !== "all") {
-          return {
-            ...current,
-            items: current.items.filter((notification) => notification.id !== input.threadId)
-          };
-        }
-
-        return {
-          ...current,
-          items: current.items.map((notification) =>
-            notification.id === input.threadId
-              ? {
-                  ...notification,
-                  unread: false,
-                  lastReadAt: new Date().toISOString()
-                }
-              : notification
-          )
-        };
-      });
-      return { key: notificationQueryKey, previousNotifications };
-    },
-    onError: (_error, _input, context) => {
-      if (context?.previousNotifications) {
-        queryClient.setQueryData(context.key, context.previousNotifications);
-      }
-    },
-    onSettled: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["notifications"] });
-    }
-  });
-  const markVisibleNotificationsRead = useMutation({
-    mutationFn: async (input: { threadIds: string[] }) => {
-      await Promise.all(
-        input.threadIds.map((threadId) => api.github.markNotificationThreadRead({ threadId }))
-      );
-    },
-    onMutate: async (input) => {
-      const threadIds = new Set(input.threadIds);
-      await queryClient.cancelQueries({ queryKey: ["notifications"] });
-      const previousNotifications = queryClient.getQueryData<NotificationListResult>(notificationQueryKey);
-      queryClient.setQueryData<NotificationListResult>(notificationQueryKey, (current) => {
-        if (!current) {
-          return current;
-        }
-        if (notificationFilter !== "all") {
-          return {
-            ...current,
-            items: current.items.filter((notification) => !threadIds.has(notification.id))
-          };
-        }
-
-        return {
-          ...current,
-          items: current.items.map((notification) =>
-            threadIds.has(notification.id)
-              ? {
-                  ...notification,
-                  unread: false,
-                  lastReadAt: new Date().toISOString()
-                }
-              : notification
-          )
-        };
-      });
-      return { key: notificationQueryKey, previousNotifications };
-    },
-    onError: (_error, _input, context) => {
-      if (context?.previousNotifications) {
-        queryClient.setQueryData(context.key, context.previousNotifications);
-      }
-    },
-    onSettled: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["notifications"] });
-    }
-  });
-  const unsubscribeNotification = useMutation({
-    mutationFn: api.github.unsubscribeNotificationThread,
-    onMutate: async (input) => {
-      await queryClient.cancelQueries({ queryKey: ["notifications"] });
-      const previousNotifications = queryClient.getQueryData<NotificationListResult>(notificationQueryKey);
-      queryClient.setQueryData<NotificationListResult>(notificationQueryKey, (current) =>
-        current
-          ? {
-              ...current,
-              items: current.items.filter((notification) => notification.id !== input.threadId)
-            }
-          : current
-      );
-      return { key: notificationQueryKey, previousNotifications };
-    },
-    onError: (_error, _input, context) => {
-      if (context?.previousNotifications) {
-        queryClient.setQueryData(context.key, context.previousNotifications);
-      }
-    },
-    onSettled: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["notifications"] });
-    }
-  });
+  const { notifications, notificationItems, markNotificationRead, markVisibleNotificationsRead } =
+    useMailboxNotifications({
+      filter: notificationFilter,
+      limit: notificationLimit,
+      enabled: appState.isSuccess && route.kind === "mailbox",
+      githubReady
+    });
 
   const organizations = useQuery({
     queryKey: ["organizations", organizationListLimit],
@@ -4201,7 +3893,7 @@ export function App(): JSX.Element {
             })
         }),
         queryClient.fetchQuery({
-          queryKey: notificationQueryKey,
+          queryKey: notificationQueryKey(notificationFilter, notificationLimit),
           staleTime: 0,
           queryFn: () =>
             api.github.listNotificationsWithStatus(
@@ -7436,42 +7128,29 @@ export function App(): JSX.Element {
               />
             )}
 
-            {(route.kind === "mailbox" || route.kind === "organizations") && (
-              <CollectionView
+            {route.kind === "mailbox" && (
+              <MailboxRoute
                 title={routeTitle(route)}
-                routeKind={route.kind}
+                appReady={appState.isSuccess}
                 githubReady={githubReady}
-                issues={accountIssueItems}
-                issuesLoading={accountIssues.isLoading || accountIssues.isFetching}
-                issuesError={accountIssues.error}
-                issuesAvailability={accountIssuesAvailability}
-                pulls={accountPullItems}
-                pullsLoading={accountPulls.isLoading || accountPulls.isFetching}
-                pullsError={accountPulls.error}
-                pullsAvailability={accountPullsAvailability}
+                viewerLogin={authenticatedViewerLogin}
                 accountWorkLimit={accountWorkLimit}
-                notifications={notificationItems}
-                notificationsAvailability={notificationsAvailability}
                 notificationFilter={notificationFilter}
                 notificationLimit={notificationLimit}
-                notificationsLoading={notifications.isLoading || notifications.isFetching}
-                notificationsError={notifications.error}
-                notificationMarkingReadId={
-                  markNotificationRead.isPending ? (markNotificationRead.variables?.threadId ?? null) : null
-                }
-                notificationUnsubscribingId={
-                  unsubscribeNotification.isPending
-                    ? (unsubscribeNotification.variables?.threadId ?? null)
-                    : null
-                }
-                notificationActionError={
-                  (markNotificationRead.error instanceof Error ? markNotificationRead.error : null) ??
-                  (markVisibleNotificationsRead.error instanceof Error
-                    ? markVisibleNotificationsRead.error
-                    : null) ??
-                  (unsubscribeNotification.error instanceof Error ? unsubscribeNotification.error : null)
-                }
-                notificationBulkMarkingRead={markVisibleNotificationsRead.isPending}
+                onOpenExternal={(url) => void api.openExternal(url)}
+                onOpenIssue={openIssueSummaryInApp}
+                onOpenPullRequest={openPullRequestSummaryInApp}
+                onOpenNotification={openNotificationInApp}
+                onNotificationFilterChange={setNotificationFilter}
+                onExpandMailboxWork={expandMailboxWork}
+                onExpandMailboxNotifications={expandMailboxNotifications}
+              />
+            )}
+
+            {route.kind === "organizations" && (
+              <CollectionView
+                title={routeTitle(route)}
+                githubReady={githubReady}
                 organizations={organizationItems}
                 selectedOrganizationLogin={selectedOrganization?.login ?? null}
                 organizationListLimit={organizationListLimit}
@@ -7526,25 +7205,6 @@ export function App(): JSX.Element {
                 repositoryPinError={areaPinMutation.error instanceof Error ? areaPinMutation.error : null}
                 onOpenExternal={(url) => void api.openExternal(url)}
                 onOpenRepository={openRepositoryInApp}
-                onOpenIssue={openIssueSummaryInApp}
-                onOpenPullRequest={openPullRequestSummaryInApp}
-                onOpenNotification={openNotificationInApp}
-                onNotificationFilterChange={setNotificationFilter}
-                onMarkNotificationRead={(threadId) => {
-                  if (githubReady) {
-                    markNotificationRead.mutate({ threadId });
-                  }
-                }}
-                onMarkVisibleNotificationsRead={(threadIds) => {
-                  if (githubReady) {
-                    markVisibleNotificationsRead.mutate({ threadIds });
-                  }
-                }}
-                onUnsubscribeNotification={(threadId) => {
-                  if (githubReady && window.confirm("Unsubscribe from this GitHub notification thread?")) {
-                    unsubscribeNotification.mutate({ threadId });
-                  }
-                }}
                 onSelectOrganization={(login) => {
                   const organization = organizationItems.find((item) => item.login === login);
                   if (organization) {
@@ -7580,8 +7240,6 @@ export function App(): JSX.Element {
                 onExpandOrganizationProjects={expandSelectedOrganizationProjects}
                 onExpandOrganizationTeamRepositories={expandSelectedOrganizationTeamRepositories}
                 onExpandOrganizationTeamMembers={expandSelectedOrganizationTeamMembers}
-                onExpandMailboxWork={expandMailboxWork}
-                onExpandMailboxNotifications={expandMailboxNotifications}
                 onToggleRepositoryPin={toggleRepositoryPin}
               />
             )}
@@ -8813,72 +8471,9 @@ function collaboratorRoleLabel(collaborator: RepositoryCollaboratorSummary): str
   return "access";
 }
 
-function notificationReasonLabel(reason: string): string {
-  return reason.replace(/_/g, " ");
-}
-
-function notificationSubscriptionStateLabel(notification: NotificationSummary): string | null {
-  if (notification.subscribed === true) {
-    return "subscribed";
-  }
-  if (notification.subscribed === false) {
-    return "not subscribed";
-  }
-  return null;
-}
-
-function notificationMetadataParts(notification: NotificationSummary): string[] {
-  return [
-    notification.repositoryPrivate === null
-      ? null
-      : notification.repositoryPrivate
-        ? "private repository"
-        : "public repository",
-    notification.participating === true ? "participating" : null,
-    notificationSubscriptionStateLabel(notification),
-    notification.ignored === true ? "muted" : notification.ignored === false ? "not muted" : null,
-    notification.subscriptionReason
-      ? `subscription reason ${notificationReasonLabel(notification.subscriptionReason)}`
-      : null,
-    notification.subscriptionCreatedAt
-      ? `subscribed ${formatRelativeDate(notification.subscriptionCreatedAt)}`
-      : null,
-    notification.lastReadAt ? `last read ${formatRelativeDate(notification.lastReadAt)}` : null,
-    notification.subject.latestCommentHtmlUrl
-      ? "latest comment link available"
-      : notification.subject.latestCommentApiUrl
-        ? "latest comment API metadata"
-        : null
-  ].filter((item): item is string => Boolean(item));
-}
-
-function notificationTargetUrl(notification: NotificationSummary): string {
-  return notification.htmlUrl ?? notification.repositoryHtmlUrl ?? "https://github.com/notifications";
-}
-
 function CollectionView({
   title,
-  routeKind,
   githubReady,
-  issues,
-  issuesLoading,
-  issuesError,
-  issuesAvailability,
-  pulls,
-  pullsLoading,
-  pullsError,
-  pullsAvailability,
-  accountWorkLimit,
-  notifications,
-  notificationsAvailability,
-  notificationFilter,
-  notificationLimit,
-  notificationsLoading,
-  notificationsError,
-  notificationMarkingReadId,
-  notificationUnsubscribingId,
-  notificationActionError,
-  notificationBulkMarkingRead,
   organizations,
   selectedOrganizationLogin,
   organizationListLimit,
@@ -8923,13 +8518,6 @@ function CollectionView({
   repositoryPinError,
   onOpenExternal,
   onOpenRepository,
-  onOpenIssue,
-  onOpenPullRequest,
-  onOpenNotification,
-  onNotificationFilterChange,
-  onMarkNotificationRead,
-  onMarkVisibleNotificationsRead,
-  onUnsubscribeNotification,
   onSelectOrganization,
   onSelectOrganizationTeam,
   onSelectOrganizationMember,
@@ -8941,32 +8529,10 @@ function CollectionView({
   onExpandOrganizationProjects,
   onExpandOrganizationTeamRepositories,
   onExpandOrganizationTeamMembers,
-  onExpandMailboxWork,
-  onExpandMailboxNotifications,
   onToggleRepositoryPin
 }: {
   title: string;
-  routeKind: "mailbox" | "organizations";
   githubReady: boolean;
-  issues: IssueSummary[];
-  issuesLoading: boolean;
-  issuesError: Error | null;
-  issuesAvailability: GitHubReadAvailability | null;
-  pulls: PullRequestSummary[];
-  pullsLoading: boolean;
-  pullsError: Error | null;
-  pullsAvailability: GitHubReadAvailability | null;
-  accountWorkLimit: number;
-  notifications: NotificationSummary[];
-  notificationsAvailability: GitHubReadAvailability | null;
-  notificationFilter: MailboxNotificationFilter;
-  notificationLimit: number;
-  notificationsLoading: boolean;
-  notificationsError: Error | null;
-  notificationMarkingReadId: string | null;
-  notificationUnsubscribingId: string | null;
-  notificationActionError: Error | null;
-  notificationBulkMarkingRead: boolean;
   organizations: OrganizationSummary[];
   selectedOrganizationLogin: string | null;
   organizationListLimit: number;
@@ -9011,13 +8577,6 @@ function CollectionView({
   repositoryPinError: Error | null;
   onOpenExternal(url: string): void;
   onOpenRepository(nameWithOwner: string): void;
-  onOpenIssue(issue: IssueSummary): void;
-  onOpenPullRequest(pullRequest: PullRequestSummary): void;
-  onOpenNotification(notification: NotificationSummary): void;
-  onNotificationFilterChange(filter: MailboxNotificationFilter): void;
-  onMarkNotificationRead(threadId: string): void;
-  onMarkVisibleNotificationsRead(threadIds: string[]): void;
-  onUnsubscribeNotification(threadId: string): void;
   onSelectOrganization(login: string): void;
   onSelectOrganizationTeam(slug: string): void;
   onSelectOrganizationMember(login: string): void;
@@ -9029,153 +8588,39 @@ function CollectionView({
   onExpandOrganizationProjects(): void;
   onExpandOrganizationTeamRepositories(): void;
   onExpandOrganizationTeamMembers(): void;
-  onExpandMailboxWork(): void;
-  onExpandMailboxNotifications(): void;
   onToggleRepositoryPin(nameWithOwner: string): void;
 }): JSX.Element {
   const api = useControlApi();
   const [collectionFilter, setCollectionFilter] = useState("");
   const [profileRepositoryLimits, setProfileRepositoryLimits] = useState<Record<string, number>>({});
   const normalizedCollectionFilter = collectionFilter.trim().toLowerCase();
-  const workRows = [
-    ...issues.map((issue) => ({ ...issue, kind: "issue" as const })),
-    ...pulls.map((pull) => ({ ...pull, kind: "pull" as const }))
-  ].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-  const workRowsLoading = issuesLoading || pullsLoading;
-  const workRowErrors = [
-    issuesError ? `Issues unavailable: ${issuesError.message}` : null,
-    pullsError ? `Pull requests unavailable: ${pullsError.message}` : null
-  ].filter((message): message is string => Boolean(message));
-  const workAvailabilityMessages = [
-    readAvailabilityMessage("Account issues", issuesAvailability),
-    readAvailabilityMessage("Account pull requests", pullsAvailability)
-  ].filter((message): message is string => Boolean(message));
-
-  const actionUrl =
-    routeKind === "organizations" ? "https://github.com/organizations" : "https://github.com/notifications";
-  const notificationFilters: Array<{ value: MailboxNotificationFilter; label: string }> = [
-    { value: "unread", label: "Unread" },
-    { value: "all", label: "All" },
-    { value: "participating", label: "Participating" }
-  ];
-  const filteredNotifications =
-    routeKind === "mailbox"
-      ? notifications.filter((notification) =>
-          matchesCollectionFilter(
-            [
-              notification.subject.title,
-              notification.subject.type,
-              notification.reason,
-              notification.repositoryNameWithOwner
-            ],
-            normalizedCollectionFilter
-          )
-        )
-      : [];
-  const filteredWorkRows =
-    routeKind === "mailbox"
-      ? workRows.filter((row) =>
-          matchesCollectionFilter(
-            [row.title, row.repositoryNameWithOwner, row.authorLogin, row.state, row.kind],
-            normalizedCollectionFilter
-          )
-        )
-      : [];
-  const notificationsLimitHit = routeKind === "mailbox" && notifications.length >= notificationLimit;
-  const canExpandMailboxNotifications = notificationsLimitHit && notificationLimit < maxMailboxListLimit;
-  const accountWorkLimitHit =
-    routeKind === "mailbox" && (issues.length >= accountWorkLimit || pulls.length >= accountWorkLimit);
-  const canExpandMailboxWork = accountWorkLimitHit && accountWorkLimit < maxMailboxListLimit;
-  const visibleUnreadNotificationIds =
-    routeKind === "mailbox"
-      ? filteredNotifications
-          .filter((notification) => notification.unread)
-          .map((notification) => notification.id)
-      : [];
-  const filteredOrganizations =
-    routeKind === "organizations"
-      ? organizations.filter((organization) =>
-          matchesCollectionFilter(
-            [
-              organization.login,
-              organization.name,
-              organization.description,
-              organization.location,
-              organization.websiteUrl
-            ],
-            normalizedCollectionFilter
-          )
-        )
-      : [];
-  const organizationsLimitHit =
-    routeKind === "organizations" && organizations.length >= organizationListLimit;
+  const actionUrl = "https://github.com/organizations";
+  const filteredOrganizations = organizations.filter((organization) =>
+    matchesCollectionFilter(
+      [
+        organization.login,
+        organization.name,
+        organization.description,
+        organization.location,
+        organization.websiteUrl
+      ],
+      normalizedCollectionFilter
+    )
+  );
+  const organizationsLimitHit = organizations.length >= organizationListLimit;
   const canExpandOrganizations = organizationsLimitHit && organizationListLimit < maxOrganizationListLimit;
   const selectedOrganization =
-    routeKind === "organizations"
-      ? (organizations.find((organization) => organization.login === selectedOrganizationLogin) ??
-        organizations[0] ??
-        null)
-      : null;
-  const selectedOrganizationRepositories =
-    routeKind === "organizations" && selectedOrganizationLogin
-      ? [...organizationRepositories]
-          .sort((a, b) => {
-            const aTime = new Date(a.pushedAt ?? a.updatedAt ?? 0).getTime();
-            const bTime = new Date(b.pushedAt ?? b.updatedAt ?? 0).getTime();
-            return bTime - aTime;
-          })
-          .filter((repository) =>
-            matchesCollectionFilter(
-              [
-                repository.name,
-                repository.owner,
-                repository.nameWithOwner,
-                repository.description,
-                repository.visibility,
-                repository.permission,
-                repository.defaultBranch
-              ],
-              normalizedCollectionFilter
-            )
-          )
-      : [];
-  const filteredOrganizationProjects =
-    routeKind === "organizations"
-      ? organizationProjects.filter((project) =>
-          matchesCollectionFilter(
-            [
-              project.title,
-              project.shortDescription,
-              project.ownerLogin,
-              project.number ? `#${project.number}` : null,
-              project.closed ? "closed" : "open",
-              project.isPublic === null ? null : project.isPublic ? "public" : "private",
-              ...project.fields.map((field) => `${field.name} ${field.dataType ?? ""}`)
-            ],
-            normalizedCollectionFilter
-          )
-        )
-      : [];
-  const selectedOrganizationProject =
-    routeKind === "organizations" && selectedOrganizationProjectId
-      ? (organizationProjects.find((project) => project.id === selectedOrganizationProjectId) ?? null)
-      : null;
-  const filteredOrganizationTeams =
-    routeKind === "organizations"
-      ? organizationTeams.filter((team) =>
-          matchesCollectionFilter(
-            [team.name, team.slug, team.description, team.privacy, team.permission, team.parent?.name],
-            normalizedCollectionFilter
-          )
-        )
-      : [];
-  const selectedOrganizationTeam =
-    organizationTeams.find((team) => team.slug === selectedOrganizationTeamSlug) ??
-    organizationTeams[0] ??
+    organizations.find((organization) => organization.login === selectedOrganizationLogin) ??
+    organizations[0] ??
     null;
-  const filteredOrganizationTeamRepositories =
-    routeKind === "organizations"
-      ? organizationTeamRepositories.filter((repository) =>
+  const selectedOrganizationRepositories = selectedOrganizationLogin
+    ? [...organizationRepositories]
+        .sort((a, b) => {
+          const aTime = new Date(a.pushedAt ?? a.updatedAt ?? 0).getTime();
+          const bTime = new Date(b.pushedAt ?? b.updatedAt ?? 0).getTime();
+          return bTime - aTime;
+        })
+        .filter((repository) =>
           matchesCollectionFilter(
             [
               repository.name,
@@ -9189,25 +8634,60 @@ function CollectionView({
             normalizedCollectionFilter
           )
         )
-      : [];
-  const filteredOrganizationTeamMembers =
-    routeKind === "organizations"
-      ? organizationTeamMembers.filter((member) =>
-          matchesCollectionFilter(
-            [member.login, member.siteAdmin ? "site admin" : null],
-            normalizedCollectionFilter
-          )
-        )
-      : [];
-  const filteredOrganizationMembers =
-    routeKind === "organizations"
-      ? organizationMembers.filter((member) =>
-          matchesCollectionFilter(
-            [member.login, member.siteAdmin ? "site admin" : null],
-            normalizedCollectionFilter
-          )
-        )
-      : [];
+    : [];
+  const filteredOrganizationProjects = organizationProjects.filter((project) =>
+    matchesCollectionFilter(
+      [
+        project.title,
+        project.shortDescription,
+        project.ownerLogin,
+        project.number ? `#${project.number}` : null,
+        project.closed ? "closed" : "open",
+        project.isPublic === null ? null : project.isPublic ? "public" : "private",
+        ...project.fields.map((field) => `${field.name} ${field.dataType ?? ""}`)
+      ],
+      normalizedCollectionFilter
+    )
+  );
+  const selectedOrganizationProject = selectedOrganizationProjectId
+    ? (organizationProjects.find((project) => project.id === selectedOrganizationProjectId) ?? null)
+    : null;
+  const filteredOrganizationTeams = organizationTeams.filter((team) =>
+    matchesCollectionFilter(
+      [team.name, team.slug, team.description, team.privacy, team.permission, team.parent?.name],
+      normalizedCollectionFilter
+    )
+  );
+  const selectedOrganizationTeam =
+    organizationTeams.find((team) => team.slug === selectedOrganizationTeamSlug) ??
+    organizationTeams[0] ??
+    null;
+  const filteredOrganizationTeamRepositories = organizationTeamRepositories.filter((repository) =>
+    matchesCollectionFilter(
+      [
+        repository.name,
+        repository.owner,
+        repository.nameWithOwner,
+        repository.description,
+        repository.visibility,
+        repository.permission,
+        repository.defaultBranch
+      ],
+      normalizedCollectionFilter
+    )
+  );
+  const filteredOrganizationTeamMembers = organizationTeamMembers.filter((member) =>
+    matchesCollectionFilter(
+      [member.login, member.siteAdmin ? "site admin" : null],
+      normalizedCollectionFilter
+    )
+  );
+  const filteredOrganizationMembers = organizationMembers.filter((member) =>
+    matchesCollectionFilter(
+      [member.login, member.siteAdmin ? "site admin" : null],
+      normalizedCollectionFilter
+    )
+  );
   const selectedVisibleOrganizationMember =
     filteredOrganizationMembers.find((member) => member.login === selectedOrganizationMemberLogin) ?? null;
   const selectedVisibleTeamMember =
@@ -9320,18 +8800,7 @@ function CollectionView({
     "Organization membership",
     selectedOrganization?.viewerMembershipAvailability ?? null
   );
-  const notificationsAvailabilityMessage = readAvailabilityMessage(
-    "Notifications",
-    notificationsAvailability
-  );
   const repositoryPinDisabledReason = repositoryPinBusy ? "Repository pin update is still running." : null;
-  const notificationBulkMarkReadDisabledReason = notificationBulkMarkingRead
-    ? "Visible notifications are already being marked as read."
-    : !githubReady
-      ? "Sign in with GitHub to mark notifications as read."
-      : visibleUnreadNotificationIds.length === 0
-        ? "No visible unread notifications."
-        : null;
 
   function expandSelectedOrganizationMemberRepositories(): void {
     if (!selectedOrganizationMember) {
@@ -9352,38 +8821,8 @@ function CollectionView({
       <header>
         <h2>{title}</h2>
         <div className="collection-actions">
-          {routeKind === "mailbox" && (
-            <>
-              <div className="notification-filter" role="group" aria-label="Notification filter">
-                {notificationFilters.map((filter) => (
-                  <button
-                    className={filter.value === notificationFilter ? "selected-action" : ""}
-                    key={filter.value}
-                    type="button"
-                    aria-pressed={filter.value === notificationFilter}
-                    onClick={() => onNotificationFilterChange(filter.value)}
-                  >
-                    {filter.label}
-                  </button>
-                ))}
-              </div>
-              <button
-                type="button"
-                disabled={Boolean(notificationBulkMarkReadDisabledReason)}
-                title={notificationBulkMarkReadDisabledReason ?? "Mark visible unread notifications as read"}
-                onClick={() => onMarkVisibleNotificationsRead(visibleUnreadNotificationIds)}
-              >
-                <CheckCircle2 size={16} /> {notificationBulkMarkingRead ? "Marking…" : "Mark visible read"}
-              </button>
-            </>
-          )}
-          <button
-            type="button"
-            title={routeKind === "mailbox" ? "Open GitHub notifications fallback" : undefined}
-            onClick={() => onOpenExternal(actionUrl)}
-          >
-            {routeKind === "organizations" ? <RefreshCw size={16} /> : <ExternalLink size={16} />} GitHub
-            fallback
+          <button type="button" onClick={() => onOpenExternal(actionUrl)}>
+            <RefreshCw size={16} /> GitHub fallback
           </button>
         </div>
       </header>
@@ -9392,8 +8831,8 @@ function CollectionView({
           <label className="surface-filter">
             <Search size={16} />
             <input
-              aria-label={`Filter ${routeKind}`}
-              placeholder={`Filter ${routeKind}`}
+              aria-label="Filter organizations"
+              placeholder="Filter organizations"
               value={collectionFilter}
               onChange={(event) => setCollectionFilter(event.target.value)}
             />
@@ -9407,303 +8846,64 @@ function CollectionView({
         {repositoryPinError && (
           <div className="error-state">Local repository pin update failed: {repositoryPinError.message}</div>
         )}
-        {routeKind === "mailbox" && notificationsLoading && notifications.length === 0 && (
-          <div className="loading-state">Loading GitHub notifications…</div>
-        )}
-        {routeKind === "mailbox" && notificationsError && (
-          <div className="error-state">Could not load GitHub notifications: {notificationsError.message}</div>
-        )}
-        {routeKind === "mailbox" && notificationsAvailabilityMessage && (
-          <div className="error-state">{notificationsAvailabilityMessage}</div>
-        )}
-        {routeKind === "mailbox" && notificationActionError && (
-          <div className="error-state">
-            Could not update GitHub notification: {notificationActionError.message}
-          </div>
-        )}
-        {routeKind === "mailbox" &&
-          filteredNotifications.map((notification) => {
-            const metadataParts = notificationMetadataParts(notification);
-            const notificationTarget = notificationInAppTarget(notification);
-            const notificationExternalUrl = notificationTargetUrl(notification);
-            const markReadDisabledReason = !notification.unread
-              ? "Notification is already read."
-              : !githubReady
-                ? "Sign in with GitHub to mark notifications as read."
-                : notificationMarkingReadId === notification.id
-                  ? "Notification is already being marked as read."
-                  : notificationBulkMarkingRead
-                    ? "Visible notifications are being marked as read."
-                    : null;
-            const unsubscribeDisabledReason = !githubReady
-              ? "Sign in with GitHub to unsubscribe from notifications."
-              : notification.subscribed === false
-                ? "Notification thread is not currently subscribed."
-                : notificationUnsubscribingId === notification.id
-                  ? "Notification thread is already being unsubscribed."
-                  : null;
+        {filteredOrganizations.map((organization) => {
+          const membershipAvailabilityMessage = readAvailabilityMessage(
+            "Organization membership",
+            organization.viewerMembershipAvailability
+          );
 
-            return (
-              <div
-                className={`issue-row notification-row ${notification.unread ? "unread-row" : ""}`}
-                key={notification.id}
+          return (
+            <div className="issue-row organization-row" key={organization.id}>
+              <button
+                className={`organization-row-main ${
+                  organization.login === selectedOrganizationLogin ? "selected-action" : ""
+                }`}
+                type="button"
+                onClick={() => onSelectOrganization(organization.login)}
               >
-                <button
-                  className="notification-row-main"
-                  type="button"
-                  title={
-                    notificationTarget
-                      ? "Open notification target in Control"
-                      : "Open notification target on GitHub"
-                  }
-                  onClick={() => onOpenNotification(notification)}
-                >
-                  {notification.unread ? <CircleDot size={17} /> : <Inbox size={17} />}
-                  <div>
-                    <strong>{notification.subject.title}</strong>
-                    <small>
-                      {notification.repositoryNameWithOwner} · {notification.subject.type} ·{" "}
-                      {notificationReasonLabel(notification.reason)} · updated{" "}
-                      {formatRelativeDate(notification.updatedAt)}
-                    </small>
-                    {metadataParts.length > 0 && (
-                      <small className="notification-detail-line">{metadataParts.join(" · ")}</small>
-                    )}
-                  </div>
-                </button>
-                <span className="row-chip-stack">
-                  <span className={`state-chip ${notification.unread ? "attention" : ""}`}>
-                    {notification.unread ? "unread" : "read"}
-                  </span>
-                  <span className={`state-chip ${notificationTarget ? "success" : ""}`}>
-                    {notificationTarget ? "in-app" : "fallback"}
-                  </span>
-                </span>
-                <span className="row-action-stack">
-                  <button
-                    className="pin-row-button"
-                    type="button"
-                    aria-label="Open notification target GitHub fallback"
-                    title="Open notification target GitHub fallback"
-                    onClick={() => onOpenExternal(notificationExternalUrl)}
-                  >
-                    <ExternalLink size={15} />
-                  </button>
-                  {notification.subject.latestCommentHtmlUrl && (
-                    <button
-                      className="pin-row-button"
-                      type="button"
-                      aria-label={`Open latest comment for ${notification.subject.title} GitHub fallback`}
-                      title="Open latest comment GitHub fallback"
-                      onClick={() => onOpenExternal(notification.subject.latestCommentHtmlUrl!)}
-                    >
-                      <MessageSquare size={15} />
-                    </button>
-                  )}
-                  <button
-                    className="pin-row-button"
-                    type="button"
-                    aria-label={`Mark ${notification.subject.title} as read`}
-                    disabled={Boolean(markReadDisabledReason)}
-                    title={markReadDisabledReason ?? "Mark notification as read"}
-                    onClick={() => onMarkNotificationRead(notification.id)}
-                  >
-                    <CheckCircle2 size={15} />
-                  </button>
-                  <button
-                    className="pin-row-button"
-                    type="button"
-                    aria-label={`Unsubscribe from ${notification.subject.title}`}
-                    disabled={Boolean(unsubscribeDisabledReason)}
-                    title={unsubscribeDisabledReason ?? "Unsubscribe from this notification thread"}
-                    onClick={() => onUnsubscribeNotification(notification.id)}
-                  >
-                    <BellOff size={15} />
-                  </button>
-                </span>
-              </div>
-            );
-          })}
-        {routeKind === "mailbox" && canExpandMailboxNotifications && (
-          <div className="table-action-row">
-            <button type="button" onClick={onExpandMailboxNotifications}>
-              Load more notifications
-            </button>
-          </div>
-        )}
-        {routeKind === "mailbox" && !canExpandMailboxNotifications && notificationsLimitHit && (
-          <div className="muted-row">
-            Showing the first {notificationLimit} notifications returned by GitHub.
-          </div>
-        )}
-        {routeKind === "mailbox" &&
-          (filteredWorkRows.length > 0 ||
-            workRowsLoading ||
-            workRowErrors.length > 0 ||
-            workAvailabilityMessages.length > 0) && (
-            <div className="collection-section-label">Open issues and pull requests</div>
-          )}
-        {routeKind === "mailbox" && workRowsLoading && workRows.length === 0 && (
-          <div className="loading-state">Loading account issues and pull requests…</div>
-        )}
-        {routeKind === "mailbox" &&
-          workRowErrors.map((message) => (
-            <div className="error-state" key={message}>
-              {message}
+                <span className="repo-avatar">{organization.login.slice(0, 1).toUpperCase()}</span>
+                <div>
+                  <strong>{organization.name ?? organization.login}</strong>
+                  <small>
+                    {organization.login} · {formatCompactNumber(organization.repositoryCount)} repositories ·{" "}
+                    {formatCompactNumber(organization.teamCount)} teams ·{" "}
+                    {organization.viewerMembershipRole ??
+                      (organization.viewerCanAdminister
+                        ? "admin"
+                        : organization.viewerIsMember
+                          ? "member"
+                          : "visible")}
+                    {organization.viewerMembershipState ? ` · ${organization.viewerMembershipState}` : ""}
+                  </small>
+                  {membershipAvailabilityMessage && <small>{membershipAvailabilityMessage}</small>}
+                  {organization.description && <small>{organization.description}</small>}
+                </div>
+              </button>
+              <button
+                className="pin-row-button"
+                type="button"
+                aria-label={`Open ${organization.login} on GitHub`}
+                title={`Open ${organization.login} on GitHub`}
+                onClick={() => onOpenExternal(organization.htmlUrl)}
+              >
+                <ExternalLink size={15} />
+              </button>
             </div>
-          ))}
-        {routeKind === "mailbox" &&
-          workAvailabilityMessages.map((message) => (
-            <div className="error-state" key={message}>
-              {message}
-            </div>
-          ))}
-        {routeKind === "mailbox" &&
-          filteredWorkRows.map((row) => {
-            const reviewDecisionLabel =
-              row.kind === "pull" ? pullRequestReviewDecisionLabel(row.reviewDecision) : null;
-            const reviewDecisionChipTone =
-              row.kind === "pull" ? pullRequestReviewDecisionTone(row.reviewDecision) : "";
-            const mergeableStateLabel =
-              row.kind === "pull" ? pullRequestMergeableStateLabel(row.mergeableState) : null;
-            const isCrossRepository =
-              row.kind === "pull"
-                ? (row.isCrossRepository ??
-                  Boolean(
-                    (row.headRepositoryNameWithOwner &&
-                      row.headRepositoryNameWithOwner !== row.repositoryNameWithOwner) ||
-                    (row.baseRepositoryNameWithOwner &&
-                      row.baseRepositoryNameWithOwner !== row.repositoryNameWithOwner)
-                  ))
-                : false;
-            const sourceRepositoryLabel =
-              row.kind === "pull" && row.headRepositoryNameWithOwner
-                ? `fork: ${row.headRepositoryNameWithOwner}`
-                : "fork";
-            const metadataParts =
-              row.kind === "pull" ? mailboxPullRequestMetadataParts(row) : mailboxIssueMetadataParts(row);
-
-            return (
-              <div className="issue-row mailbox-work-row" key={`${row.kind}-${row.id}`}>
-                <button
-                  className="mailbox-work-row-main"
-                  type="button"
-                  onClick={() => (row.kind === "pull" ? onOpenPullRequest(row) : onOpenIssue(row))}
-                >
-                  {row.kind === "pull" ? <GitPullRequest size={17} /> : <CircleDot size={17} />}
-                  <div>
-                    <strong>{row.title}</strong>
-                    <small>
-                      {row.repositoryNameWithOwner ?? "GitHub"} #{row.number} · updated{" "}
-                      {formatRelativeDate(row.updatedAt)}
-                    </small>
-                    <small className="notification-detail-line">{metadataParts.join(" · ")}</small>
-                  </div>
-                </button>
-                <span className="row-chip-stack">
-                  <span className={`state-chip ${row.state === "open" ? "success" : "attention"}`}>
-                    {row.kind === "issue" ? issueStateLabel(row) : row.state}
-                  </span>
-                  {row.kind === "pull" && row.isDraft && <span className="state-chip attention">draft</span>}
-                  {row.kind === "pull" && mergeableStateLabel && row.mergeableState !== "clean" && (
-                    <span className="state-chip attention">{mergeableStateLabel}</span>
-                  )}
-                  {reviewDecisionLabel && (
-                    <span className={`state-chip ${reviewDecisionChipTone}`}>{reviewDecisionLabel}</span>
-                  )}
-                  {isCrossRepository && (
-                    <span className="state-chip attention" title={sourceRepositoryLabel}>
-                      fork
-                    </span>
-                  )}
-                  {row.locked && <span className="state-chip attention">locked</span>}
-                  <span className="state-chip success">in-app</span>
-                </span>
-                <span className="row-action-stack">
-                  <button
-                    className="pin-row-button"
-                    type="button"
-                    aria-label={`Open GitHub fallback for ${row.title}`}
-                    title={`Open GitHub fallback for ${row.kind === "pull" ? "pull request" : "issue"}`}
-                    onClick={() => onOpenExternal(row.htmlUrl)}
-                  >
-                    <ExternalLink size={15} />
-                  </button>
-                </span>
-              </div>
-            );
-          })}
-        {routeKind === "mailbox" && canExpandMailboxWork && (
-          <div className="table-action-row">
-            <button type="button" onClick={onExpandMailboxWork}>
-              Load more account work
-            </button>
-          </div>
-        )}
-        {routeKind === "mailbox" && !canExpandMailboxWork && accountWorkLimitHit && (
-          <div className="muted-row">
-            Showing the first {accountWorkLimit} issues and pull requests returned by GitHub.
-          </div>
-        )}
-        {routeKind === "organizations" &&
-          filteredOrganizations.map((organization) => {
-            const membershipAvailabilityMessage = readAvailabilityMessage(
-              "Organization membership",
-              organization.viewerMembershipAvailability
-            );
-
-            return (
-              <div className="issue-row organization-row" key={organization.id}>
-                <button
-                  className={`organization-row-main ${
-                    organization.login === selectedOrganizationLogin ? "selected-action" : ""
-                  }`}
-                  type="button"
-                  onClick={() => onSelectOrganization(organization.login)}
-                >
-                  <span className="repo-avatar">{organization.login.slice(0, 1).toUpperCase()}</span>
-                  <div>
-                    <strong>{organization.name ?? organization.login}</strong>
-                    <small>
-                      {organization.login} · {formatCompactNumber(organization.repositoryCount)} repositories
-                      · {formatCompactNumber(organization.teamCount)} teams ·{" "}
-                      {organization.viewerMembershipRole ??
-                        (organization.viewerCanAdminister
-                          ? "admin"
-                          : organization.viewerIsMember
-                            ? "member"
-                            : "visible")}
-                      {organization.viewerMembershipState ? ` · ${organization.viewerMembershipState}` : ""}
-                    </small>
-                    {membershipAvailabilityMessage && <small>{membershipAvailabilityMessage}</small>}
-                    {organization.description && <small>{organization.description}</small>}
-                  </div>
-                </button>
-                <button
-                  className="pin-row-button"
-                  type="button"
-                  aria-label={`Open ${organization.login} on GitHub`}
-                  title={`Open ${organization.login} on GitHub`}
-                  onClick={() => onOpenExternal(organization.htmlUrl)}
-                >
-                  <ExternalLink size={15} />
-                </button>
-              </div>
-            );
-          })}
-        {routeKind === "organizations" && canExpandOrganizations && (
+          );
+        })}
+        {canExpandOrganizations && (
           <div className="table-action-row">
             <button type="button" onClick={onExpandOrganizations}>
               Load more organizations
             </button>
           </div>
         )}
-        {routeKind === "organizations" && !canExpandOrganizations && organizationsLimitHit && (
+        {!canExpandOrganizations && organizationsLimitHit && (
           <div className="muted-row">
             Showing the first {organizationListLimit} organizations returned by GitHub.
           </div>
         )}
-        {routeKind === "organizations" && selectedOrganization && (
+        {selectedOrganization && (
           <section
             className="organization-profile-summary"
             aria-label={`${selectedOrganization.login} profile`}
@@ -9761,7 +8961,7 @@ function CollectionView({
             </button>
           </section>
         )}
-        {routeKind === "organizations" && selectedOrganizationProject && (
+        {selectedOrganizationProject && (
           <aside className="contributor-detail-panel organization-project-detail-panel">
             <div className="contributor-detail-header">
               <SquareKanban size={22} />
@@ -9874,7 +9074,7 @@ function CollectionView({
             </div>
           </aside>
         )}
-        {routeKind === "organizations" && selectedOrganizationMember && (
+        {selectedOrganizationMember && (
           <aside className="contributor-detail-panel organization-member-detail-panel">
             <div className="contributor-detail-header">
               {(selectedOrganizationMemberProfileData?.avatarUrl ?? selectedOrganizationMember.avatarUrl) ? (
@@ -10048,7 +9248,7 @@ function CollectionView({
             </div>
           </aside>
         )}
-        {routeKind === "organizations" && selectedOrganizationLogin && (
+        {selectedOrganizationLogin && (
           <div className="section-title-row">
             <div className="collection-section-label">{selectedOrganizationLogin} members</div>
             {canExpandOrganizationMembers && (
@@ -10058,63 +9258,59 @@ function CollectionView({
             )}
           </div>
         )}
-        {routeKind === "organizations" && organizationMembersLoading && organizationMembers.length === 0 && (
+        {organizationMembersLoading && organizationMembers.length === 0 && (
           <div className="loading-state">Loading organization members…</div>
         )}
-        {routeKind === "organizations" && organizationMembersAvailabilityMessage && (
+        {organizationMembersAvailabilityMessage && (
           <div className="error-state">{organizationMembersAvailabilityMessage}</div>
         )}
-        {routeKind === "organizations" && organizationMembersError && (
-          <div className="error-state">Could not load organization members.</div>
-        )}
-        {routeKind === "organizations" && !canExpandOrganizationMembers && organizationMembersLimitHit && (
+        {organizationMembersError && <div className="error-state">Could not load organization members.</div>}
+        {!canExpandOrganizationMembers && organizationMembersLimitHit && (
           <div className="muted-row">
             Showing the first {organizationMembers.length} members returned by GitHub.
           </div>
         )}
-        {routeKind === "organizations" &&
-          filteredOrganizationMembers.map((member) => (
-            <div
-              className={`issue-row organization-member-row ${
-                member.login === selectedOrganizationMember?.login ? "selected-action" : ""
-              }`}
-              key={`organization-member-${member.id}`}
+        {filteredOrganizationMembers.map((member) => (
+          <div
+            className={`issue-row organization-member-row ${
+              member.login === selectedOrganizationMember?.login ? "selected-action" : ""
+            }`}
+            key={`organization-member-${member.id}`}
+          >
+            <button
+              className="organization-member-row-main"
+              type="button"
+              aria-pressed={member.login === selectedOrganizationMember?.login}
+              onClick={() => onSelectOrganizationMember(member.login)}
+              title={`View @${member.login} in Control`}
             >
-              <button
-                className="organization-member-row-main"
-                type="button"
-                aria-pressed={member.login === selectedOrganizationMember?.login}
-                onClick={() => onSelectOrganizationMember(member.login)}
-                title={`View @${member.login} in Control`}
-              >
-                {member.avatarUrl ? (
-                  <img className="repo-avatar" src={member.avatarUrl} alt="" />
-                ) : (
-                  <span className="repo-avatar">{member.login.slice(0, 1).toUpperCase()}</span>
-                )}
-                <div>
-                  <strong>{member.login}</strong>
-                  <small>{member.siteAdmin ? "site admin" : "member"}</small>
-                </div>
-              </button>
-              <button
-                className="pin-row-button"
-                type="button"
-                aria-label={`Open ${member.login} on GitHub`}
-                disabled={!member.htmlUrl}
-                title={member.htmlUrl ? `Open ${member.login} on GitHub` : "Member profile URL unavailable."}
-                onClick={() => {
-                  if (member.htmlUrl) {
-                    onOpenExternal(member.htmlUrl);
-                  }
-                }}
-              >
-                <ExternalLink size={15} />
-              </button>
-            </div>
-          ))}
-        {routeKind === "organizations" &&
-          selectedOrganizationLogin &&
+              {member.avatarUrl ? (
+                <img className="repo-avatar" src={member.avatarUrl} alt="" />
+              ) : (
+                <span className="repo-avatar">{member.login.slice(0, 1).toUpperCase()}</span>
+              )}
+              <div>
+                <strong>{member.login}</strong>
+                <small>{member.siteAdmin ? "site admin" : "member"}</small>
+              </div>
+            </button>
+            <button
+              className="pin-row-button"
+              type="button"
+              aria-label={`Open ${member.login} on GitHub`}
+              disabled={!member.htmlUrl}
+              title={member.htmlUrl ? `Open ${member.login} on GitHub` : "Member profile URL unavailable."}
+              onClick={() => {
+                if (member.htmlUrl) {
+                  onOpenExternal(member.htmlUrl);
+                }
+              }}
+            >
+              <ExternalLink size={15} />
+            </button>
+          </div>
+        ))}
+        {selectedOrganizationLogin &&
           !organizationMembersLoading &&
           !organizationMembersError &&
           !organizationMembersAvailabilityMessage &&
@@ -10125,7 +9321,7 @@ function CollectionView({
                 : "No organization members match this filter."}
             </div>
           )}
-        {routeKind === "organizations" && selectedOrganizationLogin && (
+        {selectedOrganizationLogin && (
           <div className="section-title-row">
             <div className="collection-section-label">{selectedOrganizationLogin} repositories</div>
             {canExpandOrganizationRepositories && (
@@ -10135,84 +9331,78 @@ function CollectionView({
             )}
           </div>
         )}
-        {routeKind === "organizations" &&
-          organizationRepositoriesLoading &&
-          organizationRepositories.length === 0 && (
-            <div className="loading-state">Loading organization repositories…</div>
-          )}
-        {routeKind === "organizations" && organizationRepositoriesAvailabilityMessage && (
+        {organizationRepositoriesLoading && organizationRepositories.length === 0 && (
+          <div className="loading-state">Loading organization repositories…</div>
+        )}
+        {organizationRepositoriesAvailabilityMessage && (
           <div className="error-state">{organizationRepositoriesAvailabilityMessage}</div>
         )}
-        {routeKind === "organizations" && organizationRepositoriesError && (
+        {organizationRepositoriesError && (
           <div className="error-state">Could not load organization repositories.</div>
         )}
-        {routeKind === "organizations" &&
-          !canExpandOrganizationRepositories &&
-          organizationRepositoriesLimitHit && (
-            <div className="muted-row">
-              Showing the first {organizationRepositories.length} repositories returned by GitHub.
-            </div>
-          )}
-        {routeKind === "organizations" &&
-          selectedOrganizationRepositories.map((repository) => {
-            const pinned = pinnedRepositoryNames.some(
-              (nameWithOwner) => nameWithOwner.toLowerCase() === repository.nameWithOwner.toLowerCase()
-            );
-            const metadataParts = organizationRepositoryCollectionMetadataParts(repository);
-            const chips = organizationRepositoryCollectionChips(repository, pinned);
+        {!canExpandOrganizationRepositories && organizationRepositoriesLimitHit && (
+          <div className="muted-row">
+            Showing the first {organizationRepositories.length} repositories returned by GitHub.
+          </div>
+        )}
+        {selectedOrganizationRepositories.map((repository) => {
+          const pinned = pinnedRepositoryNames.some(
+            (nameWithOwner) => nameWithOwner.toLowerCase() === repository.nameWithOwner.toLowerCase()
+          );
+          const metadataParts = organizationRepositoryCollectionMetadataParts(repository);
+          const chips = organizationRepositoryCollectionChips(repository, pinned);
 
-            return (
-              <div
-                className="issue-row repository-row repository-row-with-actions"
-                key={`org-repository-${repository.id}`}
+          return (
+            <div
+              className="issue-row repository-row repository-row-with-actions"
+              key={`org-repository-${repository.id}`}
+            >
+              <button
+                className="repository-row-main"
+                type="button"
+                onClick={() => onOpenRepository(repository.nameWithOwner)}
               >
-                <button
-                  className="repository-row-main"
-                  type="button"
-                  onClick={() => onOpenRepository(repository.nameWithOwner)}
-                >
-                  <span className="repo-avatar">{repository.name.slice(0, 1).toUpperCase()}</span>
-                  <div>
-                    <strong>{repository.name}</strong>
-                    <small>{[repository.description, ...metadataParts].filter(Boolean).join(" · ")}</small>
-                  </div>
-                  <span className="row-chip-stack">
-                    {chips.map((chip) => (
-                      <span className="state-chip" key={`${repository.id}-${chip}`}>
-                        {chip}
-                      </span>
-                    ))}
-                  </span>
-                </button>
-                <span className="row-action-stack">
-                  <button
-                    className={`pin-row-button ${pinned ? "selected-action" : ""}`}
-                    type="button"
-                    aria-label={`${pinned ? "Unpin" : "Pin"} ${repository.name}`}
-                    aria-pressed={pinned}
-                    disabled={Boolean(repositoryPinDisabledReason)}
-                    title={
-                      repositoryPinDisabledReason ?? `${pinned ? "Unpin" : "Pin"} ${repository.nameWithOwner}`
-                    }
-                    onClick={() => onToggleRepositoryPin(repository.nameWithOwner)}
-                  >
-                    <Pin size={15} />
-                  </button>
-                  <button
-                    className="pin-row-button"
-                    type="button"
-                    aria-label={`Open GitHub fallback for ${repository.name}`}
-                    title={`Open GitHub fallback for ${repository.nameWithOwner}`}
-                    onClick={() => onOpenExternal(repository.htmlUrl)}
-                  >
-                    <ExternalLink size={15} />
-                  </button>
+                <span className="repo-avatar">{repository.name.slice(0, 1).toUpperCase()}</span>
+                <div>
+                  <strong>{repository.name}</strong>
+                  <small>{[repository.description, ...metadataParts].filter(Boolean).join(" · ")}</small>
+                </div>
+                <span className="row-chip-stack">
+                  {chips.map((chip) => (
+                    <span className="state-chip" key={`${repository.id}-${chip}`}>
+                      {chip}
+                    </span>
+                  ))}
                 </span>
-              </div>
-            );
-          })}
-        {routeKind === "organizations" &&
-          selectedOrganizationLogin &&
+              </button>
+              <span className="row-action-stack">
+                <button
+                  className={`pin-row-button ${pinned ? "selected-action" : ""}`}
+                  type="button"
+                  aria-label={`${pinned ? "Unpin" : "Pin"} ${repository.name}`}
+                  aria-pressed={pinned}
+                  disabled={Boolean(repositoryPinDisabledReason)}
+                  title={
+                    repositoryPinDisabledReason ?? `${pinned ? "Unpin" : "Pin"} ${repository.nameWithOwner}`
+                  }
+                  onClick={() => onToggleRepositoryPin(repository.nameWithOwner)}
+                >
+                  <Pin size={15} />
+                </button>
+                <button
+                  className="pin-row-button"
+                  type="button"
+                  aria-label={`Open GitHub fallback for ${repository.name}`}
+                  title={`Open GitHub fallback for ${repository.nameWithOwner}`}
+                  onClick={() => onOpenExternal(repository.htmlUrl)}
+                >
+                  <ExternalLink size={15} />
+                </button>
+              </span>
+            </div>
+          );
+        })}
+        {selectedOrganizationLogin &&
           !organizationRepositoriesLoading &&
           !organizationRepositoriesError &&
           !organizationRepositoriesAvailabilityMessage &&
@@ -10223,7 +9413,7 @@ function CollectionView({
                 : "No organization repositories returned."}
             </div>
           )}
-        {routeKind === "organizations" && selectedOrganizationLogin && (
+        {selectedOrganizationLogin && (
           <div className="section-title-row">
             <div className="collection-section-label">{selectedOrganizationLogin} projects</div>
             {canExpandOrganizationProjects && (
@@ -10233,92 +9423,88 @@ function CollectionView({
             )}
           </div>
         )}
-        {routeKind === "organizations" &&
-          organizationProjectsLoading &&
-          organizationProjects.length === 0 && (
-            <div className="loading-state">Loading organization projects…</div>
-          )}
-        {routeKind === "organizations" && organizationProjectsAvailabilityMessage && (
+        {organizationProjectsLoading && organizationProjects.length === 0 && (
+          <div className="loading-state">Loading organization projects…</div>
+        )}
+        {organizationProjectsAvailabilityMessage && (
           <div className="error-state">{organizationProjectsAvailabilityMessage}</div>
         )}
-        {routeKind === "organizations" && organizationProjectsError && (
+        {organizationProjectsError && (
           <div className="error-state">Could not load organization projects.</div>
         )}
-        {routeKind === "organizations" && !canExpandOrganizationProjects && organizationProjectsLimitHit && (
+        {!canExpandOrganizationProjects && organizationProjectsLimitHit && (
           <div className="muted-row">
             Showing the first {organizationProjects.length} projects returned by GitHub.
           </div>
         )}
-        {routeKind === "organizations" &&
-          filteredOrganizationProjects.map((project) => (
-            <div
-              className={`issue-row organization-project-row ${
-                project.id === selectedOrganizationProject?.id ? "selected-action" : ""
-              }`}
-              key={project.id}
+        {filteredOrganizationProjects.map((project) => (
+          <div
+            className={`issue-row organization-project-row ${
+              project.id === selectedOrganizationProject?.id ? "selected-action" : ""
+            }`}
+            key={project.id}
+          >
+            <button
+              className="organization-project-row-main"
+              type="button"
+              aria-pressed={project.id === selectedOrganizationProject?.id}
+              onClick={() => onSelectOrganizationProject(project)}
+              title={`View ${project.title} in Control`}
             >
-              <button
-                className="organization-project-row-main"
-                type="button"
-                aria-pressed={project.id === selectedOrganizationProject?.id}
-                onClick={() => onSelectOrganizationProject(project)}
-                title={`View ${project.title} in Control`}
-              >
-                <SquareKanban size={17} />
-                <div>
-                  <strong>{project.title}</strong>
+              <SquareKanban size={17} />
+              <div>
+                <strong>{project.title}</strong>
+                <small>
+                  {[
+                    project.number ? `#${project.number}` : null,
+                    project.itemsCount === null
+                      ? "items unavailable"
+                      : `${formatCompactNumber(project.itemsCount)} items`,
+                    project.fieldsCount === null
+                      ? "fields unavailable"
+                      : `${formatCompactNumber(project.fieldsCount)} fields`,
+                    project.updatedAt ? `updated ${formatRelativeDate(project.updatedAt)}` : null
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </small>
+                {project.shortDescription && <small>{project.shortDescription}</small>}
+                {project.fields.length > 0 && (
                   <small>
-                    {[
-                      project.number ? `#${project.number}` : null,
-                      project.itemsCount === null
-                        ? "items unavailable"
-                        : `${formatCompactNumber(project.itemsCount)} items`,
-                      project.fieldsCount === null
-                        ? "fields unavailable"
-                        : `${formatCompactNumber(project.fieldsCount)} fields`,
-                      project.updatedAt ? `updated ${formatRelativeDate(project.updatedAt)}` : null
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
+                    Fields:{" "}
+                    {project.fields
+                      .slice(0, 4)
+                      .map((field) => field.name)
+                      .join(", ")}
+                    {project.fields.length > 4 ? `, +${project.fields.length - 4}` : ""}
                   </small>
-                  {project.shortDescription && <small>{project.shortDescription}</small>}
-                  {project.fields.length > 0 && (
-                    <small>
-                      Fields:{" "}
-                      {project.fields
-                        .slice(0, 4)
-                        .map((field) => field.name)
-                        .join(", ")}
-                      {project.fields.length > 4 ? `, +${project.fields.length - 4}` : ""}
-                    </small>
-                  )}
-                </div>
-                <span className={`state-chip ${project.closed ? "" : "success"}`}>
-                  {project.closed ? "closed" : "open"}
-                </span>
-              </button>
-              <button
-                className="pin-row-button"
-                type="button"
-                aria-label={`Open GitHub fallback for ${project.title}`}
-                disabled={!project.htmlUrl}
-                title={
-                  project.htmlUrl
-                    ? `Open GitHub fallback for ${project.title}`
-                    : "Organization project URL unavailable."
+                )}
+              </div>
+              <span className={`state-chip ${project.closed ? "" : "success"}`}>
+                {project.closed ? "closed" : "open"}
+              </span>
+            </button>
+            <button
+              className="pin-row-button"
+              type="button"
+              aria-label={`Open GitHub fallback for ${project.title}`}
+              disabled={!project.htmlUrl}
+              title={
+                project.htmlUrl
+                  ? `Open GitHub fallback for ${project.title}`
+                  : "Organization project URL unavailable."
+              }
+              onClick={() => {
+                if (project.htmlUrl) {
+                  onOpenExternal(project.htmlUrl);
                 }
-                onClick={() => {
-                  if (project.htmlUrl) {
-                    onOpenExternal(project.htmlUrl);
-                  }
-                }}
-              >
-                <ExternalLink size={15} />
-              </button>
-            </div>
-          ))}
-        {routeKind === "organizations" &&
-          selectedOrganizationLogin &&
+              }}
+            >
+              <ExternalLink size={15} />
+            </button>
+          </div>
+        ))}
+        {selectedOrganizationLogin &&
           !organizationProjectsLoading &&
           !organizationProjectsError &&
           !organizationProjectsAvailabilityMessage &&
@@ -10329,7 +9515,7 @@ function CollectionView({
                 : "No organization projects match this filter."}
             </div>
           )}
-        {routeKind === "organizations" && organizations.length > 0 && (
+        {organizations.length > 0 && (
           <div className="section-title-row">
             <div className="collection-section-label">
               {selectedOrganizationLogin ? `${selectedOrganizationLogin} teams` : "Visible teams"}
@@ -10341,61 +9527,58 @@ function CollectionView({
             )}
           </div>
         )}
-        {routeKind === "organizations" && organizationTeamsLoading && organizationTeams.length === 0 && (
+        {organizationTeamsLoading && organizationTeams.length === 0 && (
           <div className="loading-state">Loading visible teams…</div>
         )}
-        {routeKind === "organizations" && organizationTeamsAvailabilityMessage && (
+        {organizationTeamsAvailabilityMessage && (
           <div className="error-state">{organizationTeamsAvailabilityMessage}</div>
         )}
-        {routeKind === "organizations" && organizationTeamsError && (
-          <div className="error-state">Could not load visible teams.</div>
-        )}
-        {routeKind === "organizations" && !canExpandOrganizationTeams && organizationTeamsLimitHit && (
+        {organizationTeamsError && <div className="error-state">Could not load visible teams.</div>}
+        {!canExpandOrganizationTeams && organizationTeamsLimitHit && (
           <div className="muted-row">
             Showing the first {organizationTeams.length} teams returned by GitHub.
           </div>
         )}
-        {routeKind === "organizations" &&
-          filteredOrganizationTeams.map((team) => (
-            <div
-              className={`issue-row organization-team-row ${
-                team.slug === selectedOrganizationTeam?.slug ? "selected-action" : ""
-              }`}
-              key={team.id}
+        {filteredOrganizationTeams.map((team) => (
+          <div
+            className={`issue-row organization-team-row ${
+              team.slug === selectedOrganizationTeam?.slug ? "selected-action" : ""
+            }`}
+            key={team.id}
+          >
+            <button
+              className="organization-row-main"
+              type="button"
+              onClick={() => onSelectOrganizationTeam(team.slug)}
             >
-              <button
-                className="organization-row-main"
-                type="button"
-                onClick={() => onSelectOrganizationTeam(team.slug)}
-              >
-                <div>
-                  <strong>{team.name}</strong>
-                  <small>
-                    {team.slug} · {team.privacy ?? "team"} · {team.permission ?? "permission unknown"} ·{" "}
-                    {formatCompactNumber(team.memberCount ?? 0)} members ·{" "}
-                    {formatCompactNumber(team.repositoryCount ?? 0)} repositories
-                  </small>
-                  {team.parent && <small>Parent team: {team.parent.name}</small>}
-                  {team.description && <small>{team.description}</small>}
-                </div>
-              </button>
-              <button
-                className="pin-row-button"
-                type="button"
-                aria-label={`Open ${team.name} on GitHub`}
-                disabled={!team.htmlUrl}
-                title={team.htmlUrl ? `Open ${team.name} on GitHub` : "Team URL unavailable."}
-                onClick={() => {
-                  if (team.htmlUrl) {
-                    onOpenExternal(team.htmlUrl);
-                  }
-                }}
-              >
-                <ExternalLink size={15} />
-              </button>
-            </div>
-          ))}
-        {routeKind === "organizations" && selectedOrganizationTeam && (
+              <div>
+                <strong>{team.name}</strong>
+                <small>
+                  {team.slug} · {team.privacy ?? "team"} · {team.permission ?? "permission unknown"} ·{" "}
+                  {formatCompactNumber(team.memberCount ?? 0)} members ·{" "}
+                  {formatCompactNumber(team.repositoryCount ?? 0)} repositories
+                </small>
+                {team.parent && <small>Parent team: {team.parent.name}</small>}
+                {team.description && <small>{team.description}</small>}
+              </div>
+            </button>
+            <button
+              className="pin-row-button"
+              type="button"
+              aria-label={`Open ${team.name} on GitHub`}
+              disabled={!team.htmlUrl}
+              title={team.htmlUrl ? `Open ${team.name} on GitHub` : "Team URL unavailable."}
+              onClick={() => {
+                if (team.htmlUrl) {
+                  onOpenExternal(team.htmlUrl);
+                }
+              }}
+            >
+              <ExternalLink size={15} />
+            </button>
+          </div>
+        ))}
+        {selectedOrganizationTeam && (
           <div className="section-title-row">
             <div className="collection-section-label">Selected team members</div>
             {canExpandOrganizationTeamMembers && (
@@ -10405,65 +9588,59 @@ function CollectionView({
             )}
           </div>
         )}
-        {routeKind === "organizations" &&
-          organizationTeamMembersLoading &&
-          organizationTeamMembers.length === 0 && <div className="loading-state">Loading team members…</div>}
-        {routeKind === "organizations" && organizationTeamMembersAvailabilityMessage && (
+        {organizationTeamMembersLoading && organizationTeamMembers.length === 0 && (
+          <div className="loading-state">Loading team members…</div>
+        )}
+        {organizationTeamMembersAvailabilityMessage && (
           <div className="error-state">{organizationTeamMembersAvailabilityMessage}</div>
         )}
-        {routeKind === "organizations" && organizationTeamMembersError && (
-          <div className="error-state">Could not load team members.</div>
+        {organizationTeamMembersError && <div className="error-state">Could not load team members.</div>}
+        {!canExpandOrganizationTeamMembers && organizationTeamMembersLimitHit && (
+          <div className="muted-row">
+            Showing the first {organizationTeamMembers.length} team members returned by GitHub.
+          </div>
         )}
-        {routeKind === "organizations" &&
-          !canExpandOrganizationTeamMembers &&
-          organizationTeamMembersLimitHit && (
-            <div className="muted-row">
-              Showing the first {organizationTeamMembers.length} team members returned by GitHub.
-            </div>
-          )}
-        {routeKind === "organizations" &&
-          filteredOrganizationTeamMembers.map((member) => (
-            <div
-              className={`issue-row organization-member-row ${
-                member.login === selectedOrganizationMember?.login ? "selected-action" : ""
-              }`}
-              key={`team-member-${member.id}`}
+        {filteredOrganizationTeamMembers.map((member) => (
+          <div
+            className={`issue-row organization-member-row ${
+              member.login === selectedOrganizationMember?.login ? "selected-action" : ""
+            }`}
+            key={`team-member-${member.id}`}
+          >
+            <button
+              className="organization-member-row-main"
+              type="button"
+              aria-pressed={member.login === selectedOrganizationMember?.login}
+              onClick={() => onSelectOrganizationMember(member.login)}
+              title={`View @${member.login} in Control`}
             >
-              <button
-                className="organization-member-row-main"
-                type="button"
-                aria-pressed={member.login === selectedOrganizationMember?.login}
-                onClick={() => onSelectOrganizationMember(member.login)}
-                title={`View @${member.login} in Control`}
-              >
-                {member.avatarUrl ? (
-                  <img className="repo-avatar" src={member.avatarUrl} alt="" />
-                ) : (
-                  <span className="repo-avatar">{member.login.slice(0, 1).toUpperCase()}</span>
-                )}
-                <div>
-                  <strong>{member.login}</strong>
-                  <small>{member.siteAdmin ? "site admin" : "member"}</small>
-                </div>
-              </button>
-              <button
-                className="pin-row-button"
-                type="button"
-                aria-label={`Open ${member.login} on GitHub`}
-                disabled={!member.htmlUrl}
-                title={member.htmlUrl ? `Open ${member.login} on GitHub` : "Member profile URL unavailable."}
-                onClick={() => {
-                  if (member.htmlUrl) {
-                    onOpenExternal(member.htmlUrl);
-                  }
-                }}
-              >
-                <ExternalLink size={15} />
-              </button>
-            </div>
-          ))}
-        {routeKind === "organizations" &&
-          selectedOrganizationTeam &&
+              {member.avatarUrl ? (
+                <img className="repo-avatar" src={member.avatarUrl} alt="" />
+              ) : (
+                <span className="repo-avatar">{member.login.slice(0, 1).toUpperCase()}</span>
+              )}
+              <div>
+                <strong>{member.login}</strong>
+                <small>{member.siteAdmin ? "site admin" : "member"}</small>
+              </div>
+            </button>
+            <button
+              className="pin-row-button"
+              type="button"
+              aria-label={`Open ${member.login} on GitHub`}
+              disabled={!member.htmlUrl}
+              title={member.htmlUrl ? `Open ${member.login} on GitHub` : "Member profile URL unavailable."}
+              onClick={() => {
+                if (member.htmlUrl) {
+                  onOpenExternal(member.htmlUrl);
+                }
+              }}
+            >
+              <ExternalLink size={15} />
+            </button>
+          </div>
+        ))}
+        {selectedOrganizationTeam &&
           !organizationTeamMembersLoading &&
           !organizationTeamMembersError &&
           !organizationTeamMembersAvailabilityMessage &&
@@ -10474,7 +9651,7 @@ function CollectionView({
                 : "No team members match this filter."}
             </div>
           )}
-        {routeKind === "organizations" && selectedOrganizationTeam && (
+        {selectedOrganizationTeam && (
           <div className="section-title-row">
             <div className="collection-section-label">{selectedOrganizationTeam.name} repositories</div>
             {canExpandOrganizationTeamRepositories && (
@@ -10484,84 +9661,78 @@ function CollectionView({
             )}
           </div>
         )}
-        {routeKind === "organizations" &&
-          organizationTeamRepositoriesLoading &&
-          organizationTeamRepositories.length === 0 && (
-            <div className="loading-state">Loading team repositories…</div>
-          )}
-        {routeKind === "organizations" && organizationTeamRepositoriesAvailabilityMessage && (
+        {organizationTeamRepositoriesLoading && organizationTeamRepositories.length === 0 && (
+          <div className="loading-state">Loading team repositories…</div>
+        )}
+        {organizationTeamRepositoriesAvailabilityMessage && (
           <div className="error-state">{organizationTeamRepositoriesAvailabilityMessage}</div>
         )}
-        {routeKind === "organizations" && organizationTeamRepositoriesError && (
+        {organizationTeamRepositoriesError && (
           <div className="error-state">Could not load team repositories.</div>
         )}
-        {routeKind === "organizations" &&
-          !canExpandOrganizationTeamRepositories &&
-          organizationTeamRepositoriesLimitHit && (
-            <div className="muted-row">
-              Showing the first {organizationTeamRepositories.length} team repositories returned by GitHub.
-            </div>
-          )}
-        {routeKind === "organizations" &&
-          filteredOrganizationTeamRepositories.map((repository) => {
-            const pinned = pinnedRepositoryNames.some(
-              (nameWithOwner) => nameWithOwner.toLowerCase() === repository.nameWithOwner.toLowerCase()
-            );
-            const metadataParts = organizationRepositoryCollectionMetadataParts(repository);
-            const chips = organizationRepositoryCollectionChips(repository, pinned);
+        {!canExpandOrganizationTeamRepositories && organizationTeamRepositoriesLimitHit && (
+          <div className="muted-row">
+            Showing the first {organizationTeamRepositories.length} team repositories returned by GitHub.
+          </div>
+        )}
+        {filteredOrganizationTeamRepositories.map((repository) => {
+          const pinned = pinnedRepositoryNames.some(
+            (nameWithOwner) => nameWithOwner.toLowerCase() === repository.nameWithOwner.toLowerCase()
+          );
+          const metadataParts = organizationRepositoryCollectionMetadataParts(repository);
+          const chips = organizationRepositoryCollectionChips(repository, pinned);
 
-            return (
-              <div
-                className="issue-row repository-row repository-row-with-actions"
-                key={`team-repository-${repository.id}`}
+          return (
+            <div
+              className="issue-row repository-row repository-row-with-actions"
+              key={`team-repository-${repository.id}`}
+            >
+              <button
+                className="repository-row-main"
+                type="button"
+                onClick={() => onOpenRepository(repository.nameWithOwner)}
               >
-                <button
-                  className="repository-row-main"
-                  type="button"
-                  onClick={() => onOpenRepository(repository.nameWithOwner)}
-                >
-                  <span className="repo-avatar">{repository.name.slice(0, 1).toUpperCase()}</span>
-                  <div>
-                    <strong>{repository.name}</strong>
-                    <small>{[repository.description, ...metadataParts].filter(Boolean).join(" · ")}</small>
-                  </div>
-                  <span className="row-chip-stack">
-                    {chips.map((chip) => (
-                      <span className="state-chip" key={`${repository.id}-${chip}`}>
-                        {chip}
-                      </span>
-                    ))}
-                  </span>
-                </button>
-                <span className="row-action-stack">
-                  <button
-                    className={`pin-row-button ${pinned ? "selected-action" : ""}`}
-                    type="button"
-                    aria-label={`${pinned ? "Unpin" : "Pin"} ${repository.name}`}
-                    aria-pressed={pinned}
-                    disabled={Boolean(repositoryPinDisabledReason)}
-                    title={
-                      repositoryPinDisabledReason ?? `${pinned ? "Unpin" : "Pin"} ${repository.nameWithOwner}`
-                    }
-                    onClick={() => onToggleRepositoryPin(repository.nameWithOwner)}
-                  >
-                    <Pin size={15} />
-                  </button>
-                  <button
-                    className="pin-row-button"
-                    type="button"
-                    aria-label={`Open GitHub fallback for ${repository.name}`}
-                    title={`Open GitHub fallback for ${repository.name}`}
-                    onClick={() => onOpenExternal(repository.htmlUrl)}
-                  >
-                    <ExternalLink size={15} />
-                  </button>
+                <span className="repo-avatar">{repository.name.slice(0, 1).toUpperCase()}</span>
+                <div>
+                  <strong>{repository.name}</strong>
+                  <small>{[repository.description, ...metadataParts].filter(Boolean).join(" · ")}</small>
+                </div>
+                <span className="row-chip-stack">
+                  {chips.map((chip) => (
+                    <span className="state-chip" key={`${repository.id}-${chip}`}>
+                      {chip}
+                    </span>
+                  ))}
                 </span>
-              </div>
-            );
-          })}
-        {routeKind === "organizations" &&
-          selectedOrganizationTeam &&
+              </button>
+              <span className="row-action-stack">
+                <button
+                  className={`pin-row-button ${pinned ? "selected-action" : ""}`}
+                  type="button"
+                  aria-label={`${pinned ? "Unpin" : "Pin"} ${repository.name}`}
+                  aria-pressed={pinned}
+                  disabled={Boolean(repositoryPinDisabledReason)}
+                  title={
+                    repositoryPinDisabledReason ?? `${pinned ? "Unpin" : "Pin"} ${repository.nameWithOwner}`
+                  }
+                  onClick={() => onToggleRepositoryPin(repository.nameWithOwner)}
+                >
+                  <Pin size={15} />
+                </button>
+                <button
+                  className="pin-row-button"
+                  type="button"
+                  aria-label={`Open GitHub fallback for ${repository.name}`}
+                  title={`Open GitHub fallback for ${repository.name}`}
+                  onClick={() => onOpenExternal(repository.htmlUrl)}
+                >
+                  <ExternalLink size={15} />
+                </button>
+              </span>
+            </div>
+          );
+        })}
+        {selectedOrganizationTeam &&
           !organizationTeamRepositoriesLoading &&
           !organizationTeamRepositoriesError &&
           !organizationTeamRepositoriesAvailabilityMessage &&
@@ -10572,21 +9743,7 @@ function CollectionView({
                 : "No team repositories match this filter."}
             </div>
           )}
-        {routeKind === "mailbox" &&
-          !notificationsLoading &&
-          !notificationsError &&
-          !workRowsLoading &&
-          workRowErrors.length === 0 &&
-          filteredNotifications.length === 0 &&
-          filteredWorkRows.length === 0 && (
-            <div className="empty-state">
-              {notifications.length === 0 && workRows.length === 0
-                ? "No GitHub notifications or open account work."
-                : "No mailbox items match this filter."}
-            </div>
-          )}
-        {routeKind === "organizations" &&
-          !organizationsLoading &&
+        {!organizationsLoading &&
           !organizationsError &&
           !organizationsAvailabilityMessage &&
           filteredOrganizations.length === 0 && (
@@ -10596,17 +9753,14 @@ function CollectionView({
                 : "No organizations match this filter."}
             </div>
           )}
-        {routeKind === "organizations" && organizationsLoading && organizations.length === 0 && (
+        {organizationsLoading && organizations.length === 0 && (
           <div className="loading-state">Loading GitHub organizations…</div>
         )}
-        {routeKind === "organizations" && organizationsError && (
-          <div className="error-state">Could not load GitHub organizations.</div>
-        )}
-        {routeKind === "organizations" && organizationsAvailabilityMessage && (
+        {organizationsError && <div className="error-state">Could not load GitHub organizations.</div>}
+        {organizationsAvailabilityMessage && (
           <div className="error-state">{organizationsAvailabilityMessage}</div>
         )}
-        {routeKind === "organizations" &&
-          organizations.length > 0 &&
+        {organizations.length > 0 &&
           !organizationTeamsLoading &&
           !organizationTeamsError &&
           !organizationTeamsAvailabilityMessage &&

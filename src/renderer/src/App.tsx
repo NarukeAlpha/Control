@@ -3,7 +3,6 @@ import type { JSX } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { MarkdownUrlHandlerContext } from "./components/MarkdownBody";
-import { AreaDeleteDialog, AreaEditDialog, SshAreaDialog } from "./components/areas/AreaDialogs";
 import { LocalAreaHome } from "./components/areas/LocalAreaHome";
 import { SetupPanel } from "./components/auth/SetupPanel";
 import { useAreasShell } from "./components/areas/useAreasShell";
@@ -16,18 +15,16 @@ import { useOrganizationsRouteState } from "./components/collection/useOrganizat
 import { CommandPalette } from "./components/command-palette/CommandPalette";
 import { useCommandPaletteController } from "./components/command-palette/useCommandPaletteController";
 import { useCommandPaletteItems } from "./components/command-palette/useCommandPaletteItems";
-import { AddRepositoryDialog } from "./components/dialogs/AddRepositoryDialog";
-import { FileFinder } from "./components/file-finder/FileFinder";
 import { HomeDashboard } from "./components/home/HomeDashboard";
 import { LocalRepositoryPage } from "./components/local-repository/LocalRepositoryPage";
 import { RepositoryPage } from "./components/repository/RepositoryPage";
 import { RepositoryContextProvider } from "./components/repository/RepositoryContext";
 import { createGitHubMutationInput } from "./components/repository/githubMutationHelpers";
 import { RightRail } from "./components/right-rail/RightRail";
-import { SettingsPanel } from "./components/settings/SettingsPanel";
 import { Sidebar } from "./components/sidebar/Sidebar";
 import { AppEventBridge } from "./components/shell/AppEventBridge";
 import { invalidateGitHubMutationQueries } from "./components/shell/appInvalidations";
+import { ShellDialogs } from "./components/shell/ShellDialogs";
 import { useShellDialogState } from "./components/shell/useShellDialogState";
 import { TopBar } from "./components/topbar/TopBar";
 
@@ -956,105 +953,45 @@ export function App(): JSX.Element {
           />
         )}
 
-        {dialogs.addRepositoryOpen && (
-          <AddRepositoryDialog
-            repositories={repositoryItems}
-            viewerLogin={appState.data?.viewer?.login ?? accountProfileData?.login ?? null}
-            githubReady={githubReady}
-            onClose={dialogs.closeAddRepository}
-            onOpenRepository={openRepositoryInApp}
-          />
-        )}
-
-        {dialogs.sshAreaOpen && (
-          <SshAreaDialog
-            onClose={dialogs.closeSshArea}
-            onCreate={async (input) => {
-              await createSshArea(input);
-              dialogs.closeSshArea();
-            }}
-          />
-        )}
-
-        {dialogs.editingArea && (
-          <AreaEditDialog
-            area={dialogs.editingArea}
-            onClose={dialogs.closeAreaEdit}
-            onSave={async (input) => {
-              await updateArea(input);
-              dialogs.closeAreaEdit();
-            }}
-          />
-        )}
-
-        {dialogs.deletingArea && (
-          <AreaDeleteDialog
-            area={dialogs.deletingArea}
-            onClose={dialogs.closeAreaDelete}
-            onDelete={async () => {
-              const area = dialogs.deletingArea;
-              if (!area) {
-                return;
-              }
-              await deleteArea(area);
-              dialogs.closeAreaDelete();
-            }}
-          />
-        )}
-
-        {dialogs.fileFinderOpen && repositoryDetail && (
-          <FileFinder
-            repository={repositoryDetail}
-            tree={repositoryTreeItem}
-            githubReady={githubReady}
-            loading={repositoryTree.isLoading || repositoryTree.isFetching}
-            error={repositoryTree.error}
-            availabilityMessage={repositoryTreeAvailabilityMessage}
-            branches={branchItems}
-            tags={tagItems}
-            refListLimit={repositoryRefListLimit}
-            maxRefListLimit={maxRefListLimit}
-            refsLoading={branches.isLoading || branches.isFetching || tags.isLoading || tags.isFetching}
-            refsError={refsError}
-            refsAvailabilityMessage={refsAvailabilityMessage || null}
-            selectedRef={contentsRef ?? repositoryDetail.defaultBranch ?? "HEAD"}
-            onClose={dialogs.closeFileFinder}
-            onSelectRef={(ref) => {
-              if (route.kind === "codeBrowser") {
-                selectRepositoryRefInApp(effectiveRepository, ref, repositoryRefKindForName(ref), {
-                  path: route.path,
-                  entryType: route.entryType,
-                  line: route.line
-                });
-                return;
-              }
-              selectRepositoryRefInApp(effectiveRepository, ref, repositoryRefKindForName(ref));
-            }}
-            onExpandRefs={expandActiveRepositoryRefs}
-            onOpenEntry={(entry) => {
-              dialogs.closeFileFinder();
-              openCodeBrowserInApp(
-                effectiveRepository,
-                entry.path,
-                entry.type === "dir" ? "dir" : "file",
-                contentsRef ?? repositoryDetail.defaultBranch ?? null
-              );
-            }}
-          />
-        )}
-
-        {settingsOpen && (
-          <SettingsPanel
-            appState={appState.data}
-            authController={providerAuth.github}
-            onClose={() => setSettingsOpen(false)}
-            onOpenExternal={(url) => void api.openExternal(url)}
-            onSave={async (settings) => {
-              await api.updateSettings(settings);
-              await queryClient.invalidateQueries({ queryKey: ["app-state"] });
-            }}
-          />
-        )}
+        <ShellDialogs
+          dialogs={dialogs}
+          repositories={repositoryItems}
+          viewerLogin={appState.data?.viewer?.login ?? accountProfileData?.login ?? null}
+          githubReady={githubReady}
+          appState={appState.data}
+          authController={providerAuth.github}
+          settingsOpen={settingsOpen}
+          route={route}
+          repository={repositoryDetail}
+          repositoryTree={repositoryTreeItem}
+          repositoryTreeLoading={repositoryTree.isLoading || repositoryTree.isFetching}
+          repositoryTreeError={repositoryTree.error}
+          repositoryTreeAvailabilityMessage={repositoryTreeAvailabilityMessage}
+          branches={branchItems}
+          tags={tagItems}
+          refListLimit={repositoryRefListLimit}
+          maxRefListLimit={maxRefListLimit}
+          refsLoading={branches.isLoading || branches.isFetching || tags.isLoading || tags.isFetching}
+          refsError={refsError}
+          refsAvailabilityMessage={refsAvailabilityMessage || null}
+          selectedRef={contentsRef ?? repositoryDetail?.defaultBranch ?? "HEAD"}
+          selectedCodeRef={contentsRef ?? repositoryDetail?.defaultBranch ?? null}
+          effectiveRepository={effectiveRepository}
+          onOpenRepository={openRepositoryInApp}
+          onCreateSshArea={createSshArea}
+          onUpdateArea={updateArea}
+          onDeleteArea={deleteArea}
+          onCloseSettings={() => setSettingsOpen(false)}
+          onOpenExternal={(url) => void api.openExternal(url)}
+          onSaveSettings={async (settings) => {
+            await api.updateSettings(settings);
+            await queryClient.invalidateQueries({ queryKey: ["app-state"] });
+          }}
+          onSelectRepositoryRef={selectRepositoryRefInApp}
+          repositoryRefKindForName={repositoryRefKindForName}
+          onExpandRefs={expandActiveRepositoryRefs}
+          onOpenCodeBrowser={openCodeBrowserInApp}
+        />
       </div>
     </MarkdownUrlHandlerContext.Provider>
   );

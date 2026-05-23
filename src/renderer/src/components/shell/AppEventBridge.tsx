@@ -2,6 +2,12 @@ import { useEffect, useRef, type JSX } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { useControlApi } from "../../hooks/useControlApi";
+import {
+  invalidateGitHubSessionQueries,
+  invalidateRepositoryScopedQueries,
+  repositoryQueryScopeFromNameWithOwner,
+  type RepositoryQueryScope
+} from "./appInvalidations";
 
 const controlRendererLoadingLogsEnabled = import.meta.env.DEV;
 
@@ -27,11 +33,9 @@ function logRendererLoading(message: string, metadata?: Record<string, unknown>)
 }
 
 export function AppEventBridge({
-  onGitHubRepositoryUpdated,
-  onGitHubAuthUpdated
+  activeRepository
 }: {
-  onGitHubRepositoryUpdated(nameWithOwner: string | null): void;
-  onGitHubAuthUpdated(): void;
+  activeRepository: RepositoryQueryScope | null;
 }): JSX.Element | null {
   const api = useControlApi();
   const queryClient = useQueryClient();
@@ -94,18 +98,21 @@ export function AppEventBridge({
     () =>
       api.onGitHubRepositoriesUpdated((event) => {
         void queryClient.invalidateQueries({ queryKey: ["repositories"] });
-        onGitHubRepositoryUpdated(event.nameWithOwner ?? null);
+        const repositoryScope = repositoryQueryScopeFromNameWithOwner(event.nameWithOwner ?? null);
+        if (repositoryScope) {
+          void invalidateRepositoryScopedQueries(queryClient, repositoryScope.owner, repositoryScope.repo);
+        }
       }),
-    [api, onGitHubRepositoryUpdated, queryClient]
+    [api, queryClient]
   );
 
   useEffect(
     () =>
       api.onGitHubAuthUpdated((event) => {
         queryClient.setQueryData(["app-state"], event.appState);
-        onGitHubAuthUpdated();
+        void invalidateGitHubSessionQueries(queryClient, activeRepository);
       }),
-    [api, onGitHubAuthUpdated, queryClient]
+    [activeRepository, api, queryClient]
   );
 
   return null;

@@ -6,7 +6,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   ContributorSummary,
   DiscussionSummary,
-  GitHubMutationInput,
   IssueSummary,
   NotificationSummary,
   OrganizationSummary,
@@ -114,13 +113,7 @@ import {
   parseGitHubRepositoryUrl,
   repositoryNameWithOwnerFromGitHubUrl
 } from "./components/repository/githubUrlRoutes";
-import {
-  createGitHubMutationInput,
-  mutationAffectsAccountIssues,
-  mutationAffectsAccountProfile,
-  mutationAffectsAccountPulls,
-  mutationAffectsRepositoryCollections
-} from "./components/repository/githubMutationHelpers";
+import { createGitHubMutationInput } from "./components/repository/githubMutationHelpers";
 import { refreshProjectsTabData, useProjectsTabQueries } from "./components/repository/projects/ProjectsTab";
 import {
   prefetchPullRequestsTabData,
@@ -164,6 +157,10 @@ import { openRecentItemInApp } from "./components/recent/openRecentItem";
 import { SettingsPanel } from "./components/settings/SettingsPanel";
 import { Sidebar } from "./components/sidebar/Sidebar";
 import { AppEventBridge } from "./components/shell/AppEventBridge";
+import {
+  invalidateGitHubMutationQueries,
+  type RepositoryQueryScope
+} from "./components/shell/appInvalidations";
 import { TopBar } from "./components/topbar/TopBar";
 
 import {
@@ -185,7 +182,6 @@ import { useRepositoryRefs } from "./hooks/useRepositoryRefs";
 import { useCollectionSurfaceState } from "./hooks/useCollectionSurfaceState";
 import { useRepositorySurfaceLimits } from "./hooks/useRepositorySurfaceLimits";
 import { useStoredRepositoryRefs } from "./hooks/useStoredRepositoryRefs";
-import { repositoryScopedQueryKeys } from "./queries/repositoryQueryKeys";
 import { useUiStore, type AppRoute, type LocalRepositoryTab, type RepositoryTab } from "./stores/uiStore";
 
 const commandPaletteGeneralSourceLimit = 50;
@@ -399,6 +395,10 @@ export function App(): JSX.Element {
   const effectiveRepository = isRepositoryContext ? route.nameWithOwner : (selectedRepository ?? "");
   const [owner = "", repo = ""] = effectiveRepository.split("/");
   const hasRepositoryParts = Boolean(owner && repo);
+  const activeRepositoryScope = useMemo<RepositoryQueryScope | null>(
+    () => (hasRepositoryParts ? { owner, repo } : null),
+    [hasRepositoryParts, owner, repo]
+  );
   const repositoryContextValue = useMemo<RepositoryContextValue | null>(
     () =>
       hasRepositoryParts
@@ -689,91 +689,10 @@ export function App(): JSX.Element {
   const contributorsAvailability = contributors.data?.availability ?? null;
   const actionItems = actions.data?.items ?? [];
 
-  const invalidateRepositoryScopedQueries = useCallback(
-    async (targetOwner: string, targetRepo: string): Promise<void> => {
-      await Promise.all(
-        repositoryScopedQueryKeys(targetOwner, targetRepo).map((queryKey) =>
-          queryClient.invalidateQueries({ queryKey })
-        )
-      );
-    },
-    [queryClient]
-  );
-
-  const invalidateGitHubSessionQueries = useCallback(async (): Promise<void> => {
-    const invalidations: Array<Promise<void>> = [
-      queryClient.invalidateQueries({ queryKey: ["app-state"] }),
-      queryClient.invalidateQueries({ queryKey: ["repositories"] }),
-      queryClient.invalidateQueries({ queryKey: ["account-profile"] }),
-      queryClient.invalidateQueries({ queryKey: ["account-issues"] }),
-      queryClient.invalidateQueries({ queryKey: ["account-pulls"] }),
-      queryClient.invalidateQueries({ queryKey: ["notifications"] }),
-      queryClient.invalidateQueries({ queryKey: ["organizations"] }),
-      queryClient.invalidateQueries({ queryKey: ["github-account-repositories"] }),
-      queryClient.invalidateQueries({ queryKey: ["repository-tree"] }),
-      queryClient.invalidateQueries({ queryKey: ["organization-teams"] }),
-      queryClient.invalidateQueries({ queryKey: ["organization-repositories"] }),
-      queryClient.invalidateQueries({ queryKey: ["organization-members"] }),
-      queryClient.invalidateQueries({ queryKey: ["organization-projects"] }),
-      queryClient.invalidateQueries({ queryKey: ["organization-team-repositories"] }),
-      queryClient.invalidateQueries({ queryKey: ["organization-team-members"] })
-    ];
-
-    if (hasRepositoryParts) {
-      invalidations.push(invalidateRepositoryScopedQueries(owner, repo));
-    }
-
-    await Promise.all(invalidations);
-  }, [hasRepositoryParts, invalidateRepositoryScopedQueries, owner, queryClient, repo]);
-
-  const handleGitHubRepositoryUpdated = useCallback(
-    (nameWithOwner: string | null): void => {
-      if (!nameWithOwner) {
-        return;
-      }
-
-      const [updatedOwner, updatedRepo] = nameWithOwner.split("/");
-      if (updatedOwner && updatedRepo) {
-        void invalidateRepositoryScopedQueries(updatedOwner, updatedRepo);
-      }
-    },
-    [invalidateRepositoryScopedQueries]
-  );
-
-  const handleGitHubAuthUpdated = useCallback((): void => {
-    void invalidateGitHubSessionQueries();
-  }, [invalidateGitHubSessionQueries]);
-
   const mutation = useMutation({
     mutationFn: api.github.mutate,
-    onSuccess: async (_result, input: GitHubMutationInput) => {
-      const accountInvalidations: Array<Promise<void>> = [];
-      accountInvalidations.push(queryClient.invalidateQueries({ queryKey: ["notifications"] }));
-      if (mutationAffectsAccountIssues(input.action)) {
-        accountInvalidations.push(queryClient.invalidateQueries({ queryKey: ["account-issues"] }));
-      }
-      if (mutationAffectsAccountPulls(input.action)) {
-        accountInvalidations.push(queryClient.invalidateQueries({ queryKey: ["account-pulls"] }));
-      }
-      if (mutationAffectsAccountProfile(input.action)) {
-        accountInvalidations.push(queryClient.invalidateQueries({ queryKey: ["account-profile"] }));
-      }
-      if (mutationAffectsRepositoryCollections(input.action)) {
-        accountInvalidations.push(queryClient.invalidateQueries({ queryKey: ["repositories"] }));
-        accountInvalidations.push(
-          queryClient.invalidateQueries({ queryKey: ["github-account-repositories"] })
-        );
-        accountInvalidations.push(queryClient.invalidateQueries({ queryKey: ["organizations"] }));
-        accountInvalidations.push(queryClient.invalidateQueries({ queryKey: ["organization-repositories"] }));
-        accountInvalidations.push(
-          queryClient.invalidateQueries({ queryKey: ["organization-team-repositories"] })
-        );
-      }
-
-      await Promise.all([
-        invalidateRepositoryScopedQueries(input.owner, input.repo),
-        ...accountInvalidations
-      ]);
+    onSuccess: async (_result, input) => {
+      await invalidateGitHubMutationQueries(queryClient, input);
     }
   });
   function repositoryForRecent(nameWithOwner: string): RepositorySummary | RepositoryDetail | undefined {
@@ -1994,10 +1913,7 @@ export function App(): JSX.Element {
 
   return (
     <MarkdownUrlHandlerContext.Provider value={openMarkdownUrl}>
-      <AppEventBridge
-        onGitHubRepositoryUpdated={handleGitHubRepositoryUpdated}
-        onGitHubAuthUpdated={handleGitHubAuthUpdated}
-      />
+      <AppEventBridge activeRepository={activeRepositoryScope} />
       <div className={shellClass}>
         <Sidebar
           appState={appState.data}

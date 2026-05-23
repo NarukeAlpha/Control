@@ -5,6 +5,7 @@ import { useQuery, type QueryClient } from "@tanstack/react-query";
 import type {
   GitHubAction,
   GitHubMutationFields,
+  IssueDetailResult,
   IssueListResult,
   IssueSummary,
   RepositoryDetail,
@@ -13,7 +14,7 @@ import type {
 import type { ControlApi } from "@shared/ipc";
 
 import { markdownRepositoryUrlContext } from "@renderer/components/MarkdownBody";
-import { useIssueDetail } from "@renderer/components/repository/issues/useIssueDetail";
+import { issueDetailQueryKey, useIssueDetail } from "@renderer/components/repository/issues/useIssueDetail";
 import {
   fieldsMatchSearchParts,
   githubActionLabel,
@@ -27,6 +28,7 @@ import {
   repositoryAssignableUsersQueryKey,
   repositoryLabelsQueryKey,
   repositoryMilestonesQueryKey,
+  refreshRepositoryIssueResources,
   useRepositoryIssueResources
 } from "@renderer/hooks/useRepositoryIssueResources";
 
@@ -48,6 +50,10 @@ export interface IssuesTabPrefetchInput {
   repo: string;
   issueListLimit: number;
   githubReady: boolean;
+}
+
+export interface IssuesTabRefreshInput extends IssuesTabPrefetchInput {
+  focusedIssueNumber: number | null;
 }
 
 export function issuesTabQueryKey(
@@ -126,6 +132,52 @@ export async function prefetchIssuesTabData(
       staleTime: 120_000
     })
   ]);
+}
+
+export async function refreshIssuesTabData(
+  queryClient: QueryClient,
+  { api, owner, repo, issueListLimit, focusedIssueNumber, githubReady }: IssuesTabRefreshInput
+): Promise<void> {
+  const cachedRead = !githubReady;
+  const refreshes: Array<Promise<unknown>> = [
+    queryClient.fetchQuery({
+      queryKey: issuesTabQueryKey(owner, repo, issueListLimit),
+      staleTime: 0,
+      queryFn: () =>
+        api.github.listIssuesWithStatus({
+          owner,
+          repo,
+          state: "all",
+          limit: issueListLimit,
+          cacheOnly: cachedRead,
+          forceRefresh: !cachedRead
+        })
+    }),
+    refreshRepositoryIssueResources(queryClient, { api, owner, repo, githubReady })
+  ];
+
+  if (focusedIssueNumber !== null) {
+    refreshes.push(
+      queryClient.fetchQuery<IssueDetailResult>({
+        queryKey: issueDetailQueryKey(owner, repo, focusedIssueNumber),
+        staleTime: 0,
+        queryFn: () =>
+          api.github.getIssueDetailWithStatus({
+            owner,
+            repo,
+            issueNumber: focusedIssueNumber,
+            cacheOnly: cachedRead,
+            forceRefresh: !cachedRead
+          })
+      })
+    );
+  }
+
+  try {
+    await Promise.all(refreshes);
+  } catch {
+    // React Query owns the visible error state for this refresh.
+  }
 }
 
 function conversationCommentDisabledReason(

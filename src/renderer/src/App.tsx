@@ -146,9 +146,12 @@ import {
 } from "./components/repository/commitRecent";
 import { useDiscussionsTabQueries } from "./components/repository/discussions/DiscussionsTab";
 import { expandedFileBlameRangeLimit } from "./components/repository/FileBlamePanel";
-import { useIssuesTabQueries } from "./components/repository/issues/IssuesTab";
+import { refreshIssuesTabData, useIssuesTabQueries } from "./components/repository/issues/IssuesTab";
 import { useProjectsTabQueries } from "./components/repository/projects/ProjectsTab";
-import { usePullRequestsTabQueries } from "./components/repository/pull-requests/PullRequestsTab";
+import {
+  refreshPullRequestsTabData,
+  usePullRequestsTabQueries
+} from "./components/repository/pull-requests/PullRequestsTab";
 import { useReleasesTabQueries } from "./components/repository/releases/ReleasesTab";
 import { RightRail } from "./components/right-rail/RightRail";
 import { SettingsPanel } from "./components/settings/SettingsPanel";
@@ -2728,83 +2731,14 @@ export function App(): JSX.Element {
       return;
     }
 
-    const cachedRead = !githubReady;
-    const issueNumber = route.kind === "repository" ? (route.issueNumber ?? null) : null;
-    const refreshes: Array<Promise<unknown>> = [
-      queryClient.fetchQuery({
-        queryKey: ["issues", owner, repo, issueListLimit],
-        staleTime: 0,
-        queryFn: () =>
-          api.github.listIssuesWithStatus({
-            owner,
-            repo,
-            state: "all",
-            limit: issueListLimit,
-            cacheOnly: cachedRead,
-            forceRefresh: !cachedRead
-          })
-      }),
-      queryClient.fetchQuery({
-        queryKey: ["labels", owner, repo],
-        staleTime: 0,
-        queryFn: () =>
-          api.github.listLabelsWithStatus({
-            owner,
-            repo,
-            limit: 100,
-            cacheOnly: cachedRead,
-            forceRefresh: !cachedRead
-          })
-      }),
-      queryClient.fetchQuery({
-        queryKey: ["assignable-users", owner, repo],
-        staleTime: 0,
-        queryFn: () =>
-          api.github.listAssignableUsersWithStatus({
-            owner,
-            repo,
-            limit: 100,
-            cacheOnly: cachedRead,
-            forceRefresh: !cachedRead
-          })
-      }),
-      queryClient.fetchQuery({
-        queryKey: ["milestones", owner, repo],
-        staleTime: 0,
-        queryFn: () =>
-          api.github.listMilestonesWithStatus({
-            owner,
-            repo,
-            state: "all",
-            limit: 100,
-            cacheOnly: cachedRead,
-            forceRefresh: !cachedRead
-          })
-      })
-    ];
-
-    if (issueNumber !== null) {
-      refreshes.push(
-        queryClient.fetchQuery({
-          queryKey: ["issue-detail", owner, repo, issueNumber],
-          staleTime: 0,
-          queryFn: () =>
-            api.github.getIssueDetailWithStatus({
-              owner,
-              repo,
-              issueNumber,
-              cacheOnly: cachedRead,
-              forceRefresh: !cachedRead
-            })
-        })
-      );
-    }
-
-    try {
-      await Promise.all(refreshes);
-    } catch {
-      // React Query owns the visible error state for this refresh.
-    }
+    await refreshIssuesTabData(queryClient, {
+      api,
+      owner,
+      repo,
+      issueListLimit,
+      focusedIssueNumber: route.kind === "repository" ? (route.issueNumber ?? null) : null,
+      githubReady
+    });
   }
 
   async function refreshPullSurfaceNow(): Promise<void> {
@@ -2812,135 +2746,15 @@ export function App(): JSX.Element {
       return;
     }
 
-    const cachedRead = !githubReady;
-    const pullNumber = route.kind === "repository" ? (route.pullNumber ?? null) : null;
-    const refreshes: Array<Promise<unknown>> = [
-      queryClient.fetchQuery({
-        queryKey: ["pulls", owner, repo, pullRequestListLimit],
-        staleTime: 0,
-        queryFn: () =>
-          api.github.listPullRequestsWithStatus({
-            owner,
-            repo,
-            state: "all",
-            limit: pullRequestListLimit,
-            cacheOnly: cachedRead,
-            forceRefresh: !cachedRead
-          })
-      }),
-      queryClient.fetchQuery({
-        queryKey: ["labels", owner, repo],
-        staleTime: 0,
-        queryFn: () =>
-          api.github.listLabelsWithStatus({
-            owner,
-            repo,
-            limit: 100,
-            cacheOnly: cachedRead,
-            forceRefresh: !cachedRead
-          })
-      }),
-      queryClient.fetchQuery({
-        queryKey: ["assignable-users", owner, repo],
-        staleTime: 0,
-        queryFn: () =>
-          api.github.listAssignableUsersWithStatus({
-            owner,
-            repo,
-            limit: 100,
-            cacheOnly: cachedRead,
-            forceRefresh: !cachedRead
-          })
-      }),
-      queryClient.fetchQuery({
-        queryKey: ["milestones", owner, repo],
-        staleTime: 0,
-        queryFn: () =>
-          api.github.listMilestonesWithStatus({
-            owner,
-            repo,
-            state: "all",
-            limit: 100,
-            cacheOnly: cachedRead,
-            forceRefresh: !cachedRead
-          })
-      }),
-      queryClient.fetchQuery({
-        queryKey: ["branches", owner, repo, repositoryRefListLimit],
-        staleTime: 0,
-        queryFn: () =>
-          api.github.listBranchesWithStatus({
-            owner,
-            repo,
-            limit: repositoryRefListLimit,
-            cacheOnly: cachedRead,
-            forceRefresh: !cachedRead
-          })
-      })
-    ];
-
-    if (pullNumber !== null) {
-      const pullDetailInput = {
-        owner,
-        repo,
-        pullNumber,
-        cacheOnly: cachedRead,
-        forceRefresh: !cachedRead
-      };
-      refreshes.push(
-        queryClient.fetchQuery({
-          queryKey: ["pull-detail", "overview", owner, repo, pullNumber],
-          staleTime: 0,
-          queryFn: () => api.github.getPullRequestOverviewWithStatus(pullDetailInput)
-        }),
-        queryClient.fetchQuery({
-          queryKey: ["pull-detail", "comments", owner, repo, pullNumber],
-          staleTime: 0,
-          queryFn: () => api.github.listPullRequestCommentsWithStatus(pullDetailInput)
-        }),
-        queryClient.fetchQuery({
-          queryKey: ["pull-detail", "files", owner, repo, pullNumber],
-          staleTime: 0,
-          queryFn: () => api.github.listPullRequestFilesWithStatus(pullDetailInput)
-        }),
-        queryClient.fetchQuery({
-          queryKey: ["pull-detail", "commits", owner, repo, pullNumber],
-          staleTime: 0,
-          queryFn: () => api.github.listPullRequestCommitsWithStatus(pullDetailInput)
-        }),
-        queryClient.fetchQuery({
-          queryKey: ["pull-detail", "reviews", owner, repo, pullNumber],
-          staleTime: 0,
-          queryFn: () => api.github.listPullRequestReviewsWithStatus(pullDetailInput)
-        }),
-        queryClient.fetchQuery({
-          queryKey: ["pull-detail", "checks", owner, repo, pullNumber],
-          staleTime: 0,
-          queryFn: () => api.github.listPullRequestChecksWithStatus(pullDetailInput)
-        }),
-        queryClient.fetchQuery({
-          queryKey: ["pull-detail", "review-threads", owner, repo, pullNumber],
-          staleTime: 0,
-          queryFn: () => api.github.listPullRequestReviewThreadsWithStatus(pullDetailInput)
-        }),
-        queryClient.fetchQuery({
-          queryKey: ["pull-detail", "timeline", owner, repo, pullNumber],
-          staleTime: 0,
-          queryFn: () => api.github.listPullRequestTimelineWithStatus(pullDetailInput)
-        }),
-        queryClient.fetchQuery({
-          queryKey: ["pull-detail", "linked-issues", owner, repo, pullNumber],
-          staleTime: 0,
-          queryFn: () => api.github.listPullRequestLinkedIssuesWithStatus(pullDetailInput)
-        })
-      );
-    }
-
-    try {
-      await Promise.all(refreshes);
-    } catch {
-      // React Query owns the visible error state for this refresh.
-    }
+    await refreshPullRequestsTabData(queryClient, {
+      api,
+      owner,
+      repo,
+      pullRequestListLimit,
+      refListLimit: repositoryRefListLimit,
+      focusedPullNumber: route.kind === "repository" ? (route.pullNumber ?? null) : null,
+      githubReady
+    });
   }
 
   async function refreshDiscussionsSurfaceNow(): Promise<void> {

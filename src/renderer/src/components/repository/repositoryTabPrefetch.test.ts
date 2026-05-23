@@ -22,9 +22,15 @@ import {
   prefetchCodeTabData
 } from "./code/CodeTab";
 import { discussionsTabQueryKey, prefetchDiscussionsTabData } from "./discussions/DiscussionsTab";
-import { issuesTabQueryKey, prefetchIssuesTabData } from "./issues/IssuesTab";
+import { issueDetailQueryKey } from "./issues/useIssueDetail";
+import { issuesTabQueryKey, prefetchIssuesTabData, refreshIssuesTabData } from "./issues/IssuesTab";
 import { projectsTabQueryKey, prefetchProjectsTabData } from "./projects/ProjectsTab";
-import { prefetchPullRequestsTabData, pullRequestsTabQueryKey } from "./pull-requests/PullRequestsTab";
+import {
+  prefetchPullRequestsTabData,
+  pullRequestDetailQueryKey,
+  pullRequestsTabQueryKey,
+  refreshPullRequestsTabData
+} from "./pull-requests/PullRequestsTab";
 import { releasesTabQueryKey, prefetchReleasesTabData } from "./releases/ReleasesTab";
 import { prefetchWikiTabData, wikiTabQueryKey } from "./wiki/WikiTab";
 import {
@@ -32,6 +38,7 @@ import {
   repositoryLabelsQueryKey,
   repositoryMilestonesQueryKey
 } from "../../hooks/useRepositoryIssueResources";
+import { repositoryBranchesQueryKey } from "../../hooks/useRepositoryRefs";
 
 const owner = "NarukeAlpha";
 const repo = "control";
@@ -430,5 +437,229 @@ describe("repository tab prefetch helpers", () => {
       assignableUsersResult
     );
     expect(queryClient.getQueryData(repositoryMilestonesQueryKey(owner, repo))).toBe(milestonesResult);
+  });
+
+  it("refreshes issues and focused issue detail with forced cache-only reads when GitHub is offline", async () => {
+    const queryClient = makeQueryClient();
+    const listIssuesWithStatus = vi.fn<ControlApi["github"]["listIssuesWithStatus"]>(
+      mockControlApi.github.listIssuesWithStatus
+    );
+    const listLabelsWithStatus = vi.fn<ControlApi["github"]["listLabelsWithStatus"]>(
+      mockControlApi.github.listLabelsWithStatus
+    );
+    const listAssignableUsersWithStatus = vi.fn<ControlApi["github"]["listAssignableUsersWithStatus"]>(
+      mockControlApi.github.listAssignableUsersWithStatus
+    );
+    const listMilestonesWithStatus = vi.fn<ControlApi["github"]["listMilestonesWithStatus"]>(
+      mockControlApi.github.listMilestonesWithStatus
+    );
+    const getIssueDetailWithStatus = vi.fn<ControlApi["github"]["getIssueDetailWithStatus"]>(
+      mockControlApi.github.getIssueDetailWithStatus
+    );
+    const api = makeApi({
+      listIssuesWithStatus,
+      listLabelsWithStatus,
+      listAssignableUsersWithStatus,
+      listMilestonesWithStatus,
+      getIssueDetailWithStatus
+    });
+
+    await refreshIssuesTabData(queryClient, {
+      api,
+      owner,
+      repo,
+      issueListLimit: 30,
+      focusedIssueNumber: 7,
+      githubReady: false
+    });
+
+    expect(listIssuesWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      state: "all",
+      limit: 30,
+      cacheOnly: true,
+      forceRefresh: false
+    });
+    expect(listLabelsWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      limit: 100,
+      cacheOnly: true,
+      forceRefresh: false
+    });
+    expect(listAssignableUsersWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      limit: 100,
+      cacheOnly: true,
+      forceRefresh: false
+    });
+    expect(listMilestonesWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      state: "all",
+      limit: 100,
+      cacheOnly: true,
+      forceRefresh: false
+    });
+    expect(getIssueDetailWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      issueNumber: 7,
+      cacheOnly: true,
+      forceRefresh: false
+    });
+    expect(queryClient.getQueryData(issuesTabQueryKey(owner, repo, 30))).toBeDefined();
+    expect(queryClient.getQueryData(repositoryLabelsQueryKey(owner, repo))).toBeDefined();
+    expect(queryClient.getQueryData(repositoryAssignableUsersQueryKey(owner, repo))).toBeDefined();
+    expect(queryClient.getQueryData(repositoryMilestonesQueryKey(owner, repo))).toBeDefined();
+    expect(queryClient.getQueryData(issueDetailQueryKey(owner, repo, 7))).toBeDefined();
+  });
+
+  it("refreshes pull requests, shared resources, refs, and focused pull detail online", async () => {
+    const queryClient = makeQueryClient();
+    const listPullRequestsWithStatus = vi.fn<ControlApi["github"]["listPullRequestsWithStatus"]>(
+      mockControlApi.github.listPullRequestsWithStatus
+    );
+    const listLabelsWithStatus = vi.fn<ControlApi["github"]["listLabelsWithStatus"]>(
+      mockControlApi.github.listLabelsWithStatus
+    );
+    const listAssignableUsersWithStatus = vi.fn<ControlApi["github"]["listAssignableUsersWithStatus"]>(
+      mockControlApi.github.listAssignableUsersWithStatus
+    );
+    const listMilestonesWithStatus = vi.fn<ControlApi["github"]["listMilestonesWithStatus"]>(
+      mockControlApi.github.listMilestonesWithStatus
+    );
+    const listBranchesWithStatus = vi.fn<ControlApi["github"]["listBranchesWithStatus"]>(
+      mockControlApi.github.listBranchesWithStatus
+    );
+    const getPullRequestOverviewWithStatus = vi.fn<ControlApi["github"]["getPullRequestOverviewWithStatus"]>(
+      mockControlApi.github.getPullRequestOverviewWithStatus
+    );
+    const listPullRequestCommentsWithStatus = vi.fn<
+      ControlApi["github"]["listPullRequestCommentsWithStatus"]
+    >(mockControlApi.github.listPullRequestCommentsWithStatus);
+    const listPullRequestFilesWithStatus = vi.fn<ControlApi["github"]["listPullRequestFilesWithStatus"]>(
+      mockControlApi.github.listPullRequestFilesWithStatus
+    );
+    const listPullRequestCommitsWithStatus = vi.fn<ControlApi["github"]["listPullRequestCommitsWithStatus"]>(
+      mockControlApi.github.listPullRequestCommitsWithStatus
+    );
+    const listPullRequestReviewsWithStatus = vi.fn<ControlApi["github"]["listPullRequestReviewsWithStatus"]>(
+      mockControlApi.github.listPullRequestReviewsWithStatus
+    );
+    const listPullRequestChecksWithStatus = vi.fn<ControlApi["github"]["listPullRequestChecksWithStatus"]>(
+      mockControlApi.github.listPullRequestChecksWithStatus
+    );
+    const listPullRequestReviewThreadsWithStatus = vi.fn<
+      ControlApi["github"]["listPullRequestReviewThreadsWithStatus"]
+    >(mockControlApi.github.listPullRequestReviewThreadsWithStatus);
+    const listPullRequestTimelineWithStatus = vi.fn<
+      ControlApi["github"]["listPullRequestTimelineWithStatus"]
+    >(mockControlApi.github.listPullRequestTimelineWithStatus);
+    const listPullRequestLinkedIssuesWithStatus = vi.fn<
+      ControlApi["github"]["listPullRequestLinkedIssuesWithStatus"]
+    >(mockControlApi.github.listPullRequestLinkedIssuesWithStatus);
+    const api = makeApi({
+      listPullRequestsWithStatus,
+      listLabelsWithStatus,
+      listAssignableUsersWithStatus,
+      listMilestonesWithStatus,
+      listBranchesWithStatus,
+      getPullRequestOverviewWithStatus,
+      listPullRequestCommentsWithStatus,
+      listPullRequestFilesWithStatus,
+      listPullRequestCommitsWithStatus,
+      listPullRequestReviewsWithStatus,
+      listPullRequestChecksWithStatus,
+      listPullRequestReviewThreadsWithStatus,
+      listPullRequestTimelineWithStatus,
+      listPullRequestLinkedIssuesWithStatus
+    });
+
+    await refreshPullRequestsTabData(queryClient, {
+      api,
+      owner,
+      repo,
+      pullRequestListLimit: 40,
+      refListLimit: 80,
+      focusedPullNumber: 12,
+      githubReady: true
+    });
+
+    expect(listPullRequestsWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      state: "all",
+      limit: 40,
+      cacheOnly: false,
+      forceRefresh: true
+    });
+    expect(listLabelsWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      limit: 100,
+      cacheOnly: false,
+      forceRefresh: true
+    });
+    expect(listAssignableUsersWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      limit: 100,
+      cacheOnly: false,
+      forceRefresh: true
+    });
+    expect(listMilestonesWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      state: "all",
+      limit: 100,
+      cacheOnly: false,
+      forceRefresh: true
+    });
+    expect(listBranchesWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      limit: 80,
+      cacheOnly: false,
+      forceRefresh: true
+    });
+
+    const pullDetailInput = {
+      owner,
+      repo,
+      pullNumber: 12,
+      cacheOnly: false,
+      forceRefresh: true
+    };
+    expect(getPullRequestOverviewWithStatus).toHaveBeenCalledWith(pullDetailInput);
+    expect(listPullRequestCommentsWithStatus).toHaveBeenCalledWith(pullDetailInput);
+    expect(listPullRequestFilesWithStatus).toHaveBeenCalledWith(pullDetailInput);
+    expect(listPullRequestCommitsWithStatus).toHaveBeenCalledWith(pullDetailInput);
+    expect(listPullRequestReviewsWithStatus).toHaveBeenCalledWith(pullDetailInput);
+    expect(listPullRequestChecksWithStatus).toHaveBeenCalledWith(pullDetailInput);
+    expect(listPullRequestReviewThreadsWithStatus).toHaveBeenCalledWith(pullDetailInput);
+    expect(listPullRequestTimelineWithStatus).toHaveBeenCalledWith(pullDetailInput);
+    expect(listPullRequestLinkedIssuesWithStatus).toHaveBeenCalledWith(pullDetailInput);
+
+    expect(queryClient.getQueryData(pullRequestsTabQueryKey(owner, repo, 40))).toBeDefined();
+    expect(queryClient.getQueryData(repositoryLabelsQueryKey(owner, repo))).toBeDefined();
+    expect(queryClient.getQueryData(repositoryAssignableUsersQueryKey(owner, repo))).toBeDefined();
+    expect(queryClient.getQueryData(repositoryMilestonesQueryKey(owner, repo))).toBeDefined();
+    expect(queryClient.getQueryData(repositoryBranchesQueryKey(owner, repo, 80))).toBeDefined();
+    expect(queryClient.getQueryData(pullRequestDetailQueryKey("overview", owner, repo, 12))).toBeDefined();
+    expect(queryClient.getQueryData(pullRequestDetailQueryKey("comments", owner, repo, 12))).toBeDefined();
+    expect(queryClient.getQueryData(pullRequestDetailQueryKey("files", owner, repo, 12))).toBeDefined();
+    expect(queryClient.getQueryData(pullRequestDetailQueryKey("commits", owner, repo, 12))).toBeDefined();
+    expect(queryClient.getQueryData(pullRequestDetailQueryKey("reviews", owner, repo, 12))).toBeDefined();
+    expect(queryClient.getQueryData(pullRequestDetailQueryKey("checks", owner, repo, 12))).toBeDefined();
+    expect(
+      queryClient.getQueryData(pullRequestDetailQueryKey("review-threads", owner, repo, 12))
+    ).toBeDefined();
+    expect(queryClient.getQueryData(pullRequestDetailQueryKey("timeline", owner, repo, 12))).toBeDefined();
+    expect(
+      queryClient.getQueryData(pullRequestDetailQueryKey("linked-issues", owner, repo, 12))
+    ).toBeDefined();
   });
 });

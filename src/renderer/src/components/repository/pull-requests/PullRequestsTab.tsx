@@ -48,9 +48,10 @@ import {
   repositoryAssignableUsersQueryKey,
   repositoryLabelsQueryKey,
   repositoryMilestonesQueryKey,
+  refreshRepositoryIssueResources,
   useRepositoryIssueResources
 } from "@renderer/hooks/useRepositoryIssueResources";
-import { useRepositoryRefs } from "@renderer/hooks/useRepositoryRefs";
+import { repositoryBranchesQueryKey, useRepositoryRefs } from "@renderer/hooks/useRepositoryRefs";
 
 import { formatCompactNumber, formatRelativeDate } from "@renderer/utils/format";
 
@@ -59,6 +60,16 @@ type PullRequestLinkedIssue =
   | PullRequestLinkedIssueSummary;
 const maxPullRequestListLimit = 100;
 const notLoadedAvailability: GitHubReadAvailability = { status: "not_loaded", message: null };
+type PullRequestDetailSection =
+  | "overview"
+  | "comments"
+  | "files"
+  | "commits"
+  | "reviews"
+  | "checks"
+  | "review-threads"
+  | "timeline"
+  | "linked-issues";
 
 export interface PullRequestsTabQueryInput {
   owner: string;
@@ -77,12 +88,26 @@ export interface PullRequestsTabPrefetchInput {
   githubReady: boolean;
 }
 
+export interface PullRequestsTabRefreshInput extends PullRequestsTabPrefetchInput {
+  refListLimit: number;
+  focusedPullNumber: number | null;
+}
+
 export function pullRequestsTabQueryKey(
   owner: string,
   repo: string,
   pullRequestListLimit: number
 ): readonly ["pulls", string, string, number] {
   return ["pulls", owner, repo, pullRequestListLimit] as const;
+}
+
+export function pullRequestDetailQueryKey(
+  section: PullRequestDetailSection,
+  owner: string,
+  repo: string,
+  pullNumber: number | null
+): readonly ["pull-detail", PullRequestDetailSection, string, string, number | null] {
+  return ["pull-detail", section, owner, repo, pullNumber] as const;
 }
 
 export function usePullRequestsTabQueries({
@@ -155,6 +180,112 @@ export async function prefetchPullRequestsTabData(
   ]);
 }
 
+export async function refreshPullRequestsTabData(
+  queryClient: QueryClient,
+  {
+    api,
+    owner,
+    repo,
+    pullRequestListLimit,
+    refListLimit,
+    focusedPullNumber,
+    githubReady
+  }: PullRequestsTabRefreshInput
+): Promise<void> {
+  const cachedRead = !githubReady;
+  const refreshes: Array<Promise<unknown>> = [
+    queryClient.fetchQuery({
+      queryKey: pullRequestsTabQueryKey(owner, repo, pullRequestListLimit),
+      staleTime: 0,
+      queryFn: () =>
+        api.github.listPullRequestsWithStatus({
+          owner,
+          repo,
+          state: "all",
+          limit: pullRequestListLimit,
+          cacheOnly: cachedRead,
+          forceRefresh: !cachedRead
+        })
+    }),
+    refreshRepositoryIssueResources(queryClient, { api, owner, repo, githubReady }),
+    queryClient.fetchQuery({
+      queryKey: repositoryBranchesQueryKey(owner, repo, refListLimit),
+      staleTime: 0,
+      queryFn: () =>
+        api.github.listBranchesWithStatus({
+          owner,
+          repo,
+          limit: refListLimit,
+          cacheOnly: cachedRead,
+          forceRefresh: !cachedRead
+        })
+    })
+  ];
+
+  if (focusedPullNumber !== null) {
+    const pullDetailInput = {
+      owner,
+      repo,
+      pullNumber: focusedPullNumber,
+      cacheOnly: cachedRead,
+      forceRefresh: !cachedRead
+    };
+    refreshes.push(
+      queryClient.fetchQuery<PullRequestOverviewResult>({
+        queryKey: pullRequestDetailQueryKey("overview", owner, repo, focusedPullNumber),
+        staleTime: 0,
+        queryFn: () => api.github.getPullRequestOverviewWithStatus(pullDetailInput)
+      }),
+      queryClient.fetchQuery<PullRequestCommentsResult>({
+        queryKey: pullRequestDetailQueryKey("comments", owner, repo, focusedPullNumber),
+        staleTime: 0,
+        queryFn: () => api.github.listPullRequestCommentsWithStatus(pullDetailInput)
+      }),
+      queryClient.fetchQuery<PullRequestFilesResult>({
+        queryKey: pullRequestDetailQueryKey("files", owner, repo, focusedPullNumber),
+        staleTime: 0,
+        queryFn: () => api.github.listPullRequestFilesWithStatus(pullDetailInput)
+      }),
+      queryClient.fetchQuery<PullRequestCommitsResult>({
+        queryKey: pullRequestDetailQueryKey("commits", owner, repo, focusedPullNumber),
+        staleTime: 0,
+        queryFn: () => api.github.listPullRequestCommitsWithStatus(pullDetailInput)
+      }),
+      queryClient.fetchQuery<PullRequestReviewsResult>({
+        queryKey: pullRequestDetailQueryKey("reviews", owner, repo, focusedPullNumber),
+        staleTime: 0,
+        queryFn: () => api.github.listPullRequestReviewsWithStatus(pullDetailInput)
+      }),
+      queryClient.fetchQuery<PullRequestChecksResult>({
+        queryKey: pullRequestDetailQueryKey("checks", owner, repo, focusedPullNumber),
+        staleTime: 0,
+        queryFn: () => api.github.listPullRequestChecksWithStatus(pullDetailInput)
+      }),
+      queryClient.fetchQuery<PullRequestReviewThreadsResult>({
+        queryKey: pullRequestDetailQueryKey("review-threads", owner, repo, focusedPullNumber),
+        staleTime: 0,
+        queryFn: () => api.github.listPullRequestReviewThreadsWithStatus(pullDetailInput)
+      }),
+      queryClient.fetchQuery<PullRequestTimelineResult>({
+        queryKey: pullRequestDetailQueryKey("timeline", owner, repo, focusedPullNumber),
+        staleTime: 0,
+        queryFn: () => api.github.listPullRequestTimelineWithStatus(pullDetailInput)
+      }),
+      queryClient.fetchQuery<PullRequestLinkedIssuesResult>({
+        queryKey: pullRequestDetailQueryKey("linked-issues", owner, repo, focusedPullNumber),
+        staleTime: 0,
+        queryFn: () => api.github.listPullRequestLinkedIssuesWithStatus(pullDetailInput)
+      })
+    );
+  }
+
+  try {
+    await Promise.all(refreshes);
+  } catch {
+    // React Query owns the visible error state for this refresh.
+  }
+}
+
 function conversationCommentDisabledReason(
   repository: RepositoryDetail,
   locked: boolean | null | undefined
@@ -205,47 +336,47 @@ function useComposedPullRequestDetail({
   };
   const queryEnabled = enabled && pullNumber !== null;
   const overview = useQuery<PullRequestOverviewResult>({
-    queryKey: ["pull-detail", "overview", repository.owner, repository.name, pullNumber],
+    queryKey: pullRequestDetailQueryKey("overview", repository.owner, repository.name, pullNumber),
     queryFn: () => api.github.getPullRequestOverviewWithStatus(detailInput),
     enabled: queryEnabled
   });
   const comments = useQuery<PullRequestCommentsResult>({
-    queryKey: ["pull-detail", "comments", repository.owner, repository.name, pullNumber],
+    queryKey: pullRequestDetailQueryKey("comments", repository.owner, repository.name, pullNumber),
     queryFn: () => api.github.listPullRequestCommentsWithStatus(detailInput),
     enabled: queryEnabled
   });
   const files = useQuery<PullRequestFilesResult>({
-    queryKey: ["pull-detail", "files", repository.owner, repository.name, pullNumber],
+    queryKey: pullRequestDetailQueryKey("files", repository.owner, repository.name, pullNumber),
     queryFn: () => api.github.listPullRequestFilesWithStatus(detailInput),
     enabled: queryEnabled
   });
   const commits = useQuery<PullRequestCommitsResult>({
-    queryKey: ["pull-detail", "commits", repository.owner, repository.name, pullNumber],
+    queryKey: pullRequestDetailQueryKey("commits", repository.owner, repository.name, pullNumber),
     queryFn: () => api.github.listPullRequestCommitsWithStatus(detailInput),
     enabled: queryEnabled
   });
   const reviews = useQuery<PullRequestReviewsResult>({
-    queryKey: ["pull-detail", "reviews", repository.owner, repository.name, pullNumber],
+    queryKey: pullRequestDetailQueryKey("reviews", repository.owner, repository.name, pullNumber),
     queryFn: () => api.github.listPullRequestReviewsWithStatus(detailInput),
     enabled: queryEnabled
   });
   const checks = useQuery<PullRequestChecksResult>({
-    queryKey: ["pull-detail", "checks", repository.owner, repository.name, pullNumber],
+    queryKey: pullRequestDetailQueryKey("checks", repository.owner, repository.name, pullNumber),
     queryFn: () => api.github.listPullRequestChecksWithStatus(detailInput),
     enabled: queryEnabled
   });
   const reviewThreads = useQuery<PullRequestReviewThreadsResult>({
-    queryKey: ["pull-detail", "review-threads", repository.owner, repository.name, pullNumber],
+    queryKey: pullRequestDetailQueryKey("review-threads", repository.owner, repository.name, pullNumber),
     queryFn: () => api.github.listPullRequestReviewThreadsWithStatus(detailInput),
     enabled: queryEnabled
   });
   const timeline = useQuery<PullRequestTimelineResult>({
-    queryKey: ["pull-detail", "timeline", repository.owner, repository.name, pullNumber],
+    queryKey: pullRequestDetailQueryKey("timeline", repository.owner, repository.name, pullNumber),
     queryFn: () => api.github.listPullRequestTimelineWithStatus(detailInput),
     enabled: queryEnabled
   });
   const linkedIssues = useQuery<PullRequestLinkedIssuesResult>({
-    queryKey: ["pull-detail", "linked-issues", repository.owner, repository.name, pullNumber],
+    queryKey: pullRequestDetailQueryKey("linked-issues", repository.owner, repository.name, pullNumber),
     queryFn: () => api.github.listPullRequestLinkedIssuesWithStatus(detailInput),
     enabled: queryEnabled
   });

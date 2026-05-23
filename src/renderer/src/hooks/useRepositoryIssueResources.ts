@@ -1,4 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, type QueryClient } from "@tanstack/react-query";
+
+import type { ControlApi } from "@shared/ipc";
 
 import { useControlApi } from "./useControlApi";
 
@@ -66,4 +68,58 @@ export function useRepositoryIssueResources(
     milestoneItems: milestones.data?.items ?? [],
     milestonesAvailability: milestones.data?.availability ?? null
   };
+}
+
+export interface RepositoryIssueResourcesRefreshInput {
+  api: ControlApi;
+  owner: string;
+  repo: string;
+  githubReady: boolean;
+}
+
+export async function refreshRepositoryIssueResources(
+  queryClient: QueryClient,
+  { api, owner, repo, githubReady }: RepositoryIssueResourcesRefreshInput
+): Promise<void> {
+  const cachedRead = !githubReady;
+
+  await Promise.all([
+    queryClient.fetchQuery({
+      queryKey: repositoryLabelsQueryKey(owner, repo),
+      staleTime: 0,
+      queryFn: () =>
+        api.github.listLabelsWithStatus({
+          owner,
+          repo,
+          limit: 100,
+          cacheOnly: cachedRead,
+          forceRefresh: !cachedRead
+        })
+    }),
+    queryClient.fetchQuery({
+      queryKey: repositoryAssignableUsersQueryKey(owner, repo),
+      staleTime: 0,
+      queryFn: () =>
+        api.github.listAssignableUsersWithStatus({
+          owner,
+          repo,
+          limit: 100,
+          cacheOnly: cachedRead,
+          forceRefresh: !cachedRead
+        })
+    }),
+    queryClient.fetchQuery({
+      queryKey: repositoryMilestonesQueryKey(owner, repo),
+      staleTime: 0,
+      queryFn: () =>
+        api.github.listMilestonesWithStatus({
+          owner,
+          repo,
+          state: "all",
+          limit: 100,
+          cacheOnly: cachedRead,
+          forceRefresh: !cachedRead
+        })
+    })
+  ]);
 }

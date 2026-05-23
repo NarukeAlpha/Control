@@ -20,6 +20,7 @@ import {
   workflowDefinitionsQueryKey,
   workflowRunDetailQueryKey
 } from "./actions/ActionsTab";
+import { refreshAgentsTabData } from "./agents/AgentsTab";
 import {
   codeTabCommitsQueryKey,
   codeTabContentsQueryKey,
@@ -44,6 +45,21 @@ import {
   refreshPullRequestsTabData
 } from "./pull-requests/PullRequestsTab";
 import { prefetchReleasesTabData, refreshReleasesTabData, releasesTabQueryKey } from "./releases/ReleasesTab";
+import { repositoryBranchProtectionQueryKey, repositoryRulesetsQueryKey } from "./repositoryAdminQueryKeys";
+import {
+  codeScanningAlertsQueryKey,
+  dependabotAlertsQueryKey,
+  refreshSecurityQualityTabData,
+  repositoryCommunityProfileQueryKey,
+  repositorySecurityAdvisoriesQueryKey,
+  repositorySecurityPolicyQueryKey,
+  secretScanningAlertsQueryKey
+} from "./security/SecurityQualityTab";
+import {
+  refreshRepositorySettingsTabData,
+  repositoryAccessQueryKey,
+  repositoryForksQueryKey
+} from "./settings/RepositorySettingsTab";
 import { prefetchWikiTabData, refreshWikiTabData, wikiTabQueryKey } from "./wiki/WikiTab";
 import {
   repositoryAssignableUsersQueryKey,
@@ -604,6 +620,263 @@ describe("repository tab prefetch helpers", () => {
       forceRefresh: true
     });
     expect(queryClient.getQueryData(wikiTabQueryKey(owner, repo, "Existing", 99))).toBeDefined();
+  });
+
+  it("refreshes the agents tab source lists", async () => {
+    const queryClient = makeQueryClient();
+    const listIssuesWithStatus = vi.fn<ControlApi["github"]["listIssuesWithStatus"]>(
+      mockControlApi.github.listIssuesWithStatus
+    );
+    const listPullRequestsWithStatus = vi.fn<ControlApi["github"]["listPullRequestsWithStatus"]>(
+      mockControlApi.github.listPullRequestsWithStatus
+    );
+    const listActionsWithStatus = vi.fn<ControlApi["github"]["listActionsWithStatus"]>(
+      mockControlApi.github.listActionsWithStatus
+    );
+    const api = makeApi({ listIssuesWithStatus, listPullRequestsWithStatus, listActionsWithStatus });
+
+    await refreshAgentsTabData(queryClient, {
+      api,
+      owner,
+      repo,
+      issueListLimit: 30,
+      pullRequestListLimit: 40,
+      actionsLimit: 48,
+      githubReady: true
+    });
+
+    expect(listIssuesWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      state: "all",
+      limit: 30,
+      cacheOnly: false,
+      forceRefresh: true
+    });
+    expect(listPullRequestsWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      state: "all",
+      limit: 40,
+      cacheOnly: false,
+      forceRefresh: true
+    });
+    expect(listActionsWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      limit: 48,
+      cacheOnly: false,
+      forceRefresh: true
+    });
+    expect(queryClient.getQueryData(issuesTabQueryKey(owner, repo, 30))).toBeDefined();
+    expect(queryClient.getQueryData(pullRequestsTabQueryKey(owner, repo, 40))).toBeDefined();
+    expect(queryClient.getQueryData(actionsTabQueryKey(owner, repo, 48))).toBeDefined();
+  });
+
+  it("refreshes security quality data with optional branch policy queries", async () => {
+    const queryClient = makeQueryClient();
+    const listDependabotAlerts = vi.fn<ControlApi["github"]["listDependabotAlerts"]>(
+      mockControlApi.github.listDependabotAlerts
+    );
+    const listCodeScanningAlerts = vi.fn<ControlApi["github"]["listCodeScanningAlerts"]>(
+      mockControlApi.github.listCodeScanningAlerts
+    );
+    const listSecretScanningAlerts = vi.fn<ControlApi["github"]["listSecretScanningAlerts"]>(
+      mockControlApi.github.listSecretScanningAlerts
+    );
+    const listRepositoryRulesets = vi.fn<ControlApi["github"]["listRepositoryRulesets"]>(
+      mockControlApi.github.listRepositoryRulesets
+    );
+    const listRepositorySecurityAdvisories = vi.fn<ControlApi["github"]["listRepositorySecurityAdvisories"]>(
+      mockControlApi.github.listRepositorySecurityAdvisories
+    );
+    const getRepositoryCommunityProfile = vi.fn<ControlApi["github"]["getRepositoryCommunityProfile"]>(
+      mockControlApi.github.getRepositoryCommunityProfile
+    );
+    const getBranchProtection = vi.fn<ControlApi["github"]["getBranchProtection"]>(
+      mockControlApi.github.getBranchProtection
+    );
+    const getRepositorySecurityPolicy = vi.fn<ControlApi["github"]["getRepositorySecurityPolicy"]>(
+      mockControlApi.github.getRepositorySecurityPolicy
+    );
+    const api = makeApi({
+      listDependabotAlerts,
+      listCodeScanningAlerts,
+      listSecretScanningAlerts,
+      listRepositoryRulesets,
+      listRepositorySecurityAdvisories,
+      getRepositoryCommunityProfile,
+      getBranchProtection,
+      getRepositorySecurityPolicy
+    });
+
+    await refreshSecurityQualityTabData(queryClient, {
+      api,
+      owner,
+      repo,
+      branchProtectionBranch: "main",
+      defaultBranch: "main",
+      dependabotAlertsLimit: 10,
+      codeScanningAlertsLimit: 11,
+      secretScanningAlertsLimit: 12,
+      repositoryRulesetsLimit: 13,
+      repositorySecurityAdvisoriesLimit: 14,
+      githubReady: true
+    });
+
+    expect(listDependabotAlerts).toHaveBeenCalledWith({
+      owner,
+      repo,
+      state: "open",
+      limit: 10,
+      cacheOnly: false,
+      forceRefresh: true
+    });
+    expect(listCodeScanningAlerts).toHaveBeenCalledWith({
+      owner,
+      repo,
+      state: "open",
+      limit: 11,
+      cacheOnly: false,
+      forceRefresh: true
+    });
+    expect(listSecretScanningAlerts).toHaveBeenCalledWith({
+      owner,
+      repo,
+      state: "open",
+      limit: 12,
+      cacheOnly: false,
+      forceRefresh: true
+    });
+    expect(listRepositoryRulesets).toHaveBeenCalledWith({
+      owner,
+      repo,
+      includesParents: true,
+      limit: 13,
+      cacheOnly: false,
+      forceRefresh: true
+    });
+    expect(listRepositorySecurityAdvisories).toHaveBeenCalledWith({
+      owner,
+      repo,
+      limit: 14,
+      cacheOnly: false,
+      forceRefresh: true
+    });
+    expect(getRepositoryCommunityProfile).toHaveBeenCalledWith({
+      owner,
+      repo,
+      cacheOnly: false,
+      forceRefresh: true
+    });
+    expect(getBranchProtection).toHaveBeenCalledWith({
+      owner,
+      repo,
+      branch: "main",
+      cacheOnly: false,
+      forceRefresh: true
+    });
+    expect(getRepositorySecurityPolicy).toHaveBeenCalledWith({
+      owner,
+      repo,
+      ref: "main",
+      cacheOnly: false,
+      forceRefresh: true
+    });
+    expect(queryClient.getQueryData(dependabotAlertsQueryKey(owner, repo, 10))).toBeDefined();
+    expect(queryClient.getQueryData(codeScanningAlertsQueryKey(owner, repo, 11))).toBeDefined();
+    expect(queryClient.getQueryData(secretScanningAlertsQueryKey(owner, repo, 12))).toBeDefined();
+    expect(queryClient.getQueryData(repositoryRulesetsQueryKey(owner, repo, 13))).toBeDefined();
+    expect(queryClient.getQueryData(repositorySecurityAdvisoriesQueryKey(owner, repo, 14))).toBeDefined();
+    expect(queryClient.getQueryData(repositoryCommunityProfileQueryKey(owner, repo))).toBeDefined();
+    expect(queryClient.getQueryData(repositoryBranchProtectionQueryKey(owner, repo, "main"))).toBeDefined();
+    expect(queryClient.getQueryData(repositorySecurityPolicyQueryKey(owner, repo, "main"))).toBeDefined();
+  });
+
+  it("refreshes repository settings data and branch refs while offline", async () => {
+    const queryClient = makeQueryClient();
+    const listBranchesWithStatus = vi.fn<ControlApi["github"]["listBranchesWithStatus"]>(
+      mockControlApi.github.listBranchesWithStatus
+    );
+    const listTagsWithStatus = vi.fn<ControlApi["github"]["listTagsWithStatus"]>(
+      mockControlApi.github.listTagsWithStatus
+    );
+    const listRepositoryRulesets = vi.fn<ControlApi["github"]["listRepositoryRulesets"]>(
+      mockControlApi.github.listRepositoryRulesets
+    );
+    const getRepositoryAccess = vi.fn<ControlApi["github"]["getRepositoryAccess"]>(
+      mockControlApi.github.getRepositoryAccess
+    );
+    const listRepositoryForks = vi.fn<ControlApi["github"]["listRepositoryForks"]>(
+      mockControlApi.github.listRepositoryForks
+    );
+    const getBranchProtection = vi.fn<ControlApi["github"]["getBranchProtection"]>(
+      mockControlApi.github.getBranchProtection
+    );
+    const api = makeApi({
+      listBranchesWithStatus,
+      listTagsWithStatus,
+      listRepositoryRulesets,
+      getRepositoryAccess,
+      listRepositoryForks,
+      getBranchProtection
+    });
+
+    await refreshRepositorySettingsTabData(queryClient, {
+      api,
+      owner,
+      repo,
+      branchProtectionBranch: "main",
+      refListLimit: 80,
+      repositoryAccessLimit: 30,
+      forksLimit: 12,
+      repositoryRulesetsLimit: 13,
+      githubReady: false
+    });
+
+    expect(listBranchesWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      limit: 80,
+      cacheOnly: true,
+      forceRefresh: false
+    });
+    expect(listTagsWithStatus).not.toHaveBeenCalled();
+    expect(listRepositoryRulesets).toHaveBeenCalledWith({
+      owner,
+      repo,
+      includesParents: true,
+      limit: 13,
+      cacheOnly: true,
+      forceRefresh: false
+    });
+    expect(getRepositoryAccess).toHaveBeenCalledWith({
+      owner,
+      repo,
+      limit: 30,
+      cacheOnly: true,
+      forceRefresh: false
+    });
+    expect(listRepositoryForks).toHaveBeenCalledWith({
+      owner,
+      repo,
+      sort: "stargazers",
+      limit: 12,
+      cacheOnly: true,
+      forceRefresh: false
+    });
+    expect(getBranchProtection).toHaveBeenCalledWith({
+      owner,
+      repo,
+      branch: "main",
+      cacheOnly: true,
+      forceRefresh: false
+    });
+    expect(queryClient.getQueryData(repositoryBranchesQueryKey(owner, repo, 80))).toBeDefined();
+    expect(queryClient.getQueryData(repositoryRulesetsQueryKey(owner, repo, 13))).toBeDefined();
+    expect(queryClient.getQueryData(repositoryAccessQueryKey(owner, repo, 30))).toBeDefined();
+    expect(queryClient.getQueryData(repositoryForksQueryKey(owner, repo, 12))).toBeDefined();
+    expect(queryClient.getQueryData(repositoryBranchProtectionQueryKey(owner, repo, "main"))).toBeDefined();
   });
 
   it("prefetches issues and issue resources without mounting IssuesTab", async () => {

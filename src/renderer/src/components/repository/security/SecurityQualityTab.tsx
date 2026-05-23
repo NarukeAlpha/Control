@@ -93,6 +93,8 @@ export interface SecurityQualityTabPrefetchInput {
   githubReady: boolean;
 }
 
+export type SecurityQualityTabRefreshInput = SecurityQualityTabPrefetchInput;
+
 export function dependabotAlertsQueryKey(
   owner: string,
   repo: string,
@@ -390,6 +392,142 @@ export async function prefetchSecurityQualityTabData(
       staleTime: 120_000
     })
   ]);
+}
+
+export async function refreshSecurityQualityTabData(
+  queryClient: QueryClient,
+  {
+    api,
+    owner,
+    repo,
+    branchProtectionBranch,
+    defaultBranch,
+    dependabotAlertsLimit,
+    codeScanningAlertsLimit,
+    secretScanningAlertsLimit,
+    repositoryRulesetsLimit,
+    repositorySecurityAdvisoriesLimit,
+    githubReady
+  }: SecurityQualityTabRefreshInput
+): Promise<void> {
+  const cachedRead = !githubReady;
+  const refreshes: Array<Promise<unknown>> = [
+    queryClient.fetchQuery({
+      queryKey: dependabotAlertsQueryKey(owner, repo, dependabotAlertsLimit),
+      staleTime: 0,
+      queryFn: () =>
+        api.github.listDependabotAlerts({
+          owner,
+          repo,
+          state: "open",
+          limit: dependabotAlertsLimit,
+          cacheOnly: cachedRead,
+          forceRefresh: !cachedRead
+        })
+    }),
+    queryClient.fetchQuery({
+      queryKey: codeScanningAlertsQueryKey(owner, repo, codeScanningAlertsLimit),
+      staleTime: 0,
+      queryFn: () =>
+        api.github.listCodeScanningAlerts({
+          owner,
+          repo,
+          state: "open",
+          limit: codeScanningAlertsLimit,
+          cacheOnly: cachedRead,
+          forceRefresh: !cachedRead
+        })
+    }),
+    queryClient.fetchQuery({
+      queryKey: secretScanningAlertsQueryKey(owner, repo, secretScanningAlertsLimit),
+      staleTime: 0,
+      queryFn: () =>
+        api.github.listSecretScanningAlerts({
+          owner,
+          repo,
+          state: "open",
+          limit: secretScanningAlertsLimit,
+          cacheOnly: cachedRead,
+          forceRefresh: !cachedRead
+        })
+    }),
+    queryClient.fetchQuery({
+      queryKey: repositoryRulesetsQueryKey(owner, repo, repositoryRulesetsLimit),
+      staleTime: 0,
+      queryFn: () =>
+        api.github.listRepositoryRulesets({
+          owner,
+          repo,
+          includesParents: true,
+          limit: repositoryRulesetsLimit,
+          cacheOnly: cachedRead,
+          forceRefresh: !cachedRead
+        })
+    }),
+    queryClient.fetchQuery({
+      queryKey: repositorySecurityAdvisoriesQueryKey(owner, repo, repositorySecurityAdvisoriesLimit),
+      staleTime: 0,
+      queryFn: () =>
+        api.github.listRepositorySecurityAdvisories({
+          owner,
+          repo,
+          limit: repositorySecurityAdvisoriesLimit,
+          cacheOnly: cachedRead,
+          forceRefresh: !cachedRead
+        })
+    }),
+    queryClient.fetchQuery({
+      queryKey: repositoryCommunityProfileQueryKey(owner, repo),
+      staleTime: 0,
+      queryFn: () =>
+        api.github.getRepositoryCommunityProfile({
+          owner,
+          repo,
+          cacheOnly: cachedRead,
+          forceRefresh: !cachedRead
+        })
+    })
+  ];
+
+  if (branchProtectionBranch) {
+    refreshes.push(
+      queryClient.fetchQuery({
+        queryKey: repositoryBranchProtectionQueryKey(owner, repo, branchProtectionBranch),
+        staleTime: 0,
+        queryFn: () =>
+          api.github.getBranchProtection({
+            owner,
+            repo,
+            branch: branchProtectionBranch,
+            cacheOnly: cachedRead,
+            forceRefresh: !cachedRead
+          })
+      })
+    );
+  }
+
+  if (defaultBranch) {
+    refreshes.push(
+      queryClient.fetchQuery({
+        queryKey: repositorySecurityPolicyQueryKey(owner, repo, defaultBranch),
+        staleTime: 0,
+        queryFn: () =>
+          api.github.getRepositorySecurityPolicy({
+            owner,
+            repo,
+            ref: defaultBranch,
+            cacheOnly: cachedRead,
+            forceRefresh: !cachedRead
+          })
+      })
+    );
+  }
+
+  try {
+    await Promise.all(refreshes);
+  } catch {
+    // React Query owns the visible error state for this refresh.
+  }
 }
 
 function normalizeGitHubCodeRef(ref: string | null | undefined): string | null {

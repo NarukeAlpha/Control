@@ -126,6 +126,7 @@ import {
 } from "./components/repository/RepositoryContext";
 import { maxCommitHistoryLimit } from "./components/repository/CommitHistoryPanel";
 import { refreshActionsTabData, useActionsTabQueries } from "./components/repository/actions/ActionsTab";
+import { refreshAgentsTabData } from "./components/repository/agents/AgentsTab";
 import { refreshCodeTabData, useCodeTabQueries } from "./components/repository/code/CodeTab";
 import {
   commitRecentAuthoredDate,
@@ -155,6 +156,8 @@ import {
   usePullRequestsTabQueries
 } from "./components/repository/pull-requests/PullRequestsTab";
 import { refreshReleasesTabData, useReleasesTabQueries } from "./components/repository/releases/ReleasesTab";
+import { refreshSecurityQualityTabData } from "./components/repository/security/SecurityQualityTab";
+import { refreshRepositorySettingsTabData } from "./components/repository/settings/RepositorySettingsTab";
 import { refreshWikiTabData } from "./components/repository/wiki/WikiTab";
 import { RightRail } from "./components/right-rail/RightRail";
 import { SettingsPanel } from "./components/settings/SettingsPanel";
@@ -2766,52 +2769,15 @@ export function App(): JSX.Element {
       return;
     }
 
-    const cachedRead = !githubReady;
-
-    try {
-      await Promise.all([
-        queryClient.fetchQuery({
-          queryKey: ["issues", owner, repo, issueListLimit],
-          staleTime: 0,
-          queryFn: () =>
-            api.github.listIssuesWithStatus({
-              owner,
-              repo,
-              state: "all",
-              limit: issueListLimit,
-              cacheOnly: cachedRead,
-              forceRefresh: !cachedRead
-            })
-        }),
-        queryClient.fetchQuery({
-          queryKey: ["pulls", owner, repo, pullRequestListLimit],
-          staleTime: 0,
-          queryFn: () =>
-            api.github.listPullRequestsWithStatus({
-              owner,
-              repo,
-              state: "all",
-              limit: pullRequestListLimit,
-              cacheOnly: cachedRead,
-              forceRefresh: !cachedRead
-            })
-        }),
-        queryClient.fetchQuery({
-          queryKey: ["actions", owner, repo, actionsLimit],
-          staleTime: 0,
-          queryFn: () =>
-            api.github.listActionsWithStatus({
-              owner,
-              repo,
-              limit: actionsLimit,
-              cacheOnly: cachedRead,
-              forceRefresh: !cachedRead
-            })
-        })
-      ]);
-    } catch {
-      // React Query owns the visible error state for this refresh.
-    }
+    await refreshAgentsTabData(queryClient, {
+      api,
+      owner,
+      repo,
+      issueListLimit,
+      pullRequestListLimit,
+      actionsLimit,
+      githubReady
+    });
   }
 
   async function refreshSecurityQualitySurfaceNow(): Promise<void> {
@@ -2819,126 +2785,19 @@ export function App(): JSX.Element {
       return;
     }
 
-    const cachedRead = !githubReady;
-    const defaultBranch = repositoryDetail?.defaultBranch ?? null;
-    const protectionBranch = branchProtectionBranch;
-    const refreshes: Array<Promise<unknown>> = [
-      queryClient.fetchQuery({
-        queryKey: ["dependabot-alerts", owner, repo, dependabotAlertsLimit],
-        staleTime: 0,
-        queryFn: () =>
-          api.github.listDependabotAlerts({
-            owner,
-            repo,
-            state: "open",
-            limit: dependabotAlertsLimit,
-            cacheOnly: cachedRead,
-            forceRefresh: !cachedRead
-          })
-      }),
-      queryClient.fetchQuery({
-        queryKey: ["code-scanning-alerts", owner, repo, codeScanningAlertsLimit],
-        staleTime: 0,
-        queryFn: () =>
-          api.github.listCodeScanningAlerts({
-            owner,
-            repo,
-            state: "open",
-            limit: codeScanningAlertsLimit,
-            cacheOnly: cachedRead,
-            forceRefresh: !cachedRead
-          })
-      }),
-      queryClient.fetchQuery({
-        queryKey: ["secret-scanning-alerts", owner, repo, secretScanningAlertsLimit],
-        staleTime: 0,
-        queryFn: () =>
-          api.github.listSecretScanningAlerts({
-            owner,
-            repo,
-            state: "open",
-            limit: secretScanningAlertsLimit,
-            cacheOnly: cachedRead,
-            forceRefresh: !cachedRead
-          })
-      }),
-      queryClient.fetchQuery({
-        queryKey: ["repository-rulesets", owner, repo, repositoryRulesetsLimit],
-        staleTime: 0,
-        queryFn: () =>
-          api.github.listRepositoryRulesets({
-            owner,
-            repo,
-            includesParents: true,
-            limit: repositoryRulesetsLimit,
-            cacheOnly: cachedRead,
-            forceRefresh: !cachedRead
-          })
-      }),
-      queryClient.fetchQuery({
-        queryKey: ["repository-security-advisories", owner, repo, repositorySecurityAdvisoriesLimit],
-        staleTime: 0,
-        queryFn: () =>
-          api.github.listRepositorySecurityAdvisories({
-            owner,
-            repo,
-            limit: repositorySecurityAdvisoriesLimit,
-            cacheOnly: cachedRead,
-            forceRefresh: !cachedRead
-          })
-      }),
-      queryClient.fetchQuery({
-        queryKey: ["repository-community-profile", owner, repo],
-        staleTime: 0,
-        queryFn: () =>
-          api.github.getRepositoryCommunityProfile({
-            owner,
-            repo,
-            cacheOnly: cachedRead,
-            forceRefresh: !cachedRead
-          })
-      })
-    ];
-
-    if (protectionBranch) {
-      refreshes.push(
-        queryClient.fetchQuery({
-          queryKey: ["branch-protection", owner, repo, protectionBranch],
-          staleTime: 0,
-          queryFn: () =>
-            api.github.getBranchProtection({
-              owner,
-              repo,
-              branch: protectionBranch,
-              cacheOnly: cachedRead,
-              forceRefresh: !cachedRead
-            })
-        })
-      );
-    }
-
-    if (defaultBranch) {
-      refreshes.push(
-        queryClient.fetchQuery({
-          queryKey: ["repository-security-policy", owner, repo, defaultBranch],
-          staleTime: 0,
-          queryFn: () =>
-            api.github.getRepositorySecurityPolicy({
-              owner,
-              repo,
-              ref: defaultBranch,
-              cacheOnly: cachedRead,
-              forceRefresh: !cachedRead
-            })
-        })
-      );
-    }
-
-    try {
-      await Promise.all(refreshes);
-    } catch {
-      // React Query owns the visible error state for this refresh.
-    }
+    await refreshSecurityQualityTabData(queryClient, {
+      api,
+      owner,
+      repo,
+      branchProtectionBranch,
+      defaultBranch: repositoryDetail?.defaultBranch ?? null,
+      dependabotAlertsLimit,
+      codeScanningAlertsLimit,
+      secretScanningAlertsLimit,
+      repositoryRulesetsLimit,
+      repositorySecurityAdvisoriesLimit,
+      githubReady
+    });
   }
 
   async function refreshRepositorySettingsNow(): Promise<void> {
@@ -2946,51 +2805,17 @@ export function App(): JSX.Element {
       return;
     }
 
-    const cachedRead = !githubReady;
-
-    try {
-      await Promise.all([
-        queryClient.fetchQuery({
-          queryKey: ["branches", owner, repo, repositoryRefListLimit],
-          staleTime: 0,
-          queryFn: () =>
-            api.github.listBranchesWithStatus({
-              owner,
-              repo,
-              limit: repositoryRefListLimit,
-              cacheOnly: cachedRead,
-              forceRefresh: !cachedRead
-            })
-        }),
-        queryClient.fetchQuery({
-          queryKey: ["repository-access", owner, repo, repositoryAccessLimit],
-          staleTime: 0,
-          queryFn: () =>
-            api.github.getRepositoryAccess({
-              owner,
-              repo,
-              limit: repositoryAccessLimit,
-              cacheOnly: cachedRead,
-              forceRefresh: !cachedRead
-            })
-        }),
-        queryClient.fetchQuery({
-          queryKey: ["repository-forks", owner, repo, forksLimit],
-          staleTime: 0,
-          queryFn: () =>
-            api.github.listRepositoryForks({
-              owner,
-              repo,
-              sort: "stargazers",
-              limit: forksLimit,
-              cacheOnly: cachedRead,
-              forceRefresh: !cachedRead
-            })
-        })
-      ]);
-    } catch {
-      // React Query owns the visible error state for this refresh.
-    }
+    await refreshRepositorySettingsTabData(queryClient, {
+      api,
+      owner,
+      repo,
+      branchProtectionBranch,
+      refListLimit: repositoryRefListLimit,
+      repositoryAccessLimit,
+      forksLimit,
+      repositoryRulesetsLimit,
+      githubReady
+    });
   }
 
   async function refreshMailboxNow(): Promise<void> {

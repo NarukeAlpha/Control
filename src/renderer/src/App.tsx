@@ -14,8 +14,6 @@ import type {
   PullRequestSummary,
   ReleaseAssetSummary,
   ReleaseSummary,
-  RepoEntry,
-  RepoFileBlameResult,
   RepositoryCollaboratorSummary,
   RepositoryDetail,
   RepositorySummary,
@@ -34,13 +32,7 @@ import { SetupPanel } from "./components/auth/SetupPanel";
 import { useAreasShell } from "./components/areas/useAreasShell";
 import { useProviderAuth } from "./components/auth/AuthProvider";
 import { CodeBrowserPage } from "./components/code-browser/CodeBrowserPage";
-import {
-  codeBrowserCommitsQueryKey,
-  codeBrowserContentsQueryKey,
-  codeBrowserFileBlameQueryKey,
-  codeBrowserFileContentQueryKey,
-  refreshCodeBrowserData
-} from "./components/code-browser/codeBrowserQueries";
+import { refreshCodeBrowserData, useCodeBrowserQueries } from "./components/code-browser/codeBrowserQueries";
 import { normalizeCodeLineNumber } from "./components/code-browser/codeBrowserUi";
 import {
   notificationInAppTarget,
@@ -218,7 +210,6 @@ import { useStoredRepositoryRefs } from "./hooks/useStoredRepositoryRefs";
 import { repositoryScopedQueryKeys } from "./queries/repositoryQueryKeys";
 import { useUiStore, type AppRoute, type LocalRepositoryTab, type RepositoryTab } from "./stores/uiStore";
 
-const emptyRepoEntries: RepoEntry[] = [];
 const defaultFileBlameRangeLimit = 20;
 const defaultCommitHistoryLimit = 12;
 const defaultRightRailCommitHistoryLimit = 3;
@@ -878,112 +869,38 @@ export function App(): JSX.Element {
     githubReady
   });
 
-  const codeBrowserContents = useQuery({
-    queryKey: codeBrowserContentsQueryKey(owner, repo, codeBrowserRef, codeBrowserPath, codeBrowserEntryType),
-    queryFn: () =>
-      api.github.listContentsWithStatus({
-        owner,
-        repo,
-        path: codeBrowserPath,
-        ref: codeBrowserRef ?? undefined,
-        cacheOnly: !githubReady
-      }),
-    enabled: appState.isSuccess && hasRepositoryParts && isCodeBrowserRoute && codeBrowserEntryType === "dir",
-    staleTime: 120_000
+  const {
+    codeBrowserContents,
+    fileContent,
+    fileBlame,
+    fileCommits,
+    repositoryTree,
+    contentItems,
+    contentsAvailability,
+    fileCommitItems,
+    fileCommitsAvailability,
+    fileContentItem,
+    fileContentAvailabilityMessage,
+    repositoryTreeItem,
+    repositoryTreeAvailabilityMessage
+  } = useCodeBrowserQueries({
+    api,
+    appReady: appState.isSuccess,
+    githubReady,
+    owner,
+    repo,
+    hasRepositoryParts,
+    isCodeBrowserRoute,
+    codeBrowserPath,
+    codeBrowserEntryType,
+    codeBrowserRef,
+    contentsRef,
+    defaultBranch: repositoryDetail?.defaultBranch ?? null,
+    fileBlameRangeLimit,
+    fileCommitHistoryLimit,
+    fileFinderOpen,
+    repositoryLoaded: Boolean(repositoryDetail)
   });
-
-  const fileContent = useQuery({
-    queryKey: codeBrowserFileContentQueryKey(owner, repo, contentsRef, codeBrowserPath),
-    queryFn: () =>
-      api.github.getFileContentWithStatus({
-        owner,
-        repo,
-        path: codeBrowserPath,
-        ref: contentsRef ?? undefined,
-        cacheOnly: !githubReady
-      }),
-    enabled:
-      appState.isSuccess &&
-      isCodeBrowserRoute &&
-      codeBrowserEntryType === "file" &&
-      hasRepositoryParts &&
-      Boolean(codeBrowserPath),
-    staleTime: 120_000
-  });
-
-  const fileBlame = useQuery<RepoFileBlameResult>({
-    queryKey: codeBrowserFileBlameQueryKey(owner, repo, contentsRef, codeBrowserPath, fileBlameRangeLimit),
-    queryFn: () =>
-      api.github.getFileBlame({
-        owner,
-        repo,
-        path: codeBrowserPath,
-        ref: contentsRef ?? undefined,
-        maxRanges: fileBlameRangeLimit,
-        cacheOnly: !githubReady
-      }),
-    enabled:
-      appState.isSuccess &&
-      isCodeBrowserRoute &&
-      codeBrowserEntryType === "file" &&
-      hasRepositoryParts &&
-      Boolean(codeBrowserPath),
-    staleTime: 120_000
-  });
-
-  const fileCommits = useQuery({
-    queryKey: codeBrowserCommitsQueryKey(
-      owner,
-      repo,
-      codeBrowserRef,
-      codeBrowserPath,
-      fileCommitHistoryLimit
-    ),
-    queryFn: () =>
-      api.github.listCommitsWithStatus({
-        owner,
-        repo,
-        ref: codeBrowserRef ?? repositoryDetail?.defaultBranch ?? undefined,
-        path: codeBrowserPath,
-        limit: fileCommitHistoryLimit,
-        cacheOnly: !githubReady
-      }),
-    enabled:
-      appState.isSuccess &&
-      isCodeBrowserRoute &&
-      codeBrowserEntryType === "file" &&
-      hasRepositoryParts &&
-      Boolean(codeBrowserPath),
-    staleTime: 60_000
-  });
-
-  const contentItems = codeBrowserContents.data?.items ?? emptyRepoEntries;
-  const contentsAvailability = codeBrowserContents.data?.availability ?? null;
-  const fileCommitItems = fileCommits.data?.items ?? [];
-  const fileCommitsAvailability = fileCommits.data?.availability ?? null;
-  const fileContentItem = fileContent.data?.item ?? null;
-  const fileContentAvailability = fileContent.data?.availability ?? null;
-  const fileContentAvailabilityMessage = readAvailabilityMessage("File content", fileContentAvailability);
-
-  const repositoryTree = useQuery({
-    queryKey: ["tree", owner, repo, contentsRef ?? "default"],
-    queryFn: () =>
-      api.github.listTreeWithStatus({
-        owner,
-        repo,
-        ref: contentsRef ?? repositoryDetail?.defaultBranch ?? undefined,
-        recursive: true,
-        cacheOnly: !githubReady
-      }),
-    enabled: appState.isSuccess && fileFinderOpen && hasRepositoryParts && Boolean(repositoryDetail),
-    staleTime: 120_000
-  });
-  const repositoryTreeItem = repositoryTree.data?.tree ?? null;
-  const repositoryTreeAvailability = repositoryTree.data?.availability ?? null;
-  const repositoryTreeAvailabilityMessage = readAvailabilityMessage(
-    "Repository tree",
-    repositoryTreeAvailability
-  );
 
   const { discussions } = useDiscussionsTabQueries({
     owner,

@@ -1,8 +1,12 @@
-import type { QueryClient } from "@tanstack/react-query";
+import { useQuery, type QueryClient } from "@tanstack/react-query";
 
 import type { ControlApi } from "@shared/ipc";
+import type { RepoEntry, RepoFileBlameResult } from "@shared/github";
 
 import { refreshRepositoryRefsData } from "../../hooks/useRepositoryRefs";
+import { readAvailabilityMessage } from "../repository/repositoryUi";
+
+const emptyRepoEntries: RepoEntry[] = [];
 
 export function codeBrowserContentsQueryKey(
   owner: string,
@@ -55,6 +59,158 @@ export interface CodeBrowserRefreshInput {
   fileBlameRangeLimit: number;
   fileCommitHistoryLimit: number;
   githubReady: boolean;
+}
+
+export interface CodeBrowserQueriesInput {
+  api: ControlApi;
+  appReady: boolean;
+  githubReady: boolean;
+  owner: string;
+  repo: string;
+  hasRepositoryParts: boolean;
+  isCodeBrowserRoute: boolean;
+  codeBrowserPath: string;
+  codeBrowserEntryType: "file" | "dir";
+  codeBrowserRef: string | null;
+  contentsRef: string | null;
+  defaultBranch: string | null;
+  fileBlameRangeLimit: number;
+  fileCommitHistoryLimit: number;
+  fileFinderOpen: boolean;
+  repositoryLoaded: boolean;
+}
+
+export function useCodeBrowserQueries({
+  api,
+  appReady,
+  githubReady,
+  owner,
+  repo,
+  hasRepositoryParts,
+  isCodeBrowserRoute,
+  codeBrowserPath,
+  codeBrowserEntryType,
+  codeBrowserRef,
+  contentsRef,
+  defaultBranch,
+  fileBlameRangeLimit,
+  fileCommitHistoryLimit,
+  fileFinderOpen,
+  repositoryLoaded
+}: CodeBrowserQueriesInput) {
+  const codeBrowserContents = useQuery({
+    queryKey: codeBrowserContentsQueryKey(owner, repo, codeBrowserRef, codeBrowserPath, codeBrowserEntryType),
+    queryFn: () =>
+      api.github.listContentsWithStatus({
+        owner,
+        repo,
+        path: codeBrowserPath,
+        ref: codeBrowserRef ?? undefined,
+        cacheOnly: !githubReady
+      }),
+    enabled: appReady && hasRepositoryParts && isCodeBrowserRoute && codeBrowserEntryType === "dir",
+    staleTime: 120_000
+  });
+
+  const fileContent = useQuery({
+    queryKey: codeBrowserFileContentQueryKey(owner, repo, contentsRef, codeBrowserPath),
+    queryFn: () =>
+      api.github.getFileContentWithStatus({
+        owner,
+        repo,
+        path: codeBrowserPath,
+        ref: contentsRef ?? undefined,
+        cacheOnly: !githubReady
+      }),
+    enabled:
+      appReady &&
+      isCodeBrowserRoute &&
+      codeBrowserEntryType === "file" &&
+      hasRepositoryParts &&
+      Boolean(codeBrowserPath),
+    staleTime: 120_000
+  });
+
+  const fileBlame = useQuery<RepoFileBlameResult>({
+    queryKey: codeBrowserFileBlameQueryKey(owner, repo, contentsRef, codeBrowserPath, fileBlameRangeLimit),
+    queryFn: () =>
+      api.github.getFileBlame({
+        owner,
+        repo,
+        path: codeBrowserPath,
+        ref: contentsRef ?? undefined,
+        maxRanges: fileBlameRangeLimit,
+        cacheOnly: !githubReady
+      }),
+    enabled:
+      appReady &&
+      isCodeBrowserRoute &&
+      codeBrowserEntryType === "file" &&
+      hasRepositoryParts &&
+      Boolean(codeBrowserPath),
+    staleTime: 120_000
+  });
+
+  const fileCommits = useQuery({
+    queryKey: codeBrowserCommitsQueryKey(
+      owner,
+      repo,
+      codeBrowserRef,
+      codeBrowserPath,
+      fileCommitHistoryLimit
+    ),
+    queryFn: () =>
+      api.github.listCommitsWithStatus({
+        owner,
+        repo,
+        ref: codeBrowserRef ?? defaultBranch ?? undefined,
+        path: codeBrowserPath,
+        limit: fileCommitHistoryLimit,
+        cacheOnly: !githubReady
+      }),
+    enabled:
+      appReady &&
+      isCodeBrowserRoute &&
+      codeBrowserEntryType === "file" &&
+      hasRepositoryParts &&
+      Boolean(codeBrowserPath),
+    staleTime: 60_000
+  });
+
+  const repositoryTree = useQuery({
+    queryKey: ["tree", owner, repo, contentsRef ?? "default"],
+    queryFn: () =>
+      api.github.listTreeWithStatus({
+        owner,
+        repo,
+        ref: contentsRef ?? defaultBranch ?? undefined,
+        recursive: true,
+        cacheOnly: !githubReady
+      }),
+    enabled: appReady && fileFinderOpen && hasRepositoryParts && repositoryLoaded,
+    staleTime: 120_000
+  });
+
+  const fileContentAvailability = fileContent.data?.availability ?? null;
+  const repositoryTreeAvailability = repositoryTree.data?.availability ?? null;
+
+  return {
+    codeBrowserContents,
+    fileContent,
+    fileBlame,
+    fileCommits,
+    repositoryTree,
+    contentItems: codeBrowserContents.data?.items ?? emptyRepoEntries,
+    contentsAvailability: codeBrowserContents.data?.availability ?? null,
+    fileCommitItems: fileCommits.data?.items ?? [],
+    fileCommitsAvailability: fileCommits.data?.availability ?? null,
+    fileContentItem: fileContent.data?.item ?? null,
+    fileContentAvailability,
+    fileContentAvailabilityMessage: readAvailabilityMessage("File content", fileContentAvailability),
+    repositoryTreeItem: repositoryTree.data?.tree ?? null,
+    repositoryTreeAvailability,
+    repositoryTreeAvailabilityMessage: readAvailabilityMessage("Repository tree", repositoryTreeAvailability)
+  };
 }
 
 export async function refreshCodeBrowserData(

@@ -3,6 +3,9 @@ import type { JSX } from "react";
 
 import type { IssueSummary, PullRequestSummary, RepositoryDetail, WorkflowRunSummary } from "@shared/github";
 import { formatRelativeDate } from "../../../utils/format";
+import { useActionsTabQueries } from "../actions/ActionsTab";
+import { useIssuesTabQueries } from "../issues/IssuesTab";
+import { usePullRequestsTabQueries } from "../pull-requests/PullRequestsTab";
 import { isWorkflowRunAttention } from "../workflows/workflowRunState";
 
 type AgentSurfaceTab = "issues" | "pulls" | "actions";
@@ -31,15 +34,10 @@ interface AgentLink {
 
 export interface AgentsTabProps {
   repository: RepositoryDetail;
-  issues: IssueSummary[];
-  issuesLoading: boolean;
-  issuesError: Error | null;
-  pulls: PullRequestSummary[];
-  pullsLoading: boolean;
-  pullsError: Error | null;
-  actions: WorkflowRunSummary[];
-  actionsLoading: boolean;
-  actionsError: Error | null;
+  githubReady: boolean;
+  issueListLimit: number;
+  pullRequestListLimit: number;
+  actionsLimit: number;
   onOpenExternal(url: string): void;
   onOpenFilteredSurface(tab: AgentSurfaceTab, filter: string): void;
   onSelectIssue(issue: IssueSummary): void;
@@ -49,28 +47,55 @@ export interface AgentsTabProps {
 
 export function AgentsTab({
   repository,
-  issues,
-  issuesLoading,
-  issuesError,
-  pulls,
-  pullsLoading,
-  pullsError,
-  actions,
-  actionsLoading,
-  actionsError,
+  githubReady,
+  issueListLimit,
+  pullRequestListLimit,
+  actionsLimit,
   onOpenExternal,
   onOpenFilteredSurface,
   onSelectIssue,
   onSelectPullRequest,
   onSelectWorkflowRun
 }: AgentsTabProps): JSX.Element {
-  const agentIssues = issues.filter(
+  const { issues } = useIssuesTabQueries({
+    owner: repository.owner,
+    repo: repository.name,
+    issueListLimit,
+    issuesEnabled: true,
+    resourcesEnabled: false,
+    githubReady
+  });
+  const { pulls } = usePullRequestsTabQueries({
+    owner: repository.owner,
+    repo: repository.name,
+    pullRequestListLimit,
+    pullsEnabled: true,
+    resourcesEnabled: false,
+    githubReady
+  });
+  const { actions } = useActionsTabQueries({
+    owner: repository.owner,
+    repo: repository.name,
+    limit: actionsLimit,
+    enabled: true,
+    githubReady
+  });
+  const issueItems = issues.data?.items ?? [];
+  const pullItems = pulls.data?.items ?? [];
+  const actionItems = actions.data?.items ?? [];
+  const issuesLoading = issues.isLoading || issues.isFetching;
+  const pullsLoading = pulls.isLoading || pulls.isFetching;
+  const actionsLoading = actions.isLoading || actions.isFetching;
+  const issuesError = issues.error;
+  const pullsError = pulls.error;
+  const actionsError = actions.error;
+  const agentIssues = issueItems.filter(
     (issue) =>
       issue.state.toLowerCase() === "open" &&
       issue.labels.some((label) => label.name.toLowerCase() === "agent")
   );
-  const automationRuns = actions.filter(isWorkflowRunAttention);
-  const openPulls = pulls.filter((pull) => pull.state.toLowerCase() === "open");
+  const automationRuns = actionItems.filter(isWorkflowRunAttention);
+  const openPulls = pullItems.filter((pull) => pull.state.toLowerCase() === "open");
   const agentIssuePreview = agentIssues.slice(0, 3).map((issue) => ({
     title: `#${issue.number} ${issue.title}`,
     meta: `updated ${formatRelativeDate(issue.updatedAt)}`,

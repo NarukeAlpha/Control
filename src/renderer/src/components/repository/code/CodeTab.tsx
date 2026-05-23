@@ -14,7 +14,6 @@ import { useQuery, type QueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 import type {
-  BranchSummary,
   RepoContentsResult,
   RepoEntry,
   RepoReadmeResult,
@@ -22,8 +21,7 @@ import type {
   RepoFileContentResult,
   RepositoryCommitListResult,
   RepositoryDetail,
-  RepositorySummary,
-  TagSummary
+  RepositorySummary
 } from "@shared/github";
 import type { ControlApi } from "@shared/ipc";
 
@@ -32,6 +30,7 @@ import { MarkdownBody, markdownRepositoryUrlContext } from "@renderer/components
 import { isMarkdownPath, isReadmeMarkdownPath } from "@renderer/components/code-browser/codeBrowserUi";
 import { readAvailabilityMessage } from "@renderer/components/repository/repositoryUi";
 import { useControlApi } from "@renderer/hooks/useControlApi";
+import { useRepositoryRefs } from "@renderer/hooks/useRepositoryRefs";
 
 import { firstMarkdownHeading, formatCompactNumber, formatRelativeDate } from "@renderer/utils/format";
 
@@ -454,12 +453,7 @@ export function CodeTab({
   repository,
   githubReady,
   selectedRef,
-  branches,
-  tags,
   refListLimit,
-  refsLoading,
-  refsError,
-  refsAvailabilityMessage,
   commitHistoryLimit,
   onOpenCodeBrowser,
   onOpenExternal,
@@ -470,12 +464,7 @@ export function CodeTab({
   repository: RepositoryDetail;
   githubReady: boolean;
   selectedRef: string | null;
-  branches: BranchSummary[];
-  tags: TagSummary[];
   refListLimit: number;
-  refsLoading: boolean;
-  refsError: Error | null;
-  refsAvailabilityMessage: string | null;
   commitHistoryLimit: number;
   onOpenCodeBrowser(entry: RepoEntry): void;
   onOpenExternal(url: string): void;
@@ -485,6 +474,14 @@ export function CodeTab({
 }): JSX.Element {
   const parentRef = useRef<HTMLDivElement | null>(null);
   const [selectedRootMarkdownPath, setSelectedRootMarkdownPath] = useState<string | null>(null);
+  const {
+    branches,
+    tags,
+    branchItems,
+    tagItems,
+    error: refsError,
+    availabilityMessage: refsAvailabilityMessage
+  } = useRepositoryRefs(repository.owner, repository.name, true, refListLimit, { githubReady });
   const {
     contents,
     readme,
@@ -509,6 +506,7 @@ export function CodeTab({
   const readmeError = readme.error;
   const contentsLoading = contents.isLoading || contents.isFetching;
   const contentsError = contents.error;
+  const refsLoading = branches.isLoading || branches.isFetching || tags.isLoading || tags.isFetching;
   const rootMarkdownData = rootMarkdownContent.data ?? null;
   const rootMarkdownLoading = rootMarkdownContent.isLoading || rootMarkdownContent.isFetching;
   const rootMarkdownError = rootMarkdownContent.error;
@@ -528,12 +526,12 @@ export function CodeTab({
       ? readmeAvailability.message
       : "No project README returned.";
   const refOptions = [
-    ...branches.map((branch) => ({ kind: "branch" as const, name: branch.name })),
-    ...tags.map((tag) => ({ kind: "tag" as const, name: tag.name }))
+    ...branchItems.map((branch) => ({ kind: "branch" as const, name: branch.name })),
+    ...tagItems.map((tag) => ({ kind: "tag" as const, name: tag.name }))
   ];
   const hasCurrentRefOption = refOptions.some((option) => option.name === currentRef);
   const refsExceedLoadedCounts =
-    branches.length < repository.branchCount || tags.length < repository.tagCount;
+    branchItems.length < repository.branchCount || tagItems.length < repository.tagCount;
   const canExpandRefs = refsExceedLoadedCounts && refListLimit < expandedRefListLimit;
   const refsLimitNote =
     refsExceedLoadedCounts && refListLimit >= expandedRefListLimit
@@ -562,9 +560,9 @@ export function CodeTab({
               onChange={(event) => onSelectRef(event.currentTarget.value || null)}
             >
               {!hasCurrentRefOption && <option value={currentRef}>{currentRef}</option>}
-              {branches.length > 0 && (
+              {branchItems.length > 0 && (
                 <optgroup label="Branches">
-                  {branches.map((branch) => (
+                  {branchItems.map((branch) => (
                     <option key={`branch-${branch.name}`} value={branch.name}>
                       {branch.name}
                       {branch.protected ? " (protected)" : ""}
@@ -572,9 +570,9 @@ export function CodeTab({
                   ))}
                 </optgroup>
               )}
-              {tags.length > 0 && (
+              {tagItems.length > 0 && (
                 <optgroup label="Tags">
-                  {tags.map((tag) => (
+                  {tagItems.map((tag) => (
                     <option key={`tag-${tag.name}`} value={tag.name}>
                       {tag.name}
                     </option>

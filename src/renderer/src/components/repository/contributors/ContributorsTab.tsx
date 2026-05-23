@@ -5,8 +5,8 @@ import { useQuery, type QueryClient } from "@tanstack/react-query";
 import type {
   AccountProfileResult,
   AccountRepositoryListResult,
+  ContributorListResult,
   ContributorSummary,
-  GitHubReadAvailability,
   RepositoryDetail
 } from "@shared/github";
 import { useControlApi } from "../../../hooks/useControlApi";
@@ -23,19 +23,25 @@ import {
   repositoryPath
 } from "../repositoryUi";
 
+const emptyContributors: ContributorSummary[] = [];
+
 export interface ContributorsTabProps {
   repository: RepositoryDetail;
   githubReady: boolean;
-  contributors: ContributorSummary[];
   contributorLimit: number;
-  availability: GitHubReadAvailability | null;
   focusedContributorLogin: string | null;
-  loading: boolean;
-  error: Error | null;
   onOpenRepository(nameWithOwner: string, tab?: RepositoryTab): void;
   onOpenExternal(url: string): void;
   onSelectContributor(contributor: ContributorSummary): void;
   onExpandContributors(): void;
+}
+
+export interface ContributorsTabQueryInput {
+  owner: string;
+  repo: string;
+  limit: number;
+  enabled: boolean;
+  githubReady: boolean;
 }
 
 export interface ContributorsTabPrefetchInput {
@@ -56,6 +62,33 @@ const contributorsTabState = new Map<string, ContributorsTabLocalState>();
 
 export function clearContributorsTabStateForTests(): void {
   contributorsTabState.clear();
+}
+
+export function contributorsTabQueryKey(
+  owner: string,
+  repo: string,
+  limit: number
+): readonly ["contributors", string, string, number] {
+  return ["contributors", owner, repo, limit] as const;
+}
+
+export function useContributorsTabQueries({
+  owner,
+  repo,
+  limit,
+  enabled,
+  githubReady
+}: ContributorsTabQueryInput) {
+  const api = useControlApi();
+
+  const contributors = useQuery<ContributorListResult>({
+    queryKey: contributorsTabQueryKey(owner, repo, limit),
+    queryFn: () => api.github.listContributorsWithStatus({ owner, repo, limit, cacheOnly: !githubReady }),
+    enabled,
+    staleTime: 120_000
+  });
+
+  return { contributors };
 }
 
 function contributorsTabStateKey(
@@ -158,18 +191,25 @@ export class ContributorsTabBoundary extends Component<
 function ContributorsTabContent({
   repository,
   githubReady,
-  contributors,
   contributorLimit,
-  availability,
   focusedContributorLogin,
-  loading,
-  error,
   onOpenRepository,
   onOpenExternal,
   onSelectContributor,
   onExpandContributors
 }: ContributorsTabProps): JSX.Element {
   const api = useControlApi();
+  const { contributors: contributorsQuery } = useContributorsTabQueries({
+    owner: repository.owner,
+    repo: repository.name,
+    limit: contributorLimit,
+    enabled: true,
+    githubReady
+  });
+  const contributors = contributorsQuery.data?.items ?? emptyContributors;
+  const availability = contributorsQuery.data?.availability ?? null;
+  const loading = contributorsQuery.isLoading || contributorsQuery.isFetching;
+  const error = contributorsQuery.error;
   const stateKey = contributorsTabStateKey(repository, focusedContributorLogin);
   const initialState = readContributorsTabState(stateKey);
   const [filter, setFilterValue] = useState(initialState.filter);

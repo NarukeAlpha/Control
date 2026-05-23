@@ -81,6 +81,10 @@ function installControlApi() {
         },
         availability: available
       }),
+      listContributorsWithStatus: vi.fn().mockResolvedValue({
+        items: [makeContributor(), makeContributor({ id: 102, login: "hubot", contributions: 7 })],
+        availability: available
+      }),
       listAccountRepositoriesWithStatus: vi.fn().mockResolvedValue({
         items: [makeRepository()],
         availability: available
@@ -95,12 +99,8 @@ function renderContributors(overrides: Partial<ContributorsTabProps> = {}): Cont
   const props: ContributorsTabProps = {
     repository,
     githubReady: true,
-    contributors: [makeContributor(), makeContributor({ id: 102, login: "hubot", contributions: 7 })],
     contributorLimit: 24,
-    availability: available,
     focusedContributorLogin: null,
-    loading: false,
-    error: null,
     onOpenRepository: vi.fn(),
     onOpenExternal: vi.fn(),
     onSelectContributor: vi.fn(),
@@ -137,6 +137,12 @@ describe("ContributorsTab", () => {
       login: "octocat",
       cacheOnly: false
     });
+    expect(api.github.listContributorsWithStatus).toHaveBeenCalledWith({
+      owner: "NarukeAlpha",
+      repo: "control",
+      limit: 24,
+      cacheOnly: false
+    });
     expect(api.github.listAccountRepositoriesWithStatus).toHaveBeenCalledWith({
       login: "octocat",
       limit: 12,
@@ -151,8 +157,9 @@ describe("ContributorsTab", () => {
     const api = installControlApi();
     const props = renderContributors({ githubReady: false });
 
+    expect(await screen.findByTitle("View @octocat in Control")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Filter contributors"), { target: { value: "hubot" } });
-    expect(screen.queryByText("@octocat")).not.toBeInTheDocument();
+    expect(screen.queryByTitle("View @octocat in Control")).not.toBeInTheDocument();
     fireEvent.click(screen.getByTitle("View @hubot in Control"));
 
     await waitFor(() => {
@@ -161,21 +168,24 @@ describe("ContributorsTab", () => {
         cacheOnly: true
       });
     });
-    expect(props.onSelectContributor).toHaveBeenCalledWith(props.contributors[1]);
+    expect(props.onSelectContributor).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 102, login: "hubot", contributions: 7 })
+    );
   });
 
-  it("retains tab-local filter state across unmounts for the same repository focus", () => {
+  it("retains tab-local filter state across unmounts for the same repository focus", async () => {
     installControlApi();
     const props = renderContributors();
 
+    expect(await screen.findByTitle("View @octocat in Control")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Filter contributors"), { target: { value: "hubot" } });
-    expect(screen.queryByText("@octocat")).not.toBeInTheDocument();
+    expect(screen.queryByTitle("View @octocat in Control")).not.toBeInTheDocument();
 
     cleanup();
     renderContributors(props);
 
     expect(screen.getByLabelText("Filter contributors")).toHaveValue("hubot");
-    expect(screen.queryByText("@octocat")).not.toBeInTheDocument();
+    expect(screen.queryByTitle("View @octocat in Control")).not.toBeInTheDocument();
   });
 
   it("contains render failures inside the contributors tab boundary", () => {

@@ -2012,12 +2012,34 @@ export function App(): JSX.Element {
     enabled: appState.isSuccess && isRepositoryRoute && shouldLoadRepositoryTab("code") && hasRepositoryParts,
     githubReady
   });
-  const {
-    contents: codeTabContents,
-    repositoryCommits,
-    repositoryCommitItems,
-    repositoryCommitsAvailability
-  } = codeTabQueries;
+  const { repositoryCommits, repositoryCommitItems, repositoryCommitsAvailability } = codeTabQueries;
+
+  useIssuesTabQueries({
+    owner,
+    repo,
+    issueListLimit,
+    issuesEnabled:
+      appState.isSuccess &&
+      isRepositoryRoute &&
+      (shouldLoadRepositoryTab("issues") || activeRepositoryTab === "agents") &&
+      hasRepositoryParts,
+    resourcesEnabled: false,
+    githubReady
+  });
+
+  usePullRequestsTabQueries({
+    owner,
+    repo,
+    pullRequestListLimit,
+    pullsEnabled:
+      appState.isSuccess &&
+      isRepositoryRoute &&
+      (shouldLoadRepositoryTab("pulls") || activeRepositoryTab === "agents") &&
+      hasRepositoryParts,
+    resourcesEnabled:
+      appState.isSuccess && isRepositoryRoute && shouldLoadRepositoryTab("pulls") && hasRepositoryParts,
+    githubReady
+  });
 
   const codeBrowserContents = useQuery({
     queryKey: ["contents", owner, repo, codeBrowserRef ?? "default", codeBrowserPath, codeBrowserEntryType],
@@ -2119,36 +2141,6 @@ export function App(): JSX.Element {
     "Repository tree",
     repositoryTreeAvailability
   );
-
-  const issueTabQueries = useIssuesTabQueries({
-    owner,
-    repo,
-    issueListLimit,
-    issuesEnabled:
-      appState.isSuccess &&
-      isRepositoryRoute &&
-      (shouldLoadRepositoryTab("issues") || activeRepositoryTab === "agents") &&
-      hasRepositoryParts,
-    resourcesEnabled: false,
-    githubReady
-  });
-  const { issues } = issueTabQueries;
-  const issueItems = issues.data?.items ?? [];
-
-  const { pulls } = usePullRequestsTabQueries({
-    owner,
-    repo,
-    pullRequestListLimit,
-    pullsEnabled:
-      appState.isSuccess &&
-      isRepositoryRoute &&
-      (shouldLoadRepositoryTab("pulls") || activeRepositoryTab === "agents") &&
-      hasRepositoryParts,
-    resourcesEnabled:
-      appState.isSuccess && isRepositoryRoute && shouldLoadRepositoryTab("pulls") && hasRepositoryParts,
-    githubReady
-  });
-  const pullItems = pulls.data?.items ?? [];
 
   const { discussions } = useDiscussionsTabQueries({
     owner,
@@ -6287,29 +6279,15 @@ export function App(): JSX.Element {
                   availabilityMessage={repositoryAvailabilityMessage}
                   githubReady={githubReady}
                   selectedRef={contentsRef}
-                  branches={branchItems}
-                  tags={tagItems}
                   refListLimit={repositoryRefListLimit}
-                  refsLoading={branches.isLoading || branches.isFetching || tags.isLoading || tags.isFetching}
-                  refsError={refsError}
-                  refsAvailabilityMessage={refsAvailabilityMessage || null}
                   codeCommitHistoryLimit={repositoryCommitHistoryLimit}
-                  issues={issueItems}
                   issueListLimit={issueListLimit}
-                  issuesLoading={issues.isLoading || issues.isFetching}
-                  issuesError={issues.error}
                   repositoryAccessLimit={repositoryAccessLimit}
                   forksLimit={forksLimit}
-                  pulls={pullItems}
                   pullRequestListLimit={pullRequestListLimit}
-                  pullsLoading={pulls.isLoading || pulls.isFetching}
-                  pullsError={pulls.error}
                   discussionsLimit={discussionsLimit}
-                  actions={actionItems}
                   actionsLimit={actionsLimit}
                   workflowDefinitionLimit={workflowDefinitionLimit}
-                  actionsLoading={actions.isLoading || actions.isFetching}
-                  actionsError={actions.error}
                   projectsLimit={projectsLimit}
                   dependabotAlertsLimit={dependabotAlertsLimit}
                   codeScanningAlertsLimit={codeScanningAlertsLimit}
@@ -6317,26 +6295,13 @@ export function App(): JSX.Element {
                   repositoryRulesetsLimit={repositoryRulesetsLimit}
                   repositorySecurityAdvisoriesLimit={repositorySecurityAdvisoriesLimit}
                   releasesLimit={releasesLimit}
-                  contributors={contributorItems}
+                  contributorCount={contributorItems.length}
                   contributorLimit={repositoryContributorLimit}
-                  contributorsLoading={contributors.isLoading || contributors.isFetching}
-                  contributorsAvailability={contributorsAvailability}
-                  contributorsError={contributors.error}
                   loading={repository.isLoading}
                   pinned={pinnedRepositoryNameSet.has(effectiveRepository.toLowerCase())}
                   pinBusy={areaPinMutation.isPending}
                   pinError={areaPinMutation.error instanceof Error ? areaPinMutation.error : null}
-                  error={
-                    repository.error ??
-                    (activeRepositoryTab === "code" ? codeTabContents.error : null) ??
-                    (activeRepositoryTab === "issues" ? issues.error : null) ??
-                    (activeRepositoryTab === "pulls" ? pulls.error : null) ??
-                    (activeRepositoryTab === "discussions" ? discussions.error : null) ??
-                    (activeRepositoryTab === "projects" ? projects.error : null) ??
-                    (activeRepositoryTab === "releases" ? releases.error : null) ??
-                    (activeRepositoryTab === "contributors" ? contributors.error : null) ??
-                    (activeRepositoryTab === "actions" ? actions.error : null)
-                  }
+                  error={repository.error}
                   onOpenCodeBrowser={(entry) =>
                     openCodeBrowserInApp(
                       effectiveRepository,

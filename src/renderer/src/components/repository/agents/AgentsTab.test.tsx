@@ -1,12 +1,18 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { IssueSummary, PullRequestSummary, RepositoryDetail, WorkflowRunSummary } from "@shared/github";
+import type { ControlApi } from "@shared/ipc";
 import { AgentsTab, type AgentsTabProps } from "./AgentsTab";
 
 const repository = {
+  owner: "apple",
+  name: "swift",
+  nameWithOwner: "apple/swift",
   htmlUrl: "https://github.com/apple/swift"
 } as RepositoryDetail;
+const available = { status: "available", message: null };
 
 function makeIssue(overrides: Partial<IssueSummary> = {}): IssueSummary {
   return {
@@ -82,21 +88,37 @@ function makeWorkflowRun(overrides: Partial<WorkflowRunSummary> = {}): WorkflowR
   };
 }
 
+function installControlApi() {
+  const api = {
+    github: {
+      listIssuesWithStatus: vi.fn().mockResolvedValue({
+        items: [makeIssue(), makeIssue({ id: 43, number: 43, labels: [] })],
+        availability: available
+      }),
+      listPullRequestsWithStatus: vi.fn().mockResolvedValue({
+        items: [makePullRequest(), makePullRequest({ id: 10, number: 10, state: "CLOSED" })],
+        availability: available
+      }),
+      listActionsWithStatus: vi.fn().mockResolvedValue({
+        items: [
+          makeWorkflowRun(),
+          makeWorkflowRun({ id: 9002, displayTitle: "Passing CI", conclusion: "success" })
+        ],
+        availability: available
+      })
+    }
+  } as unknown as ControlApi;
+  (window as unknown as { control?: ControlApi }).control = api;
+  return api;
+}
+
 function renderAgents(overrides: Partial<AgentsTabProps> = {}): AgentsTabProps {
   const props: AgentsTabProps = {
     repository,
-    issues: [makeIssue(), makeIssue({ id: 43, number: 43, labels: [] })],
-    issuesLoading: false,
-    issuesError: null,
-    pulls: [makePullRequest(), makePullRequest({ id: 10, number: 10, state: "CLOSED" })],
-    pullsLoading: false,
-    pullsError: null,
-    actions: [
-      makeWorkflowRun(),
-      makeWorkflowRun({ id: 9002, displayTitle: "Passing CI", conclusion: "success" })
-    ],
-    actionsLoading: false,
-    actionsError: null,
+    githubReady: true,
+    issueListLimit: 100,
+    pullRequestListLimit: 100,
+    actionsLimit: 100,
     onOpenExternal: vi.fn(),
     onOpenFilteredSurface: vi.fn(),
     onSelectIssue: vi.fn(),
@@ -105,16 +127,30 @@ function renderAgents(overrides: Partial<AgentsTabProps> = {}): AgentsTabProps {
     ...overrides
   };
 
-  render(<AgentsTab {...props} />);
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } }
+  });
+
+  render(
+    <QueryClientProvider client={queryClient}>
+      <AgentsTab {...props} />
+    </QueryClientProvider>
+  );
 
   return props;
 }
 
+afterEach(() => {
+  delete (window as unknown as { control?: ControlApi }).control;
+});
+
 describe("AgentsTab", () => {
-  it("routes agent issue controls through Control and GitHub fallback URLs", () => {
+  it("routes agent issue controls through Control and GitHub fallback URLs", async () => {
+    installControlApi();
     const props = renderAgents();
 
     expect(screen.getByRole("heading", { name: "Agent workflows open in Control" })).toBeInTheDocument();
+    expect(await screen.findByText("#42 Prepare async agent handoff")).toBeInTheDocument();
 
     const issueTile = screen.getByText("Agent issues").closest("article");
     expect(issueTile).not.toBeNull();
@@ -127,16 +163,18 @@ describe("AgentsTab", () => {
     fireEvent.click(issueSurface.getByRole("button", { name: "Open in Control" }));
     fireEvent.click(issueSurface.getByRole("button", { name: "GitHub fallback" }));
 
-    expect(props.onSelectIssue).toHaveBeenCalledWith(props.issues[0]);
+    expect(props.onSelectIssue).toHaveBeenCalledWith(expect.objectContaining({ id: 42, number: 42 }));
     expect(props.onOpenFilteredSurface).toHaveBeenCalledWith("issues", "label:agent");
     expect(props.onOpenExternal).toHaveBeenCalledWith(
       "https://github.com/apple/swift/issues?q=is%3Aissue%20is%3Aopen%20label%3Aagent"
     );
   });
 
-  it("previews only attention workflow runs and open pull requests", () => {
+  it("previews only attention workflow runs and open pull requests", async () => {
+    installControlApi();
     const props = renderAgents();
 
+    expect(await screen.findByText("Failing CI")).toBeInTheDocument();
     const actionsTile = screen.getByText("Automation runs").closest("article");
     expect(actionsTile).not.toBeNull();
     const actionsSurface = within(actionsTile as HTMLElement);
@@ -145,7 +183,7 @@ describe("AgentsTab", () => {
     expect(actionsSurface.queryByText("Passing CI")).not.toBeInTheDocument();
 
     fireEvent.click(actionsSurface.getByRole("button", { name: "Open workflow run Failing CI in Control" }));
-    expect(props.onSelectWorkflowRun).toHaveBeenCalledWith(props.actions[0]);
+    expect(props.onSelectWorkflowRun).toHaveBeenCalledWith(expect.objectContaining({ id: 9001 }));
 
     const pullTile = screen.getByText("Pull request queue").closest("article");
     expect(pullTile).not.toBeNull();
@@ -155,6 +193,6 @@ describe("AgentsTab", () => {
     expect(pullSurface.queryByText("#10 Fix repository workflow cache")).not.toBeInTheDocument();
 
     fireEvent.click(pullSurface.getByRole("button", { name: "Open pull request #9 in Control" }));
-    expect(props.onSelectPullRequest).toHaveBeenCalledWith(props.pulls[0]);
+    expect(props.onSelectPullRequest).toHaveBeenCalledWith(expect.objectContaining({ id: 9, number: 9 }));
   });
 });

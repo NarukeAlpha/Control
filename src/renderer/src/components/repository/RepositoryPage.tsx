@@ -2,12 +2,10 @@ import { ChevronDown, ExternalLink, Eye, GitFork, Lock, Pin, RefreshCw, Star } f
 import type { JSX, ReactNode } from "react";
 
 import type {
-  BranchSummary,
   ContributorSummary,
   DiscussionSummary,
   GitHubAction,
   GitHubMutationFields,
-  GitHubReadAvailability,
   IssueSummary,
   ProjectSummary,
   PullRequestCommitSummary,
@@ -21,7 +19,6 @@ import type {
   RepositoryCollaboratorSummary,
   RepositoryDetail,
   RepositoryRef,
-  TagSummary,
   TeamSummary,
   WorkflowRunArtifactSummary,
   WorkflowRunCheckSuiteSummary,
@@ -187,29 +184,15 @@ export function RepositoryPage({
   availabilityMessage,
   githubReady,
   selectedRef,
-  branches,
-  tags,
   refListLimit,
-  refsLoading,
-  refsError,
-  refsAvailabilityMessage,
   codeCommitHistoryLimit,
-  issues,
   issueListLimit,
-  issuesLoading,
-  issuesError,
   repositoryAccessLimit,
   forksLimit,
-  pulls,
   pullRequestListLimit,
-  pullsLoading,
-  pullsError,
   discussionsLimit,
-  actions,
   actionsLimit,
   workflowDefinitionLimit,
-  actionsLoading,
-  actionsError,
   projectsLimit,
   dependabotAlertsLimit,
   codeScanningAlertsLimit,
@@ -217,11 +200,8 @@ export function RepositoryPage({
   repositoryRulesetsLimit,
   repositorySecurityAdvisoriesLimit,
   releasesLimit,
-  contributors,
+  contributorCount,
   contributorLimit,
-  contributorsLoading,
-  contributorsAvailability,
-  contributorsError,
   loading,
   pinned,
   pinBusy,
@@ -286,29 +266,15 @@ export function RepositoryPage({
   availabilityMessage: string | null;
   githubReady: boolean;
   selectedRef: string | null;
-  branches: BranchSummary[];
-  tags: TagSummary[];
   refListLimit: number;
-  refsLoading: boolean;
-  refsError: Error | null;
-  refsAvailabilityMessage: string | null;
   codeCommitHistoryLimit: number;
-  issues: IssueSummary[];
   issueListLimit: number;
-  issuesLoading: boolean;
-  issuesError: Error | null;
   repositoryAccessLimit: number;
   forksLimit: number;
-  pulls: PullRequestSummary[];
   pullRequestListLimit: number;
-  pullsLoading: boolean;
-  pullsError: Error | null;
   discussionsLimit: number;
-  actions: WorkflowRunSummary[];
   actionsLimit: number;
   workflowDefinitionLimit: number;
-  actionsLoading: boolean;
-  actionsError: Error | null;
   projectsLimit: number;
   dependabotAlertsLimit: number;
   codeScanningAlertsLimit: number;
@@ -316,11 +282,8 @@ export function RepositoryPage({
   repositoryRulesetsLimit: number;
   repositorySecurityAdvisoriesLimit: number;
   releasesLimit: number;
-  contributors: ContributorSummary[];
+  contributorCount: number;
   contributorLimit: number;
-  contributorsLoading: boolean;
-  contributorsAvailability: GitHubReadAvailability | null;
-  contributorsError: Error | null;
   loading: boolean;
   pinned: boolean;
   pinBusy: boolean;
@@ -461,7 +424,7 @@ export function RepositoryPage({
     return <div className="loading-state">No repository selected.</div>;
   }
 
-  const counts = getRepositoryCounts(repo, { issues, pulls, discussions: [], projects: [] });
+  const counts = getRepositoryCounts(repo, { issues: [], pulls: [], discussions: [], projects: [] });
   const viewerState = getViewerRepositoryState(repo);
   const forkMetadata = getForkMetadata(repo);
   const liveMutationDisabledReason = !githubReady ? "Sign in with GitHub to run GitHub actions." : null;
@@ -483,7 +446,7 @@ export function RepositoryPage({
     discussions: counts.discussions,
     projects: counts.projects,
     releases: counts.releases,
-    contributors: contributors.length
+    contributors: contributorCount
   };
   const forkSourceLabel = forkMetadata.parentLabel ?? forkMetadata.sourceLabel;
   const forkSourceNameWithOwner = forkMetadata.parentNameWithOwner ?? forkMetadata.sourceNameWithOwner;
@@ -700,12 +663,7 @@ export function RepositoryPage({
           repository={repo}
           githubReady={githubReady}
           selectedRef={selectedRef}
-          branches={branches}
-          tags={tags}
           refListLimit={refListLimit}
-          refsLoading={refsLoading}
-          refsError={refsError}
-          refsAvailabilityMessage={refsAvailabilityMessage}
           commitHistoryLimit={codeCommitHistoryLimit}
           onOpenCodeBrowser={onOpenCodeBrowser}
           onOpenExternal={onOpenExternal}
@@ -859,12 +817,8 @@ export function RepositoryPage({
           key={`contributors-${focusedContributorLogin ?? "default"}`}
           repository={repo}
           githubReady={githubReady}
-          contributors={contributors}
           contributorLimit={contributorLimit}
-          availability={contributorsAvailability}
           focusedContributorLogin={focusedContributorLogin}
-          loading={contributorsLoading}
-          error={contributorsError}
           onOpenRepository={onOpenRepository}
           onOpenExternal={onOpenExternal}
           onSelectContributor={onSelectContributor}
@@ -874,15 +828,10 @@ export function RepositoryPage({
       {tab === "agents" && (
         <AgentsTab
           repository={repo}
-          issues={issues}
-          issuesLoading={issuesLoading}
-          issuesError={issuesError}
-          pulls={pulls}
-          pullsLoading={pullsLoading}
-          pullsError={pullsError}
-          actions={actions}
-          actionsLoading={actionsLoading}
-          actionsError={actionsError}
+          githubReady={githubReady}
+          issueListLimit={issueListLimit}
+          pullRequestListLimit={pullRequestListLimit}
+          actionsLimit={actionsLimit}
           onOpenExternal={onOpenExternal}
           onOpenFilteredSurface={onOpenFilteredSurface}
           onSelectIssue={onSelectIssue}

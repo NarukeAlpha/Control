@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -15,6 +15,7 @@ import { MailboxRoute } from "./components/collection/MailboxRoute";
 import { OrganizationsRoute } from "./components/collection/OrganizationsRoute";
 import { useOrganizationsRouteState } from "./components/collection/useOrganizationsRouteState";
 import { CommandPalette } from "./components/command-palette/CommandPalette";
+import { useCommandPaletteController } from "./components/command-palette/useCommandPaletteController";
 import { useCommandPaletteItems } from "./components/command-palette/useCommandPaletteItems";
 import { AddRepositoryDialog } from "./components/dialogs/AddRepositoryDialog";
 import { FileFinder } from "./components/file-finder/FileFinder";
@@ -78,7 +79,7 @@ export function App(): JSX.Element {
   const goToMailbox = useUiStore((state) => state.goToMailbox);
   const settingsOpen = useUiStore((state) => state.settingsOpen);
   const setSettingsOpen = useUiStore((state) => state.setSettingsOpen);
-  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const commandPalette = useCommandPaletteController();
   const [addRepositoryOpen, setAddRepositoryOpen] = useState(false);
   const [sshAreaOpen, setSshAreaOpen] = useState(false);
   const [editingArea, setEditingArea] = useState<AreaSummary | null>(null);
@@ -462,18 +463,6 @@ export function App(): JSX.Element {
     onSelectOrganizationProject: selectOrganizationProjectInApp
   });
 
-  useEffect(() => {
-    function handleCommandPaletteShortcut(event: KeyboardEvent): void {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setCommandPaletteOpen(true);
-      }
-    }
-
-    window.addEventListener("keydown", handleCommandPaletteShortcut);
-    return () => window.removeEventListener("keydown", handleCommandPaletteShortcut);
-  }, []);
-
   const shellClass = [
     "app-shell",
     appState.data?.settings.glassMode === "solid" ? "solid-shell" : null,
@@ -546,7 +535,7 @@ export function App(): JSX.Element {
           route={route}
           onSelectLocalRepository={openLocalRepositoryInApp}
           onSelectRepository={openRepositoryInApp}
-          onOpenRepositorySearch={() => setCommandPaletteOpen(true)}
+          onOpenRepositorySearch={commandPalette.openPalette}
           onOpenAddRepository={() => setAddRepositoryOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}
         />
@@ -572,7 +561,7 @@ export function App(): JSX.Element {
           onOpenRepository={openRepositoryInApp}
           onOpenLocalRepository={openLocalRepositoryInApp}
           onOpenAddRepository={() => setAddRepositoryOpen(true)}
-          onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+          onOpenCommandPalette={commandPalette.openPalette}
           onOpenHome={goHome}
           onOpenMailbox={goToMailbox}
           onOpenSettings={() => setSettingsOpen(true)}
@@ -947,7 +936,7 @@ export function App(): JSX.Element {
           </main>
         </section>
 
-        {commandPaletteOpen && (
+        {commandPalette.open && (
           <CommandPalette
             items={commandPaletteItems}
             fileSearch={
@@ -967,7 +956,7 @@ export function App(): JSX.Element {
                 : null
             }
             onOpenRepository={openRepositoryInApp}
-            onClose={() => setCommandPaletteOpen(false)}
+            onClose={commandPalette.closePalette}
           />
         )}
 

@@ -1,6 +1,6 @@
 import { ChevronDown, Download, ExternalLink, Search, Workflow } from "lucide-react";
 import { useState, type JSX } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, type QueryClient } from "@tanstack/react-query";
 
 import type {
   BranchSummary,
@@ -17,9 +17,11 @@ import type {
   WorkflowRunCheckSuiteSummary,
   WorkflowRunDetail,
   WorkflowRunDetailResult,
+  WorkflowRunListResult,
   WorkflowRunJobSummary,
   WorkflowRunSummary
 } from "@shared/github";
+import type { ControlApi } from "@shared/ipc";
 
 import {
   fieldsMatchSearchParts,
@@ -34,6 +36,54 @@ import { useControlApi } from "@renderer/hooks/useControlApi";
 import { formatCompactNumber, formatRelativeDate } from "@renderer/utils/format";
 const maxActionsLimit = 100;
 const maxWorkflowDefinitionLimit = 100;
+
+export interface ActionsTabQueryInput {
+  owner: string;
+  repo: string;
+  limit: number;
+  enabled: boolean;
+  githubReady: boolean;
+}
+
+export interface ActionsTabPrefetchInput {
+  api: ControlApi;
+  owner: string;
+  repo: string;
+  limit: number;
+  githubReady: boolean;
+}
+
+export function actionsTabQueryKey(
+  owner: string,
+  repo: string,
+  limit: number
+): readonly ["actions", string, string, number] {
+  return ["actions", owner, repo, limit] as const;
+}
+
+export function useActionsTabQueries({ owner, repo, limit, enabled, githubReady }: ActionsTabQueryInput) {
+  const api = useControlApi();
+
+  const actions = useQuery<WorkflowRunListResult>({
+    queryKey: actionsTabQueryKey(owner, repo, limit),
+    queryFn: () => api.github.listActionsWithStatus({ owner, repo, limit, cacheOnly: !githubReady }),
+    enabled,
+    staleTime: 60_000
+  });
+
+  return { actions };
+}
+
+export async function prefetchActionsTabData(
+  queryClient: QueryClient,
+  { api, owner, repo, limit, githubReady }: ActionsTabPrefetchInput
+): Promise<void> {
+  await queryClient.prefetchQuery({
+    queryKey: actionsTabQueryKey(owner, repo, limit),
+    queryFn: () => api.github.listActionsWithStatus({ owner, repo, limit, cacheOnly: !githubReady }),
+    staleTime: 60_000
+  });
+}
 
 function workflowRerunDisabledReason(repository: RepositoryDetail, run: WorkflowRunSummary): string | null {
   const repositoryReason = repositoryMutationDisabledReason(repository);

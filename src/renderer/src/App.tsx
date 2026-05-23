@@ -120,7 +120,6 @@ import type {
   WorkflowRunCheckSuiteSummary,
   WorkflowRunDetail,
   WorkflowRunDetailResult,
-  WorkflowRunListResult,
   WorkflowRunSummary,
   WikiPageContent,
   WikiPageSummary
@@ -146,10 +145,10 @@ import {
 } from "./components/repository/RepositoryContext";
 import { AgentsTab } from "./components/repository/agents/AgentsTab";
 import { ContributorsTab } from "./components/repository/contributors/ContributorsTab";
-import { ActionsTab } from "./components/repository/actions/ActionsTab";
+import { ActionsTab, useActionsTabQueries } from "./components/repository/actions/ActionsTab";
 import { CodeTab } from "./components/repository/code/CodeTab";
 import { DiscussionsTab, useDiscussionsTabQueries } from "./components/repository/discussions/DiscussionsTab";
-import { IssuesTab } from "./components/repository/issues/IssuesTab";
+import { IssuesTab, useIssuesTabQueries } from "./components/repository/issues/IssuesTab";
 import { ProjectsTab, useProjectsTabQueries } from "./components/repository/projects/ProjectsTab";
 import { PullRequestsTab } from "./components/repository/pull-requests/PullRequestsTab";
 import { ReleasesTab, useReleasesTabQueries } from "./components/repository/releases/ReleasesTab";
@@ -171,7 +170,6 @@ import {
 import { useAccountWork } from "./hooks/useAccountWork";
 import { useControlApi } from "./hooks/useControlApi";
 import { useRepositoryDirectory } from "./hooks/useRepositoryDirectory";
-import { useRepositoryIssueResources } from "./hooks/useRepositoryIssueResources";
 import { useRepositoryRefs } from "./hooks/useRepositoryRefs";
 import { repositoryScopedQueryKeys } from "./queries/repositoryQueryKeys";
 import { useUiStore, type AppRoute, type LocalRepositoryTab, type RepositoryTab } from "./stores/uiStore";
@@ -3691,34 +3689,24 @@ export function App(): JSX.Element {
     repositoryTreeAvailability
   );
 
-  const issues = useQuery({
-    queryKey: ["issues", owner, repo, issueListLimit],
-    queryFn: () =>
-      api.github.listIssuesWithStatus({
-        owner,
-        repo,
-        state: "all",
-        limit: issueListLimit,
-        cacheOnly: !githubReady
-      }),
-    enabled:
+  const issueTabQueries = useIssuesTabQueries({
+    owner,
+    repo,
+    issueListLimit,
+    issuesEnabled:
       appState.isSuccess &&
       isRepositoryRoute &&
       (shouldLoadRepositoryTab("issues") || activeRepositoryTab === "agents") &&
       hasRepositoryParts,
-    staleTime: 60_000
-  });
-
-  const repositoryIssueResources = useRepositoryIssueResources(
-    owner,
-    repo,
-    appState.isSuccess &&
+    resourcesEnabled:
+      appState.isSuccess &&
       isRepositoryRoute &&
       (shouldLoadRepositoryTab("issues") || shouldLoadRepositoryTab("pulls")) &&
       hasRepositoryParts,
-    { githubReady }
-  );
+    githubReady
+  });
   const {
+    issues,
     labels,
     assignableUsers,
     milestones,
@@ -3728,7 +3716,7 @@ export function App(): JSX.Element {
     assignableUsersAvailability,
     milestoneItems,
     milestonesAvailability
-  } = repositoryIssueResources;
+  } = issueTabQueries;
   const issueItems = issues.data?.items ?? [];
   const issuesAvailability = issues.data?.availability ?? null;
 
@@ -3785,16 +3773,16 @@ export function App(): JSX.Element {
     githubReady
   });
 
-  const actions = useQuery<WorkflowRunListResult>({
-    queryKey: ["actions", owner, repo, actionsLimit],
-    queryFn: () =>
-      api.github.listActionsWithStatus({ owner, repo, limit: actionsLimit, cacheOnly: !githubReady }),
+  const { actions } = useActionsTabQueries({
+    owner,
+    repo,
+    limit: actionsLimit,
     enabled:
       appState.isSuccess &&
       isRepositoryRoute &&
       (shouldLoadRepositoryTab("actions") || activeRepositoryTab === "agents") &&
       hasRepositoryParts,
-    staleTime: 60_000
+    githubReady
   });
 
   const { projects } = useProjectsTabQueries({

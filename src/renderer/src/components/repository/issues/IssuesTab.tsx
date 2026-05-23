@@ -1,17 +1,20 @@
 import { CircleDot, ExternalLink, Plus, Search, X } from "lucide-react";
 import { useState, type JSX } from "react";
+import { useQuery, type QueryClient } from "@tanstack/react-query";
 
 import type {
   AssignableUserSummary,
   GitHubAction,
   GitHubMutationFields,
   GitHubReadAvailability,
+  IssueListResult,
   IssueSummary,
   LabelSummary,
   MilestoneSummary,
   RepositoryDetail,
   TimelineCommentSummary
 } from "@shared/github";
+import type { ControlApi } from "@shared/ipc";
 
 import { markdownRepositoryUrlContext } from "@renderer/components/MarkdownBody";
 import { useIssueDetail } from "@renderer/components/repository/issues/useIssueDetail";
@@ -23,9 +26,111 @@ import {
   repositoryMutationDisabledReason
 } from "@renderer/components/repository/repositoryUi";
 import { TimelineThread } from "@renderer/components/shared/TimelineThread";
+import { useControlApi } from "@renderer/hooks/useControlApi";
+import {
+  repositoryAssignableUsersQueryKey,
+  repositoryLabelsQueryKey,
+  repositoryMilestonesQueryKey,
+  useRepositoryIssueResources
+} from "@renderer/hooks/useRepositoryIssueResources";
 
 import { formatRelativeDate } from "@renderer/utils/format";
 const maxIssueListLimit = 100;
+
+export interface IssuesTabQueryInput {
+  owner: string;
+  repo: string;
+  issueListLimit: number;
+  issuesEnabled: boolean;
+  resourcesEnabled: boolean;
+  githubReady: boolean;
+}
+
+export interface IssuesTabPrefetchInput {
+  api: ControlApi;
+  owner: string;
+  repo: string;
+  issueListLimit: number;
+  githubReady: boolean;
+}
+
+export function issuesTabQueryKey(
+  owner: string,
+  repo: string,
+  issueListLimit: number
+): readonly ["issues", string, string, number] {
+  return ["issues", owner, repo, issueListLimit] as const;
+}
+
+export function useIssuesTabQueries({
+  owner,
+  repo,
+  issueListLimit,
+  issuesEnabled,
+  resourcesEnabled,
+  githubReady
+}: IssuesTabQueryInput) {
+  const api = useControlApi();
+  const issues = useQuery<IssueListResult>({
+    queryKey: issuesTabQueryKey(owner, repo, issueListLimit),
+    queryFn: () =>
+      api.github.listIssuesWithStatus({
+        owner,
+        repo,
+        state: "all",
+        limit: issueListLimit,
+        cacheOnly: !githubReady
+      }),
+    enabled: issuesEnabled,
+    staleTime: 60_000
+  });
+  const resources = useRepositoryIssueResources(owner, repo, resourcesEnabled, { githubReady });
+
+  return { issues, ...resources };
+}
+
+export async function prefetchIssuesTabData(
+  queryClient: QueryClient,
+  { api, owner, repo, issueListLimit, githubReady }: IssuesTabPrefetchInput
+): Promise<void> {
+  await Promise.all([
+    queryClient.prefetchQuery({
+      queryKey: issuesTabQueryKey(owner, repo, issueListLimit),
+      queryFn: () =>
+        api.github.listIssuesWithStatus({
+          owner,
+          repo,
+          state: "all",
+          limit: issueListLimit,
+          cacheOnly: !githubReady
+        }),
+      staleTime: 60_000
+    }),
+    queryClient.prefetchQuery({
+      queryKey: repositoryLabelsQueryKey(owner, repo),
+      queryFn: () => api.github.listLabelsWithStatus({ owner, repo, limit: 100, cacheOnly: !githubReady }),
+      staleTime: 120_000
+    }),
+    queryClient.prefetchQuery({
+      queryKey: repositoryAssignableUsersQueryKey(owner, repo),
+      queryFn: () =>
+        api.github.listAssignableUsersWithStatus({ owner, repo, limit: 100, cacheOnly: !githubReady }),
+      staleTime: 120_000
+    }),
+    queryClient.prefetchQuery({
+      queryKey: repositoryMilestonesQueryKey(owner, repo),
+      queryFn: () =>
+        api.github.listMilestonesWithStatus({
+          owner,
+          repo,
+          state: "all",
+          limit: 100,
+          cacheOnly: !githubReady
+        }),
+      staleTime: 120_000
+    })
+  ]);
+}
 
 function conversationCommentDisabledReason(
   repository: RepositoryDetail,

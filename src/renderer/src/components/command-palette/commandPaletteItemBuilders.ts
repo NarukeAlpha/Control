@@ -9,6 +9,7 @@ import {
   File as FileIcon,
   Gauge,
   GitBranch,
+  GitFork,
   GitPullRequest,
   Inbox,
   MessageSquare,
@@ -34,6 +35,10 @@ import type {
   NotificationSummary,
   ProjectSummary,
   PullRequestSummary,
+  RepositoryAccessResult,
+  RepositoryCollaboratorSummary,
+  RepositoryForksResult,
+  RepositoryRef,
   RepositoryWikiResult,
   TagSummary,
   TeamSummary
@@ -57,6 +62,11 @@ import { notificationInAppTarget, notificationReasonLabel } from "../collection/
 import { repositoryNameWithOwnerFromGitHubUrl } from "../repository/githubUrlRoutes";
 import { formatCompactNumber } from "../../utils/format";
 import type { RepositoryTab } from "../../stores/uiStore";
+import {
+  accessRoleLabel,
+  collaboratorRoleLabel,
+  repositoryForkMetadataLabel
+} from "../repository/repositoryUi";
 
 export function cachedRepositoryWikiPages(
   queryClient: QueryClient,
@@ -83,6 +93,32 @@ export function cachedRepositoryWikiPages(
   }
 
   return [...cachedWikiPagesByPath.values()];
+}
+
+export function cachedRepositoryAccess(
+  queryClient: QueryClient,
+  input: { owner: string; repo: string; limit: number }
+): RepositoryAccessResult | undefined {
+  return queryClient.getQueryData<RepositoryAccessResult>([
+    "repository-access",
+    input.owner,
+    input.repo,
+    input.limit
+  ]);
+}
+
+export function cachedRepositoryForks(
+  queryClient: QueryClient,
+  input: { owner: string; repo: string; limit: number }
+): RepositoryRef[] {
+  return (
+    queryClient.getQueryData<RepositoryForksResult>([
+      "repository-forks",
+      input.owner,
+      input.repo,
+      input.limit
+    ])?.items ?? []
+  );
 }
 
 export function appendPinnedRepositoryCommandPaletteItems(
@@ -764,6 +800,133 @@ export function appendRepositoryContentCommandPaletteItems(
         contributionCount
       ],
       run: () => input.onSelectContributor(input.effectiveRepository, contributor)
+    });
+  }
+}
+
+export function appendRepositoryAdminCommandPaletteItems(
+  items: CommandPaletteItem[],
+  input: {
+    effectiveRepository: string;
+    collaborators: RepositoryCollaboratorSummary[];
+    teams: TeamSummary[];
+    forks: RepositoryRef[];
+    currentRepositoryParent: RepositoryRef | null;
+    currentRepositorySource: RepositoryRef | null;
+    denseSourceLimit: number;
+    forksLimit: number;
+    onSelectCollaborator(nameWithOwner: string, collaborator: RepositoryCollaboratorSummary): void;
+    onSelectTeam(team: TeamSummary): void;
+    onOpenRepository(nameWithOwner: string): void;
+  }
+): void {
+  for (const collaborator of input.collaborators.slice(0, input.denseSourceLimit)) {
+    const roleLabel = collaboratorRoleLabel(collaborator);
+    items.push({
+      id: `repository-settings-collaborator-${input.effectiveRepository}-${collaborator.id}`,
+      title: `@${collaborator.login} in ${input.effectiveRepository}`,
+      subtitle: `${roleLabel} collaborator · Opens repository settings in Control`,
+      group: "Collaborators",
+      icon: Users,
+      keywords: [
+        collaborator.login,
+        "collaborator",
+        "collaborators",
+        "repository settings",
+        "settings",
+        "access",
+        "permissions",
+        roleLabel,
+        collaborator.type ?? "",
+        collaborator.siteAdmin ? "site admin" : "",
+        input.effectiveRepository
+      ],
+      run: () => input.onSelectCollaborator(input.effectiveRepository, collaborator)
+    });
+  }
+
+  for (const team of input.teams.slice(0, input.denseSourceLimit)) {
+    const permissionLabel = accessRoleLabel(team.permission);
+    const memberCountLabel =
+      team.memberCount !== null ? `${formatCompactNumber(team.memberCount)} members` : null;
+    const parentTeamLabel = team.parent ? `Parent: ${team.parent.name}` : null;
+    const subtitleParts = [
+      `${team.organizationLogin}/${team.slug}`,
+      input.effectiveRepository,
+      permissionLabel,
+      team.privacy,
+      memberCountLabel,
+      parentTeamLabel
+    ].filter((part): part is string => Boolean(part));
+
+    items.push({
+      id: `repository-settings-team-${input.effectiveRepository}-${team.id}`,
+      title: `${team.name} in ${input.effectiveRepository}`,
+      subtitle: `${subtitleParts.join(" · ")} · Opens team in Control`,
+      group: "Repository teams",
+      icon: Users,
+      keywords: [
+        team.name,
+        team.organizationLogin,
+        team.slug,
+        team.description ?? "",
+        team.permission ?? "",
+        permissionLabel,
+        team.privacy ?? "",
+        memberCountLabel ?? "",
+        team.parent?.name ?? "",
+        team.parent?.slug ?? "",
+        parentTeamLabel ?? "",
+        input.effectiveRepository,
+        "team",
+        "teams",
+        "repository settings",
+        "settings",
+        "access",
+        "permissions"
+      ],
+      run: () => input.onSelectTeam(team)
+    });
+  }
+
+  const parentLabel = input.currentRepositoryParent?.nameWithOwner ?? null;
+  const sourceLabel = input.currentRepositorySource?.nameWithOwner ?? null;
+  const networkContext = [
+    `Current: ${input.effectiveRepository}`,
+    parentLabel ? `Parent: ${parentLabel}` : null,
+    sourceLabel && sourceLabel !== parentLabel ? `Source: ${sourceLabel}` : null
+  ].filter((part): part is string => Boolean(part));
+
+  for (const fork of input.forks.slice(0, input.forksLimit)) {
+    const metadataLabel = repositoryForkMetadataLabel(fork);
+    items.push({
+      id: `repository-fork-${input.effectiveRepository}-${fork.id}`,
+      title: fork.nameWithOwner,
+      subtitle: `${metadataLabel} · ${networkContext.join(" · ")} · Opens in Control`,
+      group: "Fork network",
+      icon: GitFork,
+      keywords: [
+        fork.nameWithOwner,
+        fork.owner,
+        fork.name,
+        metadataLabel,
+        fork.visibility ?? "",
+        fork.isPrivate === null ? "" : fork.isPrivate ? "private" : "public",
+        fork.viewerPermission ?? "",
+        fork.forkCount === null ? "" : `${formatCompactNumber(fork.forkCount)} forks`,
+        fork.stargazerCount === null ? "" : `${formatCompactNumber(fork.stargazerCount)} stars`,
+        fork.htmlUrl,
+        fork.defaultBranch ?? "",
+        input.effectiveRepository,
+        parentLabel ?? "",
+        sourceLabel ?? "",
+        "fork",
+        "forks",
+        "fork network",
+        "repository settings",
+        "opens in control"
+      ],
+      run: () => input.onOpenRepository(fork.nameWithOwner)
     });
   }
 }

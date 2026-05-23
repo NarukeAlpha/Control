@@ -4,7 +4,6 @@ import {
   CircleDot,
   Code2,
   Download,
-  GitFork,
   Home,
   Inbox,
   Lock,
@@ -13,7 +12,6 @@ import {
   Settings,
   ShieldCheck,
   Tag,
-  Users,
   Workflow
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -35,10 +33,8 @@ import type {
   ReleaseSummary,
   RepoEntry,
   RepoFileBlameResult,
-  RepositoryAccessResult,
   RepositoryCollaboratorSummary,
   RepositoryDetail,
-  RepositoryForksResult,
   RepositoryRulesetsResult,
   RepositorySecurityAdvisoriesResult,
   RepositorySummary,
@@ -105,7 +101,10 @@ import {
   appendNotificationCommandPaletteItems,
   appendOrganizationCommandPaletteItems,
   appendPinnedRepositoryCommandPaletteItems,
+  appendRepositoryAdminCommandPaletteItems,
   appendRepositoryContentCommandPaletteItems,
+  cachedRepositoryAccess,
+  cachedRepositoryForks,
   appendRecentCommandPaletteItems,
   appendRepositoryCommandPaletteItems,
   cachedRepositoryWikiPages
@@ -212,13 +211,10 @@ import { AppEventBridge } from "./components/shell/AppEventBridge";
 import { TopBar } from "./components/topbar/TopBar";
 
 import {
-  accessRoleLabel,
-  collaboratorRoleLabel,
   defaultContributorLimit,
   githubActionLabel,
   maxContributorLimit,
   readAvailabilityMessage,
-  repositoryForkMetadataLabel,
   repositoryMutationDisabledReason
 } from "./components/repository/repositoryUi";
 import { maxRepositoryListLimit } from "./components/repository/repositorySearch";
@@ -2321,144 +2317,31 @@ export function App(): JSX.Element {
         onSelectContributor: selectContributorInApp
       });
 
-      const commandPaletteRepositoryAccess = queryClient.getQueryData<RepositoryAccessResult>([
-        "repository-access",
+      const commandPaletteRepositoryAccess = cachedRepositoryAccess(queryClient, {
         owner,
         repo,
-        repositoryAccessLimit
-      ]);
-      const commandPaletteRepositoryForks =
-        queryClient.getQueryData<RepositoryForksResult>(["repository-forks", owner, repo, forksLimit])
-          ?.items ?? [];
-
-      if (commandPaletteRepositoryAccess?.collaborators) {
-        for (const collaborator of commandPaletteRepositoryAccess.collaborators.slice(
-          0,
-          commandPaletteDenseSourceLimit
-        )) {
-          const roleLabel = collaboratorRoleLabel(collaborator);
-          items.push({
-            id: `repository-settings-collaborator-${effectiveRepository}-${collaborator.id}`,
-            title: `@${collaborator.login} in ${effectiveRepository}`,
-            subtitle: `${roleLabel} collaborator · Opens repository settings in Control`,
-            group: "Collaborators",
-            icon: Users,
-            keywords: [
-              collaborator.login,
-              "collaborator",
-              "collaborators",
-              "repository settings",
-              "settings",
-              "access",
-              "permissions",
-              roleLabel,
-              collaborator.type ?? "",
-              collaborator.siteAdmin ? "site admin" : "",
-              effectiveRepository
-            ],
-            run: () => selectRepositorySettingsCollaboratorInApp(effectiveRepository, collaborator)
-          });
-        }
-      }
-
-      if (commandPaletteRepositoryAccess?.teams) {
-        for (const team of commandPaletteRepositoryAccess.teams.slice(0, commandPaletteDenseSourceLimit)) {
-          const permissionLabel = accessRoleLabel(team.permission);
-          const memberCountLabel =
-            team.memberCount !== null ? `${formatCompactNumber(team.memberCount)} members` : null;
-          const parentTeamLabel = team.parent ? `Parent: ${team.parent.name}` : null;
-          const subtitleParts = [
-            `${team.organizationLogin}/${team.slug}`,
-            effectiveRepository,
-            permissionLabel,
-            team.privacy,
-            memberCountLabel,
-            parentTeamLabel
-          ].filter((part): part is string => Boolean(part));
-
-          items.push({
-            id: `repository-settings-team-${effectiveRepository}-${team.id}`,
-            title: `${team.name} in ${effectiveRepository}`,
-            subtitle: `${subtitleParts.join(" · ")} · Opens team in Control`,
-            group: "Repository teams",
-            icon: Users,
-            keywords: [
-              team.name,
-              team.organizationLogin,
-              team.slug,
-              team.description ?? "",
-              team.permission ?? "",
-              permissionLabel,
-              team.privacy ?? "",
-              memberCountLabel ?? "",
-              team.parent?.name ?? "",
-              team.parent?.slug ?? "",
-              parentTeamLabel ?? "",
-              effectiveRepository,
-              "team",
-              "teams",
-              "repository settings",
-              "settings",
-              "access",
-              "permissions"
-            ],
-            run: () => {
-              recordRecent(teamRecentInput(team));
-              setSelectedOrganizationLogin(team.organizationLogin);
-              setSelectedOrganizationTeamSlug(team.slug);
-              setSelectedOrganizationMemberLogin(null);
-              setSelectedOrganizationProjectId(null);
-              goToOrganizations();
-            }
-          });
-        }
-      }
-
-      if (commandPaletteRepositoryForks.length > 0) {
-        const currentRepositoryParent = repositoryDetail?.parent ?? null;
-        const currentRepositorySource = repositoryDetail?.source ?? null;
-
-        for (const fork of commandPaletteRepositoryForks.slice(0, forksLimit)) {
-          const metadataLabel = repositoryForkMetadataLabel(fork);
-          const parentLabel = currentRepositoryParent?.nameWithOwner ?? null;
-          const sourceLabel = currentRepositorySource?.nameWithOwner ?? null;
-          const networkContext = [
-            `Current: ${effectiveRepository}`,
-            parentLabel ? `Parent: ${parentLabel}` : null,
-            sourceLabel && sourceLabel !== parentLabel ? `Source: ${sourceLabel}` : null
-          ].filter((part): part is string => Boolean(part));
-
-          items.push({
-            id: `repository-fork-${effectiveRepository}-${fork.id}`,
-            title: fork.nameWithOwner,
-            subtitle: `${metadataLabel} · ${networkContext.join(" · ")} · Opens in Control`,
-            group: "Fork network",
-            icon: GitFork,
-            keywords: [
-              fork.nameWithOwner,
-              fork.owner,
-              fork.name,
-              metadataLabel,
-              fork.visibility ?? "",
-              fork.isPrivate === null ? "" : fork.isPrivate ? "private" : "public",
-              fork.viewerPermission ?? "",
-              fork.forkCount === null ? "" : `${formatCompactNumber(fork.forkCount)} forks`,
-              fork.stargazerCount === null ? "" : `${formatCompactNumber(fork.stargazerCount)} stars`,
-              fork.htmlUrl,
-              fork.defaultBranch ?? "",
-              effectiveRepository,
-              parentLabel ?? "",
-              sourceLabel ?? "",
-              "fork",
-              "forks",
-              "fork network",
-              "repository settings",
-              "opens in control"
-            ],
-            run: () => openRepositoryInApp(fork.nameWithOwner)
-          });
-        }
-      }
+        limit: repositoryAccessLimit
+      });
+      appendRepositoryAdminCommandPaletteItems(items, {
+        effectiveRepository,
+        collaborators: commandPaletteRepositoryAccess?.collaborators ?? [],
+        teams: commandPaletteRepositoryAccess?.teams ?? [],
+        forks: cachedRepositoryForks(queryClient, { owner, repo, limit: forksLimit }),
+        currentRepositoryParent: repositoryDetail?.parent ?? null,
+        currentRepositorySource: repositoryDetail?.source ?? null,
+        denseSourceLimit: commandPaletteDenseSourceLimit,
+        forksLimit,
+        onSelectCollaborator: selectRepositorySettingsCollaboratorInApp,
+        onSelectTeam: (team) => {
+          recordRecent(teamRecentInput(team));
+          setSelectedOrganizationLogin(team.organizationLogin);
+          setSelectedOrganizationTeamSlug(team.slug);
+          setSelectedOrganizationMemberLogin(null);
+          setSelectedOrganizationProjectId(null);
+          goToOrganizations();
+        },
+        onOpenRepository: openRepositoryInApp
+      });
 
       if (releaseItems.length > 0) {
         for (const release of releaseItems.slice(0, commandPaletteGeneralSourceLimit)) {

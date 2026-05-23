@@ -7,7 +7,6 @@ import {
   Code2,
   Download,
   ExternalLink,
-  File as FileIcon,
   Gauge,
   GitBranch,
   GitFork,
@@ -114,6 +113,11 @@ import {
   maxOrganizationTeamRepositoryLimit
 } from "./components/collection/organizationUi";
 import { CommandPalette, type CommandPaletteItem } from "./components/command-palette/CommandPalette";
+import {
+  appendPinnedRepositoryCommandPaletteItems,
+  appendRecentCommandPaletteItems,
+  appendRepositoryCommandPaletteItems
+} from "./components/command-palette/commandPaletteItemBuilders";
 import { AddRepositoryDialog } from "./components/dialogs/AddRepositoryDialog";
 import { FileFinder } from "./components/file-finder/FileFinder";
 import { HomeDashboard } from "./components/home/HomeDashboard";
@@ -196,9 +200,6 @@ import {
   projectRecentInput,
   pullRequestRecentInput,
   pullRequestReferenceRecentInput,
-  recentMetadataBooleanKeyword,
-  recentMetadataKeyword,
-  recentMetadataString,
   releaseAssetRecentInput,
   releaseRecentInput,
   releaseTagReferenceRecentInput,
@@ -225,12 +226,7 @@ import {
   readAvailabilityMessage,
   repositoryMutationDisabledReason
 } from "./components/repository/repositoryUi";
-import {
-  displayRepositoryName,
-  displayRepositoryShortcutName,
-  maxRepositoryListLimit,
-  repositoryShortcutsFromPins
-} from "./components/repository/repositorySearch";
+import { maxRepositoryListLimit } from "./components/repository/repositorySearch";
 
 import { refreshAccountProfileData, useAccountProfile } from "./hooks/useAccountProfile";
 import { refreshAccountWorkData, useAccountWork } from "./hooks/useAccountWork";
@@ -3579,139 +3575,21 @@ export function App(): JSX.Element {
       );
     }
 
-    for (const repositoryShortcut of repositoryShortcutsFromPins(pinnedRepositoryNames, repositoryItems)) {
-      items.push({
-        id: `pinned-${repositoryShortcut.nameWithOwner}`,
-        title: displayRepositoryShortcutName(repositoryShortcut, appState.data?.viewer?.login ?? null),
-        subtitle: repositoryShortcut.description ?? repositoryShortcut.nameWithOwner,
-        group: "Pinned",
-        icon: Pin,
-        keywords: [
-          repositoryShortcut.nameWithOwner,
-          repositoryShortcut.owner,
-          repositoryShortcut.name,
-          repositoryShortcut.primaryLanguage?.name ?? ""
-        ],
-        run: () => openRepositoryInApp(repositoryShortcut.nameWithOwner)
-      });
-    }
-
-    for (const recent of recentItems.data ?? []) {
-      items.push({
-        id: `recent-${recent.kind}-${recent.itemKey}`,
-        title: recent.title,
-        subtitle: recent.subtitle ?? recent.repositoryNameWithOwner ?? "Recent GitHub item",
-        group: "Recents",
-        icon:
-          recent.kind === "file"
-            ? FileIcon
-            : recent.kind === "commit"
-              ? GitBranch
-              : recent.kind === "issue"
-                ? CircleDot
-                : recent.kind === "pullRequest"
-                  ? GitPullRequest
-                  : recent.kind === "discussion"
-                    ? MessageSquare
-                    : recent.kind === "organization"
-                      ? Building2
-                      : recent.kind === "team"
-                        ? Users
-                        : recent.kind === "contributor"
-                          ? Users
-                          : recent.kind === "project"
-                            ? SquareKanban
-                            : recent.kind === "release"
-                              ? Tag
-                              : recent.kind === "releaseAsset"
-                                ? Download
-                                : recent.kind === "workflowRun"
-                                  ? Workflow
-                                  : recent.kind === "workflowArtifact"
-                                    ? Download
-                                    : recent.kind === "securityItem"
-                                      ? ShieldCheck
-                                      : recent.kind === "wikiPage"
-                                        ? BookOpen
-                                        : Code2,
-        keywords: [
-          recent.itemKey,
-          recent.repositoryNameWithOwner ?? "",
-          recent.kind,
-          recentMetadataString(recent, "path") ?? "",
-          recentMetadataKeyword(recent, "ref"),
-          recentMetadataKeyword(recent, "branch"),
-          recentMetadataKeyword(recent, "headRefName"),
-          recentMetadataKeyword(recent, "baseRefName"),
-          recentMetadataKeyword(recent, "headRepositoryNameWithOwner"),
-          recentMetadataKeyword(recent, "baseRepositoryNameWithOwner"),
-          recentMetadataKeyword(recent, "tagName"),
-          recentMetadataKeyword(recent, "releaseTitle"),
-          recentMetadataKeyword(recent, "assetId"),
-          recentMetadataKeyword(recent, "assetName"),
-          recentMetadataKeyword(recent, "artifactId"),
-          recentMetadataKeyword(recent, "artifactName"),
-          recentMetadataKeyword(recent, "securityItemKind"),
-          recentMetadataKeyword(recent, "securityItemId"),
-          recentMetadataKeyword(recent, "title"),
-          recentMetadataKeyword(recent, "sha"),
-          recentMetadataKeyword(recent, "htmlUrl"),
-          recentMetadataKeyword(recent, "severity"),
-          recentMetadataKeyword(recent, "rule"),
-          recentMetadataKeyword(recent, "packageName"),
-          recentMetadataKeyword(recent, "ghsaId"),
-          recentMetadataKeyword(recent, "cveId"),
-          recentMetadataKeyword(recent, "contentType"),
-          recentMetadataKeyword(recent, "state"),
-          recentMetadataKeyword(recent, "runId"),
-          recentMetadataKeyword(recent, "runName"),
-          recentMetadataKeyword(recent, "runTitle"),
-          recentMetadataKeyword(recent, "runNumber"),
-          recentMetadataKeyword(recent, "runAttempt"),
-          recentMetadataKeyword(recent, "event"),
-          recentMetadataKeyword(recent, "conclusion"),
-          recentMetadataKeyword(recent, "status"),
-          recentMetadataKeyword(recent, "reason"),
-          recentMetadataKeyword(recent, "subjectType"),
-          recentMetadataKeyword(recent, "login"),
-          recentMetadataKeyword(recent, "id"),
-          recentMetadataKeyword(recent, "contributions"),
-          recentMetadataKeyword(recent, "avatarUrl"),
-          recentMetadataKeyword(recent, "organizationLogin"),
-          recentMetadataKeyword(recent, "slug"),
-          recentMetadataKeyword(recent, "membershipRole"),
-          recentMetadataKeyword(recent, "membershipState"),
-          recentMetadataKeyword(recent, "privacy"),
-          recentMetadataKeyword(recent, "permission"),
-          recentMetadataKeyword(recent, "projectId"),
-          recentMetadataKeyword(recent, "number"),
-          recentMetadataKeyword(recent, "title"),
-          recentMetadataKeyword(recent, "ownerLogin"),
-          recentMetadataKeyword(recent, "ownerKind"),
-          recentMetadataBooleanKeyword(recent, "closed"),
-          recentMetadataBooleanKeyword(recent, "isPublic"),
-          recentMetadataBooleanKeyword(recent, "unread")
-        ],
-        run: () => openRecentItem(recent)
-      });
-    }
-
-    for (const repositorySummary of repositoryItems) {
-      items.push({
-        id: `repository-${repositorySummary.nameWithOwner}`,
-        title: displayRepositoryName(repositorySummary, appState.data?.viewer?.login ?? null),
-        subtitle: repositorySummary.description ?? repositorySummary.nameWithOwner,
-        group: "Repositories",
-        icon: Code2,
-        keywords: [
-          repositorySummary.nameWithOwner,
-          repositorySummary.owner,
-          repositorySummary.name,
-          repositorySummary.primaryLanguage?.name ?? ""
-        ],
-        run: () => openRepositoryInApp(repositorySummary.nameWithOwner)
-      });
-    }
+    appendPinnedRepositoryCommandPaletteItems(items, {
+      pinnedRepositoryNames,
+      repositoryItems,
+      viewerLogin: appState.data?.viewer?.login ?? null,
+      onOpenRepository: openRepositoryInApp
+    });
+    appendRecentCommandPaletteItems(items, {
+      recentItems: recentItems.data ?? [],
+      onOpenRecent: openRecentItem
+    });
+    appendRepositoryCommandPaletteItems(items, {
+      repositoryItems,
+      viewerLogin: appState.data?.viewer?.login ?? null,
+      onOpenRepository: openRepositoryInApp
+    });
 
     return items;
   })();

@@ -1341,7 +1341,6 @@ export function App(): JSX.Element {
     Partial<Record<MailboxNotificationFilter, number>>
   >({});
   const recentItemLimit = defaultRecentItemLimit;
-  const [selectedRootMarkdownPath, setSelectedRootMarkdownPath] = useState<string | null>(null);
   const [fileFinderOpen, setFileFinderOpen] = useState(false);
   const [selectedOrganizationLogin, setSelectedOrganizationLogin] = useState<string | null>(null);
   const [selectedOrganizationTeamSlug, setSelectedOrganizationTeamSlug] = useState<string | null>(null);
@@ -2009,21 +2008,15 @@ export function App(): JSX.Element {
     selectedRef: repositorySelectedRef,
     defaultBranch: repositoryDetail?.defaultBranch ?? null,
     commitHistoryLimit: repositoryCommitHistoryLimit,
-    selectedRootMarkdownPath,
+    selectedRootMarkdownPath: null,
     enabled: appState.isSuccess && isRepositoryRoute && shouldLoadRepositoryTab("code") && hasRepositoryParts,
     githubReady
   });
   const {
     contents: codeTabContents,
-    readme,
     repositoryCommits,
-    rootMarkdownContent,
-    contentItems: codeTabContentItems,
-    contentsAvailability: codeTabContentsAvailability,
     repositoryCommitItems,
-    repositoryCommitsAvailability,
-    rootMarkdownItems,
-    effectiveSelectedRootMarkdownPath
+    repositoryCommitsAvailability
   } = codeTabQueries;
 
   const codeBrowserContents = useQuery({
@@ -2099,12 +2092,8 @@ export function App(): JSX.Element {
     staleTime: 60_000
   });
 
-  const contentItems = isCodeBrowserRoute
-    ? (codeBrowserContents.data?.items ?? emptyRepoEntries)
-    : codeTabContentItems;
-  const contentsAvailability = isCodeBrowserRoute
-    ? (codeBrowserContents.data?.availability ?? null)
-    : codeTabContentsAvailability;
+  const contentItems = codeBrowserContents.data?.items ?? emptyRepoEntries;
+  const contentsAvailability = codeBrowserContents.data?.availability ?? null;
   const fileCommitItems = fileCommits.data?.items ?? [];
   const fileCommitsAvailability = fileCommits.data?.availability ?? null;
   const fileContentItem = fileContent.data?.item ?? null;
@@ -2176,7 +2165,6 @@ export function App(): JSX.Element {
     githubReady
   });
   const pullItems = pulls.data?.items ?? [];
-  const pullsAvailability = pulls.data?.availability ?? null;
 
   const { discussions } = useDiscussionsTabQueries({
     owner,
@@ -6322,20 +6310,7 @@ export function App(): JSX.Element {
                   refsLoading={branches.isLoading || branches.isFetching || tags.isLoading || tags.isFetching}
                   refsError={refsError}
                   refsAvailabilityMessage={refsAvailabilityMessage || null}
-                  branchesError={branches.error}
-                  contents={codeTabContentItems}
-                  contentsLoading={codeTabContents.isLoading || codeTabContents.isFetching}
-                  contentsError={codeTabContents.error}
-                  contentsAvailability={codeTabContentsAvailability}
-                  readmeMarkdown={readme.data?.markdown ?? repositoryDetail?.readmeMarkdown ?? null}
-                  readmeAvailability={readme.data?.availability ?? null}
-                  readmeLoading={readme.isLoading || readme.isFetching}
-                  readmeError={readme.error}
-                  rootMarkdownItems={rootMarkdownItems}
-                  selectedRootMarkdownPath={effectiveSelectedRootMarkdownPath}
-                  rootMarkdownContent={rootMarkdownContent.data ?? null}
-                  rootMarkdownLoading={rootMarkdownContent.isLoading || rootMarkdownContent.isFetching}
-                  rootMarkdownError={rootMarkdownContent.error}
+                  codeCommitHistoryLimit={repositoryCommitHistoryLimit}
                   issues={issueItems}
                   issueListLimit={issueListLimit}
                   issuesLoading={issues.isLoading || issues.isFetching}
@@ -6359,7 +6334,6 @@ export function App(): JSX.Element {
                   pullRequestListLimit={pullRequestListLimit}
                   pullsLoading={pulls.isLoading || pulls.isFetching}
                   pullsError={pulls.error}
-                  pullsAvailability={pullsAvailability}
                   discussions={discussions.data?.items ?? []}
                   discussionsLimit={discussionsLimit}
                   discussionsLoading={discussions.isLoading || discussions.isFetching}
@@ -6510,7 +6484,6 @@ export function App(): JSX.Element {
                   onRefresh={() => refreshRepositorySurface()}
                   onOpenFileFinder={() => setFileFinderOpen(true)}
                   onSelectTab={(tab) => selectRepositoryTabInApp(effectiveRepository, tab)}
-                  onSelectRootMarkdown={setSelectedRootMarkdownPath}
                   onOpenFilteredSurface={(tab, filter) =>
                     openFilteredRepositorySurfaceInApp(effectiveRepository, tab, filter)
                   }

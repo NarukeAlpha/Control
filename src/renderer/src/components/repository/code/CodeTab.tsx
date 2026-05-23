@@ -15,7 +15,6 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 
 import type {
   BranchSummary,
-  GitHubReadAvailability,
   RepoContentsResult,
   RepoEntry,
   RepoReadmeResult,
@@ -453,6 +452,7 @@ function fileCommitChangeSummary(file: RepoFileContent | RepoEntry | undefined):
 
 export function CodeTab({
   repository,
+  githubReady,
   selectedRef,
   branches,
   tags,
@@ -460,27 +460,15 @@ export function CodeTab({
   refsLoading,
   refsError,
   refsAvailabilityMessage,
-  contents,
-  contentsLoading,
-  contentsError,
-  contentsAvailability,
-  readmeMarkdown,
-  readmeAvailability,
-  readmeLoading,
-  readmeError,
-  rootMarkdownItems,
-  selectedRootMarkdownPath,
-  rootMarkdownContent,
-  rootMarkdownLoading,
-  rootMarkdownError,
+  commitHistoryLimit,
   onOpenCodeBrowser,
   onOpenExternal,
   onOpenFileFinder,
   onSelectRef,
-  onSelectRootMarkdown,
   onExpandRefs
 }: {
   repository: RepositoryDetail;
+  githubReady: boolean;
   selectedRef: string | null;
   branches: BranchSummary[];
   tags: TagSummary[];
@@ -488,38 +476,53 @@ export function CodeTab({
   refsLoading: boolean;
   refsError: Error | null;
   refsAvailabilityMessage: string | null;
-  contents: RepoEntry[];
-  contentsLoading: boolean;
-  contentsError: Error | null;
-  contentsAvailability: GitHubReadAvailability | null;
-  readmeMarkdown: string | null;
-  readmeAvailability: GitHubReadAvailability | null;
-  readmeLoading: boolean;
-  readmeError: Error | null;
-  rootMarkdownItems: RepoEntry[];
-  selectedRootMarkdownPath: string | null;
-  rootMarkdownContent: RepoFileContentResult | null;
-  rootMarkdownLoading: boolean;
-  rootMarkdownError: Error | null;
+  commitHistoryLimit: number;
   onOpenCodeBrowser(entry: RepoEntry): void;
   onOpenExternal(url: string): void;
   onOpenFileFinder(): void;
   onSelectRef(ref: string | null): void;
-  onSelectRootMarkdown(path: string): void;
   onExpandRefs(): void;
 }): JSX.Element {
   const parentRef = useRef<HTMLDivElement | null>(null);
+  const [selectedRootMarkdownPath, setSelectedRootMarkdownPath] = useState<string | null>(null);
+  const {
+    contents,
+    readme,
+    rootMarkdownContent,
+    contentItems,
+    contentsAvailability,
+    rootMarkdownItems,
+    effectiveSelectedRootMarkdownPath
+  } = useCodeTabQueries({
+    owner: repository.owner,
+    repo: repository.name,
+    selectedRef,
+    defaultBranch: repository.defaultBranch,
+    commitHistoryLimit,
+    selectedRootMarkdownPath,
+    enabled: true,
+    githubReady
+  });
+  const readmeMarkdown = readme.data?.markdown ?? repository.readmeMarkdown ?? null;
+  const readmeAvailability = readme.data?.availability ?? null;
+  const readmeLoading = readme.isLoading || readme.isFetching;
+  const readmeError = readme.error;
+  const contentsLoading = contents.isLoading || contents.isFetching;
+  const contentsError = contents.error;
+  const rootMarkdownData = rootMarkdownContent.data ?? null;
+  const rootMarkdownLoading = rootMarkdownContent.isLoading || rootMarkdownContent.isFetching;
+  const rootMarkdownError = rootMarkdownContent.error;
   const repositoryUpdatedAt = repositoryActivityDate(repository);
   const currentRef = selectedRef ?? repository.defaultBranch ?? "HEAD";
   const contentsAvailabilityMessage = readAvailabilityMessage("Repository contents", contentsAvailability);
   const readmeAvailabilityMessage = readAvailabilityMessage("README", readmeAvailability);
   const rootMarkdownAvailabilityMessage = readAvailabilityMessage(
-    selectedRootMarkdownPath ?? "Root markdown",
-    rootMarkdownContent?.availability ?? null
+    effectiveSelectedRootMarkdownPath ?? "Root markdown",
+    rootMarkdownData?.availability ?? null
   );
   const selectedRootMarkdownName =
-    rootMarkdownItems.find((item) => item.path === selectedRootMarkdownPath)?.name ??
-    selectedRootMarkdownPath;
+    rootMarkdownItems.find((item) => item.path === effectiveSelectedRootMarkdownPath)?.name ??
+    effectiveSelectedRootMarkdownPath;
   const readmeEmptyMessage =
     !readmeMarkdown && readmeAvailability?.status === "available" && readmeAvailability.message
       ? readmeAvailability.message
@@ -537,14 +540,14 @@ export function CodeTab({
       ? `Showing the first ${expandedRefListLimit} refs.`
       : null;
   const virtualizer = useVirtualizer({
-    count: contents.length,
+    count: contentItems.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => 36,
     overscan: 8
   });
   const virtualRows = virtualizer.getVirtualItems();
   const visibleFileRows =
-    virtualRows.length > 0 ? virtualRows : contents.map((_, index) => ({ index, start: index * 36 }));
+    virtualRows.length > 0 ? virtualRows : contentItems.map((_, index) => ({ index, start: index * 36 }));
 
   return (
     <section className="code-layout">
@@ -617,13 +620,13 @@ export function CodeTab({
           <small>updated</small>
         </div>
         <div className="virtual-file-list" ref={parentRef}>
-          {contentsError && contents.length === 0 ? (
+          {contentsError && contentItems.length === 0 ? (
             <div className="error-state">Repository files unavailable: {contentsError.message}</div>
-          ) : contentsLoading && contents.length === 0 ? (
+          ) : contentsLoading && contentItems.length === 0 ? (
             <div className="loading-state">Loading files…</div>
-          ) : contentsAvailabilityMessage && contents.length === 0 ? (
+          ) : contentsAvailabilityMessage && contentItems.length === 0 ? (
             <div className="error-state">{contentsAvailabilityMessage}</div>
-          ) : !contentsError && contents.length === 0 ? (
+          ) : !contentsError && contentItems.length === 0 ? (
             <div className="empty-state">No files returned for this repository path.</div>
           ) : (
             <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
@@ -636,7 +639,7 @@ export function CodeTab({
                 </div>
               )}
               {visibleFileRows.map((virtualRow) => {
-                const item = contents[virtualRow.index];
+                const item = contentItems[virtualRow.index];
                 return (
                   <button
                     className="file-row"
@@ -706,22 +709,22 @@ export function CodeTab({
             {rootMarkdownItems.map((item) => (
               <button
                 key={item.path}
-                className={item.path === selectedRootMarkdownPath ? "active" : ""}
+                className={item.path === effectiveSelectedRootMarkdownPath ? "active" : ""}
                 type="button"
                 role="tab"
-                aria-selected={item.path === selectedRootMarkdownPath}
-                onClick={() => onSelectRootMarkdown(item.path)}
+                aria-selected={item.path === effectiveSelectedRootMarkdownPath}
+                onClick={() => setSelectedRootMarkdownPath(item.path)}
               >
                 {item.name}
               </button>
             ))}
           </div>
           <div className="readme-content root-markdown-preview">
-            {rootMarkdownError && !rootMarkdownContent?.item ? (
+            {rootMarkdownError && !rootMarkdownData?.item ? (
               <div className="error-state">Markdown unavailable: {rootMarkdownError.message}</div>
-            ) : rootMarkdownLoading && !rootMarkdownContent?.item ? (
+            ) : rootMarkdownLoading && !rootMarkdownData?.item ? (
               <div className="loading-state">Loading {selectedRootMarkdownName ?? "markdown"}…</div>
-            ) : rootMarkdownAvailabilityMessage && !rootMarkdownContent?.item ? (
+            ) : rootMarkdownAvailabilityMessage && !rootMarkdownData?.item ? (
               <div className="error-state">{rootMarkdownAvailabilityMessage}</div>
             ) : (
               <>
@@ -734,7 +737,7 @@ export function CodeTab({
                   </div>
                 )}
                 <MarkdownBody
-                  markdown={rootMarkdownContent?.item?.content ?? null}
+                  markdown={rootMarkdownData?.item?.content ?? null}
                   emptyText={
                     selectedRootMarkdownName
                       ? `${selectedRootMarkdownName} is empty or could not be rendered.`

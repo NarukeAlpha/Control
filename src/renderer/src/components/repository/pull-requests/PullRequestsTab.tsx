@@ -3,14 +3,10 @@ import { useState, type JSX } from "react";
 import { useQuery, type QueryClient } from "@tanstack/react-query";
 
 import type {
-  AssignableUserSummary,
-  BranchSummary,
   BranchProtectionResult,
   GitHubAction,
   GitHubMutationFields,
   GitHubReadAvailability,
-  LabelSummary,
-  MilestoneSummary,
   PullRequestDetail,
   PullRequestChecksResult,
   PullRequestCommentsResult,
@@ -54,6 +50,7 @@ import {
   repositoryMilestonesQueryKey,
   useRepositoryIssueResources
 } from "@renderer/hooks/useRepositoryIssueResources";
+import { useRepositoryRefs } from "@renderer/hooks/useRepositoryRefs";
 
 import { formatCompactNumber, formatRelativeDate } from "@renderer/utils/format";
 
@@ -519,27 +516,11 @@ export function PullRequestsTab({
   repository,
   githubReady,
   selectedRef,
-  branches,
-  branchesError,
-  pulls,
+  refListLimit,
   pullRequestListLimit,
-  availability,
   focusedPullNumber,
   initialFilter,
   initialCreating,
-  labels,
-  labelsLoading,
-  labelsError,
-  labelsAvailability,
-  assignableUsers,
-  assignableUsersLoading,
-  assignableUsersError,
-  assignableUsersAvailability,
-  milestones,
-  milestonesLoading,
-  milestonesError,
-  milestonesAvailability,
-  loading,
   mutationAction,
   mutationPending,
   mutationSucceeded,
@@ -558,27 +539,11 @@ export function PullRequestsTab({
   repository: RepositoryDetail;
   githubReady: boolean;
   selectedRef: string | null;
-  branches: BranchSummary[];
-  branchesError: Error | null;
-  pulls: PullRequestSummary[];
+  refListLimit: number;
   pullRequestListLimit: number;
-  availability: GitHubReadAvailability | null;
   focusedPullNumber: number | null;
   initialFilter: string;
   initialCreating: boolean;
-  labels: LabelSummary[];
-  labelsLoading: boolean;
-  labelsError: Error | null;
-  labelsAvailability: GitHubReadAvailability | null;
-  assignableUsers: AssignableUserSummary[];
-  assignableUsersLoading: boolean;
-  assignableUsersError: Error | null;
-  assignableUsersAvailability: GitHubReadAvailability | null;
-  milestones: MilestoneSummary[];
-  milestonesLoading: boolean;
-  milestonesError: Error | null;
-  milestonesAvailability: GitHubReadAvailability | null;
-  loading: boolean;
   mutationAction: GitHubAction | null;
   mutationPending: boolean;
   mutationSucceeded: boolean;
@@ -614,6 +579,45 @@ export function PullRequestsTab({
   const [creating, setCreating] = useState(initialCreating);
   const [title, setTitle] = useState("");
   const [head, setHead] = useState("");
+  const refs = useRepositoryRefs(
+    repository.owner,
+    repository.name,
+    { branches: true, tags: false },
+    refListLimit,
+    {
+      githubReady
+    }
+  );
+  const {
+    pulls,
+    labels: labelsQuery,
+    assignableUsers: assignableUsersQuery,
+    milestones: milestonesQuery,
+    labelItems: labels,
+    labelAvailability: labelsAvailability,
+    assignableUserItems: assignableUsers,
+    assignableUsersAvailability,
+    milestoneItems: milestones,
+    milestonesAvailability
+  } = usePullRequestsTabQueries({
+    owner: repository.owner,
+    repo: repository.name,
+    pullRequestListLimit,
+    pullsEnabled: true,
+    resourcesEnabled: true,
+    githubReady
+  });
+  const branches = refs.branchItems;
+  const branchesError = refs.branches.error;
+  const pullItems = pulls.data?.items ?? [];
+  const availability = pulls.data?.availability ?? null;
+  const loading = pulls.isLoading || pulls.isFetching;
+  const labelsLoading = labelsQuery.isLoading || labelsQuery.isFetching;
+  const labelsError = labelsQuery.error;
+  const assignableUsersLoading = assignableUsersQuery.isLoading || assignableUsersQuery.isFetching;
+  const assignableUsersError = assignableUsersQuery.error;
+  const milestonesLoading = milestonesQuery.isLoading || milestonesQuery.isFetching;
+  const milestonesError = milestonesQuery.error;
   const defaultBaseBranch =
     selectedRef && branches.some((branch) => branch.name === selectedRef)
       ? selectedRef
@@ -641,7 +645,7 @@ export function PullRequestsTab({
   const milestonesAvailabilityMessage = readAvailabilityMessage("Milestones", milestonesAvailability);
   const pullsAvailabilityMessage = readAvailabilityMessage("Pull requests", availability);
   const filterParts = normalizedSearchParts(filter);
-  const filteredPulls = pulls.filter((pull) =>
+  const filteredPulls = pullItems.filter((pull) =>
     fieldsMatchSearchParts(
       [
         pull.number,
@@ -884,7 +888,7 @@ export function PullRequestsTab({
   const selectedMergeCommitSha = detail?.mergeCommitSha ?? selectedPull?.mergeCommitSha ?? null;
   const selectedMerged = selectedPullForActions?.merged ?? null;
   const selectedMergedAt = selectedPullForActions?.mergedAt ?? null;
-  const unfilteredPullRequestListLimitHit = !filter.trim() && pulls.length >= pullRequestListLimit;
+  const unfilteredPullRequestListLimitHit = !filter.trim() && pullItems.length >= pullRequestListLimit;
 
   function addReviewerSuggestion(login: string): void {
     setReviewerEntry((current) => {
@@ -937,7 +941,7 @@ export function PullRequestsTab({
       </div>
       <div className="github-split">
         <div className="thread-list">
-          {loading && pulls.length === 0 && <div className="loading-state">Loading pull requests…</div>}
+          {loading && pullItems.length === 0 && <div className="loading-state">Loading pull requests…</div>}
           {!loading && pullsAvailabilityMessage && (
             <div className="error-state">{pullsAvailabilityMessage}</div>
           )}

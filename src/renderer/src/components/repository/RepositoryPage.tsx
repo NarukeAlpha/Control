@@ -21,7 +21,6 @@ import type {
   ReleaseSummary,
   ReleaseAssetSummary,
   RepoEntry,
-  RepoFileContentResult,
   RepositoryCollaboratorSummary,
   RepositoryDetail,
   RepositoryRef,
@@ -197,20 +196,7 @@ export function RepositoryPage({
   refsLoading,
   refsError,
   refsAvailabilityMessage,
-  branchesError,
-  contents,
-  contentsLoading,
-  contentsError,
-  contentsAvailability,
-  readmeMarkdown,
-  readmeAvailability,
-  readmeLoading,
-  readmeError,
-  rootMarkdownItems,
-  selectedRootMarkdownPath,
-  rootMarkdownContent,
-  rootMarkdownLoading,
-  rootMarkdownError,
+  codeCommitHistoryLimit,
   issues,
   issueListLimit,
   issuesLoading,
@@ -234,7 +220,6 @@ export function RepositoryPage({
   pullRequestListLimit,
   pullsLoading,
   pullsError,
-  pullsAvailability,
   discussions,
   discussionsLimit,
   discussionsLoading,
@@ -285,7 +270,6 @@ export function RepositoryPage({
   onRefresh,
   onOpenFileFinder,
   onSelectTab,
-  onSelectRootMarkdown,
   onOpenFilteredSurface,
   onSelectIssue,
   onSelectPullRequest,
@@ -337,20 +321,7 @@ export function RepositoryPage({
   refsLoading: boolean;
   refsError: Error | null;
   refsAvailabilityMessage: string | null;
-  branchesError: Error | null;
-  contents: RepoEntry[];
-  contentsLoading: boolean;
-  contentsError: Error | null;
-  contentsAvailability: GitHubReadAvailability | null;
-  readmeMarkdown: string | null;
-  readmeAvailability: GitHubReadAvailability | null;
-  readmeLoading: boolean;
-  readmeError: Error | null;
-  rootMarkdownItems: RepoEntry[];
-  selectedRootMarkdownPath: string | null;
-  rootMarkdownContent: RepoFileContentResult | null;
-  rootMarkdownLoading: boolean;
-  rootMarkdownError: Error | null;
+  codeCommitHistoryLimit: number;
   issues: IssueSummary[];
   issueListLimit: number;
   issuesLoading: boolean;
@@ -374,7 +345,6 @@ export function RepositoryPage({
   pullRequestListLimit: number;
   pullsLoading: boolean;
   pullsError: Error | null;
-  pullsAvailability: GitHubReadAvailability | null;
   discussions: DiscussionSummary[];
   discussionsLimit: number;
   discussionsLoading: boolean;
@@ -447,7 +417,6 @@ export function RepositoryPage({
   onRefresh(): Promise<void> | void;
   onOpenFileFinder(): void;
   onSelectTab(tab: RepositoryTab): void;
-  onSelectRootMarkdown(path: string): void;
   onOpenFilteredSurface(tab: "issues" | "pulls" | "actions", filter: string): void;
   onSelectIssue(issue: IssueSummary): void;
   onSelectPullRequest(pullRequest: PullRequestSummary): void;
@@ -784,6 +753,7 @@ export function RepositoryPage({
       {tab === "code" && (
         <CodeTab
           repository={repo}
+          githubReady={githubReady}
           selectedRef={selectedRef}
           branches={branches}
           tags={tags}
@@ -791,24 +761,11 @@ export function RepositoryPage({
           refsLoading={refsLoading}
           refsError={refsError}
           refsAvailabilityMessage={refsAvailabilityMessage}
-          contents={contents}
-          contentsLoading={contentsLoading}
-          contentsError={contentsError}
-          contentsAvailability={contentsAvailability}
-          readmeMarkdown={readmeMarkdown}
-          readmeAvailability={readmeAvailability}
-          readmeLoading={readmeLoading}
-          readmeError={readmeError}
-          rootMarkdownItems={rootMarkdownItems}
-          selectedRootMarkdownPath={selectedRootMarkdownPath}
-          rootMarkdownContent={rootMarkdownContent}
-          rootMarkdownLoading={rootMarkdownLoading}
-          rootMarkdownError={rootMarkdownError}
+          commitHistoryLimit={codeCommitHistoryLimit}
           onOpenCodeBrowser={onOpenCodeBrowser}
           onOpenExternal={onOpenExternal}
           onOpenFileFinder={onOpenFileFinder}
           onSelectRef={onSelectRef}
-          onSelectRootMarkdown={onSelectRootMarkdown}
           onExpandRefs={onExpandRefs}
         />
       )}
@@ -852,27 +809,11 @@ export function RepositoryPage({
           repository={repo}
           githubReady={githubReady}
           selectedRef={selectedRef}
-          branches={branches}
-          branchesError={branchesError}
-          pulls={pulls}
+          refListLimit={refListLimit}
           pullRequestListLimit={pullRequestListLimit}
-          availability={pullsAvailability}
           focusedPullNumber={focusedPullNumber}
           initialFilter={pullFilter}
           initialCreating={pullComposer === "create"}
-          labels={labels}
-          labelsLoading={labelsLoading}
-          labelsError={labelsError}
-          labelsAvailability={labelsAvailability}
-          assignableUsers={assignableUsers}
-          assignableUsersLoading={assignableUsersLoading}
-          assignableUsersError={assignableUsersError}
-          assignableUsersAvailability={assignableUsersAvailability}
-          milestones={milestones}
-          milestonesLoading={milestonesLoading}
-          milestonesError={milestonesError}
-          milestonesAvailability={milestonesAvailability}
-          loading={pullsLoading}
           mutationAction={mutationAction}
           mutationPending={mutationPending}
           mutationSucceeded={mutationSucceeded}

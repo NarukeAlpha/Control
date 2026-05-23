@@ -64,16 +64,11 @@ import type {
   WikiPageSummary
 } from "@shared/github";
 import type { AreaRepositorySummary, AreaSummary, CreateSshAreaInput, UpdateAreaInput } from "@shared/areas";
-import type {
-  LocalRecentItem,
-  LocalRecentRecordInput,
-  RepositoryPinInput,
-  RepositoryPinRecord
-} from "@shared/local";
+import type { LocalRecentItem, LocalRecentRecordInput } from "@shared/local";
 import { MarkdownUrlHandlerContext } from "./components/MarkdownBody";
 import { AreaDeleteDialog, AreaEditDialog, SshAreaDialog } from "./components/areas/AreaDialogs";
 import { LocalAreaHome } from "./components/areas/LocalAreaHome";
-import { areaRepositoryPinKey, isGatewayAreaKind } from "./components/areas/areaUi";
+import { isGatewayAreaKind } from "./components/areas/areaUi";
 import { SetupPanel } from "./components/auth/SetupPanel";
 import { useProviderAuth } from "./components/auth/AuthProvider";
 import { CodeBrowserPage } from "./components/code-browser/CodeBrowserPage";
@@ -245,18 +240,13 @@ import { refreshMailboxNotificationsData, useMailboxNotifications } from "./hook
 import { recentItemsQueryKey, refreshRecentItemsData, useRecentItems } from "./hooks/useRecentItems";
 import { refreshRepositoryDirectoryData, useRepositoryDirectory } from "./hooks/useRepositoryDirectory";
 import { refreshRepositoryDetailData, useRepositoryDetail } from "./hooks/useRepositoryDetail";
+import { useRepositoryPins } from "./hooks/useRepositoryPins";
 import { useRepositoryRefs } from "./hooks/useRepositoryRefs";
 import { useStoredRepositoryRefs } from "./hooks/useStoredRepositoryRefs";
 import { repositoryScopedQueryKeys } from "./queries/repositoryQueryKeys";
 import { useUiStore, type AppRoute, type LocalRepositoryTab, type RepositoryTab } from "./stores/uiStore";
 import { formatCompactNumber } from "./utils/format";
 import { repoTabs } from "./components/repository/repositoryTabs";
-
-const defaultGitHubAreaId = "github:default";
-
-function defaultGitHubAreaRepositoryId(nameWithOwner: string): string {
-  return `github:default:${nameWithOwner.toLowerCase()}`;
-}
 
 const emptyRepoEntries: RepoEntry[] = [];
 const defaultFileBlameRangeLimit = 20;
@@ -452,32 +442,16 @@ export function App(): JSX.Element {
       ? null
       : readAvailabilityMessage("Repositories", repositories.data?.availability ?? null);
 
-  const repositoryPins = useQuery({
-    queryKey: ["repository-pins"],
-    queryFn: () => api.listRepositoryPins(),
-    staleTime: Infinity
-  });
-  const repositoryPinRecords = useMemo(() => repositoryPins.data ?? [], [repositoryPins.data]);
-  const pinnedRepositoryNames = useMemo(
-    () =>
-      repositoryPinRecords
-        .filter((pin) => pin.areaId === defaultGitHubAreaId && pin.nameWithOwner)
-        .map((pin) => pin.nameWithOwner as string),
-    [repositoryPinRecords]
-  );
-  const pinnedRepositoryNameSet = useMemo(
-    () => new Set(pinnedRepositoryNames.map((name) => name.toLowerCase())),
-    [pinnedRepositoryNames]
-  );
-  const areaRepositoryPinSet = useMemo(
-    () =>
-      new Set(
-        repositoryPinRecords.map((pin) =>
-          areaRepositoryPinKey(pin.areaId, pin.repositoryId, pin.workspaceId ?? null)
-        )
-      ),
-    [repositoryPinRecords]
-  );
+  const {
+    repositoryPinRecords,
+    pinnedRepositoryNames,
+    isRepositoryPinned,
+    isAreaRepositoryPinned,
+    repositoryPinBusy,
+    repositoryPinError,
+    toggleRepositoryPin,
+    toggleAreaRepositoryPin
+  } = useRepositoryPins();
   const repositoriesByName = useMemo(
     () => new Map(repositoryItems.map((repository) => [repository.nameWithOwner.toLowerCase(), repository])),
     [repositoryItems]
@@ -1285,43 +1259,6 @@ export function App(): JSX.Element {
       ]);
     }
   });
-  const areaPinMutation = useMutation({
-    mutationFn: ({ pinned: _pinned, ...input }: RepositoryPinInput & { pinned: boolean }) =>
-      _pinned ? api.unpinAreaRepository(input) : api.pinAreaRepository(input),
-    onMutate: async (input) => {
-      await queryClient.cancelQueries({ queryKey: ["repository-pins"] });
-      const previousPins = queryClient.getQueryData<RepositoryPinRecord[]>(["repository-pins"]) ?? [];
-      const targetKey = areaRepositoryPinKey(input.areaId, input.repositoryId, input.workspaceId ?? null);
-      const remainingPins = previousPins.filter(
-        (pin) => areaRepositoryPinKey(pin.areaId, pin.repositoryId, pin.workspaceId ?? null) !== targetKey
-      );
-      const nextPins = input.pinned
-        ? remainingPins
-        : [
-            {
-              areaId: input.areaId ?? null,
-              repositoryId: input.repositoryId ?? null,
-              workspaceId: input.workspaceId ?? null,
-              nameWithOwner: input.nameWithOwner ?? null,
-              createdAt: new Date().toISOString()
-            },
-            ...remainingPins
-          ];
-      queryClient.setQueryData(["repository-pins"], nextPins);
-      return { previousPins };
-    },
-    onError: (_error, _input, context) => {
-      if (context?.previousPins) {
-        queryClient.setQueryData(["repository-pins"], context.previousPins);
-      }
-    },
-    onSuccess: (pins) => {
-      queryClient.setQueryData(["repository-pins"], pins);
-    },
-    onSettled: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["repository-pins"] });
-    }
-  });
   const recentMutation = useMutation({
     mutationFn: api.recordRecentItem,
     onMutate: async (input) => {
@@ -1362,29 +1299,6 @@ export function App(): JSX.Element {
       await queryClient.invalidateQueries({ queryKey: ["local-recents"] });
     }
   });
-
-  function toggleRepositoryPin(nameWithOwner: string): void {
-    areaPinMutation.mutate({
-      areaId: defaultGitHubAreaId,
-      repositoryId: defaultGitHubAreaRepositoryId(nameWithOwner),
-      workspaceId: null,
-      nameWithOwner,
-      pinned: pinnedRepositoryNameSet.has(nameWithOwner.toLowerCase())
-    });
-  }
-
-  function toggleAreaRepositoryPin(
-    repository: AreaRepositorySummary,
-    workspaceId: string | null = null
-  ): void {
-    areaPinMutation.mutate({
-      areaId: repository.areaId,
-      repositoryId: repository.id,
-      workspaceId,
-      nameWithOwner: repository.connection?.nameWithOwner ?? undefined,
-      pinned: areaRepositoryPinSet.has(areaRepositoryPinKey(repository.areaId, repository.id, workspaceId))
-    });
-  }
 
   function repositoryForRecent(nameWithOwner: string): RepositorySummary | RepositoryDetail | undefined {
     const normalized = nameWithOwner.toLowerCase();
@@ -3070,8 +2984,8 @@ export function App(): JSX.Element {
       const repositoryRefreshDisabledReason = repository.isFetching
         ? "Repository refresh is already running."
         : null;
-      const currentRepositoryPinned = pinnedRepositoryNameSet.has(effectiveRepository.toLowerCase());
-      const repositoryPinCommandDisabledReason = areaPinMutation.isPending
+      const currentRepositoryPinned = isRepositoryPinned(effectiveRepository);
+      const repositoryPinCommandDisabledReason = repositoryPinBusy
         ? "Repository pin update is already running."
         : null;
       const currentRepositoryBranches = branchItems.slice(0, commandPaletteGeneralSourceLimit);
@@ -4383,10 +4297,8 @@ export function App(): JSX.Element {
                     entry.path
                   )
                 }
-                pinned={areaRepositoryPinSet.has(
-                  areaRepositoryPinKey(route.areaId, route.repositoryId, route.workspaceId ?? null)
-                )}
-                pinBusy={areaPinMutation.isPending}
+                pinned={isAreaRepositoryPinned(route.areaId, route.repositoryId, route.workspaceId ?? null)}
+                pinBusy={repositoryPinBusy}
                 onTogglePin={toggleAreaRepositoryPin}
                 onOpenGitHub={(nameWithOwner) => openRepositoryInApp(nameWithOwner)}
                 onOpenExternal={(url) => void api.openExternal(url)}
@@ -4420,9 +4332,9 @@ export function App(): JSX.Element {
                   contributorCount={contributorItems.length}
                   contributorLimit={repositoryContributorLimit}
                   loading={repository.isLoading}
-                  pinned={pinnedRepositoryNameSet.has(effectiveRepository.toLowerCase())}
-                  pinBusy={areaPinMutation.isPending}
-                  pinError={areaPinMutation.error instanceof Error ? areaPinMutation.error : null}
+                  pinned={isRepositoryPinned(effectiveRepository)}
+                  pinBusy={repositoryPinBusy}
+                  pinError={repositoryPinError}
                   error={repository.error}
                   onOpenCodeBrowser={(entry) =>
                     openCodeBrowserInApp(
@@ -4701,8 +4613,8 @@ export function App(): JSX.Element {
                 githubReady={githubReady}
                 repositoryListLimit={repositoryListLimit}
                 pinnedRepositoryNames={pinnedRepositoryNames}
-                repositoryPinBusy={areaPinMutation.isPending}
-                repositoryPinError={areaPinMutation.error instanceof Error ? areaPinMutation.error : null}
+                repositoryPinBusy={repositoryPinBusy}
+                repositoryPinError={repositoryPinError}
                 viewerLogin={appState.data?.viewer?.login ?? accountProfileData?.login ?? null}
                 onOpenExternal={(url) => void api.openExternal(url)}
                 onOpenRepository={openRepositoryInApp}
@@ -4785,8 +4697,8 @@ export function App(): JSX.Element {
                 organizationProjectsError={organizationProjects.error}
                 selectedOrganizationProjectId={selectedOrganizationProjectId}
                 pinnedRepositoryNames={pinnedRepositoryNames}
-                repositoryPinBusy={areaPinMutation.isPending}
-                repositoryPinError={areaPinMutation.error instanceof Error ? areaPinMutation.error : null}
+                repositoryPinBusy={repositoryPinBusy}
+                repositoryPinError={repositoryPinError}
                 onOpenExternal={(url) => void api.openExternal(url)}
                 onOpenRepository={openRepositoryInApp}
                 onSelectOrganization={(login) => {

@@ -13,13 +13,20 @@ import type {
 import type { ControlApi } from "@shared/ipc";
 
 import { mockCommits, mockContents, mockControlApi } from "../../data/mock";
-import { actionsTabQueryKey, prefetchActionsTabData } from "./actions/ActionsTab";
+import {
+  actionsTabQueryKey,
+  prefetchActionsTabData,
+  refreshActionsTabData,
+  workflowDefinitionsQueryKey,
+  workflowRunDetailQueryKey
+} from "./actions/ActionsTab";
 import {
   codeTabCommitsQueryKey,
   codeTabContentsQueryKey,
   codeTabReadmeQueryKey,
   codeTabRootMarkdownContentQueryKey,
-  prefetchCodeTabData
+  prefetchCodeTabData,
+  refreshCodeTabData
 } from "./code/CodeTab";
 import { discussionsTabQueryKey, prefetchDiscussionsTabData } from "./discussions/DiscussionsTab";
 import { issueDetailQueryKey } from "./issues/useIssueDetail";
@@ -38,7 +45,7 @@ import {
   repositoryLabelsQueryKey,
   repositoryMilestonesQueryKey
 } from "../../hooks/useRepositoryIssueResources";
-import { repositoryBranchesQueryKey } from "../../hooks/useRepositoryRefs";
+import { repositoryBranchesQueryKey, repositoryTagsQueryKey } from "../../hooks/useRepositoryRefs";
 
 const owner = "NarukeAlpha";
 const repo = "control";
@@ -303,6 +310,166 @@ describe("repository tab prefetch helpers", () => {
       cacheOnly: true
     });
     expect(queryClient.getQueryData(actionsTabQueryKey(owner, repo, 48))).toBe(result);
+  });
+
+  it("refreshes code tab data and refs with forced online reads", async () => {
+    const queryClient = makeQueryClient();
+    const listBranchesWithStatus = vi.fn<ControlApi["github"]["listBranchesWithStatus"]>(
+      mockControlApi.github.listBranchesWithStatus
+    );
+    const listTagsWithStatus = vi.fn<ControlApi["github"]["listTagsWithStatus"]>(
+      mockControlApi.github.listTagsWithStatus
+    );
+    const listContentsWithStatus = vi.fn<ControlApi["github"]["listContentsWithStatus"]>(
+      mockControlApi.github.listContentsWithStatus
+    );
+    const getReadme = vi.fn<ControlApi["github"]["getReadme"]>(mockControlApi.github.getReadme);
+    const listCommitsWithStatus = vi.fn<ControlApi["github"]["listCommitsWithStatus"]>(
+      mockControlApi.github.listCommitsWithStatus
+    );
+    const api = makeApi({
+      listBranchesWithStatus,
+      listTagsWithStatus,
+      listContentsWithStatus,
+      getReadme,
+      listCommitsWithStatus
+    });
+
+    await refreshCodeTabData(queryClient, {
+      api,
+      owner,
+      repo,
+      selectedRef: "feature/refactor",
+      defaultBranch: "main",
+      commitHistoryLimit: 8,
+      refListLimit: 80,
+      githubReady: true
+    });
+
+    expect(listBranchesWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      limit: 80,
+      cacheOnly: false,
+      forceRefresh: true
+    });
+    expect(listTagsWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      limit: 80,
+      cacheOnly: false,
+      forceRefresh: true
+    });
+    expect(listContentsWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      ref: "feature/refactor",
+      cacheOnly: false,
+      forceRefresh: true
+    });
+    expect(getReadme).toHaveBeenCalledWith({
+      owner,
+      repo,
+      ref: "feature/refactor",
+      cacheOnly: false,
+      forceRefresh: true
+    });
+    expect(listCommitsWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      ref: "feature/refactor",
+      limit: 8,
+      cacheOnly: false,
+      forceRefresh: true
+    });
+    expect(queryClient.getQueryData(repositoryBranchesQueryKey(owner, repo, 80))).toBeDefined();
+    expect(queryClient.getQueryData(repositoryTagsQueryKey(owner, repo, 80))).toBeDefined();
+    expect(queryClient.getQueryData(codeTabContentsQueryKey(owner, repo, "feature/refactor"))).toBeDefined();
+    expect(queryClient.getQueryData(codeTabReadmeQueryKey(owner, repo, "feature/refactor"))).toBeDefined();
+    expect(
+      queryClient.getQueryData(codeTabCommitsQueryKey(owner, repo, "feature/refactor", 8))
+    ).toBeDefined();
+  });
+
+  it("refreshes actions, refs, workflows, and focused run detail while offline", async () => {
+    const queryClient = makeQueryClient();
+    const listActionsWithStatus = vi.fn<ControlApi["github"]["listActionsWithStatus"]>(
+      mockControlApi.github.listActionsWithStatus
+    );
+    const listBranchesWithStatus = vi.fn<ControlApi["github"]["listBranchesWithStatus"]>(
+      mockControlApi.github.listBranchesWithStatus
+    );
+    const listTagsWithStatus = vi.fn<ControlApi["github"]["listTagsWithStatus"]>(
+      mockControlApi.github.listTagsWithStatus
+    );
+    const listWorkflowsWithStatus = vi.fn<ControlApi["github"]["listWorkflowsWithStatus"]>(
+      mockControlApi.github.listWorkflowsWithStatus
+    );
+    const getWorkflowRunDetailWithStatus = vi.fn<ControlApi["github"]["getWorkflowRunDetailWithStatus"]>(
+      mockControlApi.github.getWorkflowRunDetailWithStatus
+    );
+    const api = makeApi({
+      listActionsWithStatus,
+      listBranchesWithStatus,
+      listTagsWithStatus,
+      listWorkflowsWithStatus,
+      getWorkflowRunDetailWithStatus
+    });
+
+    await refreshActionsTabData(queryClient, {
+      api,
+      owner,
+      repo,
+      limit: 48,
+      selectedRef: null,
+      defaultBranch: "main",
+      refListLimit: 80,
+      workflowDefinitionLimit: 24,
+      focusedWorkflowRunId: 101,
+      githubReady: false
+    });
+
+    expect(listActionsWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      limit: 48,
+      cacheOnly: true,
+      forceRefresh: false
+    });
+    expect(listBranchesWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      limit: 80,
+      cacheOnly: true,
+      forceRefresh: false
+    });
+    expect(listTagsWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      limit: 80,
+      cacheOnly: true,
+      forceRefresh: false
+    });
+    expect(listWorkflowsWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      ref: "main",
+      limit: 24,
+      cacheOnly: true,
+      forceRefresh: false
+    });
+    expect(getWorkflowRunDetailWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      runId: 101,
+      cacheOnly: true,
+      forceRefresh: false
+    });
+    expect(queryClient.getQueryData(actionsTabQueryKey(owner, repo, 48))).toBeDefined();
+    expect(queryClient.getQueryData(repositoryBranchesQueryKey(owner, repo, 80))).toBeDefined();
+    expect(queryClient.getQueryData(repositoryTagsQueryKey(owner, repo, 80))).toBeDefined();
+    expect(queryClient.getQueryData(workflowDefinitionsQueryKey(owner, repo, "main", 24))).toBeDefined();
+    expect(queryClient.getQueryData(workflowRunDetailQueryKey(owner, repo, 101))).toBeDefined();
   });
 
   it("prefetches issues and issue resources without mounting IssuesTab", async () => {

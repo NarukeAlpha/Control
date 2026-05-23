@@ -30,7 +30,7 @@ import { MarkdownBody, markdownRepositoryUrlContext } from "@renderer/components
 import { isMarkdownPath, isReadmeMarkdownPath } from "@renderer/components/code-browser/codeBrowserUi";
 import { readAvailabilityMessage } from "@renderer/components/repository/repositoryUi";
 import { useControlApi } from "@renderer/hooks/useControlApi";
-import { useRepositoryRefs } from "@renderer/hooks/useRepositoryRefs";
+import { refreshRepositoryRefsData, useRepositoryRefs } from "@renderer/hooks/useRepositoryRefs";
 
 import { firstMarkdownHeading, formatCompactNumber, formatRelativeDate } from "@renderer/utils/format";
 
@@ -57,6 +57,10 @@ export interface CodeTabPrefetchInput {
   commitHistoryLimit: number;
   selectedRootMarkdownPath?: string | null;
   githubReady: boolean;
+}
+
+export interface CodeTabRefreshInput extends CodeTabPrefetchInput {
+  refListLimit: number;
 }
 
 export function codeTabContentsQueryKey(
@@ -261,6 +265,69 @@ export async function prefetchCodeTabData(
       staleTime: 60_000
     })
   ]);
+}
+
+export async function refreshCodeTabData(
+  queryClient: QueryClient,
+  {
+    api,
+    owner,
+    repo,
+    selectedRef,
+    defaultBranch,
+    commitHistoryLimit,
+    refListLimit,
+    githubReady
+  }: CodeTabRefreshInput
+): Promise<void> {
+  const ref = selectedRef ?? defaultBranch ?? undefined;
+  const commitRef = selectedRef ?? defaultBranch ?? undefined;
+  const cachedRead = !githubReady;
+
+  try {
+    await Promise.all([
+      refreshRepositoryRefsData(queryClient, { api, owner, repo, limit: refListLimit, githubReady }),
+      queryClient.fetchQuery({
+        queryKey: codeTabContentsQueryKey(owner, repo, selectedRef),
+        staleTime: 0,
+        queryFn: () =>
+          api.github.listContentsWithStatus({
+            owner,
+            repo,
+            ref,
+            cacheOnly: cachedRead,
+            forceRefresh: !cachedRead
+          })
+      }),
+      queryClient.fetchQuery({
+        queryKey: codeTabReadmeQueryKey(owner, repo, selectedRef),
+        staleTime: 0,
+        queryFn: () =>
+          api.github.getReadme({
+            owner,
+            repo,
+            ref,
+            cacheOnly: cachedRead,
+            forceRefresh: !cachedRead
+          })
+      }),
+      queryClient.fetchQuery({
+        queryKey: codeTabCommitsQueryKey(owner, repo, selectedRef, commitHistoryLimit),
+        staleTime: 0,
+        queryFn: () =>
+          api.github.listCommitsWithStatus({
+            owner,
+            repo,
+            ref: commitRef,
+            limit: commitHistoryLimit,
+            cacheOnly: cachedRead,
+            forceRefresh: !cachedRead
+          })
+      })
+    ]);
+  } catch {
+    // React Query owns the visible error state for this refresh.
+  }
 }
 
 function repositoryActivityDate(repository: RepositorySummary): string | null {

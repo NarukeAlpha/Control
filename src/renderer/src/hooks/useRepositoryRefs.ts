@@ -1,4 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, type QueryClient } from "@tanstack/react-query";
+
+import type { ControlApi } from "@shared/ipc";
 
 import { readAvailabilityMessage } from "@renderer/components/repository/repositoryUi";
 
@@ -18,6 +20,64 @@ export function repositoryTagsQueryKey(
   limit: number
 ): readonly ["tags", string, string, number] {
   return ["tags", owner, repo, limit] as const;
+}
+
+export interface RepositoryRefsRefreshInput {
+  api: ControlApi;
+  owner: string;
+  repo: string;
+  limit: number;
+  githubReady: boolean;
+  include?: {
+    branches?: boolean;
+    tags?: boolean;
+  };
+}
+
+export async function refreshRepositoryRefsData(
+  queryClient: QueryClient,
+  { api, owner, repo, limit, githubReady, include }: RepositoryRefsRefreshInput
+): Promise<void> {
+  const cachedRead = !githubReady;
+  const refreshBranches = include?.branches ?? true;
+  const refreshTags = include?.tags ?? true;
+  const refreshes: Array<Promise<unknown>> = [];
+
+  if (refreshBranches) {
+    refreshes.push(
+      queryClient.fetchQuery({
+        queryKey: repositoryBranchesQueryKey(owner, repo, limit),
+        staleTime: 0,
+        queryFn: () =>
+          api.github.listBranchesWithStatus({
+            owner,
+            repo,
+            limit,
+            cacheOnly: cachedRead,
+            forceRefresh: !cachedRead
+          })
+      })
+    );
+  }
+
+  if (refreshTags) {
+    refreshes.push(
+      queryClient.fetchQuery({
+        queryKey: repositoryTagsQueryKey(owner, repo, limit),
+        staleTime: 0,
+        queryFn: () =>
+          api.github.listTagsWithStatus({
+            owner,
+            repo,
+            limit,
+            cacheOnly: cachedRead,
+            forceRefresh: !cachedRead
+          })
+      })
+    );
+  }
+
+  await Promise.all(refreshes);
 }
 
 export function useRepositoryRefs(

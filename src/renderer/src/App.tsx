@@ -125,13 +125,8 @@ import {
   type RepositoryContextValue
 } from "./components/repository/RepositoryContext";
 import { maxCommitHistoryLimit } from "./components/repository/CommitHistoryPanel";
-import { useActionsTabQueries } from "./components/repository/actions/ActionsTab";
-import {
-  codeTabCommitsQueryKey,
-  codeTabContentsQueryKey,
-  codeTabReadmeQueryKey,
-  useCodeTabQueries
-} from "./components/repository/code/CodeTab";
+import { refreshActionsTabData, useActionsTabQueries } from "./components/repository/actions/ActionsTab";
+import { refreshCodeTabData, useCodeTabQueries } from "./components/repository/code/CodeTab";
 import {
   commitRecentAuthoredDate,
   commitRecentAuthorName,
@@ -2548,76 +2543,16 @@ export function App(): JSX.Element {
       return;
     }
 
-    const ref = contentsRef ?? repositoryDetail?.defaultBranch ?? undefined;
-    const cachedRead = !githubReady;
-
-    try {
-      await Promise.all([
-        queryClient.fetchQuery({
-          queryKey: ["branches", owner, repo, repositoryRefListLimit],
-          staleTime: 0,
-          queryFn: () =>
-            api.github.listBranchesWithStatus({
-              owner,
-              repo,
-              limit: repositoryRefListLimit,
-              cacheOnly: cachedRead,
-              forceRefresh: !cachedRead
-            })
-        }),
-        queryClient.fetchQuery({
-          queryKey: ["tags", owner, repo, repositoryRefListLimit],
-          staleTime: 0,
-          queryFn: () =>
-            api.github.listTagsWithStatus({
-              owner,
-              repo,
-              limit: repositoryRefListLimit,
-              cacheOnly: cachedRead,
-              forceRefresh: !cachedRead
-            })
-        }),
-        queryClient.fetchQuery({
-          queryKey: codeTabContentsQueryKey(owner, repo, contentsRef),
-          staleTime: 0,
-          queryFn: () =>
-            api.github.listContentsWithStatus({
-              owner,
-              repo,
-              ref,
-              cacheOnly: cachedRead,
-              forceRefresh: !cachedRead
-            })
-        }),
-        queryClient.fetchQuery({
-          queryKey: codeTabReadmeQueryKey(owner, repo, contentsRef),
-          staleTime: 0,
-          queryFn: () =>
-            api.github.getReadme({
-              owner,
-              repo,
-              ref,
-              cacheOnly: cachedRead,
-              forceRefresh: !cachedRead
-            })
-        }),
-        queryClient.fetchQuery({
-          queryKey: codeTabCommitsQueryKey(owner, repo, contentsRef, repositoryCommitHistoryLimit),
-          staleTime: 0,
-          queryFn: () =>
-            api.github.listCommitsWithStatus({
-              owner,
-              repo,
-              ref,
-              limit: repositoryCommitHistoryLimit,
-              cacheOnly: cachedRead,
-              forceRefresh: !cachedRead
-            })
-        })
-      ]);
-    } catch {
-      // React Query owns the visible error state for this refresh.
-    }
+    await refreshCodeTabData(queryClient, {
+      api,
+      owner,
+      repo,
+      selectedRef: contentsRef,
+      defaultBranch: repositoryDetail?.defaultBranch ?? null,
+      commitHistoryLimit: repositoryCommitHistoryLimit,
+      refListLimit: repositoryRefListLimit,
+      githubReady
+    });
   }
 
   async function refreshCodeBrowserNow(): Promise<void> {
@@ -2908,83 +2843,18 @@ export function App(): JSX.Element {
       return;
     }
 
-    const cachedRead = !githubReady;
-    const workflowRunId = route.kind === "repository" ? (route.workflowRunId ?? null) : null;
-    const ref = contentsRef ?? repositoryDetail?.defaultBranch ?? undefined;
-    const refreshes: Array<Promise<unknown>> = [
-      queryClient.fetchQuery({
-        queryKey: ["actions", owner, repo, actionsLimit],
-        staleTime: 0,
-        queryFn: () =>
-          api.github.listActionsWithStatus({
-            owner,
-            repo,
-            limit: actionsLimit,
-            cacheOnly: cachedRead,
-            forceRefresh: !cachedRead
-          })
-      }),
-      queryClient.fetchQuery({
-        queryKey: ["branches", owner, repo, repositoryRefListLimit],
-        staleTime: 0,
-        queryFn: () =>
-          api.github.listBranchesWithStatus({
-            owner,
-            repo,
-            limit: repositoryRefListLimit,
-            cacheOnly: cachedRead,
-            forceRefresh: !cachedRead
-          })
-      }),
-      queryClient.fetchQuery({
-        queryKey: ["tags", owner, repo, repositoryRefListLimit],
-        staleTime: 0,
-        queryFn: () =>
-          api.github.listTagsWithStatus({
-            owner,
-            repo,
-            limit: repositoryRefListLimit,
-            cacheOnly: cachedRead,
-            forceRefresh: !cachedRead
-          })
-      }),
-      queryClient.fetchQuery({
-        queryKey: ["workflows", owner, repo, ref ?? "default", workflowDefinitionLimit],
-        staleTime: 0,
-        queryFn: () =>
-          api.github.listWorkflowsWithStatus({
-            owner,
-            repo,
-            ref: ref ?? null,
-            limit: workflowDefinitionLimit,
-            cacheOnly: cachedRead,
-            forceRefresh: !cachedRead
-          })
-      })
-    ];
-
-    if (workflowRunId !== null) {
-      refreshes.push(
-        queryClient.fetchQuery({
-          queryKey: ["action-detail", owner, repo, workflowRunId],
-          staleTime: 0,
-          queryFn: () =>
-            api.github.getWorkflowRunDetailWithStatus({
-              owner,
-              repo,
-              runId: workflowRunId,
-              cacheOnly: cachedRead,
-              forceRefresh: !cachedRead
-            })
-        })
-      );
-    }
-
-    try {
-      await Promise.all(refreshes);
-    } catch {
-      // React Query owns the visible error state for this refresh.
-    }
+    await refreshActionsTabData(queryClient, {
+      api,
+      owner,
+      repo,
+      limit: actionsLimit,
+      selectedRef: contentsRef,
+      defaultBranch: repositoryDetail?.defaultBranch ?? null,
+      refListLimit: repositoryRefListLimit,
+      workflowDefinitionLimit,
+      focusedWorkflowRunId: route.kind === "repository" ? (route.workflowRunId ?? null) : null,
+      githubReady
+    });
   }
 
   async function refreshAgentsSurfaceNow(): Promise<void> {

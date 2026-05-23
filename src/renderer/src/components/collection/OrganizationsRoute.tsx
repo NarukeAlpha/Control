@@ -3,18 +3,7 @@ import { useState } from "react";
 import type { JSX } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import type {
-  AccountProfileResult,
-  AccountRepositoryListResult,
-  GitHubReadAvailability,
-  OrganizationMemberSummary,
-  OrganizationRepositorySummary,
-  OrganizationSummary,
-  OrganizationTeamRepositorySummary,
-  ProjectSummary,
-  TeamMemberSummary,
-  TeamSummary
-} from "@shared/github";
+import type { AccountProfileResult, AccountRepositoryListResult } from "@shared/github";
 import { MarkdownBody, markdownOrganizationProjectUrlContext } from "../MarkdownBody";
 import { useControlApi } from "../../hooks/useControlApi";
 import { formatCompactNumber, formatRelativeDate } from "../../utils/format";
@@ -36,126 +25,81 @@ import {
   readAvailabilityMessage,
   repositoryCollectionMetadataParts
 } from "../repository/repositoryUi";
+import type { OrganizationsRouteState } from "./useOrganizationsRouteState";
 
 export function OrganizationsRoute({
   title,
   githubReady,
-  organizations,
-  selectedOrganizationLogin,
-  organizationListLimit,
-  organizationsAvailability,
-  organizationsLoading,
-  organizationsError,
-  organizationTeams,
-  organizationTeamLimit,
-  organizationTeamsAvailability,
-  organizationTeamsLoading,
-  organizationTeamsError,
-  organizationRepositories,
-  organizationRepositoriesAvailability,
-  organizationRepositoryLimit,
-  organizationRepositoriesLoading,
-  organizationRepositoriesError,
-  organizationMembers,
-  organizationMembersAvailability,
-  organizationMemberLimit,
-  organizationMembersLoading,
-  organizationMembersError,
-  selectedOrganizationMemberLogin,
-  selectedOrganizationTeamSlug,
-  organizationTeamRepositories,
-  organizationTeamRepositoriesAvailability,
-  organizationTeamRepositoryLimit,
-  organizationTeamRepositoriesLoading,
-  organizationTeamRepositoriesError,
-  organizationTeamMembers,
-  organizationTeamMembersAvailability,
-  organizationTeamMemberLimit,
-  organizationTeamMembersLoading,
-  organizationTeamMembersError,
-  organizationProjects,
-  organizationProjectsAvailability,
-  organizationProjectLimit,
-  organizationProjectsLoading,
-  organizationProjectsError,
-  selectedOrganizationProjectId,
+  routeState,
   pinnedRepositoryNames,
   repositoryPinBusy,
   repositoryPinError,
   onOpenExternal,
   onOpenRepository,
-  onSelectOrganization,
-  onSelectOrganizationTeam,
-  onSelectOrganizationMember,
-  onSelectOrganizationProject,
-  onExpandOrganizations,
-  onExpandOrganizationRepositories,
-  onExpandOrganizationTeams,
-  onExpandOrganizationMembers,
-  onExpandOrganizationProjects,
-  onExpandOrganizationTeamRepositories,
-  onExpandOrganizationTeamMembers,
   onToggleRepositoryPin
 }: {
   title: string;
   githubReady: boolean;
-  organizations: OrganizationSummary[];
-  selectedOrganizationLogin: string | null;
-  organizationListLimit: number;
-  organizationsAvailability: GitHubReadAvailability | null;
-  organizationsLoading: boolean;
-  organizationsError: Error | null;
-  organizationTeams: TeamSummary[];
-  organizationTeamLimit: number;
-  organizationTeamsAvailability: GitHubReadAvailability | null;
-  organizationTeamsLoading: boolean;
-  organizationTeamsError: Error | null;
-  organizationRepositories: OrganizationRepositorySummary[];
-  organizationRepositoriesAvailability: GitHubReadAvailability | null;
-  organizationRepositoryLimit: number;
-  organizationRepositoriesLoading: boolean;
-  organizationRepositoriesError: Error | null;
-  organizationMembers: OrganizationMemberSummary[];
-  organizationMembersAvailability: GitHubReadAvailability | null;
-  organizationMemberLimit: number;
-  organizationMembersLoading: boolean;
-  organizationMembersError: Error | null;
-  selectedOrganizationMemberLogin: string | null;
-  selectedOrganizationTeamSlug: string | null;
-  organizationTeamRepositories: OrganizationTeamRepositorySummary[];
-  organizationTeamRepositoriesAvailability: GitHubReadAvailability | null;
-  organizationTeamRepositoryLimit: number;
-  organizationTeamRepositoriesLoading: boolean;
-  organizationTeamRepositoriesError: Error | null;
-  organizationTeamMembers: TeamMemberSummary[];
-  organizationTeamMembersAvailability: GitHubReadAvailability | null;
-  organizationTeamMemberLimit: number;
-  organizationTeamMembersLoading: boolean;
-  organizationTeamMembersError: Error | null;
-  organizationProjects: ProjectSummary[];
-  organizationProjectsAvailability: GitHubReadAvailability | null;
-  organizationProjectLimit: number;
-  organizationProjectsLoading: boolean;
-  organizationProjectsError: Error | null;
-  selectedOrganizationProjectId: string | null;
+  routeState: OrganizationsRouteState;
   pinnedRepositoryNames: string[];
   repositoryPinBusy: boolean;
   repositoryPinError: Error | null;
   onOpenExternal(url: string): void;
   onOpenRepository(nameWithOwner: string): void;
-  onSelectOrganization(login: string): void;
-  onSelectOrganizationTeam(slug: string): void;
-  onSelectOrganizationMember(login: string): void;
-  onSelectOrganizationProject(project: ProjectSummary): void;
-  onExpandOrganizations(): void;
-  onExpandOrganizationRepositories(): void;
-  onExpandOrganizationTeams(): void;
-  onExpandOrganizationMembers(): void;
-  onExpandOrganizationProjects(): void;
-  onExpandOrganizationTeamRepositories(): void;
-  onExpandOrganizationTeamMembers(): void;
   onToggleRepositoryPin(nameWithOwner: string): void;
 }): JSX.Element {
+  const {
+    organizations,
+    selectedOrganizationLogin,
+    organizationListLimit,
+    organizationsAvailability,
+    organizationsLoading,
+    organizationsError,
+    organizationTeams,
+    organizationTeamLimit,
+    organizationTeamsAvailability,
+    organizationTeamsLoading,
+    organizationTeamsError,
+    organizationRepositories,
+    organizationRepositoriesAvailability,
+    organizationRepositoryLimit,
+    organizationRepositoriesLoading,
+    organizationRepositoriesError,
+    organizationMembers,
+    organizationMembersAvailability,
+    organizationMemberLimit,
+    organizationMembersLoading,
+    organizationMembersError,
+    selectedOrganizationMemberLogin,
+    selectedOrganizationTeamSlug,
+    organizationTeamRepositories,
+    organizationTeamRepositoriesAvailability,
+    organizationTeamRepositoryLimit,
+    organizationTeamRepositoriesLoading,
+    organizationTeamRepositoriesError,
+    organizationTeamMembers,
+    organizationTeamMembersAvailability,
+    organizationTeamMemberLimit,
+    organizationTeamMembersLoading,
+    organizationTeamMembersError,
+    organizationProjects,
+    organizationProjectsAvailability,
+    organizationProjectLimit,
+    organizationProjectsLoading,
+    organizationProjectsError,
+    selectedOrganizationProjectId,
+    onSelectOrganization,
+    onSelectOrganizationTeam,
+    onSelectOrganizationMember,
+    onSelectOrganizationProject,
+    expandOrganizationList: onExpandOrganizations,
+    expandSelectedOrganizationRepositories: onExpandOrganizationRepositories,
+    expandSelectedOrganizationTeams: onExpandOrganizationTeams,
+    expandSelectedOrganizationMembers: onExpandOrganizationMembers,
+    expandSelectedOrganizationProjects: onExpandOrganizationProjects,
+    expandSelectedOrganizationTeamRepositories: onExpandOrganizationTeamRepositories,
+    expandSelectedOrganizationTeamMembers: onExpandOrganizationTeamMembers
+  } = routeState;
   const api = useControlApi();
   const [collectionFilter, setCollectionFilter] = useState("");
   const [profileRepositoryLimits, setProfileRepositoryLimits] = useState<Record<string, number>>({});

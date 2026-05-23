@@ -14,8 +14,8 @@ import { CodeBrowserPage } from "./components/code-browser/CodeBrowserPage";
 import { useCodeBrowserQueries } from "./components/code-browser/codeBrowserQueries";
 import { RepositoriesRoute } from "./components/collection/RepositoriesRoute";
 import { MailboxRoute } from "./components/collection/MailboxRoute";
-import { useOrganizationsRouteQueries } from "./components/collection/organizationQueries";
 import { OrganizationsRoute } from "./components/collection/OrganizationsRoute";
+import { useOrganizationsRouteState } from "./components/collection/useOrganizationsRouteState";
 import { CommandPalette, type CommandPaletteItem } from "./components/command-palette/CommandPalette";
 import {
   appendAccountWorkCommandPaletteItems,
@@ -59,7 +59,6 @@ import {
 } from "./components/repository/pull-requests/PullRequestsTab";
 import { useReleasesTabQueries } from "./components/repository/releases/ReleasesTab";
 import { RightRail } from "./components/right-rail/RightRail";
-import { organizationRecentInput, teamRecentInput } from "./components/recent/recentRecordInputs";
 import { SettingsPanel } from "./components/settings/SettingsPanel";
 import { Sidebar } from "./components/sidebar/Sidebar";
 import { AppEventBridge } from "./components/shell/AppEventBridge";
@@ -81,7 +80,6 @@ import { useCollectionRefreshActions } from "./hooks/useCollectionRefreshActions
 import { useControlApi } from "./hooks/useControlApi";
 import { useMailboxNotifications } from "./hooks/useMailboxNotifications";
 import { useRecentItems } from "./hooks/useRecentItems";
-import { useRecentRecorder } from "./hooks/useRecentRecorder";
 import { useRepositoryDirectory } from "./hooks/useRepositoryDirectory";
 import { useRepositoryDetail } from "./hooks/useRepositoryDetail";
 import { useRepositoryPins } from "./hooks/useRepositoryPins";
@@ -126,7 +124,6 @@ export function App(): JSX.Element {
   const goToLocalRepository = useUiStore((state) => state.goToLocalRepository);
   const goHome = useUiStore((state) => state.goHome);
   const goToRepositories = useUiStore((state) => state.goToRepositories);
-  const goToOrganizations = useUiStore((state) => state.goToOrganizations);
   const goToMailbox = useUiStore((state) => state.goToMailbox);
   const settingsOpen = useUiStore((state) => state.settingsOpen);
   const setSettingsOpen = useUiStore((state) => state.setSettingsOpen);
@@ -162,42 +159,20 @@ export function App(): JSX.Element {
 
   const {
     repositoryListLimit,
-    organizationListLimit,
-    organizationRepositoryLimits,
-    organizationTeamLimits,
-    organizationMemberLimits,
-    organizationProjectLimits,
-    organizationTeamRepositoryLimits,
-    organizationTeamMemberLimits,
     homeRepositoryActivityLimit,
     homeWorkLimit,
     mailboxWorkLimit,
     recentItemLimit,
-    selectedOrganizationLogin,
-    selectedOrganizationTeamSlug,
-    selectedOrganizationMemberLogin,
-    selectedOrganizationProjectId,
     notificationFilter,
     accountWorkLimit,
     notificationLimit,
     maxHomeWorkLimit,
-    setSelectedOrganizationLogin,
-    setSelectedOrganizationTeamSlug,
-    setSelectedOrganizationMemberLogin,
-    setSelectedOrganizationProjectId,
     setNotificationFilter,
     expandMailboxWork,
     loadMoreHomeWork,
     loadMoreHomeRepositoryActivity,
     expandMailboxNotifications,
-    expandRepositoryList,
-    expandOrganizationList,
-    expandSelectedOrganizationRepositories,
-    expandSelectedOrganizationTeams,
-    expandSelectedOrganizationMembers,
-    expandSelectedOrganizationProjects,
-    expandSelectedOrganizationTeamRepositories,
-    expandSelectedOrganizationTeamMembers
+    expandRepositoryList
   } = useCollectionSurfaceState({
     activeRouteKind: route.kind
   });
@@ -224,7 +199,6 @@ export function App(): JSX.Element {
   } = useRepositoryPins();
 
   const recentItems = useRecentItems(recentItemLimit, { enabled: appState.isSuccess });
-  const { recordRecent } = useRecentRecorder(recentItemLimit);
 
   const accountProfile = useAccountProfile({ enabled: appState.isSuccess, githubReady });
   const accountProfileData = accountProfile.data?.profile ?? null;
@@ -254,36 +228,11 @@ export function App(): JSX.Element {
       githubReady
     });
 
-  const {
-    organizations,
-    organizationItems,
-    organizationsAvailability,
-    selectedOrganization,
-    organizationRepositoryLimit,
-    organizationTeamLimit,
-    organizationMemberLimit,
-    organizationProjectLimit,
-    organizationTeams,
-    organizationRepositories,
-    organizationMembers,
-    selectedOrganizationTeam,
-    organizationTeamRepositoryLimit,
-    organizationTeamMemberLimit,
-    organizationTeamRepositories,
-    organizationTeamMembers,
-    organizationProjects
-  } = useOrganizationsRouteQueries({
+  const organizationsRouteState = useOrganizationsRouteState({
+    appReady: appState.isSuccess,
     enabled: appState.isSuccess && route.kind === "organizations",
     githubReady,
-    organizationListLimit,
-    selectedOrganizationLogin,
-    organizationRepositoryLimits,
-    organizationTeamLimits,
-    organizationMemberLimits,
-    organizationProjectLimits,
-    selectedOrganizationTeamSlug,
-    organizationTeamRepositoryLimits,
-    organizationTeamMemberLimits
+    recentItemLimit
   });
 
   const isRepositoryRoute = route.kind === "repository";
@@ -445,10 +394,10 @@ export function App(): JSX.Element {
     recentItemLimit,
     githubReady,
     markNotificationRead,
-    setSelectedOrganizationLogin,
-    setSelectedOrganizationTeamSlug,
-    setSelectedOrganizationMemberLogin,
-    setSelectedOrganizationProjectId
+    setSelectedOrganizationLogin: organizationsRouteState.setSelectedOrganizationLogin,
+    setSelectedOrganizationTeamSlug: organizationsRouteState.setSelectedOrganizationTeamSlug,
+    setSelectedOrganizationMemberLogin: organizationsRouteState.setSelectedOrganizationMemberLogin,
+    setSelectedOrganizationProjectId: organizationsRouteState.setSelectedOrganizationProjectId
   });
 
   const codeTabQueries = useCodeTabQueries({
@@ -679,27 +628,20 @@ export function App(): JSX.Element {
       repositoryAccessLimit,
       forksLimit
     });
-  const { refreshHomeNow, refreshRepositoriesNow, refreshMailboxNow, refreshOrganizationsNow } =
-    useCollectionRefreshActions({
-      appReady: appState.isSuccess,
-      githubReady,
-      authenticatedViewerLogin,
-      repositoryListLimit,
-      homeRefreshWorkLimit: maxHomeWorkLimit,
-      recentItemLimit,
-      mailboxWorkLimit,
-      notificationFilter,
-      notificationLimit,
-      organizationListLimit,
-      selectedOrganizationLogin: selectedOrganization?.login ?? null,
-      organizationRepositoryLimit,
-      organizationTeamLimit,
-      organizationMemberLimit,
-      organizationProjectLimit,
-      selectedOrganizationTeamSlug: selectedOrganizationTeam?.slug ?? null,
-      organizationTeamRepositoryLimit,
-      organizationTeamMemberLimit
-    });
+  const { refreshHomeNow, refreshRepositoriesNow, refreshMailboxNow } = useCollectionRefreshActions({
+    appReady: appState.isSuccess,
+    githubReady,
+    authenticatedViewerLogin,
+    repositoryListLimit,
+    homeRefreshWorkLimit: maxHomeWorkLimit,
+    recentItemLimit,
+    mailboxWorkLimit,
+    notificationFilter,
+    notificationLimit
+  });
+  async function refreshOrganizationsNow(): Promise<void> {
+    await Promise.all([organizationsRouteState.refreshNow(), refreshRepositoriesNow()]);
+  }
 
   const mutation = useMutation({
     mutationFn: api.github.mutate,
@@ -728,15 +670,7 @@ export function App(): JSX.Element {
           : loadedUnreadNotificationIds.length === 0
             ? "No loaded unread notifications."
             : null;
-    const organizationsRefreshInFlight =
-      organizations.isFetching ||
-      organizationTeams.isFetching ||
-      organizationMembers.isFetching ||
-      organizationRepositories.isFetching ||
-      organizationTeamRepositories.isFetching ||
-      organizationTeamMembers.isFetching ||
-      organizationProjects.isFetching;
-    const organizationsRefreshDisabledReason = organizationsRefreshInFlight
+    const organizationsRefreshDisabledReason = organizationsRouteState.refreshInFlight
       ? "Organization data is already refreshing."
       : null;
 
@@ -760,12 +694,7 @@ export function App(): JSX.Element {
       onRefreshRepositories: () => {
         void refreshRepositoriesNow();
       },
-      onOpenOrganizations: () => {
-        setSelectedOrganizationTeamSlug(null);
-        setSelectedOrganizationMemberLogin(null);
-        setSelectedOrganizationProjectId(null);
-        goToOrganizations();
-      },
+      onOpenOrganizations: organizationsRouteState.openOrganizations,
       onRefreshOrganizations: () => {
         void refreshOrganizationsNow();
       },
@@ -779,50 +708,22 @@ export function App(): JSX.Element {
     });
 
     appendOrganizationCommandPaletteItems(items, {
-      organizationItems,
-      organizationTeams: organizationTeams.data?.items ?? [],
-      organizationRepositories: organizationRepositories.data?.items ?? [],
-      organizationTeamRepositories: organizationTeamRepositories.data?.items ?? [],
-      organizationProjects: organizationProjects.data?.items ?? [],
-      organizationMembers: organizationMembers.data?.items ?? [],
-      organizationTeamMembers: organizationTeamMembers.data?.items ?? [],
-      selectedOrganization,
-      selectedOrganizationTeam,
+      organizationItems: organizationsRouteState.organizationItems,
+      organizationTeams: organizationsRouteState.organizationTeams,
+      organizationRepositories: organizationsRouteState.organizationRepositories,
+      organizationTeamRepositories: organizationsRouteState.organizationTeamRepositories,
+      organizationProjects: organizationsRouteState.organizationProjects,
+      organizationMembers: organizationsRouteState.organizationMembers,
+      organizationTeamMembers: organizationsRouteState.organizationTeamMembers,
+      selectedOrganization: organizationsRouteState.selectedOrganization,
+      selectedOrganizationTeam: organizationsRouteState.selectedOrganizationTeam,
       generalSourceLimit: commandPaletteGeneralSourceLimit,
       denseSourceLimit: commandPaletteDenseSourceLimit,
-      onOpenOrganization: (organization) => {
-        recordRecent(organizationRecentInput(organization));
-        setSelectedOrganizationLogin(organization.login);
-        setSelectedOrganizationTeamSlug(null);
-        setSelectedOrganizationMemberLogin(null);
-        setSelectedOrganizationProjectId(null);
-        goToOrganizations();
-      },
-      onOpenTeam: (team) => {
-        recordRecent(teamRecentInput(team));
-        setSelectedOrganizationLogin(team.organizationLogin);
-        setSelectedOrganizationTeamSlug(team.slug);
-        setSelectedOrganizationMemberLogin(null);
-        setSelectedOrganizationProjectId(null);
-        goToOrganizations();
-      },
+      onOpenOrganization: organizationsRouteState.openOrganization,
+      onOpenTeam: organizationsRouteState.openTeam,
       onOpenRepository: openRepositoryInApp,
-      onOpenOrganizationMember: (organization, member) => {
-        recordRecent(organizationRecentInput(organization));
-        setSelectedOrganizationLogin(organization.login);
-        setSelectedOrganizationTeamSlug(null);
-        setSelectedOrganizationMemberLogin(member.login);
-        setSelectedOrganizationProjectId(null);
-        goToOrganizations();
-      },
-      onOpenOrganizationTeamMember: (organization, team, member) => {
-        recordRecent(teamRecentInput(team));
-        setSelectedOrganizationLogin(organization.login);
-        setSelectedOrganizationTeamSlug(team.slug);
-        setSelectedOrganizationMemberLogin(member.login);
-        setSelectedOrganizationProjectId(null);
-        goToOrganizations();
-      },
+      onOpenOrganizationMember: organizationsRouteState.openOrganizationMember,
+      onOpenOrganizationTeamMember: organizationsRouteState.openOrganizationTeamMember,
       onSelectOrganizationProject: selectOrganizationProjectInApp
     });
 
@@ -1491,95 +1392,12 @@ export function App(): JSX.Element {
               <OrganizationsRoute
                 title={routeTitle(route)}
                 githubReady={githubReady}
-                organizations={organizationItems}
-                selectedOrganizationLogin={selectedOrganization?.login ?? null}
-                organizationListLimit={organizationListLimit}
-                organizationsAvailability={organizationsAvailability}
-                organizationsLoading={organizations.isLoading || organizations.isFetching}
-                organizationsError={organizations.error}
-                organizationTeams={organizationTeams.data?.items ?? []}
-                organizationTeamsAvailability={organizationTeams.data?.availability ?? null}
-                organizationTeamLimit={organizationTeamLimit}
-                organizationTeamsLoading={organizationTeams.isLoading || organizationTeams.isFetching}
-                organizationTeamsError={organizationTeams.error}
-                organizationRepositories={organizationRepositories.data?.items ?? []}
-                organizationRepositoriesAvailability={organizationRepositories.data?.availability ?? null}
-                organizationRepositoryLimit={organizationRepositoryLimit}
-                organizationRepositoriesLoading={
-                  organizationRepositories.isLoading || organizationRepositories.isFetching
-                }
-                organizationRepositoriesError={organizationRepositories.error}
-                organizationMembers={organizationMembers.data?.items ?? []}
-                organizationMembersAvailability={organizationMembers.data?.availability ?? null}
-                organizationMemberLimit={organizationMemberLimit}
-                organizationMembersLoading={organizationMembers.isLoading || organizationMembers.isFetching}
-                organizationMembersError={organizationMembers.error}
-                selectedOrganizationMemberLogin={selectedOrganizationMemberLogin}
-                selectedOrganizationTeamSlug={selectedOrganizationTeam?.slug ?? null}
-                organizationTeamRepositories={organizationTeamRepositories.data?.items ?? []}
-                organizationTeamRepositoriesAvailability={
-                  organizationTeamRepositories.data?.availability ?? null
-                }
-                organizationTeamRepositoryLimit={organizationTeamRepositoryLimit}
-                organizationTeamRepositoriesLoading={
-                  organizationTeamRepositories.isLoading || organizationTeamRepositories.isFetching
-                }
-                organizationTeamRepositoriesError={organizationTeamRepositories.error}
-                organizationTeamMembers={organizationTeamMembers.data?.items ?? []}
-                organizationTeamMembersAvailability={organizationTeamMembers.data?.availability ?? null}
-                organizationTeamMemberLimit={organizationTeamMemberLimit}
-                organizationTeamMembersLoading={
-                  organizationTeamMembers.isLoading || organizationTeamMembers.isFetching
-                }
-                organizationTeamMembersError={organizationTeamMembers.error}
-                organizationProjects={organizationProjects.data?.items ?? []}
-                organizationProjectsAvailability={organizationProjects.data?.availability ?? null}
-                organizationProjectLimit={organizationProjectLimit}
-                organizationProjectsLoading={
-                  organizationProjects.isLoading || organizationProjects.isFetching
-                }
-                organizationProjectsError={organizationProjects.error}
-                selectedOrganizationProjectId={selectedOrganizationProjectId}
+                routeState={organizationsRouteState}
                 pinnedRepositoryNames={pinnedRepositoryNames}
                 repositoryPinBusy={repositoryPinBusy}
                 repositoryPinError={repositoryPinError}
                 onOpenExternal={(url) => void api.openExternal(url)}
                 onOpenRepository={openRepositoryInApp}
-                onSelectOrganization={(login) => {
-                  const organization = organizationItems.find((item) => item.login === login);
-                  if (organization) {
-                    recordRecent(organizationRecentInput(organization));
-                  }
-                  setSelectedOrganizationLogin(login);
-                  setSelectedOrganizationTeamSlug(null);
-                  setSelectedOrganizationMemberLogin(null);
-                  setSelectedOrganizationProjectId(null);
-                }}
-                onSelectOrganizationTeam={(slug) => {
-                  const team = organizationTeams.data?.items.find((item) => item.slug === slug);
-                  if (team) {
-                    recordRecent(teamRecentInput(team));
-                  }
-                  setSelectedOrganizationTeamSlug(slug);
-                  setSelectedOrganizationMemberLogin(null);
-                  setSelectedOrganizationProjectId(null);
-                }}
-                onSelectOrganizationMember={(login) => {
-                  setSelectedOrganizationMemberLogin(login);
-                  setSelectedOrganizationProjectId(null);
-                }}
-                onSelectOrganizationProject={(project) => {
-                  if (selectedOrganization) {
-                    selectOrganizationProjectInApp(selectedOrganization, project);
-                  }
-                }}
-                onExpandOrganizations={expandOrganizationList}
-                onExpandOrganizationRepositories={expandSelectedOrganizationRepositories}
-                onExpandOrganizationTeams={expandSelectedOrganizationTeams}
-                onExpandOrganizationMembers={expandSelectedOrganizationMembers}
-                onExpandOrganizationProjects={expandSelectedOrganizationProjects}
-                onExpandOrganizationTeamRepositories={expandSelectedOrganizationTeamRepositories}
-                onExpandOrganizationTeamMembers={expandSelectedOrganizationTeamMembers}
                 onToggleRepositoryPin={toggleRepositoryPin}
               />
             )}

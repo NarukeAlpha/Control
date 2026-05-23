@@ -1,7 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 
 import type { MailboxNotificationFilter } from "../components/collection/notificationUi";
-import { refreshOrganizationsRouteData } from "../components/collection/organizationQueries";
 import { refreshAccountProfileData } from "./useAccountProfile";
 import { refreshAccountWorkData } from "./useAccountWork";
 import { useControlApi } from "./useControlApi";
@@ -19,22 +18,12 @@ interface UseCollectionRefreshActionsInput {
   mailboxWorkLimit: number;
   notificationFilter: MailboxNotificationFilter;
   notificationLimit: number;
-  organizationListLimit: number;
-  selectedOrganizationLogin: string | null;
-  organizationRepositoryLimit: number;
-  organizationTeamLimit: number;
-  organizationMemberLimit: number;
-  organizationProjectLimit: number;
-  selectedOrganizationTeamSlug: string | null;
-  organizationTeamRepositoryLimit: number;
-  organizationTeamMemberLimit: number;
 }
 
 interface UseCollectionRefreshActionsResult {
   refreshHomeNow: () => Promise<void>;
   refreshRepositoriesNow: () => Promise<void>;
   refreshMailboxNow: () => Promise<void>;
-  refreshOrganizationsNow: () => Promise<void>;
 }
 
 export function useCollectionRefreshActions({
@@ -46,16 +35,7 @@ export function useCollectionRefreshActions({
   recentItemLimit,
   mailboxWorkLimit,
   notificationFilter,
-  notificationLimit,
-  organizationListLimit,
-  selectedOrganizationLogin,
-  organizationRepositoryLimit,
-  organizationTeamLimit,
-  organizationMemberLimit,
-  organizationProjectLimit,
-  selectedOrganizationTeamSlug,
-  organizationTeamRepositoryLimit,
-  organizationTeamMemberLimit
+  notificationLimit
 }: UseCollectionRefreshActionsInput): UseCollectionRefreshActionsResult {
   const api = useControlApi();
   const queryClient = useQueryClient();
@@ -115,33 +95,9 @@ export function useCollectionRefreshActions({
     }
   }
 
-  async function refreshOrganizationsNow(): Promise<void> {
-    if (!appReady) {
-      return;
-    }
-
-    await Promise.all([
-      refreshOrganizationsRouteData(queryClient, {
-        api,
-        githubReady,
-        organizationListLimit,
-        selectedOrganizationLogin,
-        organizationRepositoryLimit,
-        organizationTeamLimit,
-        organizationMemberLimit,
-        organizationProjectLimit,
-        selectedOrganizationTeamSlug,
-        organizationTeamRepositoryLimit,
-        organizationTeamMemberLimit
-      }),
-      refreshRepositoriesNow()
-    ]);
-  }
-
   return {
     refreshHomeNow,
     refreshRepositoriesNow,
-    refreshMailboxNow,
-    refreshOrganizationsNow
+    refreshMailboxNow
   };
 }

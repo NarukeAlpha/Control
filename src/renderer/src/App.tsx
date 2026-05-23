@@ -169,7 +169,11 @@ import {
   repositoryPath
 } from "./components/repository/repositoryUi";
 
+import { useAccountWork } from "./hooks/useAccountWork";
 import { useControlApi } from "./hooks/useControlApi";
+import { useRepositoryDirectory } from "./hooks/useRepositoryDirectory";
+import { useRepositoryIssueResources } from "./hooks/useRepositoryIssueResources";
+import { useRepositoryRefs } from "./hooks/useRepositoryRefs";
 import { repositoryScopedQueryKeys } from "./queries/repositoryQueryKeys";
 import { useUiStore, type AppRoute, type LocalRepositoryTab, type RepositoryTab } from "./stores/uiStore";
 import { formatCompactNumber, formatRelativeDate } from "./utils/format";
@@ -245,7 +249,6 @@ const defaultRightRailCommitHistoryLimit = 3;
 const maxCommitHistoryLimit = 100;
 const defaultRepositoryListLimit = 80;
 const maxRepositoryListLimit = 100;
-const repositoryListStaleTimeMs = 600_000;
 const defaultRepositorySearchLocalLimit = 5;
 const defaultRepositorySearchRemoteLimit = 8;
 const defaultAddRepositoryLocalLimit = 6;
@@ -2782,13 +2785,9 @@ export function App(): JSX.Element {
     writeRepositoryRefs(repositoryRefs);
   }, [repositoryRefs]);
 
-  const repositories = useQuery({
-    queryKey: ["repositories", repositoryListLimit],
-    queryFn: () =>
-      api.github.listRepositoriesWithStatus({ limit: repositoryListLimit, cacheOnly: !githubReady }),
+  const repositories = useRepositoryDirectory(repositoryListLimit, {
     enabled: appState.isSuccess,
-    placeholderData: (previousData) => previousData,
-    staleTime: repositoryListStaleTimeMs
+    githubReady
   });
   const repositoryItems = useMemo(() => repositories.data?.items ?? [], [repositories.data]);
   const repositoriesAvailabilityMessage =
@@ -2845,33 +2844,16 @@ export function App(): JSX.Element {
     accountProfile.data?.availability ?? null
   );
 
-  const accountIssues = useQuery({
-    queryKey: ["account-issues", authenticatedViewerLogin ?? "viewer", accountWorkLimit],
-    queryFn: () =>
-      api.github.listAccountIssuesWithStatus({
-        ...(authenticatedViewerLogin ? { login: authenticatedViewerLogin } : {}),
-        state: "open",
-        limit: accountWorkLimit,
-        cacheOnly: !githubReady
-      }),
-    enabled: appState.isSuccess && (route.kind === "home" || route.kind === "mailbox"),
-    placeholderData: (previousData) => previousData
-  });
+  const { issues: accountIssues, pulls: accountPulls } = useAccountWork(
+    authenticatedViewerLogin,
+    accountWorkLimit,
+    {
+      enabled: appState.isSuccess && (route.kind === "home" || route.kind === "mailbox"),
+      githubReady
+    }
+  );
   const accountIssueItems = accountIssues.data?.items ?? [];
   const accountIssuesAvailability = accountIssues.data?.availability ?? null;
-
-  const accountPulls = useQuery({
-    queryKey: ["account-pulls", authenticatedViewerLogin ?? "viewer", accountWorkLimit],
-    queryFn: () =>
-      api.github.listAccountPullRequestsWithStatus({
-        ...(authenticatedViewerLogin ? { login: authenticatedViewerLogin } : {}),
-        state: "open",
-        limit: accountWorkLimit,
-        cacheOnly: !githubReady
-      }),
-    enabled: appState.isSuccess && (route.kind === "home" || route.kind === "mailbox"),
-    placeholderData: (previousData) => previousData
-  });
   const accountPullItems = accountPulls.data?.items ?? [];
   const accountPullsAvailability = accountPulls.data?.availability ?? null;
 
@@ -3505,54 +3487,41 @@ export function App(): JSX.Element {
     repository.data?.availability ?? null
   );
 
-  const branches = useQuery({
-    queryKey: ["branches", owner, repo, repositoryRefListLimit],
-    queryFn: () =>
-      api.github.listBranchesWithStatus({
-        owner,
-        repo,
-        limit: repositoryRefListLimit,
-        cacheOnly: !githubReady
-      }),
-    enabled:
-      appState.isSuccess &&
-      hasRepositoryParts &&
-      ((isRepositoryRoute &&
-        (shouldLoadRepositoryTab("code") ||
-          shouldLoadRepositoryTab("actions") ||
-          shouldLoadRepositoryTab("pulls") ||
-          activeRepositoryTab === "releases" ||
-          activeRepositoryTab === "securityQuality" ||
-          activeRepositoryTab === "settings")) ||
-        isCodeBrowserRoute),
-    staleTime: 120_000
-  });
-
-  const tags = useQuery({
-    queryKey: ["tags", owner, repo, repositoryRefListLimit],
-    queryFn: () =>
-      api.github.listTagsWithStatus({ owner, repo, limit: repositoryRefListLimit, cacheOnly: !githubReady }),
-    enabled:
-      appState.isSuccess &&
-      hasRepositoryParts &&
-      ((isRepositoryRoute &&
-        (shouldLoadRepositoryTab("code") ||
-          shouldLoadRepositoryTab("actions") ||
-          activeRepositoryTab === "releases")) ||
-        isCodeBrowserRoute),
-    staleTime: 120_000
-  });
-  const branchItems = branches.data?.items ?? [];
-  const tagItems = tags.data?.items ?? [];
-  const branchesAvailability = branches.data?.availability ?? null;
-  const tagsAvailability = tags.data?.availability ?? null;
-  const refsAvailabilityMessage = [
-    readAvailabilityMessage("Branches", branchesAvailability),
-    readAvailabilityMessage("Tags", tagsAvailability)
-  ]
-    .filter((message): message is string => Boolean(message))
-    .join(" ");
-  const refsError = branches.error ?? tags.error;
+  const repositoryRefQueries = useRepositoryRefs(
+    owner,
+    repo,
+    {
+      branches:
+        appState.isSuccess &&
+        hasRepositoryParts &&
+        ((isRepositoryRoute &&
+          (shouldLoadRepositoryTab("code") ||
+            shouldLoadRepositoryTab("actions") ||
+            shouldLoadRepositoryTab("pulls") ||
+            activeRepositoryTab === "releases" ||
+            activeRepositoryTab === "securityQuality" ||
+            activeRepositoryTab === "settings")) ||
+          isCodeBrowserRoute),
+      tags:
+        appState.isSuccess &&
+        hasRepositoryParts &&
+        ((isRepositoryRoute &&
+          (shouldLoadRepositoryTab("code") ||
+            shouldLoadRepositoryTab("actions") ||
+            activeRepositoryTab === "releases")) ||
+          isCodeBrowserRoute)
+    },
+    repositoryRefListLimit,
+    { githubReady }
+  );
+  const {
+    branches,
+    tags,
+    branchItems,
+    tagItems,
+    availabilityMessage: refsAvailabilityMessage,
+    error: refsError
+  } = repositoryRefQueries;
 
   const contents = useQuery({
     queryKey: ["contents", owner, repo, contentsRef ?? "default", codeBrowserPath, codeBrowserEntryType],
@@ -3741,46 +3710,26 @@ export function App(): JSX.Element {
     staleTime: 60_000
   });
 
-  const labels = useQuery({
-    queryKey: ["labels", owner, repo],
-    queryFn: () => api.github.listLabelsWithStatus({ owner, repo, limit: 100, cacheOnly: !githubReady }),
-    enabled:
-      appState.isSuccess &&
+  const repositoryIssueResources = useRepositoryIssueResources(
+    owner,
+    repo,
+    appState.isSuccess &&
       isRepositoryRoute &&
       (shouldLoadRepositoryTab("issues") || shouldLoadRepositoryTab("pulls")) &&
       hasRepositoryParts,
-    staleTime: 120_000
-  });
-
-  const assignableUsers = useQuery({
-    queryKey: ["assignable-users", owner, repo],
-    queryFn: () =>
-      api.github.listAssignableUsersWithStatus({ owner, repo, limit: 100, cacheOnly: !githubReady }),
-    enabled:
-      appState.isSuccess &&
-      isRepositoryRoute &&
-      (shouldLoadRepositoryTab("issues") || shouldLoadRepositoryTab("pulls")) &&
-      hasRepositoryParts,
-    staleTime: 120_000
-  });
-
-  const milestones = useQuery({
-    queryKey: ["milestones", owner, repo],
-    queryFn: () =>
-      api.github.listMilestonesWithStatus({ owner, repo, state: "all", limit: 100, cacheOnly: !githubReady }),
-    enabled:
-      appState.isSuccess &&
-      isRepositoryRoute &&
-      (shouldLoadRepositoryTab("issues") || shouldLoadRepositoryTab("pulls")) &&
-      hasRepositoryParts,
-    staleTime: 120_000
-  });
-  const labelItems = labels.data?.items ?? [];
-  const labelAvailability = labels.data?.availability ?? null;
-  const assignableUserItems = assignableUsers.data?.items ?? [];
-  const assignableUsersAvailability = assignableUsers.data?.availability ?? null;
-  const milestoneItems = milestones.data?.items ?? [];
-  const milestonesAvailability = milestones.data?.availability ?? null;
+    { githubReady }
+  );
+  const {
+    labels,
+    assignableUsers,
+    milestones,
+    labelItems,
+    labelAvailability,
+    assignableUserItems,
+    assignableUsersAvailability,
+    milestoneItems,
+    milestonesAvailability
+  } = repositoryIssueResources;
   const issueItems = issues.data?.items ?? [];
   const issuesAvailability = issues.data?.availability ?? null;
 

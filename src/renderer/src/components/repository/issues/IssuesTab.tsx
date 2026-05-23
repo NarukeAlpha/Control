@@ -13,11 +13,7 @@ import type {
   TimelineCommentSummary
 } from "@shared/github";
 
-import {
-  MarkdownBody,
-  markdownRepositoryUrlContext,
-  type MarkdownUrlContext
-} from "@renderer/components/MarkdownBody";
+import { markdownRepositoryUrlContext } from "@renderer/components/MarkdownBody";
 import { useIssueDetail } from "@renderer/components/repository/issues/useIssueDetail";
 import {
   fieldsMatchSearchParts,
@@ -26,6 +22,7 @@ import {
   readAvailabilityMessage,
   repositoryMutationDisabledReason
 } from "@renderer/components/repository/repositoryUi";
+import { TimelineThread } from "@renderer/components/shared/TimelineThread";
 
 import { formatRelativeDate } from "@renderer/utils/format";
 const maxIssueListLimit = 100;
@@ -85,181 +82,6 @@ function commentMutationDisabledReason(
     return "Comment id is unavailable for this action.";
   }
   return null;
-}
-
-function TimelineThread({
-  title,
-  authorLogin,
-  authorAvatarUrl,
-  createdAt,
-  body,
-  comments,
-  loading,
-  availabilityMessage,
-  emptyBody,
-  markdownUrlContext,
-  onOpenExternal,
-  commentActions
-}: {
-  title: string;
-  authorLogin: string | null;
-  authorAvatarUrl: string | null;
-  createdAt: string;
-  body: string | null | undefined;
-  comments: TimelineCommentSummary[];
-  loading: boolean;
-  availabilityMessage: string | null;
-  emptyBody: string;
-  markdownUrlContext?: MarkdownUrlContext;
-  onOpenExternal(url: string): void;
-  commentActions?: {
-    getDisabledReason(comment: TimelineCommentSummary): string | null;
-    onEdit(comment: TimelineCommentSummary, body: string): void;
-    onDelete(comment: TimelineCommentSummary): void;
-  };
-}): JSX.Element {
-  return (
-    <div className="timeline-thread" aria-label={title}>
-      <TimelineComment
-        authorLogin={authorLogin}
-        authorAvatarUrl={authorAvatarUrl}
-        createdAt={createdAt}
-        body={body?.trim() || emptyBody}
-        markdownUrlContext={markdownUrlContext}
-        onOpenExternal={onOpenExternal}
-      />
-      {loading ? (
-        <div className="loading-state">Loading discussion…</div>
-      ) : availabilityMessage ? (
-        <div className="error-state">{availabilityMessage}</div>
-      ) : (
-        comments.map((comment) => (
-          <TimelineComment
-            key={comment.id}
-            authorLogin={comment.authorLogin}
-            authorAvatarUrl={comment.authorAvatarUrl}
-            createdAt={comment.createdAt}
-            body={comment.body?.trim() || "No comment body."}
-            disabledReason={commentActions?.getDisabledReason(comment) ?? null}
-            markdownUrlContext={markdownUrlContext}
-            onOpenExternal={onOpenExternal}
-            onEdit={commentActions ? (body) => commentActions.onEdit(comment, body) : undefined}
-            onDelete={commentActions ? () => commentActions.onDelete(comment) : undefined}
-          />
-        ))
-      )}
-    </div>
-  );
-}
-
-function TimelineComment({
-  authorLogin,
-  authorAvatarUrl,
-  createdAt,
-  body,
-  disabledReason,
-  markdownUrlContext,
-  onOpenExternal,
-  onEdit,
-  onDelete
-}: {
-  authorLogin: string | null;
-  authorAvatarUrl: string | null;
-  createdAt: string;
-  body: string;
-  disabledReason?: string | null;
-  markdownUrlContext?: MarkdownUrlContext;
-  onOpenExternal(url: string): void;
-  onEdit?(body: string): void;
-  onDelete?(): void;
-}): JSX.Element {
-  const [editing, setEditing] = useState(false);
-  const [editBody, setEditBody] = useState(body);
-  const hasActions = Boolean(onEdit || onDelete);
-  const editSubmitDisabledReason = disabledReason ?? (!editBody.trim() ? "Comment body is required." : null);
-
-  return (
-    <article className="timeline-comment">
-      <div className="timeline-avatar">
-        {authorAvatarUrl ? (
-          <img src={authorAvatarUrl} alt="" />
-        ) : (
-          <span>{authorLogin?.slice(0, 1).toUpperCase() ?? "?"}</span>
-        )}
-      </div>
-      <div className="timeline-card">
-        <header className="timeline-card-header">
-          <strong>{authorLogin ?? "unknown"}</strong>
-          <span>commented {formatRelativeDate(createdAt)}</span>
-          {hasActions && (
-            <div className="timeline-actions">
-              {onEdit && (
-                <button
-                  type="button"
-                  disabled={Boolean(disabledReason)}
-                  title={disabledReason ?? undefined}
-                  onClick={() => {
-                    setEditBody(body);
-                    setEditing(true);
-                  }}
-                >
-                  Edit comment
-                </button>
-              )}
-              {onDelete && (
-                <button
-                  type="button"
-                  disabled={Boolean(disabledReason)}
-                  title={disabledReason ?? undefined}
-                  onClick={onDelete}
-                >
-                  Delete comment
-                </button>
-              )}
-            </div>
-          )}
-        </header>
-        {editing ? (
-          <form
-            className="timeline-edit-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (editSubmitDisabledReason) {
-                return;
-              }
-              onEdit?.(editBody.trim());
-            }}
-          >
-            <textarea
-              value={editBody}
-              disabled={Boolean(disabledReason)}
-              title={disabledReason ?? undefined}
-              onChange={(event) => setEditBody(event.target.value)}
-              placeholder="Edit comment body"
-            />
-            <div>
-              <button
-                className="dark-action"
-                type="submit"
-                disabled={Boolean(editSubmitDisabledReason)}
-                title={editSubmitDisabledReason ?? undefined}
-              >
-                Save comment
-              </button>
-              <button type="button" onClick={() => setEditing(false)}>
-                Cancel
-              </button>
-              {editSubmitDisabledReason && (
-                <small className="action-disabled-note">{editSubmitDisabledReason}</small>
-              )}
-            </div>
-          </form>
-        ) : (
-          <MarkdownBody markdown={body} onOpenExternal={onOpenExternal} urlContext={markdownUrlContext} />
-        )}
-      </div>
-    </article>
-  );
 }
 
 function issueStateLabel(issue: IssueSummary): string {

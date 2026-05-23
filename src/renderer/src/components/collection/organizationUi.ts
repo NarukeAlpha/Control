@@ -3,6 +3,13 @@ import type { OrganizationRepositorySummary, OrganizationTeamRepositorySummary }
 import { formatRelativeDate } from "../../utils/format";
 
 export const defaultMemberProfileRepositoryLimit = 8;
+export const defaultOrganizationListLimit = 50;
+export const defaultOrganizationRepositoryLimit = 50;
+export const defaultOrganizationTeamLimit = 30;
+export const defaultOrganizationMemberLimit = 30;
+export const defaultOrganizationProjectLimit = 20;
+export const defaultOrganizationTeamRepositoryLimit = 30;
+export const defaultOrganizationTeamMemberLimit = 30;
 export const maxOrganizationListLimit = 100;
 export const maxOrganizationRepositoryLimit = 100;
 export const maxOrganizationTeamLimit = 100;

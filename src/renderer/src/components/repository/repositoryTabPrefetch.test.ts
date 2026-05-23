@@ -24,6 +24,7 @@ import {
 import { discussionsTabQueryKey, prefetchDiscussionsTabData } from "./discussions/DiscussionsTab";
 import { issuesTabQueryKey, prefetchIssuesTabData } from "./issues/IssuesTab";
 import { projectsTabQueryKey, prefetchProjectsTabData } from "./projects/ProjectsTab";
+import { prefetchPullRequestsTabData, pullRequestsTabQueryKey } from "./pull-requests/PullRequestsTab";
 import { releasesTabQueryKey, prefetchReleasesTabData } from "./releases/ReleasesTab";
 import { prefetchWikiTabData, wikiTabQueryKey } from "./wiki/WikiTab";
 import {
@@ -357,6 +358,73 @@ describe("repository tab prefetch helpers", () => {
       cacheOnly: true
     });
     expect(queryClient.getQueryData(issuesTabQueryKey(owner, repo, 30))).toBe(issuesResult);
+    expect(queryClient.getQueryData(repositoryLabelsQueryKey(owner, repo))).toBe(labelsResult);
+    expect(queryClient.getQueryData(repositoryAssignableUsersQueryKey(owner, repo))).toBe(
+      assignableUsersResult
+    );
+    expect(queryClient.getQueryData(repositoryMilestonesQueryKey(owner, repo))).toBe(milestonesResult);
+  });
+
+  it("prefetches pull requests and issue resources without mounting PullRequestsTab", async () => {
+    const queryClient = makeQueryClient();
+    const pullsResult = listResult<never>();
+    const labelsResult = listResult<never>();
+    const assignableUsersResult = listResult<never>();
+    const milestonesResult = listResult<never>();
+    const listPullRequestsWithStatus = vi.fn<ControlApi["github"]["listPullRequestsWithStatus"]>(
+      async () => pullsResult
+    );
+    const listLabelsWithStatus = vi.fn<ControlApi["github"]["listLabelsWithStatus"]>(
+      async () => labelsResult
+    );
+    const listAssignableUsersWithStatus = vi.fn<ControlApi["github"]["listAssignableUsersWithStatus"]>(
+      async () => assignableUsersResult
+    );
+    const listMilestonesWithStatus = vi.fn<ControlApi["github"]["listMilestonesWithStatus"]>(
+      async () => milestonesResult
+    );
+    const api = makeApi({
+      listPullRequestsWithStatus,
+      listLabelsWithStatus,
+      listAssignableUsersWithStatus,
+      listMilestonesWithStatus
+    });
+
+    await prefetchPullRequestsTabData(queryClient, {
+      api,
+      owner,
+      repo,
+      pullRequestListLimit: 40,
+      githubReady: false
+    });
+
+    expect(listPullRequestsWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      state: "all",
+      limit: 40,
+      cacheOnly: true
+    });
+    expect(listLabelsWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      limit: 100,
+      cacheOnly: true
+    });
+    expect(listAssignableUsersWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      limit: 100,
+      cacheOnly: true
+    });
+    expect(listMilestonesWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      state: "all",
+      limit: 100,
+      cacheOnly: true
+    });
+    expect(queryClient.getQueryData(pullRequestsTabQueryKey(owner, repo, 40))).toBe(pullsResult);
     expect(queryClient.getQueryData(repositoryLabelsQueryKey(owner, repo))).toBe(labelsResult);
     expect(queryClient.getQueryData(repositoryAssignableUsersQueryKey(owner, repo))).toBe(
       assignableUsersResult

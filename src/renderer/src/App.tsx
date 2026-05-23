@@ -32,7 +32,6 @@ import type { JSX } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type {
-  BranchProtectionResult,
   CodeScanningAlertsResult,
   ContributorSummary,
   DependabotAlertsResult,
@@ -59,13 +58,11 @@ import type {
   RepoFileBlameResult,
   RepositoryAccessResult,
   RepositoryCollaboratorSummary,
-  RepositoryCommunityProfileResult,
   RepositoryDetail,
   RepositoryRef,
   RepositoryForksResult,
   RepositoryRulesetsResult,
   RepositorySecurityAdvisoriesResult,
-  RepositorySecurityPolicyResult,
   RepositorySummary,
   RepositoryWikiResult,
   SecretScanningAlertsResult,
@@ -151,6 +148,7 @@ import { useDiscussionsTabQueries } from "./components/repository/discussions/Di
 import { expandedFileBlameRangeLimit } from "./components/repository/FileBlamePanel";
 import { useIssuesTabQueries } from "./components/repository/issues/IssuesTab";
 import { useProjectsTabQueries } from "./components/repository/projects/ProjectsTab";
+import { usePullRequestsTabQueries } from "./components/repository/pull-requests/PullRequestsTab";
 import { useReleasesTabQueries } from "./components/repository/releases/ReleasesTab";
 import { RightRail } from "./components/right-rail/RightRail";
 import { SettingsPanel } from "./components/settings/SettingsPanel";
@@ -2164,46 +2162,18 @@ export function App(): JSX.Element {
   const issueItems = issues.data?.items ?? [];
   const issuesAvailability = issues.data?.availability ?? null;
 
-  const repositoryAccess = useQuery<RepositoryAccessResult>({
-    queryKey: ["repository-access", owner, repo, repositoryAccessLimit],
-    queryFn: () =>
-      api.github.getRepositoryAccess({ owner, repo, limit: repositoryAccessLimit, cacheOnly: !githubReady }),
-    enabled:
-      appState.isSuccess && isRepositoryRoute && activeRepositoryTab === "settings" && hasRepositoryParts,
-    staleTime: 120_000
-  });
-
-  const repositoryForks = useQuery<RepositoryForksResult>({
-    queryKey: ["repository-forks", owner, repo, forksLimit],
-    queryFn: () =>
-      api.github.listRepositoryForks({
-        owner,
-        repo,
-        sort: "stargazers",
-        limit: forksLimit,
-        cacheOnly: !githubReady
-      }),
-    enabled:
-      appState.isSuccess && isRepositoryRoute && activeRepositoryTab === "settings" && hasRepositoryParts,
-    staleTime: 120_000
-  });
-
-  const pulls = useQuery({
-    queryKey: ["pulls", owner, repo, pullRequestListLimit],
-    queryFn: () =>
-      api.github.listPullRequestsWithStatus({
-        owner,
-        repo,
-        state: "all",
-        limit: pullRequestListLimit,
-        cacheOnly: !githubReady
-      }),
-    enabled:
+  const { pulls } = usePullRequestsTabQueries({
+    owner,
+    repo,
+    pullRequestListLimit,
+    pullsEnabled:
       appState.isSuccess &&
       isRepositoryRoute &&
       (shouldLoadRepositoryTab("pulls") || activeRepositoryTab === "agents") &&
       hasRepositoryParts,
-    staleTime: 60_000
+    resourcesEnabled:
+      appState.isSuccess && isRepositoryRoute && shouldLoadRepositoryTab("pulls") && hasRepositoryParts,
+    githubReady
   });
   const pullItems = pulls.data?.items ?? [];
   const pullsAvailability = pulls.data?.availability ?? null;
@@ -2241,142 +2211,6 @@ export function App(): JSX.Element {
     repositorySelectedRef && branchItems.some((branch) => branch.name === repositorySelectedRef)
       ? repositorySelectedRef
       : (repositoryDetail?.defaultBranch ?? null);
-
-  const branchProtection = useQuery<BranchProtectionResult>({
-    queryKey: ["branch-protection", owner, repo, branchProtectionBranch ?? "none"],
-    queryFn: () =>
-      api.github.getBranchProtection({
-        owner,
-        repo,
-        branch: branchProtectionBranch!,
-        cacheOnly: !githubReady
-      }),
-    enabled:
-      appState.isSuccess &&
-      isRepositoryRoute &&
-      activeRepositoryTab === "securityQuality" &&
-      hasRepositoryParts &&
-      Boolean(branchProtectionBranch),
-    staleTime: 60_000
-  });
-
-  const dependabotAlerts = useQuery<DependabotAlertsResult>({
-    queryKey: ["dependabot-alerts", owner, repo, dependabotAlertsLimit],
-    queryFn: () =>
-      api.github.listDependabotAlerts({
-        owner,
-        repo,
-        state: "open",
-        limit: dependabotAlertsLimit,
-        cacheOnly: !githubReady
-      }),
-    enabled:
-      appState.isSuccess &&
-      isRepositoryRoute &&
-      activeRepositoryTab === "securityQuality" &&
-      hasRepositoryParts,
-    staleTime: 60_000
-  });
-
-  const codeScanningAlerts = useQuery<CodeScanningAlertsResult>({
-    queryKey: ["code-scanning-alerts", owner, repo, codeScanningAlertsLimit],
-    queryFn: () =>
-      api.github.listCodeScanningAlerts({
-        owner,
-        repo,
-        state: "open",
-        limit: codeScanningAlertsLimit,
-        cacheOnly: !githubReady
-      }),
-    enabled:
-      appState.isSuccess &&
-      isRepositoryRoute &&
-      activeRepositoryTab === "securityQuality" &&
-      hasRepositoryParts,
-    staleTime: 60_000
-  });
-
-  const secretScanningAlerts = useQuery<SecretScanningAlertsResult>({
-    queryKey: ["secret-scanning-alerts", owner, repo, secretScanningAlertsLimit],
-    queryFn: () =>
-      api.github.listSecretScanningAlerts({
-        owner,
-        repo,
-        state: "open",
-        limit: secretScanningAlertsLimit,
-        cacheOnly: !githubReady
-      }),
-    enabled:
-      appState.isSuccess &&
-      isRepositoryRoute &&
-      activeRepositoryTab === "securityQuality" &&
-      hasRepositoryParts,
-    staleTime: 60_000
-  });
-
-  const repositoryRulesets = useQuery<RepositoryRulesetsResult>({
-    queryKey: ["repository-rulesets", owner, repo, repositoryRulesetsLimit],
-    queryFn: () =>
-      api.github.listRepositoryRulesets({
-        owner,
-        repo,
-        includesParents: true,
-        limit: repositoryRulesetsLimit,
-        cacheOnly: !githubReady
-      }),
-    enabled:
-      appState.isSuccess &&
-      isRepositoryRoute &&
-      activeRepositoryTab === "securityQuality" &&
-      hasRepositoryParts,
-    staleTime: 60_000
-  });
-
-  const repositorySecurityAdvisories = useQuery<RepositorySecurityAdvisoriesResult>({
-    queryKey: ["repository-security-advisories", owner, repo, repositorySecurityAdvisoriesLimit],
-    queryFn: () =>
-      api.github.listRepositorySecurityAdvisories({
-        owner,
-        repo,
-        limit: repositorySecurityAdvisoriesLimit,
-        cacheOnly: !githubReady
-      }),
-    enabled:
-      appState.isSuccess &&
-      isRepositoryRoute &&
-      activeRepositoryTab === "securityQuality" &&
-      hasRepositoryParts,
-    staleTime: 60_000
-  });
-
-  const repositorySecurityPolicy = useQuery<RepositorySecurityPolicyResult>({
-    queryKey: ["repository-security-policy", owner, repo, repositoryDetail?.defaultBranch ?? "none"],
-    queryFn: () =>
-      api.github.getRepositorySecurityPolicy({
-        owner,
-        repo,
-        ref: repositoryDetail?.defaultBranch ?? null,
-        cacheOnly: !githubReady
-      }),
-    enabled:
-      appState.isSuccess &&
-      isRepositoryRoute &&
-      activeRepositoryTab === "securityQuality" &&
-      hasRepositoryParts &&
-      Boolean(repositoryDetail?.defaultBranch),
-    staleTime: 120_000
-  });
-
-  const repositoryCommunityProfile = useQuery<RepositoryCommunityProfileResult>({
-    queryKey: ["repository-community-profile", owner, repo],
-    queryFn: () => api.github.getRepositoryCommunityProfile({ owner, repo, cacheOnly: !githubReady }),
-    enabled:
-      appState.isSuccess &&
-      isRepositoryRoute &&
-      activeRepositoryTab === "securityQuality" &&
-      hasRepositoryParts,
-    staleTime: 120_000
-  });
 
   const { releases } = useReleasesTabQueries({
     owner,
@@ -5314,8 +5148,18 @@ export function App(): JSX.Element {
         }
       }
 
-      if (repositoryAccess.data?.collaborators) {
-        for (const collaborator of repositoryAccess.data.collaborators.slice(
+      const commandPaletteRepositoryAccess = queryClient.getQueryData<RepositoryAccessResult>([
+        "repository-access",
+        owner,
+        repo,
+        repositoryAccessLimit
+      ]);
+      const commandPaletteRepositoryForks =
+        queryClient.getQueryData<RepositoryForksResult>(["repository-forks", owner, repo, forksLimit])
+          ?.items ?? [];
+
+      if (commandPaletteRepositoryAccess?.collaborators) {
+        for (const collaborator of commandPaletteRepositoryAccess.collaborators.slice(
           0,
           commandPaletteDenseSourceLimit
         )) {
@@ -5344,8 +5188,8 @@ export function App(): JSX.Element {
         }
       }
 
-      if (repositoryAccess.data?.teams) {
-        for (const team of repositoryAccess.data.teams.slice(0, commandPaletteDenseSourceLimit)) {
+      if (commandPaletteRepositoryAccess?.teams) {
+        for (const team of commandPaletteRepositoryAccess.teams.slice(0, commandPaletteDenseSourceLimit)) {
           const permissionLabel = accessRoleLabel(team.permission);
           const memberCountLabel =
             team.memberCount !== null ? `${formatCompactNumber(team.memberCount)} members` : null;
@@ -5397,11 +5241,11 @@ export function App(): JSX.Element {
         }
       }
 
-      if (repositoryForks.data?.items) {
+      if (commandPaletteRepositoryForks.length > 0) {
         const currentRepositoryParent = repositoryDetail?.parent ?? null;
         const currentRepositorySource = repositoryDetail?.source ?? null;
 
-        for (const fork of repositoryForks.data.items.slice(0, forksLimit)) {
+        for (const fork of commandPaletteRepositoryForks.slice(0, forksLimit)) {
           const metadataLabel = repositoryForkMetadataLabel(fork);
           const parentLabel = currentRepositoryParent?.nameWithOwner ?? null;
           const sourceLabel = currentRepositorySource?.nameWithOwner ?? null;
@@ -5596,8 +5440,44 @@ export function App(): JSX.Element {
         }
       }
 
-      if (dependabotAlerts.data?.items) {
-        for (const alert of dependabotAlerts.data.items.slice(0, commandPaletteSecuritySourceLimit)) {
+      const commandPaletteDependabotAlerts =
+        queryClient.getQueryData<DependabotAlertsResult>([
+          "dependabot-alerts",
+          owner,
+          repo,
+          dependabotAlertsLimit
+        ])?.items ?? [];
+      const commandPaletteCodeScanningAlerts =
+        queryClient.getQueryData<CodeScanningAlertsResult>([
+          "code-scanning-alerts",
+          owner,
+          repo,
+          codeScanningAlertsLimit
+        ])?.items ?? [];
+      const commandPaletteSecretScanningAlerts =
+        queryClient.getQueryData<SecretScanningAlertsResult>([
+          "secret-scanning-alerts",
+          owner,
+          repo,
+          secretScanningAlertsLimit
+        ])?.items ?? [];
+      const commandPaletteSecurityAdvisories =
+        queryClient.getQueryData<RepositorySecurityAdvisoriesResult>([
+          "repository-security-advisories",
+          owner,
+          repo,
+          repositorySecurityAdvisoriesLimit
+        ])?.items ?? [];
+      const commandPaletteRepositoryRulesets =
+        queryClient.getQueryData<RepositoryRulesetsResult>([
+          "repository-rulesets",
+          owner,
+          repo,
+          repositoryRulesetsLimit
+        ])?.items ?? [];
+
+      if (commandPaletteDependabotAlerts.length > 0) {
+        for (const alert of commandPaletteDependabotAlerts.slice(0, commandPaletteSecuritySourceLimit)) {
           items.push({
             id: `security-dependabot-${effectiveRepository}-${alert.number}`,
             title: alert.packageName ?? `Dependabot alert #${alert.number}`,
@@ -5640,8 +5520,8 @@ export function App(): JSX.Element {
         }
       }
 
-      if (codeScanningAlerts.data?.items) {
-        for (const alert of codeScanningAlerts.data.items.slice(0, commandPaletteSecuritySourceLimit)) {
+      if (commandPaletteCodeScanningAlerts.length > 0) {
+        for (const alert of commandPaletteCodeScanningAlerts.slice(0, commandPaletteSecuritySourceLimit)) {
           const title = alert.ruleName ?? alert.ruleId ?? `Code scanning alert #${alert.number}`;
           items.push({
             id: `security-code-scanning-${effectiveRepository}-${alert.number}`,
@@ -5689,8 +5569,8 @@ export function App(): JSX.Element {
         }
       }
 
-      if (secretScanningAlerts.data?.items) {
-        for (const alert of secretScanningAlerts.data.items.slice(0, commandPaletteSecuritySourceLimit)) {
+      if (commandPaletteSecretScanningAlerts.length > 0) {
+        for (const alert of commandPaletteSecretScanningAlerts.slice(0, commandPaletteSecuritySourceLimit)) {
           const title =
             alert.secretTypeDisplayName ?? alert.secretType ?? `Secret scanning alert #${alert.number}`;
           items.push({
@@ -5738,8 +5618,8 @@ export function App(): JSX.Element {
         }
       }
 
-      if (repositoryRulesets.data?.items) {
-        for (const ruleset of repositoryRulesets.data.items.slice(0, commandPaletteSecuritySourceLimit)) {
+      if (commandPaletteRepositoryRulesets.length > 0) {
+        for (const ruleset of commandPaletteRepositoryRulesets.slice(0, commandPaletteSecuritySourceLimit)) {
           items.push({
             id: `security-ruleset-${effectiveRepository}-${ruleset.id}`,
             title: ruleset.name,
@@ -5794,11 +5674,8 @@ export function App(): JSX.Element {
         }
       }
 
-      if (repositorySecurityAdvisories.data?.items) {
-        for (const advisory of repositorySecurityAdvisories.data.items.slice(
-          0,
-          commandPaletteSecuritySourceLimit
-        )) {
+      if (commandPaletteSecurityAdvisories.length > 0) {
+        for (const advisory of commandPaletteSecurityAdvisories.slice(0, commandPaletteSecuritySourceLimit)) {
           items.push({
             id: `security-advisory-${effectiveRepository}-${advisory.ghsaId}`,
             title: advisory.summary,
@@ -6476,14 +6353,8 @@ export function App(): JSX.Element {
                   milestonesLoading={milestones.isLoading || milestones.isFetching}
                   milestonesError={milestones.error}
                   milestonesAvailability={milestonesAvailability}
-                  repositoryAccess={repositoryAccess.data ?? null}
                   repositoryAccessLimit={repositoryAccessLimit}
-                  repositoryAccessLoading={repositoryAccess.isLoading || repositoryAccess.isFetching}
-                  repositoryAccessError={repositoryAccess.error}
-                  repositoryForks={repositoryForks.data ?? null}
                   forksLimit={forksLimit}
-                  repositoryForksLoading={repositoryForks.isLoading || repositoryForks.isFetching}
-                  repositoryForksError={repositoryForks.error}
                   pulls={pullItems}
                   pullRequestListLimit={pullRequestListLimit}
                   pullsLoading={pulls.isLoading || pulls.isFetching}
@@ -6505,57 +6376,11 @@ export function App(): JSX.Element {
                   projectsLoading={projects.isLoading || projects.isFetching}
                   projectsAvailability={projects.data?.availability ?? null}
                   projectsError={projects.error}
-                  branchProtectionBranch={branchProtectionBranch}
-                  branchProtectionBranches={branchItems}
-                  branchProtectionBranchesLoading={branches.isLoading || branches.isFetching}
-                  branchProtectionBranchesError={branches.error}
-                  branchProtection={branchProtection.data ?? null}
-                  branchProtectionLoading={branchProtection.isLoading || branchProtection.isFetching}
-                  branchProtectionError={branchProtection.error}
-                  dependabotAlerts={dependabotAlerts.data?.items ?? []}
                   dependabotAlertsLimit={dependabotAlertsLimit}
-                  dependabotAlertsLoading={dependabotAlerts.isLoading || dependabotAlerts.isFetching}
-                  dependabotAlertsAvailability={dependabotAlerts.data?.availability ?? null}
-                  dependabotAlertsError={dependabotAlerts.error}
-                  codeScanningAlerts={codeScanningAlerts.data?.items ?? []}
                   codeScanningAlertsLimit={codeScanningAlertsLimit}
-                  codeScanningAlertsLoading={codeScanningAlerts.isLoading || codeScanningAlerts.isFetching}
-                  codeScanningAlertsAvailability={codeScanningAlerts.data?.availability ?? null}
-                  codeScanningAlertsError={codeScanningAlerts.error}
-                  secretScanningAlerts={secretScanningAlerts.data?.items ?? []}
                   secretScanningAlertsLimit={secretScanningAlertsLimit}
-                  secretScanningAlertsLoading={
-                    secretScanningAlerts.isLoading || secretScanningAlerts.isFetching
-                  }
-                  secretScanningAlertsAvailability={secretScanningAlerts.data?.availability ?? null}
-                  secretScanningAlertsError={secretScanningAlerts.error}
-                  repositoryRulesets={repositoryRulesets.data?.items ?? []}
                   repositoryRulesetsLimit={repositoryRulesetsLimit}
-                  repositoryRulesetsLoading={repositoryRulesets.isLoading || repositoryRulesets.isFetching}
-                  repositoryRulesetsAvailability={repositoryRulesets.data?.availability ?? null}
-                  repositoryRulesetsError={repositoryRulesets.error}
-                  repositorySecurityAdvisories={repositorySecurityAdvisories.data?.items ?? []}
                   repositorySecurityAdvisoriesLimit={repositorySecurityAdvisoriesLimit}
-                  repositorySecurityAdvisoriesLoading={
-                    repositorySecurityAdvisories.isLoading || repositorySecurityAdvisories.isFetching
-                  }
-                  repositorySecurityAdvisoriesAvailability={
-                    repositorySecurityAdvisories.data?.availability ?? null
-                  }
-                  repositorySecurityAdvisoriesError={repositorySecurityAdvisories.error}
-                  repositorySecurityPolicy={repositorySecurityPolicy.data ?? null}
-                  repositorySecurityPolicyLoading={
-                    repositorySecurityPolicy.isLoading || repositorySecurityPolicy.isFetching
-                  }
-                  repositorySecurityPolicyError={repositorySecurityPolicy.error}
-                  repositoryCommunityProfile={repositoryCommunityProfile.data?.profile ?? null}
-                  repositoryCommunityProfileLoading={
-                    repositoryCommunityProfile.isLoading || repositoryCommunityProfile.isFetching
-                  }
-                  repositoryCommunityProfileAvailability={
-                    repositoryCommunityProfile.data?.availability ?? null
-                  }
-                  repositoryCommunityProfileError={repositoryCommunityProfile.error}
                   releases={releaseItems}
                   releasesLimit={releasesLimit}
                   releasesLoading={releases.isLoading || releases.isFetching}
@@ -6579,20 +6404,7 @@ export function App(): JSX.Element {
                     (activeRepositoryTab === "projects" ? projects.error : null) ??
                     (activeRepositoryTab === "releases" ? releases.error : null) ??
                     (activeRepositoryTab === "contributors" ? contributors.error : null) ??
-                    (activeRepositoryTab === "actions" ? actions.error : null) ??
-                    (activeRepositoryTab === "securityQuality"
-                      ? (branchProtection.error ??
-                        dependabotAlerts.error ??
-                        codeScanningAlerts.error ??
-                        secretScanningAlerts.error ??
-                        repositoryRulesets.error ??
-                        repositorySecurityAdvisories.error ??
-                        repositorySecurityPolicy.error ??
-                        repositoryCommunityProfile.error)
-                      : null) ??
-                    (activeRepositoryTab === "settings"
-                      ? (repositoryAccess.error ?? repositoryForks.error)
-                      : null)
+                    (activeRepositoryTab === "actions" ? actions.error : null)
                   }
                   onOpenCodeBrowser={(entry) =>
                     openCodeBrowserInApp(

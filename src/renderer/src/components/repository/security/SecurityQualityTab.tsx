@@ -12,22 +12,23 @@ import {
   X
 } from "lucide-react";
 import { useState, type JSX } from "react";
+import { useQuery, type QueryClient } from "@tanstack/react-query";
 
 import type {
-  BranchSummary,
   BranchProtectionResult,
-  CodeScanningAlertSummary,
-  DependabotAlertSummary,
+  CodeScanningAlertsResult,
+  DependabotAlertsResult,
   GitHubAction,
   GitHubMutationFields,
-  GitHubReadAvailability,
   RepositoryCommunityProfileResult,
   RepositoryDetail,
+  RepositoryRulesetsResult,
   RepositoryRulesetSummary,
-  RepositorySecurityAdvisorySummary,
+  RepositorySecurityAdvisoriesResult,
   RepositorySecurityPolicyResult,
-  SecretScanningAlertSummary
+  SecretScanningAlertsResult
 } from "@shared/github";
+import type { ControlApi } from "@shared/ipc";
 import type { LocalRecentSecurityItemKind } from "@shared/local";
 
 import {
@@ -36,6 +37,13 @@ import {
   readAvailabilityStatusLabel,
   repositoryPath
 } from "@renderer/components/repository/repositoryUi";
+import {
+  repositoryBranchProtectionBranchFor,
+  repositoryBranchProtectionQueryKey,
+  repositoryRulesetsQueryKey
+} from "@renderer/components/repository/repositoryAdminQueryKeys";
+import { useControlApi } from "@renderer/hooks/useControlApi";
+import { useRepositoryRefs } from "@renderer/hooks/useRepositoryRefs";
 
 import { formatCompactNumber, formatRelativeDate } from "@renderer/utils/format";
 
@@ -55,6 +63,334 @@ interface SecurityItemRecentInput {
   updatedAt?: string | null;
 }
 const maxSecurityListLimit = 100;
+
+export interface SecurityQualityTabQueryInput {
+  owner: string;
+  repo: string;
+  selectedRef: string | null;
+  defaultBranch: string | null;
+  refListLimit: number;
+  dependabotAlertsLimit: number;
+  codeScanningAlertsLimit: number;
+  secretScanningAlertsLimit: number;
+  repositoryRulesetsLimit: number;
+  repositorySecurityAdvisoriesLimit: number;
+  enabled: boolean;
+  githubReady: boolean;
+}
+
+export interface SecurityQualityTabPrefetchInput {
+  api: ControlApi;
+  owner: string;
+  repo: string;
+  branchProtectionBranch: string | null;
+  defaultBranch: string | null;
+  dependabotAlertsLimit: number;
+  codeScanningAlertsLimit: number;
+  secretScanningAlertsLimit: number;
+  repositoryRulesetsLimit: number;
+  repositorySecurityAdvisoriesLimit: number;
+  githubReady: boolean;
+}
+
+export function dependabotAlertsQueryKey(
+  owner: string,
+  repo: string,
+  limit: number
+): readonly ["dependabot-alerts", string, string, number] {
+  return ["dependabot-alerts", owner, repo, limit] as const;
+}
+
+export function codeScanningAlertsQueryKey(
+  owner: string,
+  repo: string,
+  limit: number
+): readonly ["code-scanning-alerts", string, string, number] {
+  return ["code-scanning-alerts", owner, repo, limit] as const;
+}
+
+export function secretScanningAlertsQueryKey(
+  owner: string,
+  repo: string,
+  limit: number
+): readonly ["secret-scanning-alerts", string, string, number] {
+  return ["secret-scanning-alerts", owner, repo, limit] as const;
+}
+
+export function repositorySecurityAdvisoriesQueryKey(
+  owner: string,
+  repo: string,
+  limit: number
+): readonly ["repository-security-advisories", string, string, number] {
+  return ["repository-security-advisories", owner, repo, limit] as const;
+}
+
+export function repositorySecurityPolicyQueryKey(
+  owner: string,
+  repo: string,
+  defaultBranch: string | null
+): readonly ["repository-security-policy", string, string, string] {
+  return ["repository-security-policy", owner, repo, defaultBranch ?? "none"] as const;
+}
+
+export function repositoryCommunityProfileQueryKey(
+  owner: string,
+  repo: string
+): readonly ["repository-community-profile", string, string] {
+  return ["repository-community-profile", owner, repo] as const;
+}
+
+export function useSecurityQualityTabQueries({
+  owner,
+  repo,
+  selectedRef,
+  defaultBranch,
+  refListLimit,
+  dependabotAlertsLimit,
+  codeScanningAlertsLimit,
+  secretScanningAlertsLimit,
+  repositoryRulesetsLimit,
+  repositorySecurityAdvisoriesLimit,
+  enabled,
+  githubReady
+}: SecurityQualityTabQueryInput) {
+  const api = useControlApi();
+  const refs = useRepositoryRefs(owner, repo, { branches: enabled, tags: false }, refListLimit, {
+    githubReady
+  });
+  const branchProtectionBranch = repositoryBranchProtectionBranchFor(
+    selectedRef,
+    refs.branchItems,
+    defaultBranch
+  );
+
+  const branchProtection = useQuery<BranchProtectionResult>({
+    queryKey: repositoryBranchProtectionQueryKey(owner, repo, branchProtectionBranch),
+    queryFn: () =>
+      api.github.getBranchProtection({
+        owner,
+        repo,
+        branch: branchProtectionBranch!,
+        cacheOnly: !githubReady
+      }),
+    enabled: enabled && Boolean(branchProtectionBranch),
+    staleTime: 60_000
+  });
+
+  const dependabotAlerts = useQuery<DependabotAlertsResult>({
+    queryKey: dependabotAlertsQueryKey(owner, repo, dependabotAlertsLimit),
+    queryFn: () =>
+      api.github.listDependabotAlerts({
+        owner,
+        repo,
+        state: "open",
+        limit: dependabotAlertsLimit,
+        cacheOnly: !githubReady
+      }),
+    enabled,
+    staleTime: 60_000
+  });
+
+  const codeScanningAlerts = useQuery<CodeScanningAlertsResult>({
+    queryKey: codeScanningAlertsQueryKey(owner, repo, codeScanningAlertsLimit),
+    queryFn: () =>
+      api.github.listCodeScanningAlerts({
+        owner,
+        repo,
+        state: "open",
+        limit: codeScanningAlertsLimit,
+        cacheOnly: !githubReady
+      }),
+    enabled,
+    staleTime: 60_000
+  });
+
+  const secretScanningAlerts = useQuery<SecretScanningAlertsResult>({
+    queryKey: secretScanningAlertsQueryKey(owner, repo, secretScanningAlertsLimit),
+    queryFn: () =>
+      api.github.listSecretScanningAlerts({
+        owner,
+        repo,
+        state: "open",
+        limit: secretScanningAlertsLimit,
+        cacheOnly: !githubReady
+      }),
+    enabled,
+    staleTime: 60_000
+  });
+
+  const repositoryRulesets = useQuery<RepositoryRulesetsResult>({
+    queryKey: repositoryRulesetsQueryKey(owner, repo, repositoryRulesetsLimit),
+    queryFn: () =>
+      api.github.listRepositoryRulesets({
+        owner,
+        repo,
+        includesParents: true,
+        limit: repositoryRulesetsLimit,
+        cacheOnly: !githubReady
+      }),
+    enabled,
+    staleTime: 60_000
+  });
+
+  const repositorySecurityAdvisories = useQuery<RepositorySecurityAdvisoriesResult>({
+    queryKey: repositorySecurityAdvisoriesQueryKey(owner, repo, repositorySecurityAdvisoriesLimit),
+    queryFn: () =>
+      api.github.listRepositorySecurityAdvisories({
+        owner,
+        repo,
+        limit: repositorySecurityAdvisoriesLimit,
+        cacheOnly: !githubReady
+      }),
+    enabled,
+    staleTime: 60_000
+  });
+
+  const repositorySecurityPolicy = useQuery<RepositorySecurityPolicyResult>({
+    queryKey: repositorySecurityPolicyQueryKey(owner, repo, defaultBranch),
+    queryFn: () =>
+      api.github.getRepositorySecurityPolicy({
+        owner,
+        repo,
+        ref: defaultBranch,
+        cacheOnly: !githubReady
+      }),
+    enabled: enabled && Boolean(defaultBranch),
+    staleTime: 120_000
+  });
+
+  const repositoryCommunityProfile = useQuery<RepositoryCommunityProfileResult>({
+    queryKey: repositoryCommunityProfileQueryKey(owner, repo),
+    queryFn: () => api.github.getRepositoryCommunityProfile({ owner, repo, cacheOnly: !githubReady }),
+    enabled,
+    staleTime: 120_000
+  });
+
+  return {
+    branchProtectionBranch,
+    branchProtectionBranches: refs.branchItems,
+    branchProtectionBranchesLoading: refs.branches.isLoading || refs.branches.isFetching,
+    branchProtectionBranchesError: refs.branches.error,
+    branchProtection,
+    dependabotAlerts,
+    codeScanningAlerts,
+    secretScanningAlerts,
+    repositoryRulesets,
+    repositorySecurityAdvisories,
+    repositorySecurityPolicy,
+    repositoryCommunityProfile
+  };
+}
+
+export async function prefetchSecurityQualityTabData(
+  queryClient: QueryClient,
+  {
+    api,
+    owner,
+    repo,
+    branchProtectionBranch,
+    defaultBranch,
+    dependabotAlertsLimit,
+    codeScanningAlertsLimit,
+    secretScanningAlertsLimit,
+    repositoryRulesetsLimit,
+    repositorySecurityAdvisoriesLimit,
+    githubReady
+  }: SecurityQualityTabPrefetchInput
+): Promise<void> {
+  await Promise.all([
+    branchProtectionBranch
+      ? queryClient.prefetchQuery({
+          queryKey: repositoryBranchProtectionQueryKey(owner, repo, branchProtectionBranch),
+          queryFn: () =>
+            api.github.getBranchProtection({
+              owner,
+              repo,
+              branch: branchProtectionBranch,
+              cacheOnly: !githubReady
+            }),
+          staleTime: 60_000
+        })
+      : Promise.resolve(),
+    queryClient.prefetchQuery({
+      queryKey: dependabotAlertsQueryKey(owner, repo, dependabotAlertsLimit),
+      queryFn: () =>
+        api.github.listDependabotAlerts({
+          owner,
+          repo,
+          state: "open",
+          limit: dependabotAlertsLimit,
+          cacheOnly: !githubReady
+        }),
+      staleTime: 60_000
+    }),
+    queryClient.prefetchQuery({
+      queryKey: codeScanningAlertsQueryKey(owner, repo, codeScanningAlertsLimit),
+      queryFn: () =>
+        api.github.listCodeScanningAlerts({
+          owner,
+          repo,
+          state: "open",
+          limit: codeScanningAlertsLimit,
+          cacheOnly: !githubReady
+        }),
+      staleTime: 60_000
+    }),
+    queryClient.prefetchQuery({
+      queryKey: secretScanningAlertsQueryKey(owner, repo, secretScanningAlertsLimit),
+      queryFn: () =>
+        api.github.listSecretScanningAlerts({
+          owner,
+          repo,
+          state: "open",
+          limit: secretScanningAlertsLimit,
+          cacheOnly: !githubReady
+        }),
+      staleTime: 60_000
+    }),
+    queryClient.prefetchQuery({
+      queryKey: repositoryRulesetsQueryKey(owner, repo, repositoryRulesetsLimit),
+      queryFn: () =>
+        api.github.listRepositoryRulesets({
+          owner,
+          repo,
+          includesParents: true,
+          limit: repositoryRulesetsLimit,
+          cacheOnly: !githubReady
+        }),
+      staleTime: 60_000
+    }),
+    queryClient.prefetchQuery({
+      queryKey: repositorySecurityAdvisoriesQueryKey(owner, repo, repositorySecurityAdvisoriesLimit),
+      queryFn: () =>
+        api.github.listRepositorySecurityAdvisories({
+          owner,
+          repo,
+          limit: repositorySecurityAdvisoriesLimit,
+          cacheOnly: !githubReady
+        }),
+      staleTime: 60_000
+    }),
+    defaultBranch
+      ? queryClient.prefetchQuery({
+          queryKey: repositorySecurityPolicyQueryKey(owner, repo, defaultBranch),
+          queryFn: () =>
+            api.github.getRepositorySecurityPolicy({
+              owner,
+              repo,
+              ref: defaultBranch,
+              cacheOnly: !githubReady
+            }),
+          staleTime: 120_000
+        })
+      : Promise.resolve(),
+    queryClient.prefetchQuery({
+      queryKey: repositoryCommunityProfileQueryKey(owner, repo),
+      queryFn: () => api.github.getRepositoryCommunityProfile({ owner, repo, cacheOnly: !githubReady }),
+      staleTime: 120_000
+    })
+  ]);
+}
 
 function normalizeGitHubCodeRef(ref: string | null | undefined): string | null {
   const trimmedRef = ref?.trim();
@@ -129,45 +465,13 @@ function rulesetPartLabel(name: string, details: string[]): string {
 
 export function SecurityQualityTab({
   repository,
-  branchProtectionBranch,
-  branchProtectionBranches,
-  branchProtectionBranchesLoading,
-  branchProtectionBranchesError,
-  branchProtection,
-  branchProtectionLoading,
-  branchProtectionError,
-  dependabotAlerts,
+  selectedRef,
+  refListLimit,
   dependabotAlertsLimit,
-  dependabotAlertsLoading,
-  dependabotAlertsAvailability,
-  dependabotAlertsError,
-  codeScanningAlerts,
   codeScanningAlertsLimit,
-  codeScanningAlertsLoading,
-  codeScanningAlertsAvailability,
-  codeScanningAlertsError,
-  secretScanningAlerts,
   secretScanningAlertsLimit,
-  secretScanningAlertsLoading,
-  secretScanningAlertsAvailability,
-  secretScanningAlertsError,
-  repositoryRulesets,
   repositoryRulesetsLimit,
-  repositoryRulesetsLoading,
-  repositoryRulesetsAvailability,
-  repositoryRulesetsError,
-  repositorySecurityAdvisories,
   repositorySecurityAdvisoriesLimit,
-  repositorySecurityAdvisoriesLoading,
-  repositorySecurityAdvisoriesAvailability,
-  repositorySecurityAdvisoriesError,
-  repositorySecurityPolicy,
-  repositorySecurityPolicyLoading,
-  repositorySecurityPolicyError,
-  repositoryCommunityProfile,
-  repositoryCommunityProfileLoading,
-  repositoryCommunityProfileAvailability,
-  repositoryCommunityProfileError,
   githubReady,
   mutationAction,
   mutationPending,
@@ -187,45 +491,13 @@ export function SecurityQualityTab({
   onMutate
 }: {
   repository: RepositoryDetail;
-  branchProtectionBranch: string | null;
-  branchProtectionBranches: BranchSummary[];
-  branchProtectionBranchesLoading: boolean;
-  branchProtectionBranchesError: Error | null;
-  branchProtection: BranchProtectionResult | null;
-  branchProtectionLoading: boolean;
-  branchProtectionError: Error | null;
-  dependabotAlerts: DependabotAlertSummary[];
+  selectedRef: string | null;
+  refListLimit: number;
   dependabotAlertsLimit: number;
-  dependabotAlertsLoading: boolean;
-  dependabotAlertsAvailability: GitHubReadAvailability | null;
-  dependabotAlertsError: Error | null;
-  codeScanningAlerts: CodeScanningAlertSummary[];
   codeScanningAlertsLimit: number;
-  codeScanningAlertsLoading: boolean;
-  codeScanningAlertsAvailability: GitHubReadAvailability | null;
-  codeScanningAlertsError: Error | null;
-  secretScanningAlerts: SecretScanningAlertSummary[];
   secretScanningAlertsLimit: number;
-  secretScanningAlertsLoading: boolean;
-  secretScanningAlertsAvailability: GitHubReadAvailability | null;
-  secretScanningAlertsError: Error | null;
-  repositoryRulesets: RepositoryRulesetSummary[];
   repositoryRulesetsLimit: number;
-  repositoryRulesetsLoading: boolean;
-  repositoryRulesetsAvailability: GitHubReadAvailability | null;
-  repositoryRulesetsError: Error | null;
-  repositorySecurityAdvisories: RepositorySecurityAdvisorySummary[];
   repositorySecurityAdvisoriesLimit: number;
-  repositorySecurityAdvisoriesLoading: boolean;
-  repositorySecurityAdvisoriesAvailability: GitHubReadAvailability | null;
-  repositorySecurityAdvisoriesError: Error | null;
-  repositorySecurityPolicy: RepositorySecurityPolicyResult | null;
-  repositorySecurityPolicyLoading: boolean;
-  repositorySecurityPolicyError: Error | null;
-  repositoryCommunityProfile: RepositoryCommunityProfileResult["profile"];
-  repositoryCommunityProfileLoading: boolean;
-  repositoryCommunityProfileAvailability: GitHubReadAvailability | null;
-  repositoryCommunityProfileError: Error | null;
   githubReady: boolean;
   mutationAction: GitHubAction | null;
   mutationPending: boolean;
@@ -244,7 +516,69 @@ export function SecurityQualityTab({
   onExpandRepositorySecurityAdvisories(): void;
   onMutate(action: GitHubAction, dangerous: boolean, payload?: GitHubMutationFields): void;
 }): JSX.Element {
+  const {
+    branchProtectionBranch,
+    branchProtectionBranches,
+    branchProtectionBranchesLoading,
+    branchProtectionBranchesError,
+    branchProtection: branchProtectionQuery,
+    dependabotAlerts: dependabotAlertsQuery,
+    codeScanningAlerts: codeScanningAlertsQuery,
+    secretScanningAlerts: secretScanningAlertsQuery,
+    repositoryRulesets: repositoryRulesetsQuery,
+    repositorySecurityAdvisories: repositorySecurityAdvisoriesQuery,
+    repositorySecurityPolicy: repositorySecurityPolicyQuery,
+    repositoryCommunityProfile: repositoryCommunityProfileQuery
+  } = useSecurityQualityTabQueries({
+    owner: repository.owner,
+    repo: repository.name,
+    selectedRef,
+    defaultBranch: repository.defaultBranch ?? null,
+    refListLimit,
+    dependabotAlertsLimit,
+    codeScanningAlertsLimit,
+    secretScanningAlertsLimit,
+    repositoryRulesetsLimit,
+    repositorySecurityAdvisoriesLimit,
+    enabled: true,
+    githubReady
+  });
+  const branchProtection = branchProtectionQuery.data ?? null;
   const protection = branchProtection?.protection ?? null;
+  const branchProtectionLoading = branchProtectionQuery.isLoading || branchProtectionQuery.isFetching;
+  const branchProtectionError = branchProtectionQuery.error;
+  const dependabotAlerts = dependabotAlertsQuery.data?.items ?? [];
+  const dependabotAlertsLoading = dependabotAlertsQuery.isLoading || dependabotAlertsQuery.isFetching;
+  const dependabotAlertsAvailability = dependabotAlertsQuery.data?.availability ?? null;
+  const dependabotAlertsError = dependabotAlertsQuery.error;
+  const codeScanningAlerts = codeScanningAlertsQuery.data?.items ?? [];
+  const codeScanningAlertsLoading = codeScanningAlertsQuery.isLoading || codeScanningAlertsQuery.isFetching;
+  const codeScanningAlertsAvailability = codeScanningAlertsQuery.data?.availability ?? null;
+  const codeScanningAlertsError = codeScanningAlertsQuery.error;
+  const secretScanningAlerts = secretScanningAlertsQuery.data?.items ?? [];
+  const secretScanningAlertsLoading =
+    secretScanningAlertsQuery.isLoading || secretScanningAlertsQuery.isFetching;
+  const secretScanningAlertsAvailability = secretScanningAlertsQuery.data?.availability ?? null;
+  const secretScanningAlertsError = secretScanningAlertsQuery.error;
+  const repositoryRulesets = repositoryRulesetsQuery.data?.items ?? [];
+  const repositoryRulesetsLoading = repositoryRulesetsQuery.isLoading || repositoryRulesetsQuery.isFetching;
+  const repositoryRulesetsAvailability = repositoryRulesetsQuery.data?.availability ?? null;
+  const repositoryRulesetsError = repositoryRulesetsQuery.error;
+  const repositorySecurityAdvisories = repositorySecurityAdvisoriesQuery.data?.items ?? [];
+  const repositorySecurityAdvisoriesLoading =
+    repositorySecurityAdvisoriesQuery.isLoading || repositorySecurityAdvisoriesQuery.isFetching;
+  const repositorySecurityAdvisoriesAvailability =
+    repositorySecurityAdvisoriesQuery.data?.availability ?? null;
+  const repositorySecurityAdvisoriesError = repositorySecurityAdvisoriesQuery.error;
+  const repositorySecurityPolicy = repositorySecurityPolicyQuery.data ?? null;
+  const repositorySecurityPolicyLoading =
+    repositorySecurityPolicyQuery.isLoading || repositorySecurityPolicyQuery.isFetching;
+  const repositorySecurityPolicyError = repositorySecurityPolicyQuery.error;
+  const repositoryCommunityProfile = repositoryCommunityProfileQuery.data?.profile ?? null;
+  const repositoryCommunityProfileLoading =
+    repositoryCommunityProfileQuery.isLoading || repositoryCommunityProfileQuery.isFetching;
+  const repositoryCommunityProfileAvailability = repositoryCommunityProfileQuery.data?.availability ?? null;
+  const repositoryCommunityProfileError = repositoryCommunityProfileQuery.error;
   const availabilityMessage = readAvailabilityMessage(
     "Branch protection",
     branchProtection?.availability ?? null

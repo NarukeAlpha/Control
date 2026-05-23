@@ -1,6 +1,6 @@
 import { ExternalLink, GitPullRequest, Plus, Search, X } from "lucide-react";
 import { useState, type JSX } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, type QueryClient } from "@tanstack/react-query";
 
 import type {
   AssignableUserSummary,
@@ -17,6 +17,7 @@ import type {
   PullRequestCommitsResult,
   PullRequestFilesResult,
   PullRequestLinkedIssuesResult,
+  PullRequestListResult,
   PullRequestOverviewResult,
   PullRequestReviewsResult,
   PullRequestReviewThreadsResult,
@@ -31,6 +32,7 @@ import type {
   RepositoryDetail,
   TimelineCommentSummary
 } from "@shared/github";
+import type { ControlApi } from "@shared/ipc";
 
 import { markdownRepositoryUrlContext, type MarkdownUrlContext } from "@renderer/components/MarkdownBody";
 
@@ -46,6 +48,12 @@ import { TimelineComment } from "@renderer/components/shared/TimelineComment";
 import { TimelineThread } from "@renderer/components/shared/TimelineThread";
 
 import { useControlApi } from "@renderer/hooks/useControlApi";
+import {
+  repositoryAssignableUsersQueryKey,
+  repositoryLabelsQueryKey,
+  repositoryMilestonesQueryKey,
+  useRepositoryIssueResources
+} from "@renderer/hooks/useRepositoryIssueResources";
 
 import { formatCompactNumber, formatRelativeDate } from "@renderer/utils/format";
 
@@ -54,6 +62,101 @@ type PullRequestLinkedIssue =
   | PullRequestLinkedIssueSummary;
 const maxPullRequestListLimit = 100;
 const notLoadedAvailability: GitHubReadAvailability = { status: "not_loaded", message: null };
+
+export interface PullRequestsTabQueryInput {
+  owner: string;
+  repo: string;
+  pullRequestListLimit: number;
+  pullsEnabled: boolean;
+  resourcesEnabled: boolean;
+  githubReady: boolean;
+}
+
+export interface PullRequestsTabPrefetchInput {
+  api: ControlApi;
+  owner: string;
+  repo: string;
+  pullRequestListLimit: number;
+  githubReady: boolean;
+}
+
+export function pullRequestsTabQueryKey(
+  owner: string,
+  repo: string,
+  pullRequestListLimit: number
+): readonly ["pulls", string, string, number] {
+  return ["pulls", owner, repo, pullRequestListLimit] as const;
+}
+
+export function usePullRequestsTabQueries({
+  owner,
+  repo,
+  pullRequestListLimit,
+  pullsEnabled,
+  resourcesEnabled,
+  githubReady
+}: PullRequestsTabQueryInput) {
+  const api = useControlApi();
+  const pulls = useQuery<PullRequestListResult>({
+    queryKey: pullRequestsTabQueryKey(owner, repo, pullRequestListLimit),
+    queryFn: () =>
+      api.github.listPullRequestsWithStatus({
+        owner,
+        repo,
+        state: "all",
+        limit: pullRequestListLimit,
+        cacheOnly: !githubReady
+      }),
+    enabled: pullsEnabled,
+    staleTime: 60_000
+  });
+  const resources = useRepositoryIssueResources(owner, repo, resourcesEnabled, { githubReady });
+
+  return { pulls, ...resources };
+}
+
+export async function prefetchPullRequestsTabData(
+  queryClient: QueryClient,
+  { api, owner, repo, pullRequestListLimit, githubReady }: PullRequestsTabPrefetchInput
+): Promise<void> {
+  await Promise.all([
+    queryClient.prefetchQuery({
+      queryKey: pullRequestsTabQueryKey(owner, repo, pullRequestListLimit),
+      queryFn: () =>
+        api.github.listPullRequestsWithStatus({
+          owner,
+          repo,
+          state: "all",
+          limit: pullRequestListLimit,
+          cacheOnly: !githubReady
+        }),
+      staleTime: 60_000
+    }),
+    queryClient.prefetchQuery({
+      queryKey: repositoryLabelsQueryKey(owner, repo),
+      queryFn: () => api.github.listLabelsWithStatus({ owner, repo, limit: 100, cacheOnly: !githubReady }),
+      staleTime: 120_000
+    }),
+    queryClient.prefetchQuery({
+      queryKey: repositoryAssignableUsersQueryKey(owner, repo),
+      queryFn: () =>
+        api.github.listAssignableUsersWithStatus({ owner, repo, limit: 100, cacheOnly: !githubReady }),
+      staleTime: 120_000
+    }),
+    queryClient.prefetchQuery({
+      queryKey: repositoryMilestonesQueryKey(owner, repo),
+      queryFn: () =>
+        api.github.listMilestonesWithStatus({
+          owner,
+          repo,
+          state: "all",
+          limit: 100,
+          cacheOnly: !githubReady
+        }),
+      staleTime: 120_000
+    })
+  ]);
+}
 
 function conversationCommentDisabledReason(
   repository: RepositoryDetail,

@@ -4,10 +4,7 @@ import type { JSX, ReactNode } from "react";
 import type {
   AssignableUserSummary,
   BranchSummary,
-  BranchProtectionResult,
-  CodeScanningAlertSummary,
   ContributorSummary,
-  DependabotAlertSummary,
   DiscussionSummary,
   GitHubAction,
   GitHubMutationFields,
@@ -25,16 +22,9 @@ import type {
   ReleaseAssetSummary,
   RepoEntry,
   RepoFileContentResult,
-  RepositoryAccessResult,
   RepositoryCollaboratorSummary,
-  RepositoryCommunityProfileResult,
   RepositoryDetail,
-  RepositoryForksResult,
   RepositoryRef,
-  RepositoryRulesetSummary,
-  RepositorySecurityAdvisorySummary,
-  RepositorySecurityPolicyResult,
-  SecretScanningAlertSummary,
   TagSummary,
   TeamSummary,
   WorkflowRunArtifactSummary,
@@ -238,14 +228,8 @@ export function RepositoryPage({
   milestonesLoading,
   milestonesError,
   milestonesAvailability,
-  repositoryAccess,
   repositoryAccessLimit,
-  repositoryAccessLoading,
-  repositoryAccessError,
-  repositoryForks,
   forksLimit,
-  repositoryForksLoading,
-  repositoryForksError,
   pulls,
   pullRequestListLimit,
   pullsLoading,
@@ -267,45 +251,11 @@ export function RepositoryPage({
   projectsLoading,
   projectsAvailability,
   projectsError,
-  branchProtectionBranch,
-  branchProtectionBranches,
-  branchProtectionBranchesLoading,
-  branchProtectionBranchesError,
-  branchProtection,
-  branchProtectionLoading,
-  branchProtectionError,
-  dependabotAlerts,
   dependabotAlertsLimit,
-  dependabotAlertsLoading,
-  dependabotAlertsAvailability,
-  dependabotAlertsError,
-  codeScanningAlerts,
   codeScanningAlertsLimit,
-  codeScanningAlertsLoading,
-  codeScanningAlertsAvailability,
-  codeScanningAlertsError,
-  secretScanningAlerts,
   secretScanningAlertsLimit,
-  secretScanningAlertsLoading,
-  secretScanningAlertsAvailability,
-  secretScanningAlertsError,
-  repositoryRulesets,
   repositoryRulesetsLimit,
-  repositoryRulesetsLoading,
-  repositoryRulesetsAvailability,
-  repositoryRulesetsError,
-  repositorySecurityAdvisories,
   repositorySecurityAdvisoriesLimit,
-  repositorySecurityAdvisoriesLoading,
-  repositorySecurityAdvisoriesAvailability,
-  repositorySecurityAdvisoriesError,
-  repositorySecurityPolicy,
-  repositorySecurityPolicyLoading,
-  repositorySecurityPolicyError,
-  repositoryCommunityProfile,
-  repositoryCommunityProfileLoading,
-  repositoryCommunityProfileAvailability,
-  repositoryCommunityProfileError,
   releases,
   releasesLimit,
   releasesLoading,
@@ -418,14 +368,8 @@ export function RepositoryPage({
   milestonesLoading: boolean;
   milestonesError: Error | null;
   milestonesAvailability: GitHubReadAvailability | null;
-  repositoryAccess: RepositoryAccessResult | null;
   repositoryAccessLimit: number;
-  repositoryAccessLoading: boolean;
-  repositoryAccessError: Error | null;
-  repositoryForks: RepositoryForksResult | null;
   forksLimit: number;
-  repositoryForksLoading: boolean;
-  repositoryForksError: Error | null;
   pulls: PullRequestSummary[];
   pullRequestListLimit: number;
   pullsLoading: boolean;
@@ -447,45 +391,11 @@ export function RepositoryPage({
   projectsLoading: boolean;
   projectsAvailability: GitHubReadAvailability | null;
   projectsError: Error | null;
-  branchProtectionBranch: string | null;
-  branchProtectionBranches: BranchSummary[];
-  branchProtectionBranchesLoading: boolean;
-  branchProtectionBranchesError: Error | null;
-  branchProtection: BranchProtectionResult | null;
-  branchProtectionLoading: boolean;
-  branchProtectionError: Error | null;
-  dependabotAlerts: DependabotAlertSummary[];
   dependabotAlertsLimit: number;
-  dependabotAlertsLoading: boolean;
-  dependabotAlertsAvailability: GitHubReadAvailability | null;
-  dependabotAlertsError: Error | null;
-  codeScanningAlerts: CodeScanningAlertSummary[];
   codeScanningAlertsLimit: number;
-  codeScanningAlertsLoading: boolean;
-  codeScanningAlertsAvailability: GitHubReadAvailability | null;
-  codeScanningAlertsError: Error | null;
-  secretScanningAlerts: SecretScanningAlertSummary[];
   secretScanningAlertsLimit: number;
-  secretScanningAlertsLoading: boolean;
-  secretScanningAlertsAvailability: GitHubReadAvailability | null;
-  secretScanningAlertsError: Error | null;
-  repositoryRulesets: RepositoryRulesetSummary[];
   repositoryRulesetsLimit: number;
-  repositoryRulesetsLoading: boolean;
-  repositoryRulesetsAvailability: GitHubReadAvailability | null;
-  repositoryRulesetsError: Error | null;
-  repositorySecurityAdvisories: RepositorySecurityAdvisorySummary[];
   repositorySecurityAdvisoriesLimit: number;
-  repositorySecurityAdvisoriesLoading: boolean;
-  repositorySecurityAdvisoriesAvailability: GitHubReadAvailability | null;
-  repositorySecurityAdvisoriesError: Error | null;
-  repositorySecurityPolicy: RepositorySecurityPolicyResult | null;
-  repositorySecurityPolicyLoading: boolean;
-  repositorySecurityPolicyError: Error | null;
-  repositoryCommunityProfile: RepositoryCommunityProfileResult["profile"];
-  repositoryCommunityProfileLoading: boolean;
-  repositoryCommunityProfileAvailability: GitHubReadAvailability | null;
-  repositoryCommunityProfileError: Error | null;
   releases: ReleaseSummary[];
   releasesLimit: number;
   releasesLoading: boolean;
@@ -1152,45 +1062,13 @@ export function RepositoryPage({
         <SecurityQualityTab
           key={`security-quality-${focusedSecurityItemKind ?? "default"}-${focusedSecurityItemId ?? "default"}`}
           repository={repo}
-          branchProtectionBranch={branchProtectionBranch}
-          branchProtectionBranches={branchProtectionBranches}
-          branchProtectionBranchesLoading={branchProtectionBranchesLoading}
-          branchProtectionBranchesError={branchProtectionBranchesError}
-          branchProtection={branchProtection}
-          branchProtectionLoading={branchProtectionLoading}
-          branchProtectionError={branchProtectionError}
-          dependabotAlerts={dependabotAlerts}
+          selectedRef={selectedRef}
+          refListLimit={refListLimit}
           dependabotAlertsLimit={dependabotAlertsLimit}
-          dependabotAlertsLoading={dependabotAlertsLoading}
-          dependabotAlertsAvailability={dependabotAlertsAvailability}
-          dependabotAlertsError={dependabotAlertsError}
-          codeScanningAlerts={codeScanningAlerts}
           codeScanningAlertsLimit={codeScanningAlertsLimit}
-          codeScanningAlertsLoading={codeScanningAlertsLoading}
-          codeScanningAlertsAvailability={codeScanningAlertsAvailability}
-          codeScanningAlertsError={codeScanningAlertsError}
-          secretScanningAlerts={secretScanningAlerts}
           secretScanningAlertsLimit={secretScanningAlertsLimit}
-          secretScanningAlertsLoading={secretScanningAlertsLoading}
-          secretScanningAlertsAvailability={secretScanningAlertsAvailability}
-          secretScanningAlertsError={secretScanningAlertsError}
-          repositoryRulesets={repositoryRulesets}
           repositoryRulesetsLimit={repositoryRulesetsLimit}
-          repositoryRulesetsLoading={repositoryRulesetsLoading}
-          repositoryRulesetsAvailability={repositoryRulesetsAvailability}
-          repositoryRulesetsError={repositoryRulesetsError}
-          repositorySecurityAdvisories={repositorySecurityAdvisories}
           repositorySecurityAdvisoriesLimit={repositorySecurityAdvisoriesLimit}
-          repositorySecurityAdvisoriesLoading={repositorySecurityAdvisoriesLoading}
-          repositorySecurityAdvisoriesAvailability={repositorySecurityAdvisoriesAvailability}
-          repositorySecurityAdvisoriesError={repositorySecurityAdvisoriesError}
-          repositorySecurityPolicy={repositorySecurityPolicy}
-          repositorySecurityPolicyLoading={repositorySecurityPolicyLoading}
-          repositorySecurityPolicyError={repositorySecurityPolicyError}
-          repositoryCommunityProfile={repositoryCommunityProfile}
-          repositoryCommunityProfileLoading={repositoryCommunityProfileLoading}
-          repositoryCommunityProfileAvailability={repositoryCommunityProfileAvailability}
-          repositoryCommunityProfileError={repositoryCommunityProfileError}
           githubReady={githubReady}
           mutationAction={mutationAction}
           mutationPending={mutationPending}
@@ -1219,26 +1097,12 @@ export function RepositoryPage({
           }-${repo.administration.webCommitSignoffRequired}-${repo.topics.join(",")}`}
           repository={repo}
           githubReady={githubReady}
-          branches={branches}
-          branchesError={branchesError}
-          branchProtectionBranch={branchProtectionBranch}
-          branchProtection={branchProtection}
-          branchProtectionLoading={branchProtectionLoading}
-          branchProtectionError={branchProtectionError}
-          repositoryRulesets={repositoryRulesets}
+          selectedRef={selectedRef}
+          refListLimit={refListLimit}
           repositoryRulesetsLimit={repositoryRulesetsLimit}
-          repositoryRulesetsLoading={repositoryRulesetsLoading}
-          repositoryRulesetsAvailability={repositoryRulesetsAvailability}
-          repositoryRulesetsError={repositoryRulesetsError}
-          repositoryAccess={repositoryAccess}
           repositoryAccessLimit={repositoryAccessLimit}
-          repositoryAccessLoading={repositoryAccessLoading}
-          repositoryAccessError={repositoryAccessError}
           focusedCollaboratorLogin={focusedSettingsCollaboratorLogin}
-          repositoryForks={repositoryForks}
           forksLimit={forksLimit}
-          repositoryForksLoading={repositoryForksLoading}
-          repositoryForksError={repositoryForksError}
           saving={mutationPending && mutationAction === "editRepository"}
           saveSucceeded={mutationSucceeded && mutationAction === "editRepository"}
           saveError={mutationAction === "editRepository" ? mutationError : null}

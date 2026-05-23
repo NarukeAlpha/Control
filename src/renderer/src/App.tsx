@@ -1,8 +1,7 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import type { JSX } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import type { AreaSummary } from "@shared/areas";
 import { MarkdownUrlHandlerContext } from "./components/MarkdownBody";
 import { AreaDeleteDialog, AreaEditDialog, SshAreaDialog } from "./components/areas/AreaDialogs";
 import { LocalAreaHome } from "./components/areas/LocalAreaHome";
@@ -29,6 +28,7 @@ import { SettingsPanel } from "./components/settings/SettingsPanel";
 import { Sidebar } from "./components/sidebar/Sidebar";
 import { AppEventBridge } from "./components/shell/AppEventBridge";
 import { invalidateGitHubMutationQueries } from "./components/shell/appInvalidations";
+import { useShellDialogState } from "./components/shell/useShellDialogState";
 import { TopBar } from "./components/topbar/TopBar";
 
 import { githubActionLabel, readAvailabilityMessage } from "./components/repository/repositoryUi";
@@ -80,12 +80,8 @@ export function App(): JSX.Element {
   const settingsOpen = useUiStore((state) => state.settingsOpen);
   const setSettingsOpen = useUiStore((state) => state.setSettingsOpen);
   const commandPalette = useCommandPaletteController();
-  const [addRepositoryOpen, setAddRepositoryOpen] = useState(false);
-  const [sshAreaOpen, setSshAreaOpen] = useState(false);
-  const [editingArea, setEditingArea] = useState<AreaSummary | null>(null);
-  const [deletingArea, setDeletingArea] = useState<AreaSummary | null>(null);
+  const dialogs = useShellDialogState();
   const [repositoryRefs, setRepositoryRefs] = useStoredRepositoryRefs();
-  const [fileFinderOpen, setFileFinderOpen] = useState(false);
 
   const appState = useQuery({
     queryKey: ["app-state"],
@@ -193,7 +189,7 @@ export function App(): JSX.Element {
     route,
     selectedRepository,
     repositoryRefs,
-    fileFinderOpen
+    fileFinderOpen: dialogs.fileFinderOpen
   });
   const {
     isRepositoryRoute,
@@ -411,7 +407,7 @@ export function App(): JSX.Element {
     isRepositoryPinned,
     onGoHome: goHome,
     onOpenRepositories: goToRepositories,
-    onOpenAddRepository: () => setAddRepositoryOpen(true),
+    onOpenAddRepository: dialogs.openAddRepository,
     onRefreshHome: () => {
       void refreshHomeNow();
     },
@@ -441,7 +437,7 @@ export function App(): JSX.Element {
         nameWithOwner,
         tab: "code"
       });
-      setFileFinderOpen(true);
+      dialogs.openFileFinder();
     },
     onOpenExternalGitHub: (nameWithOwner) => void api.openExternal(`https://github.com/${nameWithOwner}`),
     onOpenRecent: openRecentItem,
@@ -536,7 +532,7 @@ export function App(): JSX.Element {
           onSelectLocalRepository={openLocalRepositoryInApp}
           onSelectRepository={openRepositoryInApp}
           onOpenRepositorySearch={commandPalette.openPalette}
-          onOpenAddRepository={() => setAddRepositoryOpen(true)}
+          onOpenAddRepository={dialogs.openAddRepository}
           onOpenSettings={() => setSettingsOpen(true)}
         />
 
@@ -550,9 +546,9 @@ export function App(): JSX.Element {
           githubReady={githubReady}
           onSelectArea={(areaId) => void selectArea(areaId)}
           onAddLocalArea={() => void addLocalArea()}
-          onAddSshArea={() => setSshAreaOpen(true)}
-          onEditArea={(area) => setEditingArea(area)}
-          onDeleteArea={(area) => setDeletingArea(area)}
+          onAddSshArea={dialogs.openSshArea}
+          onEditArea={dialogs.openAreaEdit}
+          onDeleteArea={dialogs.openAreaDelete}
           onGoRepository={() => {
             if (effectiveRepository) {
               openRepositoryInApp(effectiveRepository);
@@ -560,7 +556,7 @@ export function App(): JSX.Element {
           }}
           onOpenRepository={openRepositoryInApp}
           onOpenLocalRepository={openLocalRepositoryInApp}
-          onOpenAddRepository={() => setAddRepositoryOpen(true)}
+          onOpenAddRepository={dialogs.openAddRepository}
           onOpenCommandPalette={commandPalette.openPalette}
           onOpenHome={goHome}
           onOpenMailbox={goToMailbox}
@@ -717,7 +713,7 @@ export function App(): JSX.Element {
                   onOpenRepository={openRepositoryInApp}
                   onOpenTeam={openTeamInApp}
                   onRefresh={() => refreshRepositorySurface()}
-                  onOpenFileFinder={() => setFileFinderOpen(true)}
+                  onOpenFileFinder={dialogs.openFileFinder}
                   onSelectTab={(tab) => selectRepositoryTabInApp(effectiveRepository, tab)}
                   onOpenFilteredSurface={(tab, filter) =>
                     openFilteredRepositorySurfaceInApp(effectiveRepository, tab, filter)
@@ -895,7 +891,7 @@ export function App(): JSX.Element {
                 viewerLogin={appState.data?.viewer?.login ?? accountProfileData?.login ?? null}
                 onOpenExternal={(url) => void api.openExternal(url)}
                 onOpenRepository={openRepositoryInApp}
-                onOpenAddRepository={() => setAddRepositoryOpen(true)}
+                onOpenAddRepository={dialogs.openAddRepository}
                 onExpandRepositories={expandRepositoryList}
                 onToggleRepositoryPin={toggleRepositoryPin}
               />
@@ -960,49 +956,53 @@ export function App(): JSX.Element {
           />
         )}
 
-        {addRepositoryOpen && (
+        {dialogs.addRepositoryOpen && (
           <AddRepositoryDialog
             repositories={repositoryItems}
             viewerLogin={appState.data?.viewer?.login ?? accountProfileData?.login ?? null}
             githubReady={githubReady}
-            onClose={() => setAddRepositoryOpen(false)}
+            onClose={dialogs.closeAddRepository}
             onOpenRepository={openRepositoryInApp}
           />
         )}
 
-        {sshAreaOpen && (
+        {dialogs.sshAreaOpen && (
           <SshAreaDialog
-            onClose={() => setSshAreaOpen(false)}
+            onClose={dialogs.closeSshArea}
             onCreate={async (input) => {
               await createSshArea(input);
-              setSshAreaOpen(false);
+              dialogs.closeSshArea();
             }}
           />
         )}
 
-        {editingArea && (
+        {dialogs.editingArea && (
           <AreaEditDialog
-            area={editingArea}
-            onClose={() => setEditingArea(null)}
+            area={dialogs.editingArea}
+            onClose={dialogs.closeAreaEdit}
             onSave={async (input) => {
               await updateArea(input);
-              setEditingArea(null);
+              dialogs.closeAreaEdit();
             }}
           />
         )}
 
-        {deletingArea && (
+        {dialogs.deletingArea && (
           <AreaDeleteDialog
-            area={deletingArea}
-            onClose={() => setDeletingArea(null)}
+            area={dialogs.deletingArea}
+            onClose={dialogs.closeAreaDelete}
             onDelete={async () => {
-              await deleteArea(deletingArea);
-              setDeletingArea(null);
+              const area = dialogs.deletingArea;
+              if (!area) {
+                return;
+              }
+              await deleteArea(area);
+              dialogs.closeAreaDelete();
             }}
           />
         )}
 
-        {fileFinderOpen && repositoryDetail && (
+        {dialogs.fileFinderOpen && repositoryDetail && (
           <FileFinder
             repository={repositoryDetail}
             tree={repositoryTreeItem}
@@ -1018,7 +1018,7 @@ export function App(): JSX.Element {
             refsError={refsError}
             refsAvailabilityMessage={refsAvailabilityMessage || null}
             selectedRef={contentsRef ?? repositoryDetail.defaultBranch ?? "HEAD"}
-            onClose={() => setFileFinderOpen(false)}
+            onClose={dialogs.closeFileFinder}
             onSelectRef={(ref) => {
               if (route.kind === "codeBrowser") {
                 selectRepositoryRefInApp(effectiveRepository, ref, repositoryRefKindForName(ref), {
@@ -1032,7 +1032,7 @@ export function App(): JSX.Element {
             }}
             onExpandRefs={expandActiveRepositoryRefs}
             onOpenEntry={(entry) => {
-              setFileFinderOpen(false);
+              dialogs.closeFileFinder();
               openCodeBrowserInApp(
                 effectiveRepository,
                 entry.path,

@@ -1,6 +1,6 @@
 import { BookOpen, CheckCircle2, Copy, ExternalLink, Plus, X } from "lucide-react";
 import { useState, type FormEvent, type JSX } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, type QueryClient } from "@tanstack/react-query";
 
 import type {
   GitHubAction,
@@ -10,6 +10,7 @@ import type {
   WikiPageContent,
   WikiPageSummary
 } from "@shared/github";
+import type { ControlApi } from "@shared/ipc";
 import { MarkdownBody, markdownWikiUrlContext } from "../../MarkdownBody";
 import { useControlApi } from "../../../hooks/useControlApi";
 import {
@@ -35,6 +36,42 @@ export interface WikiTabProps {
   onSelectWikiPage(page: WikiPageSummary | WikiPageContent): void;
 }
 
+export interface WikiTabPrefetchInput {
+  api: ControlApi;
+  owner: string;
+  repo: string;
+  focusedPagePath: string | null;
+  pageLimit?: number;
+  githubReady: boolean;
+}
+
+export function wikiTabQueryKey(
+  owner: string,
+  repo: string,
+  focusedPagePath: string | null,
+  pageLimit: number
+): readonly ["repository-wiki", string, string, string, number] {
+  return ["repository-wiki", owner, repo, focusedPagePath ?? "default", pageLimit] as const;
+}
+
+export async function prefetchWikiTabData(
+  queryClient: QueryClient,
+  { api, owner, repo, focusedPagePath, pageLimit = defaultWikiPageLimit, githubReady }: WikiTabPrefetchInput
+): Promise<void> {
+  await queryClient.prefetchQuery({
+    queryKey: wikiTabQueryKey(owner, repo, focusedPagePath, pageLimit),
+    queryFn: () =>
+      api.github.getRepositoryWiki({
+        owner,
+        repo,
+        pagePath: focusedPagePath,
+        limit: pageLimit,
+        cacheOnly: !githubReady
+      }),
+    staleTime: 120_000
+  });
+}
+
 export function WikiTab({
   githubReady,
   repository,
@@ -55,13 +92,7 @@ export function WikiTab({
   const wikiFeature = repository.administration?.features.wiki ?? null;
   const api = useControlApi();
   const wiki = useQuery<RepositoryWikiResult>({
-    queryKey: [
-      "repository-wiki",
-      repository.owner,
-      repository.name,
-      focusedPagePath ?? "default",
-      wikiPageLimit
-    ],
+    queryKey: wikiTabQueryKey(repository.owner, repository.name, focusedPagePath, wikiPageLimit),
     queryFn: () =>
       api.github.getRepositoryWiki({
         owner: repository.owner,

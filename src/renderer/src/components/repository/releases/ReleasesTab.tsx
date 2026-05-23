@@ -1,16 +1,19 @@
 import { ChevronDown, Download, ExternalLink, Plus, Tag } from "lucide-react";
 import { useState, type JSX } from "react";
+import { useQuery, type QueryClient } from "@tanstack/react-query";
 
 import type {
   BranchSummary,
   GitHubAction,
   GitHubMutationFields,
   GitHubReadAvailability,
+  ReleaseListResult,
   ReleaseAssetSummary,
   ReleaseSummary,
   RepositoryDetail,
   TagSummary
 } from "@shared/github";
+import type { ControlApi } from "@shared/ipc";
 
 import { MarkdownBody, markdownRepositoryUrlContext } from "@renderer/components/MarkdownBody";
 
@@ -21,6 +24,8 @@ import {
   repositoryPath
 } from "@renderer/components/repository/repositoryUi";
 
+import { useControlApi } from "@renderer/hooks/useControlApi";
+
 import { formatCompactNumber, formatRelativeDate } from "@renderer/utils/format";
 type ReleaseMakeLatestOption = "unchanged" | "true" | "false" | "legacy";
 const maxReleasesLimit = 100;
@@ -30,6 +35,54 @@ const releaseMakeLatestOptions: Array<{ value: ReleaseMakeLatestOption; label: s
   { value: "false", label: "Do not mark latest" },
   { value: "legacy", label: "Use GitHub legacy rules" }
 ];
+
+export interface ReleasesTabQueryInput {
+  owner: string;
+  repo: string;
+  limit: number;
+  enabled: boolean;
+  githubReady: boolean;
+}
+
+export interface ReleasesTabPrefetchInput {
+  api: ControlApi;
+  owner: string;
+  repo: string;
+  limit: number;
+  githubReady: boolean;
+}
+
+export function releasesTabQueryKey(
+  owner: string,
+  repo: string,
+  limit: number
+): readonly ["releases", string, string, number] {
+  return ["releases", owner, repo, limit] as const;
+}
+
+export function useReleasesTabQueries({ owner, repo, limit, enabled, githubReady }: ReleasesTabQueryInput) {
+  const api = useControlApi();
+
+  const releases = useQuery<ReleaseListResult>({
+    queryKey: releasesTabQueryKey(owner, repo, limit),
+    queryFn: () => api.github.listReleasesWithStatus({ owner, repo, limit, cacheOnly: !githubReady }),
+    enabled,
+    staleTime: 120_000
+  });
+
+  return { releases };
+}
+
+export async function prefetchReleasesTabData(
+  queryClient: QueryClient,
+  { api, owner, repo, limit, githubReady }: ReleasesTabPrefetchInput
+): Promise<void> {
+  await queryClient.prefetchQuery({
+    queryKey: releasesTabQueryKey(owner, repo, limit),
+    queryFn: () => api.github.listReleasesWithStatus({ owner, repo, limit, cacheOnly: !githubReady }),
+    staleTime: 120_000
+  });
+}
 
 export function ReleasesTab({
   repository,

@@ -1,10 +1,11 @@
 import { ChevronDown, ExternalLink, MessageSquare, Plus, Search } from "lucide-react";
 import { useState, type JSX } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, type QueryClient } from "@tanstack/react-query";
 
 import type {
   DiscussionCategoryListResult,
   DiscussionDetailResult,
+  DiscussionListResult,
   DiscussionCommentSummary,
   DiscussionSummary,
   GitHubAction,
@@ -13,6 +14,7 @@ import type {
   RepositoryDetail,
   TimelineCommentSummary
 } from "@shared/github";
+import type { ControlApi } from "@shared/ipc";
 
 import { markdownRepositoryUrlContext } from "@renderer/components/MarkdownBody";
 
@@ -28,6 +30,60 @@ import { useControlApi } from "@renderer/hooks/useControlApi";
 
 import { formatCompactNumber, formatRelativeDate } from "@renderer/utils/format";
 const maxDiscussionsLimit = 100;
+
+export interface DiscussionsTabQueryInput {
+  owner: string;
+  repo: string;
+  limit: number;
+  enabled: boolean;
+  githubReady: boolean;
+}
+
+export interface DiscussionsTabPrefetchInput {
+  api: ControlApi;
+  owner: string;
+  repo: string;
+  limit: number;
+  githubReady: boolean;
+}
+
+export function discussionsTabQueryKey(
+  owner: string,
+  repo: string,
+  limit: number
+): readonly ["discussions", string, string, number] {
+  return ["discussions", owner, repo, limit] as const;
+}
+
+export function useDiscussionsTabQueries({
+  owner,
+  repo,
+  limit,
+  enabled,
+  githubReady
+}: DiscussionsTabQueryInput) {
+  const api = useControlApi();
+
+  const discussions = useQuery<DiscussionListResult>({
+    queryKey: discussionsTabQueryKey(owner, repo, limit),
+    queryFn: () => api.github.listDiscussionsWithStatus({ owner, repo, limit, cacheOnly: !githubReady }),
+    enabled,
+    staleTime: 60_000
+  });
+
+  return { discussions };
+}
+
+export async function prefetchDiscussionsTabData(
+  queryClient: QueryClient,
+  { api, owner, repo, limit, githubReady }: DiscussionsTabPrefetchInput
+): Promise<void> {
+  await queryClient.prefetchQuery({
+    queryKey: discussionsTabQueryKey(owner, repo, limit),
+    queryFn: () => api.github.listDiscussionsWithStatus({ owner, repo, limit, cacheOnly: !githubReady }),
+    staleTime: 60_000
+  });
+}
 
 export function DiscussionsTab({
   repository,

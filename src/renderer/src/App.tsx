@@ -57,7 +57,6 @@ import type {
   ContributorSummary,
   DependabotAlertSummary,
   DependabotAlertsResult,
-  DiscussionListResult,
   DiscussionSummary,
   GitHubAccountProfile,
   GitHubAction,
@@ -149,11 +148,11 @@ import { AgentsTab } from "./components/repository/agents/AgentsTab";
 import { ContributorsTab } from "./components/repository/contributors/ContributorsTab";
 import { ActionsTab } from "./components/repository/actions/ActionsTab";
 import { CodeTab } from "./components/repository/code/CodeTab";
-import { DiscussionsTab } from "./components/repository/discussions/DiscussionsTab";
+import { DiscussionsTab, useDiscussionsTabQueries } from "./components/repository/discussions/DiscussionsTab";
 import { IssuesTab } from "./components/repository/issues/IssuesTab";
-import { ProjectsTab } from "./components/repository/projects/ProjectsTab";
+import { ProjectsTab, useProjectsTabQueries } from "./components/repository/projects/ProjectsTab";
 import { PullRequestsTab } from "./components/repository/pull-requests/PullRequestsTab";
-import { ReleasesTab } from "./components/repository/releases/ReleasesTab";
+import { ReleasesTab, useReleasesTabQueries } from "./components/repository/releases/ReleasesTab";
 import { SecurityQualityTab } from "./components/repository/security/SecurityQualityTab";
 import { RepositorySettingsTab } from "./components/repository/settings/RepositorySettingsTab";
 import { WikiTab } from "./components/repository/wiki/WikiTab";
@@ -3777,13 +3776,13 @@ export function App(): JSX.Element {
   const pullItems = pulls.data?.items ?? [];
   const pullsAvailability = pulls.data?.availability ?? null;
 
-  const discussions = useQuery<DiscussionListResult>({
-    queryKey: ["discussions", owner, repo, discussionsLimit],
-    queryFn: () =>
-      api.github.listDiscussionsWithStatus({ owner, repo, limit: discussionsLimit, cacheOnly: !githubReady }),
+  const { discussions } = useDiscussionsTabQueries({
+    owner,
+    repo,
+    limit: discussionsLimit,
     enabled:
       appState.isSuccess && isRepositoryRoute && activeRepositoryTab === "discussions" && hasRepositoryParts,
-    staleTime: 60_000
+    githubReady
   });
 
   const actions = useQuery<WorkflowRunListResult>({
@@ -3798,13 +3797,13 @@ export function App(): JSX.Element {
     staleTime: 60_000
   });
 
-  const projects = useQuery<ProjectListResult>({
-    queryKey: ["projects", owner, repo, projectsLimit],
-    queryFn: () =>
-      api.github.listProjectsWithStatus({ owner, repo, limit: projectsLimit, cacheOnly: !githubReady }),
+  const { projects } = useProjectsTabQueries({
+    owner,
+    repo,
+    limit: projectsLimit,
     enabled:
       appState.isSuccess && isRepositoryRoute && activeRepositoryTab === "projects" && hasRepositoryParts,
-    staleTime: 60_000
+    githubReady
   });
   const branchProtectionBranch =
     repositorySelectedRef && branchItems.some((branch) => branch.name === repositorySelectedRef)
@@ -3947,17 +3946,17 @@ export function App(): JSX.Element {
     staleTime: 120_000
   });
 
-  const releases = useQuery({
-    queryKey: ["releases", owner, repo, releasesLimit],
-    queryFn: () =>
-      api.github.listReleasesWithStatus({ owner, repo, limit: releasesLimit, cacheOnly: !githubReady }),
+  const { releases } = useReleasesTabQueries({
+    owner,
+    repo,
+    limit: releasesLimit,
     enabled:
       appState.isSuccess &&
       isRepositoryRoute &&
       activeRepositoryTab === "releases" &&
       hasRepositoryParts &&
       repository.isSuccess,
-    staleTime: 120_000
+    githubReady
   });
 
   const contributors = useQuery({

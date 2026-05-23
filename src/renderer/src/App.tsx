@@ -95,7 +95,6 @@ import {
   RepositoryContextProvider,
   type RepositoryContextValue
 } from "./components/repository/RepositoryContext";
-import { maxCommitHistoryLimit } from "./components/repository/CommitHistoryPanel";
 import {
   prefetchActionsTabData,
   refreshActionsTabData,
@@ -123,7 +122,6 @@ import {
   refreshDiscussionsTabData,
   useDiscussionsTabQueries
 } from "./components/repository/discussions/DiscussionsTab";
-import { expandedFileBlameRangeLimit } from "./components/repository/FileBlamePanel";
 import {
   prefetchIssuesTabData,
   refreshIssuesTabData,
@@ -188,9 +186,7 @@ import { AppEventBridge } from "./components/shell/AppEventBridge";
 import { TopBar } from "./components/topbar/TopBar";
 
 import {
-  defaultContributorLimit,
   githubActionLabel,
-  maxContributorLimit,
   readAvailabilityMessage,
   repositoryMutationDisabledReason
 } from "./components/repository/repositoryUi";
@@ -206,42 +202,18 @@ import { refreshRepositoryDirectoryData, useRepositoryDirectory } from "./hooks/
 import { refreshRepositoryDetailData, useRepositoryDetail } from "./hooks/useRepositoryDetail";
 import { useRepositoryPins } from "./hooks/useRepositoryPins";
 import { useRepositoryRefs } from "./hooks/useRepositoryRefs";
+import { useRepositorySurfaceLimits } from "./hooks/useRepositorySurfaceLimits";
 import { useStoredRepositoryRefs } from "./hooks/useStoredRepositoryRefs";
 import { repositoryScopedQueryKeys } from "./queries/repositoryQueryKeys";
 import { useUiStore, type AppRoute, type LocalRepositoryTab, type RepositoryTab } from "./stores/uiStore";
 
-const defaultFileBlameRangeLimit = 20;
-const defaultCommitHistoryLimit = 12;
-const defaultRightRailCommitHistoryLimit = 3;
 const defaultRepositoryListLimit = 80;
 const defaultHomeRepositoryActivityLimit = 6;
-const defaultRefListLimit = 50;
-const expandedRefListLimit = 200;
 const commandPaletteGeneralSourceLimit = 50;
 const commandPaletteDenseSourceLimit = 30;
 const commandPaletteSecuritySourceLimit = 30;
-const defaultForksLimit = 12;
-const maxForksLimit = 100;
-const defaultRepositoryAccessLimit = 30;
-const maxRepositoryAccessLimit = 100;
-const defaultActionsLimit = 20;
-const maxActionsLimit = 100;
-const defaultWorkflowDefinitionLimit = 50;
-const maxWorkflowDefinitionLimit = 100;
-const defaultProjectsLimit = 20;
-const maxProjectsLimit = 100;
-const defaultReleasesLimit = 20;
-const maxReleasesLimit = 100;
-const defaultDiscussionsLimit = 30;
-const maxDiscussionsLimit = 100;
 const defaultWikiPageLimit = 50;
-const defaultSecurityListLimit = 20;
-const maxSecurityListLimit = 100;
 const defaultRecentItemLimit = 12;
-const defaultIssueListLimit = 50;
-const maxIssueListLimit = 100;
-const defaultPullRequestListLimit = 50;
-const maxPullRequestListLimit = 100;
 
 function routeTitle(route: AppRoute): string {
   switch (route.kind) {
@@ -286,25 +258,6 @@ export function App(): JSX.Element {
   const [deletingArea, setDeletingArea] = useState<AreaSummary | null>(null);
   const [repositoryRefs, setRepositoryRefs] = useStoredRepositoryRefs();
   const [repositoryListLimit, setRepositoryListLimit] = useState(defaultRepositoryListLimit);
-  const [commitHistoryLimits, setCommitHistoryLimits] = useState<Record<string, number>>({});
-  const [repositoryRefListLimits, setRepositoryRefListLimits] = useState<Record<string, number>>({});
-  const [repositoryContributorLimits, setRepositoryContributorLimits] = useState<Record<string, number>>({});
-  const [repositoryForkLimits, setRepositoryForkLimits] = useState<Record<string, number>>({});
-  const [repositoryAccessLimits, setRepositoryAccessLimits] = useState<Record<string, number>>({});
-  const [repositoryActionsLimits, setRepositoryActionsLimits] = useState<Record<string, number>>({});
-  const [repositoryWorkflowDefinitionLimits, setRepositoryWorkflowDefinitionLimits] = useState<
-    Record<string, number>
-  >({});
-  const [repositoryProjectLimits, setRepositoryProjectLimits] = useState<Record<string, number>>({});
-  const [repositoryReleaseLimits, setRepositoryReleaseLimits] = useState<Record<string, number>>({});
-  const [repositoryDiscussionLimits, setRepositoryDiscussionLimits] = useState<Record<string, number>>({});
-  const [repositoryIssueListLimits, setRepositoryIssueListLimits] = useState<Record<string, number>>({});
-  const [repositoryPullRequestListLimits, setRepositoryPullRequestListLimits] = useState<
-    Record<string, number>
-  >({});
-  const [repositorySecurityListLimits, setRepositorySecurityListLimits] = useState<Record<string, number>>(
-    {}
-  );
   const [organizationListLimit, setOrganizationListLimit] = useState(defaultOrganizationListLimit);
   const [organizationRepositoryLimits, setOrganizationRepositoryLimits] = useState<Record<string, number>>(
     {}
@@ -474,193 +427,52 @@ export function App(): JSX.Element {
   const codeBrowserEntryType = isCodeBrowserRoute ? route.entryType : "dir";
   const codeBrowserRef = isCodeBrowserRoute ? route.ref : null;
   const repositorySelectedRef = repositoryRefs[effectiveRepository] ?? null;
-  const repositoryRefListLimit = repositoryRefListLimits[effectiveRepository] ?? defaultRefListLimit;
-  const repositoryContributorLimit =
-    repositoryContributorLimits[effectiveRepository] ?? defaultContributorLimit;
-  const forksLimit = repositoryForkLimits[effectiveRepository] ?? defaultForksLimit;
-  const repositoryAccessLimit = repositoryAccessLimits[effectiveRepository] ?? defaultRepositoryAccessLimit;
-  const actionsLimit = repositoryActionsLimits[effectiveRepository] ?? defaultActionsLimit;
-  const workflowDefinitionLimit =
-    repositoryWorkflowDefinitionLimits[effectiveRepository] ?? defaultWorkflowDefinitionLimit;
-  const projectsLimit = repositoryProjectLimits[effectiveRepository] ?? defaultProjectsLimit;
-  const releasesLimit = repositoryReleaseLimits[effectiveRepository] ?? defaultReleasesLimit;
-  const discussionsLimit = repositoryDiscussionLimits[effectiveRepository] ?? defaultDiscussionsLimit;
-  const issueListLimit = repositoryIssueListLimits[effectiveRepository] ?? defaultIssueListLimit;
-  const pullRequestListLimit =
-    repositoryPullRequestListLimits[effectiveRepository] ?? defaultPullRequestListLimit;
-  const securityListLimitKey = (listKind: string): string => `${effectiveRepository}:${listKind}`;
-  const dependabotAlertsLimit =
-    repositorySecurityListLimits[securityListLimitKey("dependabot")] ?? defaultSecurityListLimit;
-  const codeScanningAlertsLimit =
-    repositorySecurityListLimits[securityListLimitKey("codeScanning")] ?? defaultSecurityListLimit;
-  const secretScanningAlertsLimit =
-    repositorySecurityListLimits[securityListLimitKey("secretScanning")] ?? defaultSecurityListLimit;
-  const repositoryRulesetsLimit =
-    repositorySecurityListLimits[securityListLimitKey("rulesets")] ?? defaultSecurityListLimit;
-  const repositorySecurityAdvisoriesLimit =
-    repositorySecurityListLimits[securityListLimitKey("advisories")] ?? defaultSecurityListLimit;
   const contentsRef = isCodeBrowserRoute ? codeBrowserRef : repositorySelectedRef;
-  const repositoryCommitHistoryRefKey = repositorySelectedRef ?? "default";
-  const fileCommitHistoryRefKey = codeBrowserRef ?? "default";
-  const repositoryCommitHistoryKey = `${effectiveRepository}:${repositoryCommitHistoryRefKey}:`;
-  const fileCommitHistoryKey = `${effectiveRepository}:${fileCommitHistoryRefKey}:${codeBrowserPath}`;
-  const repositoryCommitHistoryLimit =
-    commitHistoryLimits[repositoryCommitHistoryKey] ?? defaultRightRailCommitHistoryLimit;
-  const fileCommitHistoryLimit = commitHistoryLimits[fileCommitHistoryKey] ?? defaultCommitHistoryLimit;
-  const fileBlameRangeKey = `${owner}/${repo}:${contentsRef ?? "default"}:${codeBrowserPath}`;
-  const [expandedFileBlameRange, setExpandedFileBlameRange] = useState<{
-    key: string;
-    limit: number;
-  } | null>(null);
-  const fileBlameRangeLimit =
-    expandedFileBlameRange?.key === fileBlameRangeKey
-      ? expandedFileBlameRange.limit
-      : defaultFileBlameRangeLimit;
-  const expandActiveRepositoryRefs = (): void => {
-    setRepositoryRefListLimits((limits) => {
-      if ((limits[effectiveRepository] ?? defaultRefListLimit) >= expandedRefListLimit) {
-        return limits;
-      }
-
-      return { ...limits, [effectiveRepository]: expandedRefListLimit };
-    });
-  };
-  const expandCommitHistory = (key: string, defaultLimit = defaultCommitHistoryLimit): void => {
-    setCommitHistoryLimits((limits) => {
-      const currentLimit = limits[key] ?? defaultLimit;
-      if (currentLimit >= maxCommitHistoryLimit) {
-        return limits;
-      }
-
-      const nextLimit = currentLimit < 50 ? 50 : maxCommitHistoryLimit;
-      return { ...limits, [key]: nextLimit };
-    });
-  };
-  const expandRepositoryCommitHistory = (): void =>
-    expandCommitHistory(repositoryCommitHistoryKey, defaultRightRailCommitHistoryLimit);
-  const expandFileCommitHistory = (): void => expandCommitHistory(fileCommitHistoryKey);
-  const expandActiveRepositoryContributors = (): void => {
-    setRepositoryContributorLimits((limits) => {
-      const currentLimit = limits[effectiveRepository] ?? defaultContributorLimit;
-      if (currentLimit >= maxContributorLimit) {
-        return limits;
-      }
-
-      const nextLimit = currentLimit < 50 ? 50 : maxContributorLimit;
-      return { ...limits, [effectiveRepository]: nextLimit };
-    });
-  };
-  const expandActiveRepositoryForks = (): void => {
-    setRepositoryForkLimits((limits) => {
-      const currentLimit = limits[effectiveRepository] ?? defaultForksLimit;
-      if (currentLimit >= maxForksLimit) {
-        return limits;
-      }
-
-      const nextLimit = currentLimit < 50 ? 50 : maxForksLimit;
-      return { ...limits, [effectiveRepository]: nextLimit };
-    });
-  };
-  const expandActiveRepositoryAccess = (): void => {
-    setRepositoryAccessLimits((limits) => {
-      const currentLimit = limits[effectiveRepository] ?? defaultRepositoryAccessLimit;
-      if (currentLimit >= maxRepositoryAccessLimit) {
-        return limits;
-      }
-
-      const nextLimit = currentLimit < 50 ? 50 : maxRepositoryAccessLimit;
-      return { ...limits, [effectiveRepository]: nextLimit };
-    });
-  };
-  const expandActiveRepositoryActions = (): void => {
-    setRepositoryActionsLimits((limits) => {
-      const currentLimit = limits[effectiveRepository] ?? defaultActionsLimit;
-      if (currentLimit >= maxActionsLimit) {
-        return limits;
-      }
-
-      const nextLimit = currentLimit < 50 ? 50 : maxActionsLimit;
-      return { ...limits, [effectiveRepository]: nextLimit };
-    });
-  };
-  const expandActiveRepositoryWorkflowDefinitions = (): void => {
-    setRepositoryWorkflowDefinitionLimits((limits) => {
-      const currentLimit = limits[effectiveRepository] ?? defaultWorkflowDefinitionLimit;
-      if (currentLimit >= maxWorkflowDefinitionLimit) {
-        return limits;
-      }
-
-      const nextLimit = currentLimit < 50 ? 50 : maxWorkflowDefinitionLimit;
-      return { ...limits, [effectiveRepository]: nextLimit };
-    });
-  };
-  const expandActiveRepositoryProjects = (): void => {
-    setRepositoryProjectLimits((limits) => {
-      const currentLimit = limits[effectiveRepository] ?? defaultProjectsLimit;
-      if (currentLimit >= maxProjectsLimit) {
-        return limits;
-      }
-
-      const nextLimit = currentLimit < 50 ? 50 : maxProjectsLimit;
-      return { ...limits, [effectiveRepository]: nextLimit };
-    });
-  };
-  const expandActiveRepositoryReleases = (): void => {
-    setRepositoryReleaseLimits((limits) => {
-      const currentLimit = limits[effectiveRepository] ?? defaultReleasesLimit;
-      if (currentLimit >= maxReleasesLimit) {
-        return limits;
-      }
-
-      const nextLimit = currentLimit < 50 ? 50 : maxReleasesLimit;
-      return { ...limits, [effectiveRepository]: nextLimit };
-    });
-  };
-  const expandActiveRepositoryDiscussions = (): void => {
-    setRepositoryDiscussionLimits((limits) => {
-      const currentLimit = limits[effectiveRepository] ?? defaultDiscussionsLimit;
-      if (currentLimit >= maxDiscussionsLimit) {
-        return limits;
-      }
-
-      const nextLimit = currentLimit < 50 ? 50 : maxDiscussionsLimit;
-      return { ...limits, [effectiveRepository]: nextLimit };
-    });
-  };
-  const expandActiveRepositoryIssues = (): void => {
-    setRepositoryIssueListLimits((limits) => {
-      const currentLimit = limits[effectiveRepository] ?? defaultIssueListLimit;
-      if (currentLimit >= maxIssueListLimit) {
-        return limits;
-      }
-
-      const nextLimit = currentLimit < 50 ? 50 : maxIssueListLimit;
-      return { ...limits, [effectiveRepository]: nextLimit };
-    });
-  };
-  const expandActiveRepositoryPullRequests = (): void => {
-    setRepositoryPullRequestListLimits((limits) => {
-      const currentLimit = limits[effectiveRepository] ?? defaultPullRequestListLimit;
-      if (currentLimit >= maxPullRequestListLimit) {
-        return limits;
-      }
-
-      const nextLimit = currentLimit < 50 ? 50 : maxPullRequestListLimit;
-      return { ...limits, [effectiveRepository]: nextLimit };
-    });
-  };
-  const expandActiveRepositorySecurityList = (listKind: string): void => {
-    setRepositorySecurityListLimits((limits) => {
-      const key = securityListLimitKey(listKind);
-      const currentLimit = limits[key] ?? defaultSecurityListLimit;
-      if (currentLimit >= maxSecurityListLimit) {
-        return limits;
-      }
-
-      const nextLimit = currentLimit < 50 ? 50 : maxSecurityListLimit;
-      return { ...limits, [key]: nextLimit };
-    });
-  };
+  const {
+    repositoryRefListLimit,
+    maxRefListLimit,
+    repositoryContributorLimit,
+    forksLimit,
+    repositoryAccessLimit,
+    actionsLimit,
+    workflowDefinitionLimit,
+    projectsLimit,
+    releasesLimit,
+    discussionsLimit,
+    issueListLimit,
+    pullRequestListLimit,
+    dependabotAlertsLimit,
+    codeScanningAlertsLimit,
+    secretScanningAlertsLimit,
+    repositoryRulesetsLimit,
+    repositorySecurityAdvisoriesLimit,
+    repositoryCommitHistoryLimit,
+    fileCommitHistoryLimit,
+    fileBlameRangeLimit,
+    expandActiveRepositoryRefs,
+    expandRepositoryCommitHistory,
+    expandFileCommitHistory,
+    expandFileBlamePreview,
+    expandActiveRepositoryContributors,
+    expandActiveRepositoryForks,
+    expandActiveRepositoryAccess,
+    expandActiveRepositoryActions,
+    expandActiveRepositoryWorkflowDefinitions,
+    expandActiveRepositoryProjects,
+    expandActiveRepositoryReleases,
+    expandActiveRepositoryDiscussions,
+    expandActiveRepositoryIssues,
+    expandActiveRepositoryPullRequests,
+    expandActiveRepositorySecurityList
+  } = useRepositorySurfaceLimits({
+    effectiveRepository,
+    owner,
+    repo,
+    repositorySelectedRef,
+    codeBrowserRef,
+    contentsRef,
+    codeBrowserPath
+  });
   const expandMailboxWork = (): void => {
     setMailboxWorkLimit((currentLimit) => {
       if (currentLimit >= maxMailboxListLimit) {
@@ -2762,12 +2574,7 @@ export function App(): JSX.Element {
                       line: route.line
                     })
                   }
-                  onExpandFileBlamePreview={() =>
-                    setExpandedFileBlameRange({
-                      key: fileBlameRangeKey,
-                      limit: expandedFileBlameRangeLimit
-                    })
-                  }
+                  onExpandFileBlamePreview={expandFileBlamePreview}
                   onExpandCommits={expandFileCommitHistory}
                   onOpenExternal={(url) => void api.openExternal(url)}
                 />
@@ -2988,7 +2795,7 @@ export function App(): JSX.Element {
             branches={branchItems}
             tags={tagItems}
             refListLimit={repositoryRefListLimit}
-            maxRefListLimit={expandedRefListLimit}
+            maxRefListLimit={maxRefListLimit}
             refsLoading={branches.isLoading || branches.isFetching || tags.isLoading || tags.isFetching}
             refsError={refsError}
             refsAvailabilityMessage={refsAvailabilityMessage || null}

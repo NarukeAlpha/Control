@@ -3,27 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import type {
-  ContributorSummary,
-  DiscussionSummary,
-  IssueSummary,
-  NotificationSummary,
-  OrganizationSummary,
-  ProjectSummary,
-  PullRequestSummary,
-  ReleaseAssetSummary,
-  ReleaseSummary,
-  RepositoryCollaboratorSummary,
-  RepositoryDetail,
-  RepositorySummary,
-  WorkflowRunArtifactSummary,
-  WorkflowRunDetail,
-  WorkflowRunSummary,
-  WikiPageContent,
-  WikiPageSummary
-} from "@shared/github";
-import type { AreaRepositorySummary, AreaSummary } from "@shared/areas";
-import type { LocalRecentItem } from "@shared/local";
+import type { AreaSummary } from "@shared/areas";
 import { MarkdownUrlHandlerContext } from "./components/MarkdownBody";
 import { AreaDeleteDialog, AreaEditDialog, SshAreaDialog } from "./components/areas/AreaDialogs";
 import { LocalAreaHome } from "./components/areas/LocalAreaHome";
@@ -32,8 +12,6 @@ import { useAreasShell } from "./components/areas/useAreasShell";
 import { useProviderAuth } from "./components/auth/AuthProvider";
 import { CodeBrowserPage } from "./components/code-browser/CodeBrowserPage";
 import { useCodeBrowserQueries } from "./components/code-browser/codeBrowserQueries";
-import { normalizeCodeLineNumber } from "./components/code-browser/codeBrowserUi";
-import { notificationInAppTarget, notificationTargetUrl } from "./components/collection/notificationUi";
 import { RepositoriesRoute } from "./components/collection/RepositoriesRoute";
 import { MailboxRoute } from "./components/collection/MailboxRoute";
 import { useOrganizationsRouteQueries } from "./components/collection/organizationQueries";
@@ -70,22 +48,9 @@ import {
 } from "./components/repository/RepositoryContext";
 import { prefetchActionsTabData, useActionsTabQueries } from "./components/repository/actions/ActionsTab";
 import { prefetchCodeTabData, useCodeTabQueries } from "./components/repository/code/CodeTab";
-import {
-  notificationCommitRecentCommit,
-  pullRequestReviewCommitRecentCommit,
-  pullRequestTimelineEventCommitRecentCommit,
-  workflowCheckSuiteCommitRecentCommit,
-  workflowRunCommitRecentCommit,
-  type CommitRecentCommit
-} from "./components/repository/commitRecent";
 import { useContributorsTabQueries } from "./components/repository/contributors/ContributorsTab";
 import { useDiscussionsTabQueries } from "./components/repository/discussions/DiscussionsTab";
 import { prefetchIssuesTabData, useIssuesTabQueries } from "./components/repository/issues/IssuesTab";
-import {
-  parseGitHubBlobUrl,
-  repositoryNameWithOwnerFromGitHubUrl
-} from "./components/repository/githubUrlRoutes";
-import { createMarkdownUrlHandler } from "./components/repository/markdownUrlNavigation";
 import { createGitHubMutationInput } from "./components/repository/githubMutationHelpers";
 import { useProjectsTabQueries } from "./components/repository/projects/ProjectsTab";
 import {
@@ -94,31 +59,7 @@ import {
 } from "./components/repository/pull-requests/PullRequestsTab";
 import { useReleasesTabQueries } from "./components/repository/releases/ReleasesTab";
 import { RightRail } from "./components/right-rail/RightRail";
-import {
-  commitRecentInput,
-  contributorRecentInput,
-  discussionRecentInput,
-  fileRecentInput,
-  issueRecentInput,
-  linkedIssueRecentInput,
-  notificationRecentInput,
-  organizationProjectRecentInput,
-  organizationRecentInput,
-  projectRecentInput,
-  pullRequestRecentInput,
-  releaseAssetRecentInput,
-  releaseRecentInput,
-  repositoryRecentInput,
-  securityItemRecentInput,
-  teamRecentInput,
-  wikiPageRecentInput,
-  workflowArtifactRecentInput,
-  workflowRunRecentInput,
-  workflowRunReferenceRecentInput,
-  type PullRequestLinkedIssue,
-  type SecurityItemRecentInput
-} from "./components/recent/recentRecordInputs";
-import { openRecentItemInApp } from "./components/recent/openRecentItem";
+import { organizationRecentInput, teamRecentInput } from "./components/recent/recentRecordInputs";
 import { SettingsPanel } from "./components/settings/SettingsPanel";
 import { Sidebar } from "./components/sidebar/Sidebar";
 import { AppEventBridge } from "./components/shell/AppEventBridge";
@@ -145,11 +86,12 @@ import { useRepositoryDirectory } from "./hooks/useRepositoryDirectory";
 import { useRepositoryDetail } from "./hooks/useRepositoryDetail";
 import { useRepositoryPins } from "./hooks/useRepositoryPins";
 import { useRepositoryRefs } from "./hooks/useRepositoryRefs";
+import { useAppNavigationActions } from "./hooks/useAppNavigationActions";
 import { useCollectionSurfaceState } from "./hooks/useCollectionSurfaceState";
 import { useRepositoryRefreshActions } from "./hooks/useRepositoryRefreshActions";
 import { useRepositorySurfaceLimits } from "./hooks/useRepositorySurfaceLimits";
 import { useStoredRepositoryRefs } from "./hooks/useStoredRepositoryRefs";
-import { useUiStore, type AppRoute, type LocalRepositoryTab, type RepositoryTab } from "./stores/uiStore";
+import { useUiStore, type AppRoute } from "./stores/uiStore";
 
 const commandPaletteGeneralSourceLimit = 50;
 const commandPaletteDenseSourceLimit = 30;
@@ -181,10 +123,7 @@ export function App(): JSX.Element {
   const queryClient = useQueryClient();
   const route = useUiStore((state) => state.route);
   const selectedRepository = useUiStore((state) => state.selectedRepository);
-  const navigate = useUiStore((state) => state.navigate);
-  const goToRepository = useUiStore((state) => state.goToRepository);
   const goToLocalRepository = useUiStore((state) => state.goToLocalRepository);
-  const openCodeBrowser = useUiStore((state) => state.openCodeBrowser);
   const goHome = useUiStore((state) => state.goHome);
   const goToRepositories = useUiStore((state) => state.goToRepositories);
   const goToOrganizations = useUiStore((state) => state.goToOrganizations);
@@ -283,10 +222,6 @@ export function App(): JSX.Element {
     toggleRepositoryPin,
     toggleAreaRepositoryPin
   } = useRepositoryPins();
-  const repositoriesByName = useMemo(
-    () => new Map(repositoryItems.map((repository) => [repository.nameWithOwner.toLowerCase(), repository])),
-    [repositoryItems]
-  );
 
   const recentItems = useRecentItems(recentItemLimit, { enabled: appState.isSuccess });
   const { recordRecent } = useRecentRecorder(recentItemLimit);
@@ -460,6 +395,61 @@ export function App(): JSX.Element {
     availabilityMessage: refsAvailabilityMessage,
     error: refsError
   } = repositoryRefQueries;
+  const {
+    openRepositoryInApp,
+    openLocalRepositoryInApp,
+    openRepositoryRouteInApp,
+    selectRepositoryTabInApp,
+    openFilteredRepositorySurfaceInApp,
+    openCodeBrowserInApp,
+    repositoryRefKindForName,
+    selectRepositoryRefInApp,
+    selectSecurityQualityBranchInApp,
+    openCommitInApp,
+    openPullRequestCommitInApp,
+    openPullRequestReviewCommitInApp,
+    openPullRequestTimelineEventCommitInApp,
+    openWorkflowRunCommitInApp,
+    openWorkflowCheckSuiteCommitInApp,
+    openCodePathInApp,
+    selectIssueInApp,
+    selectPullRequestInApp,
+    openLinkedIssueInApp,
+    selectDiscussionInApp,
+    selectProjectInApp,
+    selectOrganizationProjectInApp,
+    openTeamInApp,
+    selectWorkflowRunInApp,
+    selectWorkflowArtifactInApp,
+    selectSecurityItemInApp,
+    selectWikiPageInApp,
+    openWorkflowRunReferenceInApp,
+    selectReleaseInApp,
+    selectReleaseAssetInApp,
+    selectContributorInApp,
+    selectRepositorySettingsCollaboratorInApp,
+    openIssueSummaryInApp,
+    openPullRequestSummaryInApp,
+    openNotificationInApp,
+    openRecentItem,
+    openMarkdownUrl
+  } = useAppNavigationActions({
+    effectiveRepository,
+    contentsRef,
+    repositoryRefs,
+    setRepositoryRefs,
+    repositoryDetail,
+    repositoryItems,
+    branchItems,
+    tagItems,
+    recentItemLimit,
+    githubReady,
+    markNotificationRead,
+    setSelectedOrganizationLogin,
+    setSelectedOrganizationTeamSlug,
+    setSelectedOrganizationMemberLogin,
+    setSelectedOrganizationProjectId
+  });
 
   const codeTabQueries = useCodeTabQueries({
     owner,
@@ -717,381 +707,6 @@ export function App(): JSX.Element {
       await invalidateGitHubMutationQueries(queryClient, input);
     }
   });
-  function repositoryForRecent(nameWithOwner: string): RepositorySummary | RepositoryDetail | undefined {
-    const normalized = nameWithOwner.toLowerCase();
-    if (repositoryDetail?.nameWithOwner.toLowerCase() === normalized) {
-      return repositoryDetail;
-    }
-
-    return repositoriesByName.get(normalized);
-  }
-
-  function openRepositoryInApp(nameWithOwner: string, tab?: RepositoryTab): void {
-    goToRepository(nameWithOwner, tab);
-    recordRecent(repositoryRecentInput(nameWithOwner, repositoryForRecent(nameWithOwner), tab ?? "code"));
-  }
-
-  function openLocalRepositoryInApp(
-    repository: AreaRepositorySummary,
-    tab: LocalRepositoryTab = "overview"
-  ): void {
-    const workspaceId = null;
-    goToLocalRepository(repository.areaId, repository.id, tab, workspaceId);
-    recordRecent({
-      kind: "repository",
-      provider: "local",
-      itemKey: `${repository.areaId}:${repository.id}`,
-      title: repository.displayName,
-      subtitle: repository.path ?? repository.connection?.nameWithOwner ?? null,
-      repositoryNameWithOwner: repository.connection?.nameWithOwner ?? null,
-      areaId: repository.areaId,
-      repositoryId: repository.id,
-      workspaceId,
-      url: repository.connection?.url ?? null,
-      metadata: { vcs: repository.kind }
-    });
-  }
-
-  function openRepositoryRouteInApp(route: Extract<AppRoute, { kind: "repository" }>): void {
-    navigate(route);
-    recordRecent(
-      repositoryRecentInput(route.nameWithOwner, repositoryForRecent(route.nameWithOwner), route.tab)
-    );
-  }
-
-  function selectRepositoryTabInApp(nameWithOwner: string, tab: RepositoryTab): void {
-    navigate({ kind: "repository", nameWithOwner, tab });
-    recordRecent(repositoryRecentInput(nameWithOwner, repositoryForRecent(nameWithOwner), tab));
-  }
-
-  function openFilteredRepositorySurfaceInApp(
-    nameWithOwner: string,
-    tab: "issues" | "pulls" | "actions",
-    filter: string
-  ): void {
-    navigate({
-      kind: "repository",
-      nameWithOwner,
-      tab,
-      issueFilter: tab === "issues" ? filter : undefined,
-      pullFilter: tab === "pulls" ? filter : undefined,
-      workflowFilter: tab === "actions" ? filter : undefined
-    });
-    recordRecent(repositoryRecentInput(nameWithOwner, repositoryForRecent(nameWithOwner), tab));
-  }
-
-  function openCodeBrowserInApp(
-    nameWithOwner: string,
-    path: string,
-    entryType: "file" | "dir",
-    ref: string | null,
-    line?: number | null
-  ): void {
-    const normalizedLine = normalizeCodeLineNumber(line);
-    openCodeBrowser(nameWithOwner, path, entryType, ref, normalizedLine);
-    if (entryType === "file" && path.trim()) {
-      recordRecent(fileRecentInput({ nameWithOwner, path, entryType, ref, line: normalizedLine }));
-    }
-  }
-
-  function repositoryRefKindForName(ref: string): "branch" | "tag" | "ref" {
-    if (branchItems.some((branch) => branch.name === ref)) {
-      return "branch";
-    }
-    if (tagItems.some((tag) => tag.name === ref)) {
-      return "tag";
-    }
-    return "ref";
-  }
-
-  function selectRepositoryRefInApp(
-    nameWithOwner: string,
-    ref: string | null,
-    refKind: "branch" | "tag" | "ref" = "ref",
-    codeBrowserTarget?: { path: string; entryType: "file" | "dir"; line?: number | null }
-  ): void {
-    setRepositoryRefs((currentRefs) => ({
-      ...currentRefs,
-      [nameWithOwner]: ref
-    }));
-    if (ref) {
-      recordRecent(
-        repositoryRecentInput(nameWithOwner, repositoryForRecent(nameWithOwner), "code", ref, refKind)
-      );
-    }
-    if (codeBrowserTarget) {
-      openCodeBrowserInApp(
-        nameWithOwner,
-        codeBrowserTarget.path,
-        codeBrowserTarget.entryType,
-        ref,
-        codeBrowserTarget.line
-      );
-      return;
-    }
-    navigate({ kind: "repository", nameWithOwner, tab: "code" });
-  }
-
-  function selectSecurityQualityBranchInApp(nameWithOwner: string, ref: string): void {
-    setRepositoryRefs((currentRefs) => ({
-      ...currentRefs,
-      [nameWithOwner]: ref
-    }));
-    recordRecent(
-      repositoryRecentInput(nameWithOwner, repositoryDetail ?? undefined, "securityQuality", ref, "branch")
-    );
-    navigate({ kind: "repository", nameWithOwner, tab: "securityQuality" });
-  }
-
-  function openCommitInApp({
-    nameWithOwner,
-    commit,
-    path = "",
-    entryType,
-    line = null
-  }: {
-    nameWithOwner: string;
-    commit: CommitRecentCommit;
-    path?: string | null;
-    entryType?: "file" | "dir";
-    line?: number | null;
-  }): void {
-    const normalizedPath = path ?? "";
-    const normalizedEntryType = entryType ?? (normalizedPath.trim() ? "file" : "dir");
-    const normalizedLine = normalizeCodeLineNumber(line);
-    openCodeBrowser(nameWithOwner, normalizedPath, normalizedEntryType, commit.sha, normalizedLine);
-    recordRecent(
-      commitRecentInput({
-        nameWithOwner,
-        commit,
-        path: normalizedPath,
-        entryType: normalizedEntryType,
-        line: normalizedLine
-      })
-    );
-  }
-
-  function selectIssueInApp(nameWithOwner: string, issue: IssueSummary): void {
-    navigate({ kind: "repository", nameWithOwner, tab: "issues", issueNumber: issue.number });
-    recordRecent(issueRecentInput(nameWithOwner, issue));
-  }
-
-  function selectPullRequestInApp(nameWithOwner: string, pullRequest: PullRequestSummary): void {
-    navigate({ kind: "repository", nameWithOwner, tab: "pulls", pullNumber: pullRequest.number });
-    recordRecent(pullRequestRecentInput(nameWithOwner, pullRequest));
-  }
-
-  function openLinkedIssueInApp(issue: PullRequestLinkedIssue): void {
-    const nameWithOwner = issue.repositoryNameWithOwner ?? effectiveRepository;
-    navigate({ kind: "repository", nameWithOwner, tab: "issues", issueNumber: issue.number });
-    recordRecent(linkedIssueRecentInput(nameWithOwner, issue));
-  }
-
-  function selectDiscussionInApp(nameWithOwner: string, discussion: DiscussionSummary): void {
-    navigate({ kind: "repository", nameWithOwner, tab: "discussions", discussionNumber: discussion.number });
-    recordRecent(discussionRecentInput(nameWithOwner, discussion));
-  }
-
-  function selectProjectInApp(nameWithOwner: string, project: ProjectSummary): void {
-    navigate({ kind: "repository", nameWithOwner, tab: "projects", projectId: project.id });
-    recordRecent(projectRecentInput(nameWithOwner, project));
-  }
-
-  function selectOrganizationProjectInApp(organization: OrganizationSummary, project: ProjectSummary): void {
-    setSelectedOrganizationLogin(organization.login);
-    setSelectedOrganizationTeamSlug(null);
-    setSelectedOrganizationMemberLogin(null);
-    setSelectedOrganizationProjectId(project.id);
-    goToOrganizations();
-    recordRecent(organizationProjectRecentInput(organization, project));
-  }
-
-  function selectWorkflowRunInApp(nameWithOwner: string, run: WorkflowRunSummary): void {
-    navigate({ kind: "repository", nameWithOwner, tab: "actions", workflowRunId: run.id });
-    recordRecent(workflowRunRecentInput(nameWithOwner, run));
-  }
-
-  function selectWorkflowArtifactInApp(
-    nameWithOwner: string,
-    run: WorkflowRunSummary | WorkflowRunDetail,
-    artifact: WorkflowRunArtifactSummary
-  ): void {
-    navigate({
-      kind: "repository",
-      nameWithOwner,
-      tab: "actions",
-      workflowRunId: run.id,
-      workflowArtifactId: artifact.id
-    });
-    recordRecent(workflowArtifactRecentInput(nameWithOwner, run, artifact));
-  }
-
-  function selectSecurityItemInApp(nameWithOwner: string, securityItem: SecurityItemRecentInput): void {
-    navigate({
-      kind: "repository",
-      nameWithOwner,
-      tab: "securityQuality",
-      securityItemKind: securityItem.kind,
-      securityItemId: securityItem.id
-    });
-    recordRecent(securityItemRecentInput(nameWithOwner, securityItem));
-  }
-
-  function selectWikiPageInApp(nameWithOwner: string, page: WikiPageSummary | WikiPageContent): void {
-    navigate({ kind: "repository", nameWithOwner, tab: "wiki", wikiPagePath: page.path });
-    recordRecent(wikiPageRecentInput(nameWithOwner, page));
-  }
-
-  function openWorkflowRunReferenceInApp(nameWithOwner: string, runId: number, url?: string | null): void {
-    navigate({ kind: "repository", nameWithOwner, tab: "actions", workflowRunId: runId });
-    recordRecent(workflowRunReferenceRecentInput(nameWithOwner, runId, url));
-  }
-
-  function selectReleaseInApp(nameWithOwner: string, release: ReleaseSummary): void {
-    navigate({
-      kind: "repository",
-      nameWithOwner,
-      tab: "releases",
-      releaseId: release.id,
-      releaseTagName: release.tagName
-    });
-    recordRecent(releaseRecentInput(nameWithOwner, release));
-  }
-
-  const openMarkdownUrl = createMarkdownUrlHandler({
-    branchItems,
-    tagItems,
-    repositoryRefs,
-    effectiveRepository,
-    contentsRef,
-    repositoryDetail,
-    navigate,
-    recordRecent,
-    repositoryForRecent,
-    openExternal: (url) => void api.openExternal(url),
-    openRepositoryInApp,
-    openCodeBrowserInApp,
-    openCommitInApp,
-    openWorkflowRunReferenceInApp,
-    selectWikiPageInApp
-  });
-
-  function selectReleaseAssetInApp(
-    nameWithOwner: string,
-    release: ReleaseSummary,
-    asset: ReleaseAssetSummary
-  ): void {
-    navigate({
-      kind: "repository",
-      nameWithOwner,
-      tab: "releases",
-      releaseId: release.id,
-      releaseTagName: release.tagName,
-      releaseAssetId: asset.id
-    });
-    recordRecent(releaseAssetRecentInput(nameWithOwner, release, asset));
-  }
-
-  function selectContributorInApp(nameWithOwner: string, contributor: ContributorSummary): void {
-    navigate({
-      kind: "repository",
-      nameWithOwner,
-      tab: "contributors",
-      contributorLogin: contributor.login
-    });
-    recordRecent(contributorRecentInput(nameWithOwner, contributor));
-  }
-
-  function selectRepositorySettingsCollaboratorInApp(
-    nameWithOwner: string,
-    collaborator: RepositoryCollaboratorSummary
-  ): void {
-    navigate({
-      kind: "repository",
-      nameWithOwner,
-      tab: "settings",
-      settingsCollaboratorLogin: collaborator.login
-    });
-    recordRecent(repositoryRecentInput(nameWithOwner, repositoryForRecent(nameWithOwner), "settings"));
-  }
-
-  function openIssueSummaryInApp(issue: IssueSummary): void {
-    const nameWithOwner =
-      issue.repositoryNameWithOwner ?? repositoryNameWithOwnerFromGitHubUrl(issue.htmlUrl);
-
-    if (nameWithOwner) {
-      selectIssueInApp(nameWithOwner, issue);
-      return;
-    }
-
-    void api.openExternal(issue.htmlUrl);
-  }
-
-  function openPullRequestSummaryInApp(pullRequest: PullRequestSummary): void {
-    const nameWithOwner =
-      pullRequest.repositoryNameWithOwner ?? repositoryNameWithOwnerFromGitHubUrl(pullRequest.htmlUrl);
-
-    if (nameWithOwner) {
-      selectPullRequestInApp(nameWithOwner, pullRequest);
-      return;
-    }
-
-    void api.openExternal(pullRequest.htmlUrl);
-  }
-
-  function openNotificationInApp(notification: NotificationSummary): void {
-    const target = notificationInAppTarget(notification);
-    if (target && notification.repositoryNameWithOwner) {
-      if (githubReady && notification.unread) {
-        markNotificationRead.mutate({ threadId: notification.id });
-      }
-      if (target.kind === "commit" && target.commitSha) {
-        openCommitInApp({
-          nameWithOwner: notification.repositoryNameWithOwner,
-          commit: notificationCommitRecentCommit(notification, target.commitSha),
-          path: "",
-          entryType: "dir"
-        });
-        recordRecent(notificationRecentInput(notification, target));
-        return;
-      }
-      navigate({
-        kind: "repository",
-        nameWithOwner: notification.repositoryNameWithOwner,
-        tab: target.tab,
-        issueNumber: target.kind === "issue" ? target.number : undefined,
-        pullNumber: target.kind === "pullRequest" ? target.number : undefined,
-        discussionNumber: target.kind === "discussion" ? target.number : undefined,
-        releaseId: target.kind === "release" ? target.releaseId : undefined,
-        releaseTagName: target.kind === "release" ? target.tagName : undefined,
-        workflowRunId: target.kind === "workflowRun" ? target.runId : undefined
-      });
-      recordRecent(notificationRecentInput(notification, target));
-      return;
-    }
-
-    if (githubReady && notification.unread) {
-      markNotificationRead.mutate({ threadId: notification.id });
-    }
-    void api.openExternal(notificationTargetUrl(notification));
-  }
-
-  function openRecentItem(item: LocalRecentItem): void {
-    openRecentItemInApp(item, {
-      navigate,
-      goToOrganizations,
-      goToLocalRepository,
-      openCodeBrowser,
-      openCodeBrowserInApp,
-      recordRecent,
-      setSelectedOrganizationLogin,
-      setSelectedOrganizationTeamSlug,
-      setSelectedOrganizationMemberLogin,
-      setSelectedOrganizationProjectId,
-      openExternal: (url) => void api.openExternal(url)
-    });
-  }
-
   const commandPaletteItems = (() => {
     const repositoriesRefreshDisabledReason = repositories.isFetching
       ? "Repositories are already refreshing."
@@ -1289,14 +904,7 @@ export function App(): JSX.Element {
         denseSourceLimit: commandPaletteDenseSourceLimit,
         forksLimit,
         onSelectCollaborator: selectRepositorySettingsCollaboratorInApp,
-        onSelectTeam: (team) => {
-          recordRecent(teamRecentInput(team));
-          setSelectedOrganizationLogin(team.organizationLogin);
-          setSelectedOrganizationTeamSlug(team.slug);
-          setSelectedOrganizationMemberLogin(null);
-          setSelectedOrganizationProjectId(null);
-          goToOrganizations();
-        },
+        onSelectTeam: openTeamInApp,
         onOpenRepository: openRepositoryInApp
       });
 
@@ -1665,92 +1273,16 @@ export function App(): JSX.Element {
                     })
                   }
                   onOpenPullRequestCommit={(commit, targetRepositoryNameWithOwner) =>
-                    openCommitInApp({
-                      nameWithOwner: targetRepositoryNameWithOwner ?? effectiveRepository,
-                      commit,
-                      path: "",
-                      entryType: "dir"
-                    })
+                    openPullRequestCommitInApp(commit, targetRepositoryNameWithOwner)
                   }
-                  onOpenPullRequestReviewCommit={(review, targetRepositoryNameWithOwner) => {
-                    const commit = pullRequestReviewCommitRecentCommit(review);
-
-                    if (commit) {
-                      openCommitInApp({
-                        nameWithOwner: targetRepositoryNameWithOwner ?? effectiveRepository,
-                        commit,
-                        path: "",
-                        entryType: "dir"
-                      });
-                    }
-                  }}
-                  onOpenPullRequestTimelineEventCommit={(event, targetRepositoryNameWithOwner) => {
-                    const commit = pullRequestTimelineEventCommitRecentCommit(event);
-
-                    if (commit) {
-                      openCommitInApp({
-                        nameWithOwner: targetRepositoryNameWithOwner ?? effectiveRepository,
-                        commit,
-                        path: "",
-                        entryType: "dir"
-                      });
-                    }
-                  }}
-                  onOpenWorkflowRunCommit={(run, targetRepositoryNameWithOwner) => {
-                    const commit = workflowRunCommitRecentCommit(run);
-
-                    if (commit) {
-                      openCommitInApp({
-                        nameWithOwner: targetRepositoryNameWithOwner ?? effectiveRepository,
-                        commit,
-                        path: "",
-                        entryType: "dir"
-                      });
-                    }
-                  }}
-                  onOpenWorkflowCheckSuiteCommit={(suite, targetRepositoryNameWithOwner) => {
-                    const commit = workflowCheckSuiteCommitRecentCommit(suite);
-
-                    if (commit) {
-                      openCommitInApp({
-                        nameWithOwner: targetRepositoryNameWithOwner ?? effectiveRepository,
-                        commit,
-                        path: "",
-                        entryType: "dir"
-                      });
-                    }
-                  }}
-                  onOpenCodePath={(path, entryType, ref, blobUrl, line, targetRepositoryNameWithOwner) => {
-                    const parsedBlob = parseGitHubBlobUrl(blobUrl, path);
-                    if (parsedBlob) {
-                      openCodeBrowserInApp(
-                        parsedBlob.nameWithOwner,
-                        parsedBlob.path,
-                        "file",
-                        parsedBlob.ref,
-                        line ?? parsedBlob.line
-                      );
-                      return;
-                    }
-
-                    openCodeBrowserInApp(
-                      targetRepositoryNameWithOwner ?? effectiveRepository,
-                      path,
-                      entryType,
-                      ref,
-                      line
-                    );
-                  }}
+                  onOpenPullRequestReviewCommit={openPullRequestReviewCommitInApp}
+                  onOpenPullRequestTimelineEventCommit={openPullRequestTimelineEventCommitInApp}
+                  onOpenWorkflowRunCommit={openWorkflowRunCommitInApp}
+                  onOpenWorkflowCheckSuiteCommit={openWorkflowCheckSuiteCommitInApp}
+                  onOpenCodePath={openCodePathInApp}
                   onOpenExternal={(url) => void api.openExternal(url)}
                   onOpenRepository={openRepositoryInApp}
-                  onOpenTeam={(team) => {
-                    recordRecent(teamRecentInput(team));
-                    setSelectedOrganizationLogin(team.organizationLogin);
-                    setSelectedOrganizationTeamSlug(team.slug);
-                    setSelectedOrganizationMemberLogin(null);
-                    setSelectedOrganizationProjectId(null);
-                    goToOrganizations();
-                  }}
+                  onOpenTeam={openTeamInApp}
                   onRefresh={() => refreshRepositorySurface()}
                   onOpenFileFinder={() => setFileFinderOpen(true)}
                   onSelectTab={(tab) => selectRepositoryTabInApp(effectiveRepository, tab)}

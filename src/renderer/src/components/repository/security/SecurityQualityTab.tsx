@@ -32,6 +32,7 @@ import type { ControlApi } from "@shared/ipc";
 import type { LocalRecentSecurityItemKind } from "@shared/local";
 
 import {
+  accessRoleLabel,
   githubActionLabel,
   readAvailabilityMessage,
   readAvailabilityStatusLabel,
@@ -569,10 +570,6 @@ function repositorySecurityFeatureRows(
     ["Validity checks", securityAndAnalysis.secretScanningValidityChecks],
     ["AI detection", securityAndAnalysis.secretScanningAiDetection]
   ];
-}
-
-function accessRoleLabel(role: string | null): string {
-  return role ? role.replace(/[_-]/g, " ") : "access";
 }
 
 function rulesetConditionLabel(condition: RepositoryRulesetSummary["conditions"][number]): string {

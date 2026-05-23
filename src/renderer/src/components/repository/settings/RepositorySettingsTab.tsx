@@ -11,7 +11,6 @@ import type {
   RepositoryAccessResult,
   RepositoryCollaboratorSummary,
   RepositoryDetail,
-  RepositoryRef,
   RepositoryForksResult,
   RepositoryRulesetsResult,
   RepositoryRulesetSummary,
@@ -25,10 +24,13 @@ import {
   repositoryRulesetsQueryKey
 } from "@renderer/components/repository/repositoryAdminQueryKeys";
 import {
+  accessRoleLabel,
+  collaboratorRoleLabel,
   githubActionLabel,
   maxProfileRepositoryLimit,
   readAvailabilityMessage,
   repositoryCollectionMetadataParts,
+  repositoryForkMetadataLabel,
   repositoryMutationDisabledReason,
   repositoryPath
 } from "@renderer/components/repository/repositoryUi";
@@ -332,28 +334,6 @@ function repositorySettingsMutationDisabledReason(repository: RepositoryDetail):
   return null;
 }
 
-function unknownableCompactNumber(value: number | null | undefined): string {
-  return value === null || value === undefined ? "unknown" : formatCompactNumber(value);
-}
-
-function repositoryForkMetadataLabel(repository: RepositoryRef): string {
-  const visibility =
-    repository.visibility ??
-    (repository.isPrivate === null || repository.isPrivate === undefined
-      ? "unknown visibility"
-      : repository.isPrivate
-        ? "private"
-        : "public");
-  const permission = repository.viewerPermission ?? "unknown permission";
-
-  return [
-    visibility.toLowerCase(),
-    `${unknownableCompactNumber(repository.stargazerCount)} stars`,
-    `${unknownableCompactNumber(repository.forkCount)} forks`,
-    permission.toLowerCase()
-  ].join(" · ");
-}
-
 function repositoryStatusMutationDisabledReason(repository: RepositoryDetail): string | null {
   if (repository.permissions.isDisabled) {
     return "Repository is disabled.";
@@ -415,10 +395,6 @@ function permissionStateLabel(value: boolean | null): string {
   return value ? "Allowed" : "Not allowed";
 }
 
-function accessRoleLabel(role: string | null): string {
-  return role ? role.replace(/[_-]/g, " ") : "access";
-}
-
 function rulesetConditionLabel(condition: RepositoryRulesetSummary["conditions"][number]): string {
   const refDetails = [
     ...condition.include.map((ref) => `include ${ref}`),
@@ -452,29 +428,6 @@ function rulesetCompactSummary(ruleset: RepositoryRulesetSummary): string {
     ...ruleset.bypassActors.slice(0, 1).map((actor) => `Bypass ${rulesetBypassActorLabel(actor)}`)
   ];
   return parts.length > 0 ? parts.join(" · ") : "No detailed ruleset payload returned.";
-}
-
-function collaboratorRoleLabel(collaborator: RepositoryCollaboratorSummary): string {
-  if (collaborator.roleName) {
-    return accessRoleLabel(collaborator.roleName);
-  }
-
-  if (collaborator.permissions.admin) {
-    return "admin";
-  }
-  if (collaborator.permissions.maintain) {
-    return "maintain";
-  }
-  if (collaborator.permissions.push) {
-    return "write";
-  }
-  if (collaborator.permissions.triage) {
-    return "triage";
-  }
-  if (collaborator.permissions.pull) {
-    return "read";
-  }
-  return "access";
 }
 
 function collaboratorPermissionForMutation(collaborator: RepositoryCollaboratorSummary): string {

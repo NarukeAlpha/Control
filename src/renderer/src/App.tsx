@@ -38,7 +38,6 @@ import type {
   RepositoryAccessResult,
   RepositoryCollaboratorSummary,
   RepositoryDetail,
-  RepositoryRef,
   RepositoryForksResult,
   RepositoryRulesetsResult,
   RepositorySecurityAdvisoriesResult,
@@ -213,10 +212,13 @@ import { AppEventBridge } from "./components/shell/AppEventBridge";
 import { TopBar } from "./components/topbar/TopBar";
 
 import {
+  accessRoleLabel,
+  collaboratorRoleLabel,
   defaultContributorLimit,
   githubActionLabel,
   maxContributorLimit,
   readAvailabilityMessage,
+  repositoryForkMetadataLabel,
   repositoryMutationDisabledReason
 } from "./components/repository/repositoryUi";
 import { maxRepositoryListLimit } from "./components/repository/repositorySearch";
@@ -269,28 +271,6 @@ const defaultIssueListLimit = 50;
 const maxIssueListLimit = 100;
 const defaultPullRequestListLimit = 50;
 const maxPullRequestListLimit = 100;
-
-function unknownableCompactNumber(value: number | null | undefined): string {
-  return value === null || value === undefined ? "unknown" : formatCompactNumber(value);
-}
-
-function repositoryForkMetadataLabel(repository: RepositoryRef): string {
-  const visibility =
-    repository.visibility ??
-    (repository.isPrivate === null || repository.isPrivate === undefined
-      ? "unknown visibility"
-      : repository.isPrivate
-        ? "private"
-        : "public");
-  const permission = repository.viewerPermission ?? "unknown permission";
-
-  return [
-    visibility.toLowerCase(),
-    `${unknownableCompactNumber(repository.stargazerCount)} stars`,
-    `${unknownableCompactNumber(repository.forkCount)} forks`,
-    permission.toLowerCase()
-  ].join(" · ");
-}
 
 function routeTitle(route: AppRoute): string {
   switch (route.kind) {
@@ -3749,31 +3729,4 @@ export function App(): JSX.Element {
       </div>
     </MarkdownUrlHandlerContext.Provider>
   );
-}
-
-function accessRoleLabel(role: string | null): string {
-  return role ? role.replace(/[_-]/g, " ") : "access";
-}
-
-function collaboratorRoleLabel(collaborator: RepositoryCollaboratorSummary): string {
-  if (collaborator.roleName) {
-    return accessRoleLabel(collaborator.roleName);
-  }
-
-  if (collaborator.permissions.admin) {
-    return "admin";
-  }
-  if (collaborator.permissions.maintain) {
-    return "maintain";
-  }
-  if (collaborator.permissions.push) {
-    return "write";
-  }
-  if (collaborator.permissions.triage) {
-    return "triage";
-  }
-  if (collaborator.permissions.pull) {
-    return "read";
-  }
-  return "access";
 }

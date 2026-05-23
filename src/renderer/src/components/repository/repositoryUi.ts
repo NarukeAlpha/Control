@@ -8,6 +8,8 @@ import type {
   PullRequestSummary,
   ReleaseSummary,
   RepositoryDetail,
+  RepositoryCollaboratorSummary,
+  RepositoryRef,
   RepositorySummary
 } from "@shared/github";
 import { formatCompactNumber, formatRelativeDate } from "../../utils/format";
@@ -156,6 +158,55 @@ export function repositoryMutationDisabledReason(repository: RepositoryDetail): 
     return "Repository is archived.";
   }
   return null;
+}
+
+export function accessRoleLabel(role: string | null): string {
+  return role ? role.replace(/[_-]/g, " ") : "access";
+}
+
+export function collaboratorRoleLabel(collaborator: RepositoryCollaboratorSummary): string {
+  if (collaborator.roleName) {
+    return accessRoleLabel(collaborator.roleName);
+  }
+
+  if (collaborator.permissions.admin) {
+    return "admin";
+  }
+  if (collaborator.permissions.maintain) {
+    return "maintain";
+  }
+  if (collaborator.permissions.push) {
+    return "write";
+  }
+  if (collaborator.permissions.triage) {
+    return "triage";
+  }
+  if (collaborator.permissions.pull) {
+    return "read";
+  }
+  return "access";
+}
+
+function unknownableCompactNumber(value: number | null | undefined): string {
+  return value === null || value === undefined ? "unknown" : formatCompactNumber(value);
+}
+
+export function repositoryForkMetadataLabel(repository: RepositoryRef): string {
+  const visibility =
+    repository.visibility ??
+    (repository.isPrivate === null || repository.isPrivate === undefined
+      ? "unknown visibility"
+      : repository.isPrivate
+        ? "private"
+        : "public");
+  const permission = repository.viewerPermission ?? "unknown permission";
+
+  return [
+    visibility.toLowerCase(),
+    `${unknownableCompactNumber(repository.stargazerCount)} stars`,
+    `${unknownableCompactNumber(repository.forkCount)} forks`,
+    permission.toLowerCase()
+  ].join(" · ");
 }
 
 const githubActionLabels: Record<GitHubAction, string> = {

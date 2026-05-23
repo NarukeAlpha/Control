@@ -57,7 +57,6 @@ import type {
   ReleaseSummary,
   RepoEntry,
   RepoFileBlameResult,
-  RepoFileContentResult,
   RepositoryAccessResult,
   RepositoryCollaboratorSummary,
   RepositoryCommunityProfileResult,
@@ -91,13 +90,9 @@ import { AreaDeleteDialog, AreaEditDialog, SshAreaDialog } from "./components/ar
 import { LocalAreaHome } from "./components/areas/LocalAreaHome";
 import { areaRepositoryPinKey, isGatewayAreaKind } from "./components/areas/areaUi";
 import { SetupPanel } from "./components/auth/SetupPanel";
+import { useProviderAuth } from "./components/auth/AuthProvider";
 import { CodeBrowserPage } from "./components/code-browser/CodeBrowserPage";
-import {
-  encodeRepositoryPath,
-  isMarkdownPath,
-  isReadmeMarkdownPath,
-  normalizeCodeLineNumber
-} from "./components/code-browser/codeBrowserUi";
+import { encodeRepositoryPath, normalizeCodeLineNumber } from "./components/code-browser/codeBrowserUi";
 import { issueStateLabel } from "./components/collection/workItemUi";
 import {
   notificationInAppTarget,
@@ -134,6 +129,12 @@ import {
 } from "./components/repository/RepositoryContext";
 import { maxCommitHistoryLimit } from "./components/repository/CommitHistoryPanel";
 import { useActionsTabQueries } from "./components/repository/actions/ActionsTab";
+import {
+  codeTabCommitsQueryKey,
+  codeTabContentsQueryKey,
+  codeTabReadmeQueryKey,
+  useCodeTabQueries
+} from "./components/repository/code/CodeTab";
 import {
   commitRecentAuthoredDate,
   commitRecentAuthorName,
@@ -1276,6 +1277,7 @@ function routeTitle(route: AppRoute): string {
 
 export function App(): JSX.Element {
   const api = useControlApi();
+  const providerAuth = useProviderAuth();
   const queryClient = useQueryClient();
   const route = useUiStore((state) => state.route);
   const selectedAreaId = useUiStore((state) => state.selectedAreaId);
@@ -2003,29 +2005,40 @@ export function App(): JSX.Element {
     error: refsError
   } = repositoryRefQueries;
 
-  const contents = useQuery({
-    queryKey: ["contents", owner, repo, contentsRef ?? "default", codeBrowserPath, codeBrowserEntryType],
+  const codeTabQueries = useCodeTabQueries({
+    owner,
+    repo,
+    selectedRef: repositorySelectedRef,
+    defaultBranch: repositoryDetail?.defaultBranch ?? null,
+    commitHistoryLimit: repositoryCommitHistoryLimit,
+    selectedRootMarkdownPath,
+    enabled: appState.isSuccess && isRepositoryRoute && shouldLoadRepositoryTab("code") && hasRepositoryParts,
+    githubReady
+  });
+  const {
+    contents: codeTabContents,
+    readme,
+    repositoryCommits,
+    rootMarkdownContent,
+    contentItems: codeTabContentItems,
+    contentsAvailability: codeTabContentsAvailability,
+    repositoryCommitItems,
+    repositoryCommitsAvailability,
+    rootMarkdownItems,
+    effectiveSelectedRootMarkdownPath
+  } = codeTabQueries;
+
+  const codeBrowserContents = useQuery({
+    queryKey: ["contents", owner, repo, codeBrowserRef ?? "default", codeBrowserPath, codeBrowserEntryType],
     queryFn: () =>
       api.github.listContentsWithStatus({
         owner,
         repo,
-        path: isCodeBrowserRoute && codeBrowserEntryType === "dir" ? codeBrowserPath : undefined,
-        ref: contentsRef ?? undefined,
+        path: codeBrowserPath,
+        ref: codeBrowserRef ?? undefined,
         cacheOnly: !githubReady
       }),
-    enabled:
-      appState.isSuccess &&
-      hasRepositoryParts &&
-      ((isRepositoryRoute && shouldLoadRepositoryTab("code")) ||
-        (isCodeBrowserRoute && codeBrowserEntryType === "dir")),
-    staleTime: 120_000
-  });
-
-  const readme = useQuery({
-    queryKey: ["readme", owner, repo, contentsRef ?? "default"],
-    queryFn: () =>
-      api.github.getReadme({ owner, repo, ref: contentsRef ?? undefined, cacheOnly: !githubReady }),
-    enabled: appState.isSuccess && isRepositoryRoute && shouldLoadRepositoryTab("code") && hasRepositoryParts,
+    enabled: appState.isSuccess && hasRepositoryParts && isCodeBrowserRoute && codeBrowserEntryType === "dir",
     staleTime: 120_000
   });
 
@@ -2068,20 +2081,6 @@ export function App(): JSX.Element {
     staleTime: 120_000
   });
 
-  const repositoryCommits = useQuery({
-    queryKey: ["commits", owner, repo, repositoryCommitHistoryRefKey, "", repositoryCommitHistoryLimit],
-    queryFn: () =>
-      api.github.listCommitsWithStatus({
-        owner,
-        repo,
-        ref: contentsRef ?? repositoryDetail?.defaultBranch ?? undefined,
-        limit: repositoryCommitHistoryLimit,
-        cacheOnly: !githubReady
-      }),
-    enabled: appState.isSuccess && isRepositoryRoute && shouldLoadRepositoryTab("code") && hasRepositoryParts,
-    staleTime: 60_000
-  });
-
   const fileCommits = useQuery({
     queryKey: ["commits", owner, repo, fileCommitHistoryRefKey, codeBrowserPath, fileCommitHistoryLimit],
     queryFn: () =>
@@ -2102,55 +2101,17 @@ export function App(): JSX.Element {
     staleTime: 60_000
   });
 
-  const contentItems = contents.data?.items ?? emptyRepoEntries;
-  const contentsAvailability = contents.data?.availability ?? null;
-  const repositoryCommitItems = repositoryCommits.data?.items ?? [];
-  const repositoryCommitsAvailability = repositoryCommits.data?.availability ?? null;
+  const contentItems = isCodeBrowserRoute
+    ? (codeBrowserContents.data?.items ?? emptyRepoEntries)
+    : codeTabContentItems;
+  const contentsAvailability = isCodeBrowserRoute
+    ? (codeBrowserContents.data?.availability ?? null)
+    : codeTabContentsAvailability;
   const fileCommitItems = fileCommits.data?.items ?? [];
   const fileCommitsAvailability = fileCommits.data?.availability ?? null;
   const fileContentItem = fileContent.data?.item ?? null;
   const fileContentAvailability = fileContent.data?.availability ?? null;
   const fileContentAvailabilityMessage = readAvailabilityMessage("File content", fileContentAvailability);
-  const rootMarkdownItems = useMemo(
-    () =>
-      contentItems.filter(
-        (item) =>
-          item.type === "file" &&
-          !item.path.includes("/") &&
-          isMarkdownPath(item.path) &&
-          !isReadmeMarkdownPath(item.path)
-      ),
-    [contentItems]
-  );
-  const effectiveSelectedRootMarkdownPath = rootMarkdownItems.some(
-    (item) => item.path === selectedRootMarkdownPath
-  )
-    ? selectedRootMarkdownPath
-    : (rootMarkdownItems[0]?.path ?? null);
-  const rootMarkdownContent = useQuery<RepoFileContentResult>({
-    queryKey: [
-      "file-content",
-      owner,
-      repo,
-      contentsRef ?? "default",
-      effectiveSelectedRootMarkdownPath ?? ""
-    ],
-    queryFn: () =>
-      api.github.getFileContentWithStatus({
-        owner,
-        repo,
-        path: effectiveSelectedRootMarkdownPath ?? "",
-        ref: contentsRef ?? undefined,
-        cacheOnly: !githubReady
-      }),
-    enabled:
-      appState.isSuccess &&
-      isRepositoryRoute &&
-      shouldLoadRepositoryTab("code") &&
-      hasRepositoryParts &&
-      Boolean(effectiveSelectedRootMarkdownPath),
-    staleTime: 120_000
-  });
 
   const repositoryTree = useQuery({
     queryKey: ["tree", owner, repo, contentsRef ?? "default"],
@@ -2788,7 +2749,6 @@ export function App(): JSX.Element {
     }
 
     const ref = contentsRef ?? repositoryDetail?.defaultBranch ?? undefined;
-    const refKey = contentsRef ?? "default";
     const cachedRead = !githubReady;
 
     try {
@@ -2818,7 +2778,7 @@ export function App(): JSX.Element {
             })
         }),
         queryClient.fetchQuery({
-          queryKey: ["contents", owner, repo, refKey, "", "dir"],
+          queryKey: codeTabContentsQueryKey(owner, repo, contentsRef),
           staleTime: 0,
           queryFn: () =>
             api.github.listContentsWithStatus({
@@ -2830,7 +2790,7 @@ export function App(): JSX.Element {
             })
         }),
         queryClient.fetchQuery({
-          queryKey: ["readme", owner, repo, refKey],
+          queryKey: codeTabReadmeQueryKey(owner, repo, contentsRef),
           staleTime: 0,
           queryFn: () =>
             api.github.getReadme({
@@ -2842,7 +2802,7 @@ export function App(): JSX.Element {
             })
         }),
         queryClient.fetchQuery({
-          queryKey: ["commits", owner, repo, refKey, "", repositoryCommitHistoryLimit],
+          queryKey: codeTabCommitsQueryKey(owner, repo, contentsRef, repositoryCommitHistoryLimit),
           staleTime: 0,
           queryFn: () =>
             api.github.listCommitsWithStatus({
@@ -6486,10 +6446,10 @@ export function App(): JSX.Element {
                   refsError={refsError}
                   refsAvailabilityMessage={refsAvailabilityMessage || null}
                   branchesError={branches.error}
-                  contents={contentItems}
-                  contentsLoading={contents.isLoading || contents.isFetching}
-                  contentsError={contents.error}
-                  contentsAvailability={contentsAvailability}
+                  contents={codeTabContentItems}
+                  contentsLoading={codeTabContents.isLoading || codeTabContents.isFetching}
+                  contentsError={codeTabContents.error}
+                  contentsAvailability={codeTabContentsAvailability}
                   readmeMarkdown={readme.data?.markdown ?? repositoryDetail?.readmeMarkdown ?? null}
                   readmeAvailability={readme.data?.availability ?? null}
                   readmeLoading={readme.isLoading || readme.isFetching}
@@ -6612,7 +6572,7 @@ export function App(): JSX.Element {
                   pinError={areaPinMutation.error instanceof Error ? areaPinMutation.error : null}
                   error={
                     repository.error ??
-                    (activeRepositoryTab === "code" ? contents.error : null) ??
+                    (activeRepositoryTab === "code" ? codeTabContents.error : null) ??
                     (activeRepositoryTab === "issues" ? issues.error : null) ??
                     (activeRepositoryTab === "pulls" ? pulls.error : null) ??
                     (activeRepositoryTab === "discussions" ? discussions.error : null) ??
@@ -6830,8 +6790,8 @@ export function App(): JSX.Element {
                   refsError={refsError}
                   refsAvailabilityMessage={refsAvailabilityMessage || null}
                   contents={contentItems}
-                  contentsLoading={contents.isLoading || contents.isFetching}
-                  contentsError={contents.error}
+                  contentsLoading={codeBrowserContents.isLoading || codeBrowserContents.isFetching}
+                  contentsError={codeBrowserContents.error}
                   contentsAvailability={contentsAvailability}
                   fileContent={fileContentItem ?? undefined}
                   fileLoading={fileContent.isLoading || fileContent.isFetching}
@@ -6848,7 +6808,7 @@ export function App(): JSX.Element {
                   commitsAvailability={fileCommitsAvailability}
                   error={
                     repository.error ??
-                    contents.error ??
+                    codeBrowserContents.error ??
                     fileContent.error ??
                     fileBlame.error ??
                     fileCommits.error
@@ -7151,22 +7111,12 @@ export function App(): JSX.Element {
         {settingsOpen && (
           <SettingsPanel
             appState={appState.data}
+            authController={providerAuth.github}
             onClose={() => setSettingsOpen(false)}
             onOpenExternal={(url) => void api.openExternal(url)}
             onSave={async (settings) => {
               await api.updateSettings(settings);
               await queryClient.invalidateQueries({ queryKey: ["app-state"] });
-            }}
-            onSignInWithGitHub={() => api.signInWithGitHub()}
-            onGetGitHubSignIn={() => api.getGitHubSignIn()}
-            onCompleteGitHubSignIn={async () => {
-              await invalidateGitHubSessionQueries();
-              setSettingsOpen(false);
-            }}
-            onCancelGitHubSignIn={() => api.cancelGitHubSignIn()}
-            onClearToken={async () => {
-              await api.clearGitHubToken();
-              await invalidateGitHubSessionQueries();
             }}
           />
         )}

@@ -1,41 +1,34 @@
 import { LogIn, X } from "lucide-react";
-import { useEffect, useState, type JSX } from "react";
+import { useEffect, useRef, useState, type JSX } from "react";
 
-import type { AppState, GitHubSignInSession, GlassMode } from "@shared/github";
+import type { AppState, GlassMode } from "@shared/github";
+import type { ProviderAuthController } from "../auth/providerAuthAdapters";
 
 export function SettingsPanel({
   appState,
+  authController,
   onClose,
   onOpenExternal,
-  onSave,
-  onSignInWithGitHub,
-  onGetGitHubSignIn,
-  onCompleteGitHubSignIn,
-  onCancelGitHubSignIn,
-  onClearToken
+  onSave
 }: {
   appState?: AppState;
+  authController: ProviderAuthController;
   onClose(): void;
   onOpenExternal(url: string): void;
   onSave(settings: Partial<AppState["settings"]>): Promise<void>;
-  onSignInWithGitHub(): Promise<GitHubSignInSession>;
-  onGetGitHubSignIn(): Promise<GitHubSignInSession | null>;
-  onCompleteGitHubSignIn(): Promise<void>;
-  onCancelGitHubSignIn(): Promise<void>;
-  onClearToken(): Promise<void>;
 }): JSX.Element {
-  const [signInStatus, setSignInStatus] = useState<"idle" | "waiting" | "error">("idle");
-  const [signInSession, setSignInSession] = useState<GitHubSignInSession | null>(null);
-  const [signInError, setSignInError] = useState<string | null>(null);
   const [signOutStatus, setSignOutStatus] = useState<"idle" | "running" | "signedOut" | "error">("idle");
   const [signOutError, setSignOutError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [glassMode, setGlassMode] = useState<GlassMode>(appState?.settings.glassMode ?? "glass-shell");
+  const observedCompletedAt = useRef(authController.completedAt);
   const authenticated = appState?.github.authenticated ?? false;
   const githubUser = appState?.github.user ?? null;
   const signInConfigured = appState?.github.signInConfigured ?? true;
-  const signInBusy = signInStatus === "waiting";
+  const signInBusy = authController.status === "waiting";
+  const signInSession = authController.session;
+  const signInError = authController.error;
   const signOutBusy = signOutStatus === "running";
   const saveBusy = saveStatus === "saving";
   const githubConnectionLabel = signInBusy
@@ -66,104 +59,24 @@ export function SettingsPanel({
   const saveDisabledReason = saveBusy ? "Settings save is still running." : null;
 
   useEffect(() => {
-    if (!signInBusy || !signInSession) {
+    if (!authController.completedAt || authController.completedAt === observedCompletedAt.current) {
       return;
     }
 
-    let active = true;
-    let pollHandle: number | null = null;
-
-    const poll = async (): Promise<void> => {
-      try {
-        const session = await onGetGitHubSignIn();
-        if (!active) {
-          return;
-        }
-
-        if (!session) {
-          setSignInStatus("idle");
-          setSignInSession(null);
-          return;
-        }
-
-        setSignInSession(session);
-
-        if (session.status === "complete") {
-          await onCompleteGitHubSignIn();
-          return;
-        }
-
-        if (session.status === "error") {
-          setSignInStatus("error");
-          setSignInError(session.error ?? "GitHub sign-in failed.");
-          return;
-        }
-
-        if (session.status === "cancelled") {
-          setSignInStatus("idle");
-          setSignInSession(null);
-          setSignInError(null);
-          return;
-        }
-
-        pollHandle = window.setTimeout(() => {
-          void poll();
-        }, 300);
-      } catch (error) {
-        setSignInStatus("error");
-        setSignInError(error instanceof Error ? error.message : "GitHub sign-in failed.");
-      }
-    };
-
-    pollHandle = window.setTimeout(() => {
-      void poll();
-    }, 300);
-
-    return () => {
-      active = false;
-      if (pollHandle !== null) {
-        window.clearTimeout(pollHandle);
-      }
-    };
-  }, [onCompleteGitHubSignIn, onGetGitHubSignIn, signInBusy, signInSession]);
+    observedCompletedAt.current = authController.completedAt;
+    onClose();
+  }, [authController.completedAt, onClose]);
 
   async function handleGitHubSignIn(): Promise<void> {
-    setSignInError(null);
+    authController.clearError();
     setSignOutError(null);
     setSignOutStatus("idle");
 
     if (!signInConfigured) {
-      setSignInStatus("error");
-      setSignInError("GitHub sign-in is not configured in this build.");
       return;
     }
 
-    setSignInSession(null);
-    setSignInStatus("waiting");
-
-    try {
-      const session = await onSignInWithGitHub();
-      setSignInSession(session);
-
-      if (session.status === "complete") {
-        await onCompleteGitHubSignIn();
-        return;
-      }
-
-      if (session.status === "error") {
-        setSignInStatus("error");
-        setSignInError(session.error ?? "GitHub sign-in failed.");
-        return;
-      }
-
-      if (session.status === "cancelled") {
-        setSignInStatus("idle");
-        setSignInSession(null);
-      }
-    } catch (error) {
-      setSignInStatus("error");
-      setSignInError(error instanceof Error ? error.message : "GitHub sign-in failed.");
-    }
+    await authController.signIn();
   }
 
   async function handleClearToken(): Promise<void> {
@@ -175,7 +88,7 @@ export function SettingsPanel({
     setSignOutError(null);
 
     try {
-      await onClearToken();
+      await authController.clearToken();
       setSignOutStatus("signedOut");
     } catch (error) {
       setSignOutStatus("error");
@@ -204,20 +117,11 @@ export function SettingsPanel({
   }
 
   function handleClose(): void {
-    if (signInBusy) {
-      void onCancelGitHubSignIn();
-      setSignInStatus("idle");
-      setSignInSession(null);
-    }
-
     onClose();
   }
 
   function handleCancelSignIn(): void {
-    void onCancelGitHubSignIn();
-    setSignInStatus("idle");
-    setSignInSession(null);
-    setSignInError(null);
+    void authController.cancelSignIn();
   }
 
   return (

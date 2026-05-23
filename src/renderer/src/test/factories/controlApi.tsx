@@ -6,6 +6,7 @@ import { afterEach, vi } from "vitest";
 import type { ControlApi } from "@shared/ipc";
 import type { GitHubProvider, RepoDetailInput, RepositoryDetail } from "@shared/github";
 import { App } from "../../App";
+import { AuthProvider } from "../../components/auth/AuthProvider";
 import { mockControlApi } from "../../data/mock";
 import { useUiStore } from "../../stores/uiStore";
 
@@ -71,7 +72,9 @@ export function renderControl(api: ControlApi): void {
   render(
     <React.StrictMode>
       <QueryClientProvider client={queryClient}>
-        <App />
+        <AuthProvider>
+          <App />
+        </AuthProvider>
       </QueryClientProvider>
     </React.StrictMode>
   );

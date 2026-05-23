@@ -1,11 +1,26 @@
 import { QueryClient } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { GitHubListResult, GitHubReadAvailability, RepositoryWikiResult } from "@shared/github";
+import type {
+  GitHubListResult,
+  GitHubReadAvailability,
+  RepoContentsResult,
+  RepoFileContentResult,
+  RepoReadmeResult,
+  RepositoryCommitListResult,
+  RepositoryWikiResult
+} from "@shared/github";
 import type { ControlApi } from "@shared/ipc";
 
-import { mockControlApi } from "../../data/mock";
+import { mockCommits, mockContents, mockControlApi } from "../../data/mock";
 import { actionsTabQueryKey, prefetchActionsTabData } from "./actions/ActionsTab";
+import {
+  codeTabCommitsQueryKey,
+  codeTabContentsQueryKey,
+  codeTabReadmeQueryKey,
+  codeTabRootMarkdownContentQueryKey,
+  prefetchCodeTabData
+} from "./code/CodeTab";
 import { discussionsTabQueryKey, prefetchDiscussionsTabData } from "./discussions/DiscussionsTab";
 import { issuesTabQueryKey, prefetchIssuesTabData } from "./issues/IssuesTab";
 import { projectsTabQueryKey, prefetchProjectsTabData } from "./projects/ProjectsTab";
@@ -53,6 +68,112 @@ afterEach(() => {
 });
 
 describe("repository tab prefetch helpers", () => {
+  it("prefetches code tab data without mounting CodeTab", async () => {
+    const queryClient = makeQueryClient();
+    const rootMarkdown = {
+      ...mockContents.find((item) => item.name === "README.md")!,
+      name: "CONTRIBUTING.md",
+      path: "CONTRIBUTING.md",
+      sha: "mock-contributing"
+    };
+    const contentsResult: RepoContentsResult = {
+      items: [...mockContents, rootMarkdown],
+      availability: available
+    };
+    const readmeResult: RepoReadmeResult = {
+      markdown: "# Control",
+      availability: available
+    };
+    const rootMarkdownResult: RepoFileContentResult = {
+      item: {
+        path: rootMarkdown.path,
+        name: rootMarkdown.name,
+        ref: null,
+        content: "# Contributing",
+        htmlUrl: "https://github.com/NarukeAlpha/control/blob/main/CONTRIBUTING.md",
+        downloadUrl: null,
+        lastCommitSha: rootMarkdown.lastCommitSha,
+        lastCommitMessage: rootMarkdown.lastCommitMessage,
+        lastCommitAuthorLogin: rootMarkdown.lastCommitAuthorLogin,
+        lastCommitAuthorName: rootMarkdown.lastCommitAuthorName,
+        lastCommitAuthorAvatarUrl: rootMarkdown.lastCommitAuthorAvatarUrl,
+        lastAuthoredDate: rootMarkdown.lastAuthoredDate,
+        lastCommittedDate: rootMarkdown.lastCommittedDate,
+        lastCommitDate: rootMarkdown.lastCommitDate,
+        lastCommitHtmlUrl: rootMarkdown.lastCommitHtmlUrl,
+        lastCommitAdditions: rootMarkdown.lastCommitAdditions,
+        lastCommitDeletions: rootMarkdown.lastCommitDeletions,
+        lastCommitChanges: rootMarkdown.lastCommitChanges,
+        lastCommitAvailability: rootMarkdown.lastCommitAvailability
+      },
+      availability: available
+    };
+    const commitsResult: RepositoryCommitListResult = {
+      items: mockCommits.slice(0, 2),
+      availability: available
+    };
+    const listContentsWithStatus = vi.fn<ControlApi["github"]["listContentsWithStatus"]>(
+      async () => contentsResult
+    );
+    const getReadme = vi.fn<ControlApi["github"]["getReadme"]>(async () => readmeResult);
+    const getFileContentWithStatus = vi.fn<ControlApi["github"]["getFileContentWithStatus"]>(
+      async () => rootMarkdownResult
+    );
+    const listCommitsWithStatus = vi.fn<ControlApi["github"]["listCommitsWithStatus"]>(
+      async () => commitsResult
+    );
+    const api = makeApi({
+      listContentsWithStatus,
+      getReadme,
+      getFileContentWithStatus,
+      listCommitsWithStatus
+    });
+
+    await prefetchCodeTabData(queryClient, {
+      api,
+      owner,
+      repo,
+      selectedRef: null,
+      defaultBranch: "main",
+      commitHistoryLimit: 8,
+      selectedRootMarkdownPath: null,
+      githubReady: false
+    });
+
+    expect(listContentsWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      ref: undefined,
+      cacheOnly: true
+    });
+    expect(getReadme).toHaveBeenCalledWith({
+      owner,
+      repo,
+      ref: undefined,
+      cacheOnly: true
+    });
+    expect(getFileContentWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      path: "CONTRIBUTING.md",
+      ref: undefined,
+      cacheOnly: true
+    });
+    expect(listCommitsWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      ref: "main",
+      limit: 8,
+      cacheOnly: true
+    });
+    expect(queryClient.getQueryData(codeTabContentsQueryKey(owner, repo, null))).toBe(contentsResult);
+    expect(queryClient.getQueryData(codeTabReadmeQueryKey(owner, repo, null))).toBe(readmeResult);
+    expect(
+      queryClient.getQueryData(codeTabRootMarkdownContentQueryKey(owner, repo, null, "CONTRIBUTING.md"))
+    ).toBe(rootMarkdownResult);
+    expect(queryClient.getQueryData(codeTabCommitsQueryKey(owner, repo, null, 8))).toBe(commitsResult);
+  });
+
   it("prefetches wiki data without mounting WikiTab", async () => {
     const queryClient = makeQueryClient();
     const result: RepositoryWikiResult = {

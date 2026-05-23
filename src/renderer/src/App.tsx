@@ -46,17 +46,14 @@ import {
   RepositoryContextProvider,
   type RepositoryContextValue
 } from "./components/repository/RepositoryContext";
-import { prefetchActionsTabData, useActionsTabQueries } from "./components/repository/actions/ActionsTab";
-import { prefetchCodeTabData, useCodeTabQueries } from "./components/repository/code/CodeTab";
+import { useActionsTabQueries } from "./components/repository/actions/ActionsTab";
+import { useCodeTabQueries } from "./components/repository/code/CodeTab";
 import { useContributorsTabQueries } from "./components/repository/contributors/ContributorsTab";
 import { useDiscussionsTabQueries } from "./components/repository/discussions/DiscussionsTab";
-import { prefetchIssuesTabData, useIssuesTabQueries } from "./components/repository/issues/IssuesTab";
+import { useIssuesTabQueries } from "./components/repository/issues/IssuesTab";
 import { createGitHubMutationInput } from "./components/repository/githubMutationHelpers";
 import { useProjectsTabQueries } from "./components/repository/projects/ProjectsTab";
-import {
-  prefetchPullRequestsTabData,
-  usePullRequestsTabQueries
-} from "./components/repository/pull-requests/PullRequestsTab";
+import { usePullRequestsTabQueries } from "./components/repository/pull-requests/PullRequestsTab";
 import { useReleasesTabQueries } from "./components/repository/releases/ReleasesTab";
 import { RightRail } from "./components/right-rail/RightRail";
 import { SettingsPanel } from "./components/settings/SettingsPanel";
@@ -88,6 +85,7 @@ import { useAppNavigationActions } from "./hooks/useAppNavigationActions";
 import { useCollectionSurfaceState } from "./hooks/useCollectionSurfaceState";
 import { useRepositoryRefreshActions } from "./hooks/useRepositoryRefreshActions";
 import { useRepositorySurfaceLimits } from "./hooks/useRepositorySurfaceLimits";
+import { useRepositoryWarmPrefetch } from "./hooks/useRepositoryWarmPrefetch";
 import { useStoredRepositoryRefs } from "./hooks/useStoredRepositoryRefs";
 import { useUiStore, type AppRoute } from "./stores/uiStore";
 
@@ -493,62 +491,19 @@ export function App(): JSX.Element {
     githubReady
   });
 
-  useEffect(() => {
-    if (!appState.isSuccess || !isRepositoryRoute || !hasRepositoryParts) {
-      return;
-    }
-
-    void Promise.all([
-      prefetchCodeTabData(queryClient, {
-        api,
-        owner,
-        repo,
-        selectedRef: repositorySelectedRef,
-        defaultBranch: repositoryDetail?.defaultBranch ?? null,
-        commitHistoryLimit: repositoryCommitHistoryLimit,
-        selectedRootMarkdownPath: null,
-        githubReady
-      }),
-      prefetchIssuesTabData(queryClient, {
-        api,
-        owner,
-        repo,
-        issueListLimit,
-        githubReady
-      }),
-      prefetchPullRequestsTabData(queryClient, {
-        api,
-        owner,
-        repo,
-        pullRequestListLimit,
-        githubReady
-      }),
-      prefetchActionsTabData(queryClient, {
-        api,
-        owner,
-        repo,
-        limit: actionsLimit,
-        githubReady
-      })
-    ]).catch(() => {
-      // Mounted tabs own visible error states; warm prefetch should stay silent.
-    });
-  }, [
-    actionsLimit,
-    api,
-    appState.isSuccess,
-    githubReady,
-    hasRepositoryParts,
-    isRepositoryRoute,
-    issueListLimit,
+  useRepositoryWarmPrefetch({
+    appReady: appState.isSuccess,
+    enabled: isRepositoryRoute && hasRepositoryParts,
     owner,
-    pullRequestListLimit,
-    queryClient,
     repo,
-    repositoryCommitHistoryLimit,
-    repositoryDetail?.defaultBranch,
-    repositorySelectedRef
-  ]);
+    selectedRef: repositorySelectedRef,
+    defaultBranch: repositoryDetail?.defaultBranch ?? null,
+    commitHistoryLimit: repositoryCommitHistoryLimit,
+    issueListLimit,
+    pullRequestListLimit,
+    actionsLimit,
+    githubReady
+  });
 
   const { projects } = useProjectsTabQueries({
     owner,

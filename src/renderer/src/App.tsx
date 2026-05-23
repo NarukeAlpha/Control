@@ -222,6 +222,7 @@ import { recentItemsQueryKey, refreshRecentItemsData, useRecentItems } from "./h
 import { refreshRepositoryDirectoryData, useRepositoryDirectory } from "./hooks/useRepositoryDirectory";
 import { refreshRepositoryDetailData, useRepositoryDetail } from "./hooks/useRepositoryDetail";
 import { useRepositoryRefs } from "./hooks/useRepositoryRefs";
+import { useStoredRepositoryRefs } from "./hooks/useStoredRepositoryRefs";
 import { repositoryScopedQueryKeys } from "./queries/repositoryQueryKeys";
 import { useUiStore, type AppRoute, type LocalRepositoryTab, type RepositoryTab } from "./stores/uiStore";
 import { formatCompactNumber } from "./utils/format";
@@ -237,7 +238,6 @@ type PullRequestLinkedIssue =
   | NonNullable<PullRequestTimelineEventSummary["sourceIssue"]>
   | PullRequestLinkedIssueSummary;
 
-const repositoryRefsStorageKey = "control:repository-refs";
 const emptyRepoEntries: RepoEntry[] = [];
 const defaultFileBlameRangeLimit = 20;
 const defaultCommitHistoryLimit = 12;
@@ -292,45 +292,6 @@ function repositoryForkMetadataLabel(repository: RepositoryRef): string {
     `${unknownableCompactNumber(repository.forkCount)} forks`,
     permission.toLowerCase()
   ].join(" · ");
-}
-
-function browserStorageOrNull(): Storage | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  try {
-    return window.localStorage ?? null;
-  } catch {
-    return null;
-  }
-}
-
-function readRepositoryRefs(): Record<string, string | null> {
-  const serialized = browserStorageOrNull()?.getItem(repositoryRefsStorageKey);
-  if (!serialized) {
-    return {};
-  }
-
-  try {
-    const parsed = JSON.parse(serialized);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return {};
-    }
-
-    return Object.fromEntries(
-      Object.entries(parsed).filter(
-        (entry): entry is [string, string | null] =>
-          typeof entry[0] === "string" && (typeof entry[1] === "string" || entry[1] === null)
-      )
-    );
-  } catch {
-    return {};
-  }
-}
-
-function writeRepositoryRefs(refs: Record<string, string | null>): void {
-  browserStorageOrNull()?.setItem(repositoryRefsStorageKey, JSON.stringify(refs));
 }
 
 function repositoryRecentInput(
@@ -1070,9 +1031,7 @@ export function App(): JSX.Element {
   const [sshAreaOpen, setSshAreaOpen] = useState(false);
   const [editingArea, setEditingArea] = useState<AreaSummary | null>(null);
   const [deletingArea, setDeletingArea] = useState<AreaSummary | null>(null);
-  const [repositoryRefs, setRepositoryRefs] = useState<Record<string, string | null>>(() =>
-    readRepositoryRefs()
-  );
+  const [repositoryRefs, setRepositoryRefs] = useStoredRepositoryRefs();
   const [repositoryListLimit, setRepositoryListLimit] = useState(defaultRepositoryListLimit);
   const [commitHistoryLimits, setCommitHistoryLimits] = useState<Record<string, number>>({});
   const [repositoryRefListLimits, setRepositoryRefListLimits] = useState<Record<string, number>>({});
@@ -1156,10 +1115,6 @@ export function App(): JSX.Element {
       selectAreaInStore(selectedArea.id);
     }
   }, [selectAreaInStore, selectedArea?.id, selectedAreaId]);
-
-  useEffect(() => {
-    writeRepositoryRefs(repositoryRefs);
-  }, [repositoryRefs]);
 
   const repositories = useRepositoryDirectory(repositoryListLimit, {
     enabled: appState.isSuccess,

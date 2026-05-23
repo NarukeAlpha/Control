@@ -1,24 +1,10 @@
-import {
-  Building2,
-  CheckCircle2,
-  CircleDot,
-  Code2,
-  Home,
-  Inbox,
-  Lock,
-  Plus,
-  RefreshCw,
-  Settings,
-  ShieldCheck
-} from "lucide-react";
+import { Building2, CheckCircle2, Code2, Home, Inbox, Plus, RefreshCw, Settings } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type {
-  CodeScanningAlertsResult,
   ContributorSummary,
-  DependabotAlertsResult,
   DiscussionSummary,
   GitHubMutationInput,
   IssueSummary,
@@ -32,10 +18,7 @@ import type {
   RepoFileBlameResult,
   RepositoryCollaboratorSummary,
   RepositoryDetail,
-  RepositoryRulesetsResult,
-  RepositorySecurityAdvisoriesResult,
   RepositorySummary,
-  SecretScanningAlertsResult,
   WorkflowRunArtifactSummary,
   WorkflowRunDetail,
   WorkflowRunSummary,
@@ -100,9 +83,11 @@ import {
   appendRepositoryAdminCommandPaletteItems,
   appendRepositoryContentCommandPaletteItems,
   appendRepositoryReleaseCommandPaletteItems,
+  appendRepositorySecurityCommandPaletteItems,
   appendRepositoryWorkflowCommandPaletteItems,
   cachedRepositoryAccess,
   cachedRepositoryForks,
+  cachedRepositorySecurityCommandItems,
   cachedWorkflowRunDetail,
   appendRecentCommandPaletteItems,
   appendRepositoryCommandPaletteItems,
@@ -2365,281 +2350,20 @@ export function App(): JSX.Element {
         onSelectWorkflowArtifact: selectWorkflowArtifactInApp
       });
 
-      const commandPaletteDependabotAlerts =
-        queryClient.getQueryData<DependabotAlertsResult>([
-          "dependabot-alerts",
+      appendRepositorySecurityCommandPaletteItems(items, {
+        effectiveRepository,
+        ...cachedRepositorySecurityCommandItems(queryClient, {
           owner,
           repo,
-          dependabotAlertsLimit
-        ])?.items ?? [];
-      const commandPaletteCodeScanningAlerts =
-        queryClient.getQueryData<CodeScanningAlertsResult>([
-          "code-scanning-alerts",
-          owner,
-          repo,
-          codeScanningAlertsLimit
-        ])?.items ?? [];
-      const commandPaletteSecretScanningAlerts =
-        queryClient.getQueryData<SecretScanningAlertsResult>([
-          "secret-scanning-alerts",
-          owner,
-          repo,
-          secretScanningAlertsLimit
-        ])?.items ?? [];
-      const commandPaletteSecurityAdvisories =
-        queryClient.getQueryData<RepositorySecurityAdvisoriesResult>([
-          "repository-security-advisories",
-          owner,
-          repo,
-          repositorySecurityAdvisoriesLimit
-        ])?.items ?? [];
-      const commandPaletteRepositoryRulesets =
-        queryClient.getQueryData<RepositoryRulesetsResult>([
-          "repository-rulesets",
-          owner,
-          repo,
+          dependabotAlertsLimit,
+          codeScanningAlertsLimit,
+          secretScanningAlertsLimit,
+          repositorySecurityAdvisoriesLimit,
           repositoryRulesetsLimit
-        ])?.items ?? [];
-
-      if (commandPaletteDependabotAlerts.length > 0) {
-        for (const alert of commandPaletteDependabotAlerts.slice(0, commandPaletteSecuritySourceLimit)) {
-          items.push({
-            id: `security-dependabot-${effectiveRepository}-${alert.number}`,
-            title: alert.packageName ?? `Dependabot alert #${alert.number}`,
-            subtitle: `${effectiveRepository} Dependabot alert #${alert.number} · ${alert.severity ?? alert.state}${
-              alert.manifestPath ? ` · ${alert.manifestPath}` : ""
-            }`,
-            group: "Security and quality",
-            icon: ShieldCheck,
-            keywords: [
-              effectiveRepository,
-              "security",
-              "quality",
-              "dependabot",
-              "dependency alert",
-              "alert",
-              String(alert.number),
-              `#${alert.number}`,
-              alert.state,
-              alert.severity ?? "",
-              alert.packageName ?? "",
-              alert.ecosystem ?? "",
-              alert.manifestPath ?? "",
-              alert.scope ?? "",
-              alert.summary ?? ""
-            ],
-            run: () =>
-              selectSecurityItemInApp(effectiveRepository, {
-                kind: "dependabot",
-                id: String(alert.number),
-                title: alert.packageName ?? `Dependabot alert #${alert.number}`,
-                subtitle: `${effectiveRepository} Dependabot alert #${alert.number}`,
-                url: alert.htmlUrl,
-                state: alert.state,
-                severity: alert.severity,
-                path: alert.manifestPath,
-                packageName: alert.packageName,
-                updatedAt: alert.updatedAt
-              })
-          });
-        }
-      }
-
-      if (commandPaletteCodeScanningAlerts.length > 0) {
-        for (const alert of commandPaletteCodeScanningAlerts.slice(0, commandPaletteSecuritySourceLimit)) {
-          const title = alert.ruleName ?? alert.ruleId ?? `Code scanning alert #${alert.number}`;
-          items.push({
-            id: `security-code-scanning-${effectiveRepository}-${alert.number}`,
-            title,
-            subtitle: `${effectiveRepository} code scanning #${alert.number} · ${alert.severity ?? alert.state}${
-              alert.path ? ` · ${alert.path}${alert.startLine ? `:${alert.startLine}` : ""}` : ""
-            }`,
-            group: "Security and quality",
-            icon: Code2,
-            keywords: [
-              effectiveRepository,
-              "security",
-              "quality",
-              "code scanning",
-              "codeql",
-              "static analysis",
-              "alert",
-              String(alert.number),
-              `#${alert.number}`,
-              alert.state,
-              alert.severity ?? "",
-              alert.ruleId ?? "",
-              alert.ruleName ?? "",
-              alert.ruleDescription ?? "",
-              alert.toolName ?? "",
-              alert.message ?? "",
-              alert.path ?? "",
-              alert.startLine ? String(alert.startLine) : "",
-              alert.ref ?? ""
-            ],
-            run: () =>
-              selectSecurityItemInApp(effectiveRepository, {
-                kind: "codeScanning",
-                id: String(alert.number),
-                title,
-                subtitle: `${effectiveRepository} code scanning alert #${alert.number}`,
-                url: alert.htmlUrl,
-                state: alert.state,
-                severity: alert.severity,
-                path: alert.path,
-                rule: alert.ruleName ?? alert.ruleId,
-                updatedAt: alert.updatedAt
-              })
-          });
-        }
-      }
-
-      if (commandPaletteSecretScanningAlerts.length > 0) {
-        for (const alert of commandPaletteSecretScanningAlerts.slice(0, commandPaletteSecuritySourceLimit)) {
-          const title =
-            alert.secretTypeDisplayName ?? alert.secretType ?? `Secret scanning alert #${alert.number}`;
-          items.push({
-            id: `security-secret-scanning-${effectiveRepository}-${alert.number}`,
-            title,
-            subtitle: `${effectiveRepository} secret scanning #${alert.number} · ${alert.validity ?? alert.state}${
-              alert.firstLocationPath ? ` · ${alert.firstLocationPath}` : ""
-            }`,
-            group: "Security and quality",
-            icon: Lock,
-            keywords: [
-              effectiveRepository,
-              "security",
-              "quality",
-              "secret scanning",
-              "secret alert",
-              "alert",
-              String(alert.number),
-              `#${alert.number}`,
-              alert.state,
-              alert.secretType ?? "",
-              alert.secretTypeDisplayName ?? "",
-              alert.resolution ?? "",
-              alert.validity ?? "",
-              alert.publiclyLeaked ? "publicly leaked" : "",
-              alert.multiRepo ? "multi repo multi-repo" : "",
-              alert.pushProtectionBypassed ? "push protection bypassed" : "",
-              alert.firstLocationPath ?? "",
-              alert.firstLocationStartLine ? String(alert.firstLocationStartLine) : ""
-            ],
-            run: () =>
-              selectSecurityItemInApp(effectiveRepository, {
-                kind: "secretScanning",
-                id: String(alert.number),
-                title,
-                subtitle: `${effectiveRepository} secret scanning alert #${alert.number}`,
-                url: alert.htmlUrl,
-                state: alert.state,
-                severity: alert.validity,
-                path: alert.firstLocationPath,
-                rule: alert.secretTypeDisplayName ?? alert.secretType,
-                updatedAt: alert.updatedAt
-              })
-          });
-        }
-      }
-
-      if (commandPaletteRepositoryRulesets.length > 0) {
-        for (const ruleset of commandPaletteRepositoryRulesets.slice(0, commandPaletteSecuritySourceLimit)) {
-          items.push({
-            id: `security-ruleset-${effectiveRepository}-${ruleset.id}`,
-            title: ruleset.name,
-            subtitle: `${effectiveRepository} ruleset · ${ruleset.enforcement ?? "unknown enforcement"} · ${
-              ruleset.target ?? "unknown target"
-            }`,
-            group: "Security and quality",
-            icon: CircleDot,
-            keywords: [
-              effectiveRepository,
-              "security",
-              "quality",
-              "ruleset",
-              "repository ruleset",
-              "branch protection",
-              String(ruleset.id),
-              ruleset.nodeId ?? "",
-              ruleset.name,
-              ruleset.target ?? "",
-              ruleset.enforcement ?? "",
-              ruleset.sourceType ?? "",
-              ruleset.source ?? "",
-              ruleset.currentUserCanBypass ?? "",
-              ruleset.ruleCount === null ? "" : `${ruleset.ruleCount} rules`,
-              ruleset.conditionCount === null ? "" : `${ruleset.conditionCount} conditions`,
-              ruleset.bypassActorCount === null ? "" : `${ruleset.bypassActorCount} bypass actors`,
-              ...ruleset.rules.flatMap((rule) => [rule.type, ...rule.parameters]),
-              ...ruleset.conditions.flatMap((condition) => [
-                condition.type,
-                ...condition.include,
-                ...condition.exclude,
-                ...condition.parameters
-              ]),
-              ...ruleset.bypassActors.flatMap((actor) => [
-                actor.actorType ?? "",
-                actor.actorId === null ? "" : String(actor.actorId),
-                actor.bypassMode ?? ""
-              ])
-            ],
-            run: () =>
-              selectSecurityItemInApp(effectiveRepository, {
-                kind: "ruleset",
-                id: String(ruleset.id),
-                title: ruleset.name,
-                subtitle: `${effectiveRepository} ruleset`,
-                url: ruleset.htmlUrl,
-                state: ruleset.enforcement,
-                rule: ruleset.name,
-                updatedAt: ruleset.updatedAt
-              })
-          });
-        }
-      }
-
-      if (commandPaletteSecurityAdvisories.length > 0) {
-        for (const advisory of commandPaletteSecurityAdvisories.slice(0, commandPaletteSecuritySourceLimit)) {
-          items.push({
-            id: `security-advisory-${effectiveRepository}-${advisory.ghsaId}`,
-            title: advisory.summary,
-            subtitle: `${effectiveRepository} advisory · ${advisory.ghsaId} · ${advisory.severity ?? advisory.state}`,
-            group: "Security and quality",
-            icon: ShieldCheck,
-            keywords: [
-              effectiveRepository,
-              "security",
-              "quality",
-              "security advisory",
-              "advisory",
-              "vulnerability",
-              advisory.ghsaId,
-              advisory.cveId ?? "",
-              advisory.state,
-              advisory.severity ?? "",
-              advisory.summary,
-              advisory.description ?? "",
-              advisory.cvssScore === null ? "" : `cvss ${advisory.cvssScore}`,
-              advisory.cvssVector ?? "",
-              ...advisory.cweIds
-            ],
-            run: () =>
-              selectSecurityItemInApp(effectiveRepository, {
-                kind: "advisory",
-                id: advisory.ghsaId,
-                title: advisory.summary,
-                subtitle: `${effectiveRepository} advisory · ${advisory.ghsaId}`,
-                url: advisory.htmlUrl,
-                state: advisory.state,
-                severity: advisory.severity,
-                ghsaId: advisory.ghsaId,
-                cveId: advisory.cveId,
-                updatedAt: advisory.updatedAt
-              })
-          });
-        }
-      }
+        }),
+        limit: commandPaletteSecuritySourceLimit,
+        onSelectSecurityItem: selectSecurityItemInApp
+      });
 
       appendCurrentRepositoryCommandPaletteItems(items, {
         effectiveRepository,

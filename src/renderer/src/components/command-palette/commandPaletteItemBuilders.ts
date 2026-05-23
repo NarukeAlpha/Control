@@ -12,6 +12,7 @@ import {
   GitFork,
   GitPullRequest,
   Inbox,
+  Lock,
   MessageSquare,
   Pin,
   Plus,
@@ -28,6 +29,10 @@ import {
 import type { RepositorySummary } from "@shared/github";
 import type {
   BranchSummary,
+  CodeScanningAlertsResult,
+  CodeScanningAlertSummary,
+  DependabotAlertsResult,
+  DependabotAlertSummary,
   OrganizationMemberSummary,
   OrganizationRepositorySummary,
   OrganizationSummary,
@@ -41,7 +46,13 @@ import type {
   RepositoryCollaboratorSummary,
   RepositoryForksResult,
   RepositoryRef,
+  RepositoryRulesetsResult,
+  RepositoryRulesetSummary,
+  RepositorySecurityAdvisoriesResult,
+  RepositorySecurityAdvisorySummary,
   RepositoryWikiResult,
+  SecretScanningAlertsResult,
+  SecretScanningAlertSummary,
   TagSummary,
   TeamSummary,
   WorkflowRunArtifactSummary,
@@ -61,7 +72,8 @@ import {
 import {
   recentMetadataBooleanKeyword,
   recentMetadataKeyword,
-  recentMetadataString
+  recentMetadataString,
+  type SecurityItemRecentInput
 } from "../recent/recentRecordInputs";
 import { issueStateLabel } from "../collection/workItemUi";
 import { notificationInAppTarget, notificationReasonLabel } from "../collection/notificationUi";
@@ -139,6 +151,63 @@ export function cachedWorkflowRunDetail(
         input.repo,
         input.runId
       ])?.detail ?? null);
+}
+
+export function cachedRepositorySecurityCommandItems(
+  queryClient: QueryClient,
+  input: {
+    owner: string;
+    repo: string;
+    dependabotAlertsLimit: number;
+    codeScanningAlertsLimit: number;
+    secretScanningAlertsLimit: number;
+    repositorySecurityAdvisoriesLimit: number;
+    repositoryRulesetsLimit: number;
+  }
+): {
+  dependabotAlerts: DependabotAlertSummary[];
+  codeScanningAlerts: CodeScanningAlertSummary[];
+  secretScanningAlerts: SecretScanningAlertSummary[];
+  securityAdvisories: RepositorySecurityAdvisorySummary[];
+  repositoryRulesets: RepositoryRulesetSummary[];
+} {
+  return {
+    dependabotAlerts:
+      queryClient.getQueryData<DependabotAlertsResult>([
+        "dependabot-alerts",
+        input.owner,
+        input.repo,
+        input.dependabotAlertsLimit
+      ])?.items ?? [],
+    codeScanningAlerts:
+      queryClient.getQueryData<CodeScanningAlertsResult>([
+        "code-scanning-alerts",
+        input.owner,
+        input.repo,
+        input.codeScanningAlertsLimit
+      ])?.items ?? [],
+    secretScanningAlerts:
+      queryClient.getQueryData<SecretScanningAlertsResult>([
+        "secret-scanning-alerts",
+        input.owner,
+        input.repo,
+        input.secretScanningAlertsLimit
+      ])?.items ?? [],
+    securityAdvisories:
+      queryClient.getQueryData<RepositorySecurityAdvisoriesResult>([
+        "repository-security-advisories",
+        input.owner,
+        input.repo,
+        input.repositorySecurityAdvisoriesLimit
+      ])?.items ?? [],
+    repositoryRulesets:
+      queryClient.getQueryData<RepositoryRulesetsResult>([
+        "repository-rulesets",
+        input.owner,
+        input.repo,
+        input.repositoryRulesetsLimit
+      ])?.items ?? []
+  };
 }
 
 export function appendPinnedRepositoryCommandPaletteItems(
@@ -1108,6 +1177,251 @@ export function appendRepositoryWorkflowCommandPaletteItems(
         artifact.expiresAt ?? ""
       ],
       run: () => input.onSelectWorkflowArtifact(input.effectiveRepository, focusedWorkflowRunDetail, artifact)
+    });
+  }
+}
+
+export function appendRepositorySecurityCommandPaletteItems(
+  items: CommandPaletteItem[],
+  input: {
+    effectiveRepository: string;
+    dependabotAlerts: DependabotAlertSummary[];
+    codeScanningAlerts: CodeScanningAlertSummary[];
+    secretScanningAlerts: SecretScanningAlertSummary[];
+    repositoryRulesets: RepositoryRulesetSummary[];
+    securityAdvisories: RepositorySecurityAdvisorySummary[];
+    limit: number;
+    onSelectSecurityItem(nameWithOwner: string, securityItem: SecurityItemRecentInput): void;
+  }
+): void {
+  for (const alert of input.dependabotAlerts.slice(0, input.limit)) {
+    items.push({
+      id: `security-dependabot-${input.effectiveRepository}-${alert.number}`,
+      title: alert.packageName ?? `Dependabot alert #${alert.number}`,
+      subtitle: `${input.effectiveRepository} Dependabot alert #${alert.number} · ${alert.severity ?? alert.state}${
+        alert.manifestPath ? ` · ${alert.manifestPath}` : ""
+      }`,
+      group: "Security and quality",
+      icon: ShieldCheck,
+      keywords: [
+        input.effectiveRepository,
+        "security",
+        "quality",
+        "dependabot",
+        "dependency alert",
+        "alert",
+        String(alert.number),
+        `#${alert.number}`,
+        alert.state,
+        alert.severity ?? "",
+        alert.packageName ?? "",
+        alert.ecosystem ?? "",
+        alert.manifestPath ?? "",
+        alert.scope ?? "",
+        alert.summary ?? ""
+      ],
+      run: () =>
+        input.onSelectSecurityItem(input.effectiveRepository, {
+          kind: "dependabot",
+          id: String(alert.number),
+          title: alert.packageName ?? `Dependabot alert #${alert.number}`,
+          subtitle: `${input.effectiveRepository} Dependabot alert #${alert.number}`,
+          url: alert.htmlUrl,
+          state: alert.state,
+          severity: alert.severity,
+          path: alert.manifestPath,
+          packageName: alert.packageName,
+          updatedAt: alert.updatedAt
+        })
+    });
+  }
+
+  for (const alert of input.codeScanningAlerts.slice(0, input.limit)) {
+    const title = alert.ruleName ?? alert.ruleId ?? `Code scanning alert #${alert.number}`;
+    items.push({
+      id: `security-code-scanning-${input.effectiveRepository}-${alert.number}`,
+      title,
+      subtitle: `${input.effectiveRepository} code scanning #${alert.number} · ${alert.severity ?? alert.state}${
+        alert.path ? ` · ${alert.path}${alert.startLine ? `:${alert.startLine}` : ""}` : ""
+      }`,
+      group: "Security and quality",
+      icon: Code2,
+      keywords: [
+        input.effectiveRepository,
+        "security",
+        "quality",
+        "code scanning",
+        "codeql",
+        "static analysis",
+        "alert",
+        String(alert.number),
+        `#${alert.number}`,
+        alert.state,
+        alert.severity ?? "",
+        alert.ruleId ?? "",
+        alert.ruleName ?? "",
+        alert.ruleDescription ?? "",
+        alert.toolName ?? "",
+        alert.message ?? "",
+        alert.path ?? "",
+        alert.startLine ? String(alert.startLine) : "",
+        alert.ref ?? ""
+      ],
+      run: () =>
+        input.onSelectSecurityItem(input.effectiveRepository, {
+          kind: "codeScanning",
+          id: String(alert.number),
+          title,
+          subtitle: `${input.effectiveRepository} code scanning alert #${alert.number}`,
+          url: alert.htmlUrl,
+          state: alert.state,
+          severity: alert.severity,
+          path: alert.path,
+          rule: alert.ruleName ?? alert.ruleId,
+          updatedAt: alert.updatedAt
+        })
+    });
+  }
+
+  for (const alert of input.secretScanningAlerts.slice(0, input.limit)) {
+    const title = alert.secretTypeDisplayName ?? alert.secretType ?? `Secret scanning alert #${alert.number}`;
+    items.push({
+      id: `security-secret-scanning-${input.effectiveRepository}-${alert.number}`,
+      title,
+      subtitle: `${input.effectiveRepository} secret scanning #${alert.number} · ${alert.validity ?? alert.state}${
+        alert.firstLocationPath ? ` · ${alert.firstLocationPath}` : ""
+      }`,
+      group: "Security and quality",
+      icon: Lock,
+      keywords: [
+        input.effectiveRepository,
+        "security",
+        "quality",
+        "secret scanning",
+        "secret alert",
+        "alert",
+        String(alert.number),
+        `#${alert.number}`,
+        alert.state,
+        alert.secretType ?? "",
+        alert.secretTypeDisplayName ?? "",
+        alert.resolution ?? "",
+        alert.validity ?? "",
+        alert.publiclyLeaked ? "publicly leaked" : "",
+        alert.multiRepo ? "multi repo multi-repo" : "",
+        alert.pushProtectionBypassed ? "push protection bypassed" : "",
+        alert.firstLocationPath ?? "",
+        alert.firstLocationStartLine ? String(alert.firstLocationStartLine) : ""
+      ],
+      run: () =>
+        input.onSelectSecurityItem(input.effectiveRepository, {
+          kind: "secretScanning",
+          id: String(alert.number),
+          title,
+          subtitle: `${input.effectiveRepository} secret scanning alert #${alert.number}`,
+          url: alert.htmlUrl,
+          state: alert.state,
+          severity: alert.validity,
+          path: alert.firstLocationPath,
+          rule: alert.secretTypeDisplayName ?? alert.secretType,
+          updatedAt: alert.updatedAt
+        })
+    });
+  }
+
+  for (const ruleset of input.repositoryRulesets.slice(0, input.limit)) {
+    items.push({
+      id: `security-ruleset-${input.effectiveRepository}-${ruleset.id}`,
+      title: ruleset.name,
+      subtitle: `${input.effectiveRepository} ruleset · ${
+        ruleset.enforcement ?? "unknown enforcement"
+      } · ${ruleset.target ?? "unknown target"}`,
+      group: "Security and quality",
+      icon: CircleDot,
+      keywords: [
+        input.effectiveRepository,
+        "security",
+        "quality",
+        "ruleset",
+        "repository ruleset",
+        "branch protection",
+        String(ruleset.id),
+        ruleset.nodeId ?? "",
+        ruleset.name,
+        ruleset.target ?? "",
+        ruleset.enforcement ?? "",
+        ruleset.sourceType ?? "",
+        ruleset.source ?? "",
+        ruleset.currentUserCanBypass ?? "",
+        ruleset.ruleCount === null ? "" : `${ruleset.ruleCount} rules`,
+        ruleset.conditionCount === null ? "" : `${ruleset.conditionCount} conditions`,
+        ruleset.bypassActorCount === null ? "" : `${ruleset.bypassActorCount} bypass actors`,
+        ...ruleset.rules.flatMap((rule) => [rule.type, ...rule.parameters]),
+        ...ruleset.conditions.flatMap((condition) => [
+          condition.type,
+          ...condition.include,
+          ...condition.exclude,
+          ...condition.parameters
+        ]),
+        ...ruleset.bypassActors.flatMap((actor) => [
+          actor.actorType ?? "",
+          actor.actorId === null ? "" : String(actor.actorId),
+          actor.bypassMode ?? ""
+        ])
+      ],
+      run: () =>
+        input.onSelectSecurityItem(input.effectiveRepository, {
+          kind: "ruleset",
+          id: String(ruleset.id),
+          title: ruleset.name,
+          subtitle: `${input.effectiveRepository} ruleset`,
+          url: ruleset.htmlUrl,
+          state: ruleset.enforcement,
+          rule: ruleset.name,
+          updatedAt: ruleset.updatedAt
+        })
+    });
+  }
+
+  for (const advisory of input.securityAdvisories.slice(0, input.limit)) {
+    items.push({
+      id: `security-advisory-${input.effectiveRepository}-${advisory.ghsaId}`,
+      title: advisory.summary,
+      subtitle: `${input.effectiveRepository} advisory · ${advisory.ghsaId} · ${
+        advisory.severity ?? advisory.state
+      }`,
+      group: "Security and quality",
+      icon: ShieldCheck,
+      keywords: [
+        input.effectiveRepository,
+        "security",
+        "quality",
+        "security advisory",
+        "advisory",
+        "vulnerability",
+        advisory.ghsaId,
+        advisory.cveId ?? "",
+        advisory.state,
+        advisory.severity ?? "",
+        advisory.summary,
+        advisory.description ?? "",
+        advisory.cvssScore === null ? "" : `cvss ${advisory.cvssScore}`,
+        advisory.cvssVector ?? "",
+        ...advisory.cweIds
+      ],
+      run: () =>
+        input.onSelectSecurityItem(input.effectiveRepository, {
+          kind: "advisory",
+          id: advisory.ghsaId,
+          title: advisory.summary,
+          subtitle: `${input.effectiveRepository} advisory · ${advisory.ghsaId}`,
+          url: advisory.htmlUrl,
+          state: advisory.state,
+          severity: advisory.severity,
+          ghsaId: advisory.ghsaId,
+          cveId: advisory.cveId,
+          updatedAt: advisory.updatedAt
+        })
     });
   }
 }

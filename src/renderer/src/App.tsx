@@ -31,7 +31,7 @@ import { SetupPanel } from "./components/auth/SetupPanel";
 import { useAreasShell } from "./components/areas/useAreasShell";
 import { useProviderAuth } from "./components/auth/AuthProvider";
 import { CodeBrowserPage } from "./components/code-browser/CodeBrowserPage";
-import { refreshCodeBrowserData, useCodeBrowserQueries } from "./components/code-browser/codeBrowserQueries";
+import { useCodeBrowserQueries } from "./components/code-browser/codeBrowserQueries";
 import { normalizeCodeLineNumber } from "./components/code-browser/codeBrowserUi";
 import {
   notificationInAppTarget,
@@ -75,17 +75,8 @@ import {
   RepositoryContextProvider,
   type RepositoryContextValue
 } from "./components/repository/RepositoryContext";
-import {
-  prefetchActionsTabData,
-  refreshActionsTabData,
-  useActionsTabQueries
-} from "./components/repository/actions/ActionsTab";
-import { refreshAgentsTabData } from "./components/repository/agents/AgentsTab";
-import {
-  prefetchCodeTabData,
-  refreshCodeTabData,
-  useCodeTabQueries
-} from "./components/repository/code/CodeTab";
+import { prefetchActionsTabData, useActionsTabQueries } from "./components/repository/actions/ActionsTab";
+import { prefetchCodeTabData, useCodeTabQueries } from "./components/repository/code/CodeTab";
 import {
   notificationCommitRecentCommit,
   pullRequestReviewCommitRecentCommit,
@@ -94,19 +85,9 @@ import {
   workflowRunCommitRecentCommit,
   type CommitRecentCommit
 } from "./components/repository/commitRecent";
-import {
-  refreshContributorsTabData,
-  useContributorsTabQueries
-} from "./components/repository/contributors/ContributorsTab";
-import {
-  refreshDiscussionsTabData,
-  useDiscussionsTabQueries
-} from "./components/repository/discussions/DiscussionsTab";
-import {
-  prefetchIssuesTabData,
-  refreshIssuesTabData,
-  useIssuesTabQueries
-} from "./components/repository/issues/IssuesTab";
+import { useContributorsTabQueries } from "./components/repository/contributors/ContributorsTab";
+import { useDiscussionsTabQueries } from "./components/repository/discussions/DiscussionsTab";
+import { prefetchIssuesTabData, useIssuesTabQueries } from "./components/repository/issues/IssuesTab";
 import {
   parseGitHubBlobUrl,
   parseGitHubCodeUrl,
@@ -114,16 +95,12 @@ import {
   repositoryNameWithOwnerFromGitHubUrl
 } from "./components/repository/githubUrlRoutes";
 import { createGitHubMutationInput } from "./components/repository/githubMutationHelpers";
-import { refreshProjectsTabData, useProjectsTabQueries } from "./components/repository/projects/ProjectsTab";
+import { useProjectsTabQueries } from "./components/repository/projects/ProjectsTab";
 import {
   prefetchPullRequestsTabData,
-  refreshPullRequestsTabData,
   usePullRequestsTabQueries
 } from "./components/repository/pull-requests/PullRequestsTab";
-import { refreshReleasesTabData, useReleasesTabQueries } from "./components/repository/releases/ReleasesTab";
-import { refreshSecurityQualityTabData } from "./components/repository/security/SecurityQualityTab";
-import { refreshRepositorySettingsTabData } from "./components/repository/settings/RepositorySettingsTab";
-import { refreshWikiTabData } from "./components/repository/wiki/WikiTab";
+import { useReleasesTabQueries } from "./components/repository/releases/ReleasesTab";
 import { RightRail } from "./components/right-rail/RightRail";
 import {
   commitRecentInput,
@@ -176,10 +153,11 @@ import { refreshMailboxNotificationsData, useMailboxNotifications } from "./hook
 import { refreshRecentItemsData, useRecentItems } from "./hooks/useRecentItems";
 import { useRecentRecorder } from "./hooks/useRecentRecorder";
 import { refreshRepositoryDirectoryData, useRepositoryDirectory } from "./hooks/useRepositoryDirectory";
-import { refreshRepositoryDetailData, useRepositoryDetail } from "./hooks/useRepositoryDetail";
+import { useRepositoryDetail } from "./hooks/useRepositoryDetail";
 import { useRepositoryPins } from "./hooks/useRepositoryPins";
 import { useRepositoryRefs } from "./hooks/useRepositoryRefs";
 import { useCollectionSurfaceState } from "./hooks/useCollectionSurfaceState";
+import { useRepositoryRefreshActions } from "./hooks/useRepositoryRefreshActions";
 import { useRepositorySurfaceLimits } from "./hooks/useRepositorySurfaceLimits";
 import { useStoredRepositoryRefs } from "./hooks/useStoredRepositoryRefs";
 import { useUiStore, type AppRoute, type LocalRepositoryTab, type RepositoryTab } from "./stores/uiStore";
@@ -187,7 +165,6 @@ import { useUiStore, type AppRoute, type LocalRepositoryTab, type RepositoryTab 
 const commandPaletteGeneralSourceLimit = 50;
 const commandPaletteDenseSourceLimit = 30;
 const commandPaletteSecuritySourceLimit = 30;
-const defaultWikiPageLimit = 50;
 
 function routeTitle(route: AppRoute): string {
   switch (route.kind) {
@@ -688,6 +665,41 @@ export function App(): JSX.Element {
   const contributorItems = contributors.data?.items ?? [];
   const contributorsAvailability = contributors.data?.availability ?? null;
   const actionItems = actions.data?.items ?? [];
+  const { refreshRepositoryDetailNow, refreshCodeBrowserNow, refreshRepositorySurface } =
+    useRepositoryRefreshActions({
+      appReady: appState.isSuccess,
+      githubReady,
+      owner,
+      repo,
+      hasRepositoryParts,
+      activeRepositoryTab,
+      route,
+      repositoryDetail,
+      contentsRef,
+      codeBrowserRef,
+      codeBrowserPath,
+      codeBrowserEntryType,
+      branchProtectionBranch,
+      repositoryRefListLimit,
+      repositoryContributorLimit,
+      repositoryCommitHistoryLimit,
+      fileCommitHistoryLimit,
+      fileBlameRangeLimit,
+      issueListLimit,
+      pullRequestListLimit,
+      discussionsLimit,
+      projectsLimit,
+      releasesLimit,
+      actionsLimit,
+      workflowDefinitionLimit,
+      dependabotAlertsLimit,
+      codeScanningAlertsLimit,
+      secretScanningAlertsLimit,
+      repositoryRulesetsLimit,
+      repositorySecurityAdvisoriesLimit,
+      repositoryAccessLimit,
+      forksLimit
+    });
 
   const mutation = useMutation({
     mutationFn: api.github.mutate,
@@ -732,231 +744,6 @@ export function App(): JSX.Element {
     } catch {
       // React Query owns the visible error state for this refresh.
     }
-  }
-
-  async function refreshRepositoryDetailNow(): Promise<void> {
-    if (!hasRepositoryParts) {
-      return;
-    }
-
-    try {
-      await refreshRepositoryDetailData(queryClient, { api, owner, repo, githubReady });
-    } catch {
-      // React Query owns the visible error state for this refresh.
-    }
-  }
-
-  async function refreshContributorsNow(): Promise<void> {
-    if (!appState.isSuccess || !hasRepositoryParts) {
-      return;
-    }
-
-    await refreshContributorsTabData(queryClient, {
-      api,
-      owner,
-      repo,
-      limit: repositoryContributorLimit,
-      githubReady
-    });
-  }
-
-  async function refreshCodeSurfaceNow(): Promise<void> {
-    if (!appState.isSuccess || !hasRepositoryParts) {
-      return;
-    }
-
-    await refreshCodeTabData(queryClient, {
-      api,
-      owner,
-      repo,
-      selectedRef: contentsRef,
-      defaultBranch: repositoryDetail?.defaultBranch ?? null,
-      commitHistoryLimit: repositoryCommitHistoryLimit,
-      refListLimit: repositoryRefListLimit,
-      githubReady
-    });
-  }
-
-  async function refreshCodeBrowserNow(): Promise<void> {
-    if (!appState.isSuccess || !hasRepositoryParts) {
-      return;
-    }
-
-    await refreshCodeBrowserData(queryClient, {
-      api,
-      owner,
-      repo,
-      selectedRef: codeBrowserRef,
-      defaultBranch: repositoryDetail?.defaultBranch ?? null,
-      path: codeBrowserPath,
-      entryType: codeBrowserEntryType,
-      refListLimit: repositoryRefListLimit,
-      fileBlameRangeLimit,
-      fileCommitHistoryLimit,
-      githubReady
-    });
-  }
-
-  async function refreshIssueSurfaceNow(): Promise<void> {
-    if (!appState.isSuccess || !hasRepositoryParts) {
-      return;
-    }
-
-    await refreshIssuesTabData(queryClient, {
-      api,
-      owner,
-      repo,
-      issueListLimit,
-      focusedIssueNumber: route.kind === "repository" ? (route.issueNumber ?? null) : null,
-      githubReady
-    });
-  }
-
-  async function refreshPullSurfaceNow(): Promise<void> {
-    if (!appState.isSuccess || !hasRepositoryParts) {
-      return;
-    }
-
-    await refreshPullRequestsTabData(queryClient, {
-      api,
-      owner,
-      repo,
-      pullRequestListLimit,
-      refListLimit: repositoryRefListLimit,
-      focusedPullNumber: route.kind === "repository" ? (route.pullNumber ?? null) : null,
-      githubReady
-    });
-  }
-
-  async function refreshDiscussionsSurfaceNow(): Promise<void> {
-    if (!appState.isSuccess || !hasRepositoryParts) {
-      return;
-    }
-
-    await refreshDiscussionsTabData(queryClient, {
-      api,
-      owner,
-      repo,
-      limit: discussionsLimit,
-      githubReady
-    });
-  }
-
-  async function refreshProjectsSurfaceNow(): Promise<void> {
-    if (!appState.isSuccess || !hasRepositoryParts) {
-      return;
-    }
-
-    await refreshProjectsTabData(queryClient, {
-      api,
-      owner,
-      repo,
-      limit: projectsLimit,
-      githubReady
-    });
-  }
-
-  async function refreshWikiSurfaceNow(): Promise<void> {
-    if (!appState.isSuccess || !hasRepositoryParts) {
-      return;
-    }
-
-    await refreshWikiTabData(queryClient, {
-      api,
-      owner,
-      repo,
-      focusedPagePath: route.kind === "repository" ? (route.wikiPagePath ?? null) : null,
-      pageLimit: defaultWikiPageLimit,
-      githubReady
-    });
-  }
-
-  async function refreshReleasesSurfaceNow(): Promise<void> {
-    if (!appState.isSuccess || !hasRepositoryParts) {
-      return;
-    }
-
-    await refreshReleasesTabData(queryClient, {
-      api,
-      owner,
-      repo,
-      limit: releasesLimit,
-      refListLimit: repositoryRefListLimit,
-      githubReady
-    });
-  }
-
-  async function refreshActionsSurfaceNow(): Promise<void> {
-    if (!appState.isSuccess || !hasRepositoryParts) {
-      return;
-    }
-
-    await refreshActionsTabData(queryClient, {
-      api,
-      owner,
-      repo,
-      limit: actionsLimit,
-      selectedRef: contentsRef,
-      defaultBranch: repositoryDetail?.defaultBranch ?? null,
-      refListLimit: repositoryRefListLimit,
-      workflowDefinitionLimit,
-      focusedWorkflowRunId: route.kind === "repository" ? (route.workflowRunId ?? null) : null,
-      githubReady
-    });
-  }
-
-  async function refreshAgentsSurfaceNow(): Promise<void> {
-    if (!appState.isSuccess || !hasRepositoryParts) {
-      return;
-    }
-
-    await refreshAgentsTabData(queryClient, {
-      api,
-      owner,
-      repo,
-      issueListLimit,
-      pullRequestListLimit,
-      actionsLimit,
-      githubReady
-    });
-  }
-
-  async function refreshSecurityQualitySurfaceNow(): Promise<void> {
-    if (!appState.isSuccess || !hasRepositoryParts) {
-      return;
-    }
-
-    await refreshSecurityQualityTabData(queryClient, {
-      api,
-      owner,
-      repo,
-      branchProtectionBranch,
-      defaultBranch: repositoryDetail?.defaultBranch ?? null,
-      dependabotAlertsLimit,
-      codeScanningAlertsLimit,
-      secretScanningAlertsLimit,
-      repositoryRulesetsLimit,
-      repositorySecurityAdvisoriesLimit,
-      githubReady
-    });
-  }
-
-  async function refreshRepositorySettingsNow(): Promise<void> {
-    if (!appState.isSuccess || !hasRepositoryParts) {
-      return;
-    }
-
-    await refreshRepositorySettingsTabData(queryClient, {
-      api,
-      owner,
-      repo,
-      branchProtectionBranch,
-      refListLimit: repositoryRefListLimit,
-      repositoryAccessLimit,
-      forksLimit,
-      repositoryRulesetsLimit,
-      githubReady
-    });
   }
 
   async function refreshMailboxNow(): Promise<void> {
@@ -1475,59 +1262,6 @@ export function App(): JSX.Element {
       setSelectedOrganizationProjectId,
       openExternal: (url) => void api.openExternal(url)
     });
-  }
-
-  async function refreshRepositorySurface(): Promise<void> {
-    await refreshRepositoryDetailNow();
-    if (activeRepositoryTab === "code") {
-      await refreshCodeSurfaceNow();
-      await queryClient.invalidateQueries({ queryKey: ["tree", owner, repo] });
-      return;
-    }
-    if (activeRepositoryTab === "issues") {
-      await refreshIssueSurfaceNow();
-      return;
-    }
-    if (activeRepositoryTab === "pulls") {
-      await refreshPullSurfaceNow();
-      return;
-    }
-    if (activeRepositoryTab === "discussions") {
-      await refreshDiscussionsSurfaceNow();
-      return;
-    }
-    if (activeRepositoryTab === "projects") {
-      await refreshProjectsSurfaceNow();
-      return;
-    }
-    if (activeRepositoryTab === "releases") {
-      await refreshReleasesSurfaceNow();
-      return;
-    }
-    if (activeRepositoryTab === "actions") {
-      await refreshActionsSurfaceNow();
-      return;
-    }
-    if (activeRepositoryTab === "agents") {
-      await refreshAgentsSurfaceNow();
-      return;
-    }
-    if (activeRepositoryTab === "contributors") {
-      await refreshContributorsNow();
-      return;
-    }
-    if (activeRepositoryTab === "wiki") {
-      await refreshWikiSurfaceNow();
-      return;
-    }
-    if (activeRepositoryTab === "securityQuality") {
-      await refreshSecurityQualitySurfaceNow();
-      return;
-    }
-    if (activeRepositoryTab === "settings") {
-      await refreshRepositorySettingsNow();
-      return;
-    }
   }
 
   const commandPaletteItems = (() => {

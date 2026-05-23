@@ -47,6 +47,13 @@ leverage and maintainers locality.
   unmounted during normal navigation.
 - Shell components must define a real seam: either they own narrow store/query subscriptions themselves, or they receive
   a small route-level model. Passing the same broad callback and state bundle through a new file is not decomposition.
+- Preserve the provider seam. Local paths, SSH/local areas, GitHub, and future version-control providers must remain
+  first-class; do not make the app shell or auth lifecycle linear-GitHub-only.
+- Avoid premature genericity. Keep GitHub-specific modules concrete where the workflow is genuinely GitHub-shaped
+  (issues, pull requests, Actions), but use provider-aware seams for auth/connectivity, repository directory, areas, and
+  route selection where local and future providers already matter.
+- Shared observable UI state belongs in `useUiStore` or a mounted provider. Route-private transient state belongs near
+  the route module. Form state belongs with the form. Do not hide cross-shell state in a route component.
 
 ## Target Shape
 
@@ -61,7 +68,8 @@ leverage and maintainers locality.
 - `components/right-rail/RightRail.tsx`
 - `components/settings/SettingsPanel.tsx`
 - `components/auth/SetupPanel.tsx`
-- `components/auth/useGitHubSignIn.ts`
+- `components/auth/AuthProvider.tsx`
+- `components/auth/providerAuthAdapters.ts`
 - `components/app-events/AppEventBridge.tsx`
 - `components/repository/RepositoryPage.tsx`
 - `components/repository/FileBlamePanel.tsx`
@@ -118,6 +126,7 @@ Each tab module should export the same ownership shape where it applies:
 
 ```ts
 export interface XxxTabPrefetchInput {
+  api: ControlApi;
   owner: string;
   repo: string;
 }
@@ -135,7 +144,13 @@ export function clearXxxTabStateForTests(): void;
 
 The tab component should own its local `useQuery` calls through `useControlApi()`, retained filter/focus state where
 state must survive unmounts, local error boundary, and focused tests. Module-level `Map` retention is allowed only for
-state that must survive tab unmounts; every retained state map needs a test cleanup export.
+bounded route-private state that must survive tab unmounts; every retained state map needs a test cleanup export and a
+clear eviction/cleanup story. Shared, durable, or cross-shell state belongs in `useUiStore` or a mounted provider rather
+than a module-level singleton.
+
+Prefetch helpers are pure with respect to React lifecycle, not dependency-free. They must accept the concrete `api`
+client or provider adapter explicitly in their input rather than calling `useControlApi()` outside React or closing over
+hidden globals.
 
 **Tab query ownership map:**
 
@@ -164,6 +179,7 @@ prefetch helpers as the final mechanism.
 - `App()` does not contain tab-specific query keys or tab-specific `fetchQuery` refresh plans.
 - Warmed tabs export prefetch helpers and have tests proving the helpers can run without mounting the tab.
 - Tab crashes are contained without blanking the whole repository route.
+- Retained state maps are bounded, test-resettable, and used only for route-private UI state.
 
 **Do not count as done:**
 
@@ -283,8 +299,10 @@ local/SSH/area workflow, including local repository lists, area selection UI, an
   - `AreaEditDialog.tsx`
   - `AreaDeleteDialog.tsx`
 - Keep area and workspace query hooks close to the area route unless another shell module has a real shared need.
-- Move selected area, selected local repository, local repository filter/limit state, and area dialog form state into the
-  area modules or into narrow area hooks.
+- Keep active route, selected area, and selected local repository in `useUiStore`, because Sidebar, TopBar, area
+  selectors, and local repository routes all observe them.
+- Move local repository filter/limit state, workspace presentation state, and area dialog form state into the area
+  modules or into narrow area hooks.
 - Keep process-wide area IPC subscriptions out of the area route. Those listeners belong to Shift 7 so invalidations do
   not depend on the area route being mounted.
 
@@ -292,13 +310,16 @@ local/SSH/area workflow, including local repository lists, area selection UI, an
 
 - `App()` renders the local/SSH/area workflow through a small area route interface.
 - Area CRUD dialogs are no longer inline in `App.tsx`.
-- Local repository list state and local workspace presentation state are owned by area modules or narrow area hooks.
+- Cross-shell area selection remains in `useUiStore`; local repository list state and local workspace presentation state
+  are owned by area modules or narrow area hooks.
 - Area route tests cover create/edit/delete dialog behavior and local repository selection.
 
 **Do not count as done:**
 
 - Moving `LocalAreaHome` into a new file while still requiring `App()` to compute area form state, list state, and every
   area-specific transition.
+- Hiding selected area state inside `LocalAreaHome` where Sidebar and TopBar cannot observe it through the normal store
+  seam.
 - Moving area IPC listeners into `LocalAreaHome`, because that can miss invalidations when the route unmounts.
 
 ## Shift 7: App Event Bridge And Query Cache Tracking
@@ -321,6 +342,12 @@ decomposition.
 - Keep the bridge mounted for the lifetime of the app shell, not inside a route module.
 - Make the bridge depend on narrow invalidation helpers where possible, but do not hide route-owned query keys behind a
   new all-purpose invalidation registry.
+- Each owner module should export focused invalidation helpers for event bridge use, for example
+  `invalidateAreaQueries(queryClient, event)` or `invalidateRepositoryDirectory(queryClient)`. The bridge composes these
+  helpers instead of duplicating owner query keys inline.
+- Boot-time event loss must be harmless. Either preload/main queues important events until the renderer registers
+  listeners, or the bridge performs an initial sync/invalidation pass after mounting so events emitted between window
+  load and listener registration are covered.
 
 **Done when:**
 
@@ -328,36 +355,54 @@ decomposition.
 - Query-cache loading diagnostics are not embedded in `App()`.
 - Tests or focused harness coverage prove global listeners invalidate the same query keys after extraction.
 - Route modules can unmount without dropping process-wide invalidation listeners.
+- Tests cover either pre-mount event queueing or the initial sync path that makes missed early events safe.
 
 **Do not count as done:**
 
 - Moving listener effects into the first route that needs the data.
 - Creating a broad "invalidate everything" bridge that masks missing ownership.
+- Repeating route-owned query keys directly inside `AppEventBridge` when the owning route/hook can export a focused
+  invalidation helper.
 
-## Shift 8: Auth And Setup Ownership
+## Shift 8: Provider Auth And Setup Ownership
 
-**Problem:** GitHub sign-in polling is currently entangled with `SettingsPanel`, but auth is global application state.
-Device-flow polling and session completion must continue even if the user leaves Settings, lands on Home unauthenticated,
-or is shown the setup panel.
+**Problem:** GitHub sign-in polling is currently entangled with `SettingsPanel`, but provider authentication and
+connectivity are app-level concerns. Device-flow polling and session completion must continue even if the user leaves
+Settings, lands on Home unauthenticated, or is shown the setup panel. At the same time, this seam must not collapse the
+app back into a linear GitHub-only model: local paths and future version-control providers need a place in the same
+connectivity model without forcing fake GitHub concepts onto them.
 
 **Action:**
 
 - Extract `SetupPanel` to `src/renderer/src/components/auth/SetupPanel.tsx`.
-- Extract auth orchestration into a shell-level module such as `src/renderer/src/components/auth/useGitHubSignIn.ts`.
-- The auth module owns device-flow session state, polling, completion, cancellation, and app-state invalidation.
-- `SettingsPanel` may render sign-in controls and status, but it receives an auth controller interface and must not own
-  device-flow polling.
-- Home, Setup, Settings, and any future auth gate should use the same auth controller rather than independently polling.
+- Extract auth orchestration into one shell-mounted `AuthProvider`/`AuthController` module. It may expose a hook for
+  consumers, but the hook reads the mounted controller; it must not create polling timers per caller.
+- Model auth/connectivity by provider or area kind. GitHub device flow is the first concrete adapter; local paths should
+  remain a no-auth/local-connectivity adapter; future providers can add their own adapter without changing Settings,
+  Setup, or Home call sites.
+- The auth controller owns provider session state, device-flow session state, polling, completion, cancellation, and
+  app-state invalidation.
+- `SettingsPanel` may render sign-in controls and status for the selected provider, but it receives an auth controller
+  interface and must not own polling.
+- Home, Setup, Settings, and any future auth gate should read the same mounted controller rather than independently
+  polling.
+- Keep the interface small: provider status, start/cancel sign-in, retry/refresh, and the current session result. Do not
+  introduce a broad provider abstraction over GitHub-specific repository workflows in this shift.
 
 **Done when:**
 
 - Leaving Settings while a sign-in is in progress does not drop polling or completion.
 - `SettingsPanel` is a settings surface, not the owner of app authentication lifecycle.
+- Multiple consumers can read auth state without starting duplicate timers.
+- Local path areas continue to work without pretending to authenticate through GitHub.
 - Setup and settings tests cover unauthenticated, polling, success, error, and cancellation states.
 
 **Do not count as done:**
 
 - Moving the existing Settings sign-in state into `components/settings/SettingsPanel.tsx` unchanged.
+- Exporting a plain `useGitHubSignIn()` hook that starts its own polling loop every time a component calls it.
+- Replacing concrete GitHub tabs with premature generic provider abstractions before another provider needs those
+  workflows.
 
 ## Shift 9: Modals And Utility Panels
 
@@ -433,14 +478,14 @@ route modules easy to forget during refresh and keeps cache behavior centralized
 
 - Remove `repositoryWarmPrefetchTabs` and `shouldLoadRepositoryTab` from `App.tsx` as the final prefetch cleanup.
 - Each warm tab exports a pure prefetch helper:
-  - `prefetchCodeTabData(queryClient, { owner, repo, ref })`
-  - `prefetchIssuesTabData(queryClient, { owner, repo })`
-  - `prefetchPullsTabData(queryClient, { owner, repo })`
-  - `prefetchActionsTabData(queryClient, { owner, repo })`
+  - `prefetchCodeTabData(queryClient, { api, owner, repo, ref })`
+  - `prefetchIssuesTabData(queryClient, { api, owner, repo })`
+  - `prefetchPullsTabData(queryClient, { api, owner, repo })`
+  - `prefetchActionsTabData(queryClient, { api, owner, repo })`
 - Collection routes export pure route prefetch helpers where useful:
-  - `prefetchMailboxData(queryClient, input)`
-  - `prefetchRepositoriesData(queryClient, input)`
-  - `prefetchOrganizationsData(queryClient, input)`
+  - `prefetchMailboxData(queryClient, { api, ...input })`
+  - `prefetchRepositoriesData(queryClient, { api, ...input })`
+  - `prefetchOrganizationsData(queryClient, { api, ...input })`
 - App-level route handlers may call prefetch helpers for warm tabs. The shell can keep a small dispatcher, but it must
   compose helpers rather than rebuild their query plans.
 - Move route-specific refresh plans into owning modules as `refreshXxxData()` exports. `refreshRepositorySurface()` may
@@ -451,6 +496,8 @@ route modules easy to forget during refresh and keeps cache behavior centralized
 - `App.tsx` no longer contains large tab-specific `queryClient.fetchQuery` blocks.
 - Warm prefetch for high-traffic repository tabs remains covered by tests.
 - Route-level refresh calls delegate to owning modules instead of duplicating query keys in the shell.
+- Prefetch helpers accept their `api` or provider adapter dependency explicitly and do not call React hooks outside the
+  component tree.
 
 **Do not count as done:**
 
@@ -470,7 +517,7 @@ route modules easy to forget during refresh and keeps cache behavior centralized
 | B6    | Shift 5     | Split `CollectionView` into `MailboxRoute`, `RepositoriesRoute`, `OrganizationsRoute`, and `collectionUi`.                                                 |
 | B7    | Shift 6     | Extract Areas and Workspaces modules, including `LocalAreaHome`, `AreaTopbarSelector`, and area CRUD dialogs.                                              |
 | B8    | Shift 7     | Extract the shell-mounted app event bridge and query-cache loading diagnostics.                                                                            |
-| B9    | Shift 8     | Extract global auth orchestration and `SetupPanel`; remove auth polling from `SettingsPanel`.                                                              |
+| B9    | Shift 8     | Extract provider-aware auth orchestration and `SetupPanel`; remove auth polling from `SettingsPanel`.                                                      |
 | B10   | Shift 9     | Extract `AddRepositoryDialog`, `FileBlamePanel`, and `CommitHistoryPanel`.                                                                                 |
 | B11   | Shift 10    | Extract `Sidebar`, `FileFinder`, and `CodeBrowserPage`.                                                                                                    |
 | B12   | Shift 10    | Extract `TopBar`, `CommandPalette`, and `HomeDashboard`.                                                                                                   |
@@ -494,6 +541,8 @@ Manual smoke test after major UI batches:
 - Switch between GitHub, local, and SSH areas; verify area CRUD dialogs, local repository selection, and workspace data.
 - Start GitHub sign-in, navigate away from Settings, and verify polling still completes or cancels through the global
   auth controller.
+- Switch to a local path area while auth state changes and verify local navigation remains independent of GitHub
+  authentication.
 
 ## Completion Evidence
 
@@ -505,20 +554,24 @@ Each Part 3 batch should report:
 - Query hooks moved from `App.tsx` into the owning module.
 - Warm prefetch or refresh behavior preserved, with the exact test that proves it.
 - Process-wide listeners moved out of `App.tsx`, with the invalidated query keys listed.
-- Auth/session lifecycle moved or preserved, including where device-flow polling remains mounted.
+- Auth/session lifecycle moved or preserved, including where provider-scoped polling remains mounted and how local paths
+  bypass remote authentication.
 - New or updated tests.
 - Validation commands run.
 
 ## Final Acceptance
 
-- `App.tsx` is about 2,000-2,500 lines and is a thin shell module rather than the owner of repository tabs, collection
-  routes, area workflows, command/search flows, auth polling, dialogs, and settings internals.
+- `App.tsx` is under 800 lines, with a stretch goal under 500 lines, and is a thin shell module rather than the owner of
+  repository tabs, collection routes, area workflows, command/search flows, auth polling, dialogs, and settings
+  internals.
 - `RepositoryPage` has a narrow route-level interface and no giant prop bundle.
 - Mailbox, Repositories, and Organizations are separate route modules with local query ownership.
 - Areas and Workspaces are separate domain modules with local state ownership and no inline CRUD dialogs.
 - Shell modules live outside `App.tsx` and have deep seams instead of broad prop bundles.
-- Process-wide IPC listeners and query-cache diagnostics live in a shell-mounted event bridge.
-- GitHub auth polling is owned by a global auth controller, not by `SettingsPanel`.
+- Process-wide IPC listeners and query-cache diagnostics live in a shell-mounted event bridge with owner-exported
+  invalidation helpers and boot-time event safety.
+- Provider auth polling is owned by one shell-mounted auth controller, not by `SettingsPanel` or per-consumer hooks.
+- Local path areas remain first-class and do not depend on GitHub authentication state.
 - Add-repository, blame, and commit-history utility surfaces live outside `App.tsx`.
 - High-traffic tabs own queries, state retention, prefetch helpers, and error boundaries.
 - No broad centralized `fetchQuery` block remains in `App.tsx`.

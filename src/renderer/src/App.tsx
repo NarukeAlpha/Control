@@ -10,7 +10,6 @@ import { SetupPanel } from "./components/auth/SetupPanel";
 import { useAreasShell } from "./components/areas/useAreasShell";
 import { useProviderAuth } from "./components/auth/AuthProvider";
 import { CodeBrowserPage } from "./components/code-browser/CodeBrowserPage";
-import { useCodeBrowserQueries } from "./components/code-browser/codeBrowserQueries";
 import { RepositoriesRoute } from "./components/collection/RepositoriesRoute";
 import { MailboxRoute } from "./components/collection/MailboxRoute";
 import { OrganizationsRoute } from "./components/collection/OrganizationsRoute";
@@ -22,27 +21,13 @@ import { FileFinder } from "./components/file-finder/FileFinder";
 import { HomeDashboard } from "./components/home/HomeDashboard";
 import { LocalRepositoryPage } from "./components/local-repository/LocalRepositoryPage";
 import { RepositoryPage } from "./components/repository/RepositoryPage";
-import {
-  RepositoryContextProvider,
-  type RepositoryContextValue
-} from "./components/repository/RepositoryContext";
-import { useActionsTabQueries } from "./components/repository/actions/ActionsTab";
-import { useCodeTabQueries } from "./components/repository/code/CodeTab";
-import { useContributorsTabQueries } from "./components/repository/contributors/ContributorsTab";
-import { useDiscussionsTabQueries } from "./components/repository/discussions/DiscussionsTab";
-import { useIssuesTabQueries } from "./components/repository/issues/IssuesTab";
+import { RepositoryContextProvider } from "./components/repository/RepositoryContext";
 import { createGitHubMutationInput } from "./components/repository/githubMutationHelpers";
-import { useProjectsTabQueries } from "./components/repository/projects/ProjectsTab";
-import { usePullRequestsTabQueries } from "./components/repository/pull-requests/PullRequestsTab";
-import { useReleasesTabQueries } from "./components/repository/releases/ReleasesTab";
 import { RightRail } from "./components/right-rail/RightRail";
 import { SettingsPanel } from "./components/settings/SettingsPanel";
 import { Sidebar } from "./components/sidebar/Sidebar";
 import { AppEventBridge } from "./components/shell/AppEventBridge";
-import {
-  invalidateGitHubMutationQueries,
-  type RepositoryQueryScope
-} from "./components/shell/appInvalidations";
+import { invalidateGitHubMutationQueries } from "./components/shell/appInvalidations";
 import { TopBar } from "./components/topbar/TopBar";
 
 import { githubActionLabel, readAvailabilityMessage } from "./components/repository/repositoryUi";
@@ -54,14 +39,10 @@ import { useControlApi } from "./hooks/useControlApi";
 import { useMailboxNotifications } from "./hooks/useMailboxNotifications";
 import { useRecentItems } from "./hooks/useRecentItems";
 import { useRepositoryDirectory } from "./hooks/useRepositoryDirectory";
-import { useRepositoryDetail } from "./hooks/useRepositoryDetail";
 import { useRepositoryPins } from "./hooks/useRepositoryPins";
-import { useRepositoryRefs } from "./hooks/useRepositoryRefs";
 import { useAppNavigationActions } from "./hooks/useAppNavigationActions";
 import { useCollectionSurfaceState } from "./hooks/useCollectionSurfaceState";
-import { useRepositoryRefreshActions } from "./hooks/useRepositoryRefreshActions";
-import { useRepositorySurfaceLimits } from "./hooks/useRepositorySurfaceLimits";
-import { useRepositoryWarmPrefetch } from "./hooks/useRepositoryWarmPrefetch";
+import { useRepositoryRouteState } from "./hooks/useRepositoryRouteState";
 import { useStoredRepositoryRefs } from "./hooks/useStoredRepositoryRefs";
 import { useUiStore, type AppRoute } from "./stores/uiStore";
 
@@ -205,39 +186,49 @@ export function App(): JSX.Element {
     recentItemLimit
   });
 
-  const isRepositoryRoute = route.kind === "repository";
-  const isCodeBrowserRoute = route.kind === "codeBrowser";
-  const isLocalRepositoryRoute = route.kind === "localRepository";
-  const isRepositoryContext = isRepositoryRoute || isCodeBrowserRoute;
-  const activeRepositoryTab = isRepositoryRoute ? route.tab : "code";
-  const activeLocalRepositoryTab = isLocalRepositoryRoute ? route.tab : "overview";
-  const activeLocalRepositoryPath = isLocalRepositoryRoute ? (route.path ?? ".") : ".";
-  const effectiveRepository = isRepositoryContext ? route.nameWithOwner : (selectedRepository ?? "");
-  const [owner = "", repo = ""] = effectiveRepository.split("/");
-  const hasRepositoryParts = Boolean(owner && repo);
-  const activeRepositoryScope = useMemo<RepositoryQueryScope | null>(
-    () => (hasRepositoryParts ? { owner, repo } : null),
-    [hasRepositoryParts, owner, repo]
-  );
-  const repositoryContextValue = useMemo<RepositoryContextValue | null>(
-    () =>
-      hasRepositoryParts
-        ? {
-            owner,
-            repo,
-            nameWithOwner: effectiveRepository,
-            githubReady,
-            api,
-            queryClient
-          }
-        : null,
-    [api, effectiveRepository, githubReady, hasRepositoryParts, owner, queryClient, repo]
-  );
-  const codeBrowserPath = isCodeBrowserRoute ? route.path : "";
-  const codeBrowserEntryType = isCodeBrowserRoute ? route.entryType : "dir";
-  const codeBrowserRef = isCodeBrowserRoute ? route.ref : null;
-  const repositorySelectedRef = repositoryRefs[effectiveRepository] ?? null;
-  const contentsRef = isCodeBrowserRoute ? codeBrowserRef : repositorySelectedRef;
+  const repositoryRouteState = useRepositoryRouteState({
+    appReady: appState.isSuccess,
+    githubReady,
+    route,
+    selectedRepository,
+    repositoryRefs,
+    fileFinderOpen
+  });
+  const {
+    isRepositoryRoute,
+    isLocalRepositoryRoute,
+    isRepositoryContext,
+    activeLocalRepositoryTab,
+    activeLocalRepositoryPath,
+    effectiveRepository,
+    owner,
+    repo,
+    activeRepositoryScope,
+    repositoryContextValue,
+    codeBrowserRef,
+    contentsRef,
+    repository,
+    repositoryDetail,
+    repositoryAvailabilityMessage,
+    branches,
+    tags,
+    branchItems,
+    tagItems,
+    refsAvailabilityMessage,
+    refsError,
+    codeTabQueries,
+    codeBrowserQueries,
+    discussions,
+    projects,
+    releases,
+    releaseItems,
+    releasesAvailability,
+    contributors,
+    contributorItems,
+    contributorsAvailability,
+    actionItems,
+    refreshActions
+  } = repositoryRouteState;
   const {
     repositoryRefListLimit,
     maxRefListLimit,
@@ -274,46 +265,23 @@ export function App(): JSX.Element {
     expandActiveRepositoryIssues,
     expandActiveRepositoryPullRequests,
     expandActiveRepositorySecurityList
-  } = useRepositorySurfaceLimits({
-    effectiveRepository,
-    owner,
-    repo,
-    repositorySelectedRef,
-    codeBrowserRef,
-    contentsRef,
-    codeBrowserPath
-  });
-
-  const repository = useRepositoryDetail({
-    owner,
-    repo,
-    enabled: appState.isSuccess && isRepositoryContext && hasRepositoryParts,
-    githubReady
-  });
-  const repositoryDetail = repository.data?.detail ?? null;
-  const repositoryAvailabilityMessage = readAvailabilityMessage(
-    "Repository detail",
-    repository.data?.availability ?? null
-  );
-
-  const repositoryRefQueries = useRepositoryRefs(
-    owner,
-    repo,
-    {
-      branches: appState.isSuccess && hasRepositoryParts && isRepositoryContext,
-      tags: appState.isSuccess && hasRepositoryParts && isRepositoryContext
-    },
-    repositoryRefListLimit,
-    { githubReady }
-  );
+  } = repositoryRouteState.limits;
   const {
-    branches,
-    tags,
-    branchItems,
-    tagItems,
-    availabilityMessage: refsAvailabilityMessage,
-    error: refsError
-  } = repositoryRefQueries;
+    codeBrowserContents,
+    fileContent,
+    fileBlame,
+    fileCommits,
+    repositoryTree,
+    contentItems,
+    contentsAvailability,
+    fileCommitItems,
+    fileCommitsAvailability,
+    fileContentItem,
+    fileContentAvailabilityMessage,
+    repositoryTreeItem,
+    repositoryTreeAvailabilityMessage
+  } = codeBrowserQueries;
+  const { refreshRepositoryDetailNow, refreshCodeBrowserNow, refreshRepositorySurface } = refreshActions;
   const {
     openRepositoryInApp,
     openLocalRepositoryInApp,
@@ -370,191 +338,7 @@ export function App(): JSX.Element {
     setSelectedOrganizationProjectId: organizationsRouteState.setSelectedOrganizationProjectId
   });
 
-  const codeTabQueries = useCodeTabQueries({
-    owner,
-    repo,
-    selectedRef: repositorySelectedRef,
-    defaultBranch: repositoryDetail?.defaultBranch ?? null,
-    commitHistoryLimit: repositoryCommitHistoryLimit,
-    selectedRootMarkdownPath: null,
-    enabled: appState.isSuccess && isRepositoryRoute && activeRepositoryTab === "code" && hasRepositoryParts,
-    githubReady
-  });
   const { repositoryCommits, repositoryCommitItems, repositoryCommitsAvailability } = codeTabQueries;
-
-  useIssuesTabQueries({
-    owner,
-    repo,
-    issueListLimit,
-    issuesEnabled:
-      appState.isSuccess &&
-      isRepositoryRoute &&
-      (activeRepositoryTab === "issues" || activeRepositoryTab === "agents") &&
-      hasRepositoryParts,
-    resourcesEnabled: false,
-    githubReady
-  });
-
-  usePullRequestsTabQueries({
-    owner,
-    repo,
-    pullRequestListLimit,
-    pullsEnabled:
-      appState.isSuccess &&
-      isRepositoryRoute &&
-      (activeRepositoryTab === "pulls" || activeRepositoryTab === "agents") &&
-      hasRepositoryParts,
-    resourcesEnabled:
-      appState.isSuccess && isRepositoryRoute && activeRepositoryTab === "pulls" && hasRepositoryParts,
-    githubReady
-  });
-
-  const {
-    codeBrowserContents,
-    fileContent,
-    fileBlame,
-    fileCommits,
-    repositoryTree,
-    contentItems,
-    contentsAvailability,
-    fileCommitItems,
-    fileCommitsAvailability,
-    fileContentItem,
-    fileContentAvailabilityMessage,
-    repositoryTreeItem,
-    repositoryTreeAvailabilityMessage
-  } = useCodeBrowserQueries({
-    api,
-    appReady: appState.isSuccess,
-    githubReady,
-    owner,
-    repo,
-    hasRepositoryParts,
-    isCodeBrowserRoute,
-    codeBrowserPath,
-    codeBrowserEntryType,
-    codeBrowserRef,
-    contentsRef,
-    defaultBranch: repositoryDetail?.defaultBranch ?? null,
-    fileBlameRangeLimit,
-    fileCommitHistoryLimit,
-    fileFinderOpen,
-    repositoryLoaded: Boolean(repositoryDetail)
-  });
-
-  const { discussions } = useDiscussionsTabQueries({
-    owner,
-    repo,
-    limit: discussionsLimit,
-    enabled:
-      appState.isSuccess && isRepositoryRoute && activeRepositoryTab === "discussions" && hasRepositoryParts,
-    githubReady
-  });
-
-  const { actions } = useActionsTabQueries({
-    owner,
-    repo,
-    limit: actionsLimit,
-    enabled:
-      appState.isSuccess &&
-      isRepositoryRoute &&
-      (activeRepositoryTab === "actions" || activeRepositoryTab === "agents") &&
-      hasRepositoryParts,
-    githubReady
-  });
-
-  useRepositoryWarmPrefetch({
-    appReady: appState.isSuccess,
-    enabled: isRepositoryRoute && hasRepositoryParts,
-    owner,
-    repo,
-    selectedRef: repositorySelectedRef,
-    defaultBranch: repositoryDetail?.defaultBranch ?? null,
-    commitHistoryLimit: repositoryCommitHistoryLimit,
-    issueListLimit,
-    pullRequestListLimit,
-    actionsLimit,
-    githubReady
-  });
-
-  const { projects } = useProjectsTabQueries({
-    owner,
-    repo,
-    limit: projectsLimit,
-    enabled:
-      appState.isSuccess && isRepositoryRoute && activeRepositoryTab === "projects" && hasRepositoryParts,
-    githubReady
-  });
-  const branchProtectionBranch =
-    repositorySelectedRef && branchItems.some((branch) => branch.name === repositorySelectedRef)
-      ? repositorySelectedRef
-      : (repositoryDetail?.defaultBranch ?? null);
-
-  const { releases } = useReleasesTabQueries({
-    owner,
-    repo,
-    limit: releasesLimit,
-    enabled:
-      appState.isSuccess &&
-      isRepositoryRoute &&
-      activeRepositoryTab === "releases" &&
-      hasRepositoryParts &&
-      repository.isSuccess,
-    githubReady
-  });
-
-  const { contributors } = useContributorsTabQueries({
-    owner,
-    repo,
-    limit: repositoryContributorLimit,
-    enabled:
-      appState.isSuccess &&
-      isRepositoryRoute &&
-      activeRepositoryTab === "contributors" &&
-      hasRepositoryParts &&
-      repository.isSuccess,
-    githubReady
-  });
-  const releaseItems = releases.data?.items ?? [];
-  const releasesAvailability = releases.data?.availability ?? null;
-  const contributorItems = contributors.data?.items ?? [];
-  const contributorsAvailability = contributors.data?.availability ?? null;
-  const actionItems = actions.data?.items ?? [];
-  const { refreshRepositoryDetailNow, refreshCodeBrowserNow, refreshRepositorySurface } =
-    useRepositoryRefreshActions({
-      appReady: appState.isSuccess,
-      githubReady,
-      owner,
-      repo,
-      hasRepositoryParts,
-      activeRepositoryTab,
-      route,
-      repositoryDetail,
-      contentsRef,
-      codeBrowserRef,
-      codeBrowserPath,
-      codeBrowserEntryType,
-      branchProtectionBranch,
-      repositoryRefListLimit,
-      repositoryContributorLimit,
-      repositoryCommitHistoryLimit,
-      fileCommitHistoryLimit,
-      fileBlameRangeLimit,
-      issueListLimit,
-      pullRequestListLimit,
-      discussionsLimit,
-      projectsLimit,
-      releasesLimit,
-      actionsLimit,
-      workflowDefinitionLimit,
-      dependabotAlertsLimit,
-      codeScanningAlertsLimit,
-      secretScanningAlertsLimit,
-      repositoryRulesetsLimit,
-      repositorySecurityAdvisoriesLimit,
-      repositoryAccessLimit,
-      forksLimit
-    });
   const { refreshHomeNow, refreshRepositoriesNow, refreshMailboxNow } = useCollectionRefreshActions({
     appReady: appState.isSuccess,
     githubReady,

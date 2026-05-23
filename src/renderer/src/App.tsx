@@ -1625,24 +1625,26 @@ export function App(): JSX.Element {
                   availabilityMessage={repositoryAvailabilityMessage}
                   githubReady={githubReady}
                   selectedRef={contentsRef}
-                  refListLimit={repositoryRefListLimit}
-                  codeCommitHistoryLimit={repositoryCommitHistoryLimit}
-                  issueListLimit={issueListLimit}
-                  repositoryAccessLimit={repositoryAccessLimit}
-                  forksLimit={forksLimit}
-                  pullRequestListLimit={pullRequestListLimit}
-                  discussionsLimit={discussionsLimit}
-                  actionsLimit={actionsLimit}
-                  workflowDefinitionLimit={workflowDefinitionLimit}
-                  projectsLimit={projectsLimit}
-                  dependabotAlertsLimit={dependabotAlertsLimit}
-                  codeScanningAlertsLimit={codeScanningAlertsLimit}
-                  secretScanningAlertsLimit={secretScanningAlertsLimit}
-                  repositoryRulesetsLimit={repositoryRulesetsLimit}
-                  repositorySecurityAdvisoriesLimit={repositorySecurityAdvisoriesLimit}
-                  releasesLimit={releasesLimit}
+                  limits={{
+                    refListLimit: repositoryRefListLimit,
+                    codeCommitHistoryLimit: repositoryCommitHistoryLimit,
+                    issueListLimit,
+                    repositoryAccessLimit,
+                    forksLimit,
+                    pullRequestListLimit,
+                    discussionsLimit,
+                    actionsLimit,
+                    workflowDefinitionLimit,
+                    projectsLimit,
+                    dependabotAlertsLimit,
+                    codeScanningAlertsLimit,
+                    secretScanningAlertsLimit,
+                    repositoryRulesetsLimit,
+                    repositorySecurityAdvisoriesLimit,
+                    releasesLimit,
+                    contributorLimit: repositoryContributorLimit
+                  }}
                   contributorCount={contributorItems.length}
-                  contributorLimit={repositoryContributorLimit}
                   loading={repository.isLoading}
                   pinned={isRepositoryPinned(effectiveRepository)}
                   pinBusy={repositoryPinBusy}
@@ -1793,40 +1795,43 @@ export function App(): JSX.Element {
                       ref ? repositoryRefKindForName(ref) : "ref"
                     )
                   }
-                  onExpandRefs={expandActiveRepositoryRefs}
-                  onExpandIssues={expandActiveRepositoryIssues}
-                  onExpandPullRequests={expandActiveRepositoryPullRequests}
-                  onExpandContributors={expandActiveRepositoryContributors}
-                  onExpandForks={expandActiveRepositoryForks}
-                  onExpandRepositoryAccess={expandActiveRepositoryAccess}
-                  onExpandActions={expandActiveRepositoryActions}
-                  onExpandWorkflowDefinitions={expandActiveRepositoryWorkflowDefinitions}
-                  onExpandProjects={expandActiveRepositoryProjects}
-                  onExpandReleases={expandActiveRepositoryReleases}
-                  onExpandDiscussions={expandActiveRepositoryDiscussions}
-                  onExpandDependabotAlerts={() => expandActiveRepositorySecurityList("dependabot")}
-                  onExpandCodeScanningAlerts={() => expandActiveRepositorySecurityList("codeScanning")}
-                  onExpandSecretScanningAlerts={() => expandActiveRepositorySecurityList("secretScanning")}
-                  onExpandRepositoryRulesets={() => expandActiveRepositorySecurityList("rulesets")}
-                  onExpandRepositorySecurityAdvisories={() =>
-                    expandActiveRepositorySecurityList("advisories")
-                  }
-                  onTogglePin={() => toggleRepositoryPin(effectiveRepository)}
-                  mutationAction={mutation.variables?.action ?? null}
-                  mutationPending={mutation.isPending}
-                  mutationSucceeded={mutation.isSuccess}
-                  mutationError={mutation.error instanceof Error ? mutation.error : null}
-                  rightRail={repositoryRightRail}
-                  onMutate={(action, dangerous, payload = {}) => {
-                    if (
-                      dangerous &&
-                      !window.confirm(`Run ${githubActionLabel(action)} on ${owner}/${repo}?`)
-                    ) {
-                      return;
-                    }
-                    mutation.reset();
-                    mutation.mutate(createGitHubMutationInput(action, owner, repo, payload));
+                  expansion={{
+                    onExpandRefs: expandActiveRepositoryRefs,
+                    onExpandIssues: expandActiveRepositoryIssues,
+                    onExpandPullRequests: expandActiveRepositoryPullRequests,
+                    onExpandContributors: expandActiveRepositoryContributors,
+                    onExpandForks: expandActiveRepositoryForks,
+                    onExpandRepositoryAccess: expandActiveRepositoryAccess,
+                    onExpandActions: expandActiveRepositoryActions,
+                    onExpandWorkflowDefinitions: expandActiveRepositoryWorkflowDefinitions,
+                    onExpandProjects: expandActiveRepositoryProjects,
+                    onExpandReleases: expandActiveRepositoryReleases,
+                    onExpandDiscussions: expandActiveRepositoryDiscussions,
+                    onExpandDependabotAlerts: () => expandActiveRepositorySecurityList("dependabot"),
+                    onExpandCodeScanningAlerts: () => expandActiveRepositorySecurityList("codeScanning"),
+                    onExpandSecretScanningAlerts: () => expandActiveRepositorySecurityList("secretScanning"),
+                    onExpandRepositoryRulesets: () => expandActiveRepositorySecurityList("rulesets"),
+                    onExpandRepositorySecurityAdvisories: () =>
+                      expandActiveRepositorySecurityList("advisories")
                   }}
+                  onTogglePin={() => toggleRepositoryPin(effectiveRepository)}
+                  mutation={{
+                    action: mutation.variables?.action ?? null,
+                    pending: mutation.isPending,
+                    succeeded: mutation.isSuccess,
+                    error: mutation.error instanceof Error ? mutation.error : null,
+                    onMutate: (action, dangerous, payload = {}) => {
+                      if (
+                        dangerous &&
+                        !window.confirm(`Run ${githubActionLabel(action)} on ${owner}/${repo}?`)
+                      ) {
+                        return;
+                      }
+                      mutation.reset();
+                      mutation.mutate(createGitHubMutationInput(action, owner, repo, payload));
+                    }
+                  }}
+                  rightRail={repositoryRightRail}
                 />
               )}
 

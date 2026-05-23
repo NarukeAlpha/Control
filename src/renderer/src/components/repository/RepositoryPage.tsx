@@ -65,6 +65,53 @@ interface SecurityItemRecentInput {
   updatedAt?: string | null;
 }
 
+interface RepositoryPageLimits {
+  refListLimit: number;
+  codeCommitHistoryLimit: number;
+  issueListLimit: number;
+  repositoryAccessLimit: number;
+  forksLimit: number;
+  pullRequestListLimit: number;
+  discussionsLimit: number;
+  actionsLimit: number;
+  workflowDefinitionLimit: number;
+  projectsLimit: number;
+  dependabotAlertsLimit: number;
+  codeScanningAlertsLimit: number;
+  secretScanningAlertsLimit: number;
+  repositoryRulesetsLimit: number;
+  repositorySecurityAdvisoriesLimit: number;
+  releasesLimit: number;
+  contributorLimit: number;
+}
+
+interface RepositoryPageExpansionHandlers {
+  onExpandRefs(): void;
+  onExpandIssues(): void;
+  onExpandPullRequests(): void;
+  onExpandContributors(): void;
+  onExpandForks(): void;
+  onExpandRepositoryAccess(): void;
+  onExpandActions(): void;
+  onExpandWorkflowDefinitions(): void;
+  onExpandProjects(): void;
+  onExpandReleases(): void;
+  onExpandDiscussions(): void;
+  onExpandDependabotAlerts(): void;
+  onExpandCodeScanningAlerts(): void;
+  onExpandSecretScanningAlerts(): void;
+  onExpandRepositoryRulesets(): void;
+  onExpandRepositorySecurityAdvisories(): void;
+}
+
+interface RepositoryPageMutationState {
+  action: GitHubAction | null;
+  pending: boolean;
+  succeeded: boolean;
+  error: Error | null;
+  onMutate(action: GitHubAction, dangerous: boolean, payload?: GitHubMutationFields): void;
+}
+
 function getViewerRepositoryState(repository: RepositoryDetail): {
   isStarred: boolean;
   isWatching: boolean;
@@ -184,24 +231,8 @@ export function RepositoryPage({
   availabilityMessage,
   githubReady,
   selectedRef,
-  refListLimit,
-  codeCommitHistoryLimit,
-  issueListLimit,
-  repositoryAccessLimit,
-  forksLimit,
-  pullRequestListLimit,
-  discussionsLimit,
-  actionsLimit,
-  workflowDefinitionLimit,
-  projectsLimit,
-  dependabotAlertsLimit,
-  codeScanningAlertsLimit,
-  secretScanningAlertsLimit,
-  repositoryRulesetsLimit,
-  repositorySecurityAdvisoriesLimit,
-  releasesLimit,
+  limits,
   contributorCount,
-  contributorLimit,
   loading,
   pinned,
   pinBusy,
@@ -238,52 +269,17 @@ export function RepositoryPage({
   onSelectSecurityQualityBranch,
   onSelectRef,
   onSelectSettingsCollaborator,
-  onExpandRefs,
-  onExpandIssues,
-  onExpandPullRequests,
-  onExpandContributors,
-  onExpandForks,
-  onExpandRepositoryAccess,
-  onExpandActions,
-  onExpandWorkflowDefinitions,
-  onExpandProjects,
-  onExpandReleases,
-  onExpandDiscussions,
-  onExpandDependabotAlerts,
-  onExpandCodeScanningAlerts,
-  onExpandSecretScanningAlerts,
-  onExpandRepositoryRulesets,
-  onExpandRepositorySecurityAdvisories,
+  expansion,
   onTogglePin,
-  mutationAction,
-  mutationPending,
-  mutationSucceeded,
-  mutationError,
-  rightRail,
-  onMutate
+  mutation,
+  rightRail
 }: {
   repository?: RepositoryDetail;
   availabilityMessage: string | null;
   githubReady: boolean;
   selectedRef: string | null;
-  refListLimit: number;
-  codeCommitHistoryLimit: number;
-  issueListLimit: number;
-  repositoryAccessLimit: number;
-  forksLimit: number;
-  pullRequestListLimit: number;
-  discussionsLimit: number;
-  actionsLimit: number;
-  workflowDefinitionLimit: number;
-  projectsLimit: number;
-  dependabotAlertsLimit: number;
-  codeScanningAlertsLimit: number;
-  secretScanningAlertsLimit: number;
-  repositoryRulesetsLimit: number;
-  repositorySecurityAdvisoriesLimit: number;
-  releasesLimit: number;
+  limits: RepositoryPageLimits;
   contributorCount: number;
-  contributorLimit: number;
   loading: boolean;
   pinned: boolean;
   pinBusy: boolean;
@@ -345,30 +341,55 @@ export function RepositoryPage({
   onSelectSecurityQualityBranch(ref: string): void;
   onSelectRef(ref: string | null): void;
   onSelectSettingsCollaborator(collaborator: RepositoryCollaboratorSummary): void;
-  onExpandRefs(): void;
-  onExpandIssues(): void;
-  onExpandPullRequests(): void;
-  onExpandContributors(): void;
-  onExpandForks(): void;
-  onExpandRepositoryAccess(): void;
-  onExpandActions(): void;
-  onExpandWorkflowDefinitions(): void;
-  onExpandProjects(): void;
-  onExpandReleases(): void;
-  onExpandDiscussions(): void;
-  onExpandDependabotAlerts(): void;
-  onExpandCodeScanningAlerts(): void;
-  onExpandSecretScanningAlerts(): void;
-  onExpandRepositoryRulesets(): void;
-  onExpandRepositorySecurityAdvisories(): void;
+  expansion: RepositoryPageExpansionHandlers;
   onTogglePin(): void;
-  mutationAction: GitHubAction | null;
-  mutationPending: boolean;
-  mutationSucceeded: boolean;
-  mutationError: Error | null;
+  mutation: RepositoryPageMutationState;
   rightRail?: ReactNode;
-  onMutate(action: GitHubAction, dangerous: boolean, payload?: GitHubMutationFields): void;
 }): JSX.Element {
+  const {
+    refListLimit,
+    codeCommitHistoryLimit,
+    issueListLimit,
+    repositoryAccessLimit,
+    forksLimit,
+    pullRequestListLimit,
+    discussionsLimit,
+    actionsLimit,
+    workflowDefinitionLimit,
+    projectsLimit,
+    dependabotAlertsLimit,
+    codeScanningAlertsLimit,
+    secretScanningAlertsLimit,
+    repositoryRulesetsLimit,
+    repositorySecurityAdvisoriesLimit,
+    releasesLimit,
+    contributorLimit
+  } = limits;
+  const {
+    onExpandRefs,
+    onExpandIssues,
+    onExpandPullRequests,
+    onExpandContributors,
+    onExpandForks,
+    onExpandRepositoryAccess,
+    onExpandActions,
+    onExpandWorkflowDefinitions,
+    onExpandProjects,
+    onExpandReleases,
+    onExpandDiscussions,
+    onExpandDependabotAlerts,
+    onExpandCodeScanningAlerts,
+    onExpandSecretScanningAlerts,
+    onExpandRepositoryRulesets,
+    onExpandRepositorySecurityAdvisories
+  } = expansion;
+  const {
+    action: mutationAction,
+    pending: mutationPending,
+    succeeded: mutationSucceeded,
+    error: mutationError,
+    onMutate
+  } = mutation;
   const route = useUiStore((state) => state.route);
   const tab = route.kind === "repository" ? route.tab : "code";
   const focusedIssueNumber = route.kind === "repository" ? (route.issueNumber ?? null) : null;

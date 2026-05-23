@@ -36,6 +36,15 @@ export interface WikiTabProps {
   onSelectWikiPage(page: WikiPageSummary | WikiPageContent): void;
 }
 
+export interface WikiTabQueryInput {
+  owner: string;
+  repo: string;
+  focusedPagePath: string | null;
+  pageLimit: number;
+  enabled: boolean;
+  githubReady: boolean;
+}
+
 export interface WikiTabPrefetchInput {
   api: ControlApi;
   owner: string;
@@ -52,6 +61,33 @@ export function wikiTabQueryKey(
   pageLimit: number
 ): readonly ["repository-wiki", string, string, string, number] {
   return ["repository-wiki", owner, repo, focusedPagePath ?? "default", pageLimit] as const;
+}
+
+export function useWikiTabQueries({
+  owner,
+  repo,
+  focusedPagePath,
+  pageLimit,
+  enabled,
+  githubReady
+}: WikiTabQueryInput) {
+  const api = useControlApi();
+
+  const wiki = useQuery<RepositoryWikiResult>({
+    queryKey: wikiTabQueryKey(owner, repo, focusedPagePath, pageLimit),
+    queryFn: () =>
+      api.github.getRepositoryWiki({
+        owner,
+        repo,
+        pagePath: focusedPagePath,
+        limit: pageLimit,
+        cacheOnly: !githubReady
+      }),
+    enabled,
+    staleTime: 120_000
+  });
+
+  return { wiki };
 }
 
 export async function prefetchWikiTabData(
@@ -90,19 +126,13 @@ export function WikiTab({
   const [wikiPageTitle, setWikiPageTitle] = useState("");
   const [wikiPageContent, setWikiPageContent] = useState("");
   const wikiFeature = repository.administration?.features.wiki ?? null;
-  const api = useControlApi();
-  const wiki = useQuery<RepositoryWikiResult>({
-    queryKey: wikiTabQueryKey(repository.owner, repository.name, focusedPagePath, wikiPageLimit),
-    queryFn: () =>
-      api.github.getRepositoryWiki({
-        owner: repository.owner,
-        repo: repository.name,
-        pagePath: focusedPagePath,
-        limit: wikiPageLimit,
-        cacheOnly: !githubReady
-      }),
+  const { wiki } = useWikiTabQueries({
+    owner: repository.owner,
+    repo: repository.name,
+    focusedPagePath,
+    pageLimit: wikiPageLimit,
     enabled: wikiFeature !== false,
-    staleTime: 120_000
+    githubReady
   });
   const wikiAvailabilityMessage = readAvailabilityMessage("Repository wiki", wiki.data?.availability ?? null);
   const wikiAvailabilityStatus = wiki.data?.availability.status ?? null;

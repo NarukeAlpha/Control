@@ -63,13 +63,13 @@ import type {
   WikiPageContent,
   WikiPageSummary
 } from "@shared/github";
-import type { AreaRepositorySummary, AreaSummary, CreateSshAreaInput, UpdateAreaInput } from "@shared/areas";
+import type { AreaRepositorySummary, AreaSummary } from "@shared/areas";
 import type { LocalRecentItem, LocalRecentRecordInput } from "@shared/local";
 import { MarkdownUrlHandlerContext } from "./components/MarkdownBody";
 import { AreaDeleteDialog, AreaEditDialog, SshAreaDialog } from "./components/areas/AreaDialogs";
 import { LocalAreaHome } from "./components/areas/LocalAreaHome";
-import { isGatewayAreaKind } from "./components/areas/areaUi";
 import { SetupPanel } from "./components/auth/SetupPanel";
+import { useAreasShell } from "./components/areas/useAreasShell";
 import { useProviderAuth } from "./components/auth/AuthProvider";
 import { CodeBrowserPage } from "./components/code-browser/CodeBrowserPage";
 import {
@@ -329,10 +329,8 @@ export function App(): JSX.Element {
   const providerAuth = useProviderAuth();
   const queryClient = useQueryClient();
   const route = useUiStore((state) => state.route);
-  const selectedAreaId = useUiStore((state) => state.selectedAreaId);
   const selectedRepository = useUiStore((state) => state.selectedRepository);
   const navigate = useUiStore((state) => state.navigate);
-  const selectAreaInStore = useUiStore((state) => state.selectArea);
   const goToRepository = useUiStore((state) => state.goToRepository);
   const goToLocalRepository = useUiStore((state) => state.goToLocalRepository);
   const openCodeBrowser = useUiStore((state) => state.openCodeBrowser);
@@ -406,31 +404,20 @@ export function App(): JSX.Element {
   const githubAuthenticated = appState.data?.github.authenticated ?? false;
   const githubReady = appState.isSuccess && githubAuthenticated;
   const authenticatedViewerLogin = appState.data?.github.user ?? appState.data?.viewer?.login ?? null;
-  const areas = useQuery({
-    queryKey: ["areas"],
-    queryFn: () => api.areas.listAreas(),
-    enabled: appState.isSuccess,
-    staleTime: 30_000
-  });
-  const areaItems = areas.data ?? [];
-  const selectedArea =
-    areaItems.find((area) => area.id === selectedAreaId) ??
-    areaItems.find((area) => area.selected) ??
-    areaItems.find((area) => area.kind === "github") ??
-    null;
-  const selectedAreaRepositories = useQuery({
-    queryKey: ["area-repositories", selectedArea?.id ?? "none"],
-    queryFn: () => api.areas.listRepositories({ areaId: selectedArea?.id ?? "" }),
-    enabled: Boolean(selectedArea?.id && isGatewayAreaKind(selectedArea.kind)),
-    placeholderData: (previousData) => previousData
-  });
-  const localRepositoryItems = selectedAreaRepositories.data ?? [];
-
-  useEffect(() => {
-    if (!selectedAreaId && selectedArea?.id) {
-      selectAreaInStore(selectedArea.id);
-    }
-  }, [selectAreaInStore, selectedArea?.id, selectedAreaId]);
+  const {
+    areaItems,
+    selectedArea,
+    selectedAreaIsGateway,
+    selectedAreaRepositories,
+    localRepositoryItems,
+    selectArea,
+    addLocalArea,
+    createSshArea,
+    updateArea,
+    deleteArea,
+    refreshSelectedArea,
+    stopSelectedAreaGateway
+  } = useAreasShell({ enabled: appState.isSuccess });
 
   const repositories = useRepositoryDirectory(repositoryListLimit, {
     enabled: appState.isSuccess,
@@ -1619,52 +1606,6 @@ export function App(): JSX.Element {
   function openRepositoryInApp(nameWithOwner: string, tab?: RepositoryTab): void {
     goToRepository(nameWithOwner, tab);
     recordRecent(repositoryRecentInput(nameWithOwner, repositoryForRecent(nameWithOwner), tab ?? "code"));
-  }
-
-  async function selectArea(areaId: string): Promise<void> {
-    selectAreaInStore(areaId);
-    await api.areas.selectArea(areaId);
-    await queryClient.invalidateQueries({ queryKey: ["areas"] });
-  }
-
-  async function addLocalArea(): Promise<void> {
-    const rootPath = await api.areas.openLocalFolderPicker();
-    if (!rootPath) {
-      return;
-    }
-    const area = await api.areas.createLocalArea({ rootPath });
-    selectAreaInStore(area.id);
-    await queryClient.invalidateQueries({ queryKey: ["areas"] });
-    await queryClient.invalidateQueries({ queryKey: ["area-repositories", area.id] });
-  }
-
-  async function createSshArea(input: CreateSshAreaInput): Promise<void> {
-    const area = await api.areas.createSshArea(input);
-    selectAreaInStore(area.id);
-    await queryClient.invalidateQueries({ queryKey: ["areas"] });
-    await queryClient.invalidateQueries({ queryKey: ["area-repositories", area.id] });
-  }
-
-  async function updateArea(input: UpdateAreaInput): Promise<void> {
-    const area = await api.areas.updateArea(input);
-    await queryClient.invalidateQueries({ queryKey: ["areas"] });
-    await queryClient.invalidateQueries({ queryKey: ["area-repositories", area.id] });
-  }
-
-  async function deleteArea(area: AreaSummary): Promise<void> {
-    const remainingAreas = await api.areas.removeArea(area.id);
-    if (selectedAreaId === area.id) {
-      const fallbackArea =
-        remainingAreas.find((candidate) => candidate.selected) ??
-        remainingAreas.find((candidate) => candidate.kind === "github") ??
-        remainingAreas[0] ??
-        null;
-      if (fallbackArea) {
-        selectAreaInStore(fallbackArea.id);
-      }
-    }
-    await queryClient.invalidateQueries({ queryKey: ["areas"] });
-    await queryClient.invalidateQueries({ queryKey: ["area-repositories", area.id] });
   }
 
   function openLocalRepositoryInApp(
@@ -4223,7 +4164,7 @@ export function App(): JSX.Element {
                 : "content-scroll"
             }
           >
-            {route.kind === "home" && selectedArea && isGatewayAreaKind(selectedArea.kind) ? (
+            {route.kind === "home" && selectedArea && selectedAreaIsGateway ? (
               <LocalAreaHome
                 area={selectedArea}
                 repositories={localRepositoryItems}
@@ -4233,15 +4174,8 @@ export function App(): JSX.Element {
                 recentItems={recentItems.data ?? []}
                 onOpenRepository={openLocalRepositoryInApp}
                 onOpenRecent={openRecentItem}
-                onRefresh={async () => {
-                  await api.areas.refreshArea(selectedArea.id);
-                  await queryClient.invalidateQueries({ queryKey: ["areas"] });
-                  await queryClient.invalidateQueries({ queryKey: ["area-repositories", selectedArea.id] });
-                }}
-                onStopGateway={async () => {
-                  await api.areas.stopGateway({ areaId: selectedArea.id });
-                  await queryClient.invalidateQueries({ queryKey: ["areas"] });
-                }}
+                onRefresh={refreshSelectedArea}
+                onStopGateway={stopSelectedAreaGateway}
               />
             ) : route.kind === "home" ? (
               <HomeDashboard

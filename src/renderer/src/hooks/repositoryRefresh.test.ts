@@ -3,6 +3,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ControlApi } from "@shared/ipc";
 
+import {
+  organizationMembersQueryKey,
+  organizationProjectsQueryKey,
+  organizationRepositoriesQueryKey,
+  organizationsQueryKey,
+  organizationTeamMembersQueryKey,
+  organizationTeamRepositoriesQueryKey,
+  organizationTeamsQueryKey,
+  refreshOrganizationsRouteData
+} from "../components/collection/organizationQueries";
 import { notificationQueryKey } from "../components/collection/notificationUi";
 import { mockControlApi } from "../data/mock";
 import { accountProfileQueryKey, refreshAccountProfileData } from "./useAccountProfile";
@@ -119,5 +129,106 @@ describe("route refresh helpers", () => {
     expect(queryClient.getQueryData(accountIssuesQueryKey("octocat", 30))).toBeDefined();
     expect(queryClient.getQueryData(accountPullsQueryKey("octocat", 30))).toBeDefined();
     expect(queryClient.getQueryData(notificationQueryKey("participating", 40))).toBeDefined();
+  });
+
+  it("refreshes organization route data through route-owned query keys", async () => {
+    const queryClient = makeQueryClient();
+    const listOrganizationsWithStatus = vi.fn<ControlApi["github"]["listOrganizationsWithStatus"]>(
+      mockControlApi.github.listOrganizationsWithStatus
+    );
+    const listOrganizationTeamsWithStatus = vi.fn<ControlApi["github"]["listOrganizationTeamsWithStatus"]>(
+      mockControlApi.github.listOrganizationTeamsWithStatus
+    );
+    const listOrganizationRepositoriesWithStatus = vi.fn<
+      ControlApi["github"]["listOrganizationRepositoriesWithStatus"]
+    >(mockControlApi.github.listOrganizationRepositoriesWithStatus);
+    const listOrganizationMembersWithStatus = vi.fn<
+      ControlApi["github"]["listOrganizationMembersWithStatus"]
+    >(mockControlApi.github.listOrganizationMembersWithStatus);
+    const listOrganizationProjectsWithStatus = vi.fn<
+      ControlApi["github"]["listOrganizationProjectsWithStatus"]
+    >(mockControlApi.github.listOrganizationProjectsWithStatus);
+    const listOrganizationTeamRepositoriesWithStatus = vi.fn<
+      ControlApi["github"]["listOrganizationTeamRepositoriesWithStatus"]
+    >(mockControlApi.github.listOrganizationTeamRepositoriesWithStatus);
+    const listOrganizationTeamMembersWithStatus = vi.fn<
+      ControlApi["github"]["listOrganizationTeamMembersWithStatus"]
+    >(mockControlApi.github.listOrganizationTeamMembersWithStatus);
+    const api = makeApi({
+      listOrganizationsWithStatus,
+      listOrganizationTeamsWithStatus,
+      listOrganizationRepositoriesWithStatus,
+      listOrganizationMembersWithStatus,
+      listOrganizationProjectsWithStatus,
+      listOrganizationTeamRepositoriesWithStatus,
+      listOrganizationTeamMembersWithStatus
+    });
+
+    await refreshOrganizationsRouteData(queryClient, {
+      api,
+      githubReady: false,
+      organizationListLimit: 50,
+      selectedOrganizationLogin: "openai",
+      organizationRepositoryLimit: 60,
+      organizationTeamLimit: 30,
+      organizationMemberLimit: 40,
+      organizationProjectLimit: 20,
+      selectedOrganizationTeamSlug: "core",
+      organizationTeamRepositoryLimit: 10,
+      organizationTeamMemberLimit: 12
+    });
+
+    expect(listOrganizationsWithStatus).toHaveBeenCalledWith({
+      limit: 50,
+      cacheOnly: true,
+      forceRefresh: false
+    });
+    expect(listOrganizationTeamsWithStatus).toHaveBeenCalledWith({
+      org: "openai",
+      limit: 30,
+      cacheOnly: true,
+      forceRefresh: false
+    });
+    expect(listOrganizationRepositoriesWithStatus).toHaveBeenCalledWith({
+      org: "openai",
+      limit: 60,
+      cacheOnly: true,
+      forceRefresh: false
+    });
+    expect(listOrganizationMembersWithStatus).toHaveBeenCalledWith({
+      org: "openai",
+      limit: 40,
+      cacheOnly: true,
+      forceRefresh: false
+    });
+    expect(listOrganizationProjectsWithStatus).toHaveBeenCalledWith({
+      org: "openai",
+      limit: 20,
+      cacheOnly: true,
+      forceRefresh: false
+    });
+    expect(listOrganizationTeamRepositoriesWithStatus).toHaveBeenCalledWith({
+      org: "openai",
+      teamSlug: "core",
+      limit: 10,
+      cacheOnly: true,
+      forceRefresh: false
+    });
+    expect(listOrganizationTeamMembersWithStatus).toHaveBeenCalledWith({
+      org: "openai",
+      teamSlug: "core",
+      limit: 12,
+      cacheOnly: true,
+      forceRefresh: false
+    });
+    expect(queryClient.getQueryData(organizationsQueryKey(50))).toBeDefined();
+    expect(queryClient.getQueryData(organizationTeamsQueryKey("openai", 30))).toBeDefined();
+    expect(queryClient.getQueryData(organizationRepositoriesQueryKey("openai", 60))).toBeDefined();
+    expect(queryClient.getQueryData(organizationMembersQueryKey("openai", 40))).toBeDefined();
+    expect(queryClient.getQueryData(organizationProjectsQueryKey("openai", 20))).toBeDefined();
+    expect(
+      queryClient.getQueryData(organizationTeamRepositoriesQueryKey("openai", "core", 10))
+    ).toBeDefined();
+    expect(queryClient.getQueryData(organizationTeamMembersQueryKey("openai", "core", 12))).toBeDefined();
   });
 });

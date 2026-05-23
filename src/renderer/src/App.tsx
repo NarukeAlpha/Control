@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useMemo } from "react";
 import type { JSX } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -7,7 +7,6 @@ import { LocalAreaHome } from "./components/areas/LocalAreaHome";
 import { SetupPanel } from "./components/auth/SetupPanel";
 import { useAreasShell } from "./components/areas/useAreasShell";
 import { useProviderAuth } from "./components/auth/AuthProvider";
-import { CodeBrowserPage } from "./components/code-browser/CodeBrowserPage";
 import { RepositoriesRoute } from "./components/collection/RepositoriesRoute";
 import { MailboxRoute } from "./components/collection/MailboxRoute";
 import { OrganizationsRoute } from "./components/collection/OrganizationsRoute";
@@ -17,18 +16,15 @@ import { useCommandPaletteController } from "./components/command-palette/useCom
 import { useCommandPaletteItems } from "./components/command-palette/useCommandPaletteItems";
 import { HomeDashboard } from "./components/home/HomeDashboard";
 import { LocalRepositoryPage } from "./components/local-repository/LocalRepositoryPage";
-import { RepositoryPage } from "./components/repository/RepositoryPage";
-import { RepositoryContextProvider } from "./components/repository/RepositoryContext";
-import { createGitHubMutationInput } from "./components/repository/githubMutationHelpers";
-import { RightRail } from "./components/right-rail/RightRail";
 import { Sidebar } from "./components/sidebar/Sidebar";
 import { AppEventBridge } from "./components/shell/AppEventBridge";
+import { RepositoryRouteSection } from "./components/shell/RepositoryRouteSection";
 import { invalidateGitHubMutationQueries } from "./components/shell/appInvalidations";
 import { ShellDialogs } from "./components/shell/ShellDialogs";
 import { useShellDialogState } from "./components/shell/useShellDialogState";
 import { TopBar } from "./components/topbar/TopBar";
 
-import { githubActionLabel, readAvailabilityMessage } from "./components/repository/repositoryUi";
+import { readAvailabilityMessage } from "./components/repository/repositoryUi";
 
 import { useAccountProfile } from "./hooks/useAccountProfile";
 import { useAccountWork } from "./hooks/useAccountWork";
@@ -198,8 +194,6 @@ export function App(): JSX.Element {
     owner,
     repo,
     activeRepositoryScope,
-    repositoryContextValue,
-    codeBrowserRef,
     contentsRef,
     repository,
     repositoryDetail,
@@ -210,111 +204,29 @@ export function App(): JSX.Element {
     tagItems,
     refsAvailabilityMessage,
     refsError,
-    codeTabQueries,
     codeBrowserQueries,
     discussions,
     projects,
-    releases,
     releaseItems,
-    releasesAvailability,
-    contributors,
     contributorItems,
-    contributorsAvailability,
     actionItems,
     refreshActions
   } = repositoryRouteState;
   const {
     repositoryRefListLimit,
     maxRefListLimit,
-    repositoryContributorLimit,
     forksLimit,
     repositoryAccessLimit,
-    actionsLimit,
-    workflowDefinitionLimit,
-    projectsLimit,
-    releasesLimit,
-    discussionsLimit,
-    issueListLimit,
-    pullRequestListLimit,
     dependabotAlertsLimit,
     codeScanningAlertsLimit,
     secretScanningAlertsLimit,
     repositoryRulesetsLimit,
     repositorySecurityAdvisoriesLimit,
-    repositoryCommitHistoryLimit,
-    fileCommitHistoryLimit,
-    fileBlameRangeLimit,
-    expandActiveRepositoryRefs,
-    expandRepositoryCommitHistory,
-    expandFileCommitHistory,
-    expandFileBlamePreview,
-    expandActiveRepositoryContributors,
-    expandActiveRepositoryForks,
-    expandActiveRepositoryAccess,
-    expandActiveRepositoryActions,
-    expandActiveRepositoryWorkflowDefinitions,
-    expandActiveRepositoryProjects,
-    expandActiveRepositoryReleases,
-    expandActiveRepositoryDiscussions,
-    expandActiveRepositoryIssues,
-    expandActiveRepositoryPullRequests,
-    expandActiveRepositorySecurityList
+    expandActiveRepositoryRefs
   } = repositoryRouteState.limits;
-  const {
-    codeBrowserContents,
-    fileContent,
-    fileBlame,
-    fileCommits,
-    repositoryTree,
-    contentItems,
-    contentsAvailability,
-    fileCommitItems,
-    fileCommitsAvailability,
-    fileContentItem,
-    fileContentAvailabilityMessage,
-    repositoryTreeItem,
-    repositoryTreeAvailabilityMessage
-  } = codeBrowserQueries;
-  const { refreshRepositoryDetailNow, refreshCodeBrowserNow, refreshRepositorySurface } = refreshActions;
-  const {
-    openRepositoryInApp,
-    openLocalRepositoryInApp,
-    openRepositoryRouteInApp,
-    selectRepositoryTabInApp,
-    openFilteredRepositorySurfaceInApp,
-    openCodeBrowserInApp,
-    repositoryRefKindForName,
-    selectRepositoryRefInApp,
-    selectSecurityQualityBranchInApp,
-    openCommitInApp,
-    openPullRequestCommitInApp,
-    openPullRequestReviewCommitInApp,
-    openPullRequestTimelineEventCommitInApp,
-    openWorkflowRunCommitInApp,
-    openWorkflowCheckSuiteCommitInApp,
-    openCodePathInApp,
-    selectIssueInApp,
-    selectPullRequestInApp,
-    openLinkedIssueInApp,
-    selectDiscussionInApp,
-    selectProjectInApp,
-    selectOrganizationProjectInApp,
-    openTeamInApp,
-    selectWorkflowRunInApp,
-    selectWorkflowArtifactInApp,
-    selectSecurityItemInApp,
-    selectWikiPageInApp,
-    openWorkflowRunReferenceInApp,
-    selectReleaseInApp,
-    selectReleaseAssetInApp,
-    selectContributorInApp,
-    selectRepositorySettingsCollaboratorInApp,
-    openIssueSummaryInApp,
-    openPullRequestSummaryInApp,
-    openNotificationInApp,
-    openRecentItem,
-    openMarkdownUrl
-  } = useAppNavigationActions({
+  const { repositoryTree, repositoryTreeItem, repositoryTreeAvailabilityMessage } = codeBrowserQueries;
+  const { refreshRepositorySurface } = refreshActions;
+  const navigationActions = useAppNavigationActions({
     effectiveRepository,
     contentsRef,
     repositoryRefs,
@@ -331,8 +243,32 @@ export function App(): JSX.Element {
     setSelectedOrganizationMemberLogin: organizationsRouteState.setSelectedOrganizationMemberLogin,
     setSelectedOrganizationProjectId: organizationsRouteState.setSelectedOrganizationProjectId
   });
+  const {
+    openRepositoryInApp,
+    openLocalRepositoryInApp,
+    openRepositoryRouteInApp,
+    openCodeBrowserInApp,
+    repositoryRefKindForName,
+    selectRepositoryRefInApp,
+    selectDiscussionInApp,
+    selectProjectInApp,
+    selectOrganizationProjectInApp,
+    openTeamInApp,
+    selectWorkflowRunInApp,
+    selectWorkflowArtifactInApp,
+    selectSecurityItemInApp,
+    selectWikiPageInApp,
+    selectReleaseInApp,
+    selectReleaseAssetInApp,
+    selectContributorInApp,
+    selectRepositorySettingsCollaboratorInApp,
+    openIssueSummaryInApp,
+    openPullRequestSummaryInApp,
+    openNotificationInApp,
+    openRecentItem,
+    openMarkdownUrl
+  } = navigationActions;
 
-  const { repositoryCommits, repositoryCommitItems, repositoryCommitsAvailability } = codeTabQueries;
   const { refreshHomeNow, refreshRepositoriesNow, refreshMailboxNow } = useCollectionRefreshActions({
     appReady: appState.isSuccess,
     githubReady,
@@ -463,50 +399,6 @@ export function App(): JSX.Element {
   ]
     .filter(Boolean)
     .join(" ");
-  const repositoryRightRail = isRepositoryRoute ? (
-    <RightRail
-      repository={repositoryDetail ?? undefined}
-      selectedRef={contentsRef}
-      commits={repositoryCommitItems}
-      commitsLimit={repositoryCommitHistoryLimit}
-      commitsLoading={repositoryCommits.isLoading || repositoryCommits.isFetching}
-      commitsError={repositoryCommits.error}
-      commitsAvailability={repositoryCommitsAvailability}
-      releases={releaseItems}
-      releasesLoading={releases.isLoading || releases.isFetching}
-      releasesAvailability={releasesAvailability}
-      releasesError={releases.error}
-      contributors={contributorItems}
-      contributorsLoading={contributors.isLoading || contributors.isFetching}
-      contributorsAvailability={contributorsAvailability}
-      contributorsError={contributors.error}
-      onExpandCommits={expandRepositoryCommitHistory}
-      onOpenCommit={(commit) =>
-        openCommitInApp({
-          nameWithOwner: effectiveRepository,
-          commit,
-          path: "",
-          entryType: "dir"
-        })
-      }
-      onOpenReleasesTab={() => selectRepositoryTabInApp(effectiveRepository, "releases")}
-      onOpenContributorsTab={() => selectRepositoryTabInApp(effectiveRepository, "contributors")}
-      onOpenSettingsTab={() => selectRepositoryTabInApp(effectiveRepository, "settings")}
-      onOpenRelease={(release) => selectReleaseInApp(effectiveRepository, release)}
-      onOpenContributor={(contributor) => selectContributorInApp(effectiveRepository, contributor)}
-      onOpenExternal={(url) => void api.openExternal(url)}
-    />
-  ) : null;
-  const withRepositoryContext = useCallback(
-    (node: JSX.Element): JSX.Element =>
-      repositoryContextValue ? (
-        <RepositoryContextProvider value={repositoryContextValue}>{node}</RepositoryContextProvider>
-      ) : (
-        node
-      ),
-    [repositoryContextValue]
-  );
-
   return (
     <MarkdownUrlHandlerContext.Provider value={openMarkdownUrl}>
       <AppEventBridge activeRepository={activeRepositoryScope} />
@@ -651,230 +543,19 @@ export function App(): JSX.Element {
               />
             )}
 
-            {route.kind === "repository" &&
-              withRepositoryContext(
-                <RepositoryPage
-                  key={effectiveRepository}
-                  repository={repositoryDetail ?? undefined}
-                  availabilityMessage={repositoryAvailabilityMessage}
-                  githubReady={githubReady}
-                  selectedRef={contentsRef}
-                  limits={{
-                    refListLimit: repositoryRefListLimit,
-                    codeCommitHistoryLimit: repositoryCommitHistoryLimit,
-                    issueListLimit,
-                    repositoryAccessLimit,
-                    forksLimit,
-                    pullRequestListLimit,
-                    discussionsLimit,
-                    actionsLimit,
-                    workflowDefinitionLimit,
-                    projectsLimit,
-                    dependabotAlertsLimit,
-                    codeScanningAlertsLimit,
-                    secretScanningAlertsLimit,
-                    repositoryRulesetsLimit,
-                    repositorySecurityAdvisoriesLimit,
-                    releasesLimit,
-                    contributorLimit: repositoryContributorLimit
-                  }}
-                  contributorCount={contributorItems.length}
-                  loading={repository.isLoading}
-                  pinned={isRepositoryPinned(effectiveRepository)}
-                  pinBusy={repositoryPinBusy}
-                  pinError={repositoryPinError}
-                  error={repository.error}
-                  onOpenCodeBrowser={(entry) =>
-                    openCodeBrowserInApp(
-                      effectiveRepository,
-                      entry.path,
-                      entry.type === "dir" ? "dir" : "file",
-                      contentsRef ?? repositoryDetail?.defaultBranch ?? null
-                    )
-                  }
-                  onOpenReleaseTarget={(ref) =>
-                    selectRepositoryRefInApp(effectiveRepository, ref, repositoryRefKindForName(ref), {
-                      path: "",
-                      entryType: "dir"
-                    })
-                  }
-                  onOpenPullRequestCommit={(commit, targetRepositoryNameWithOwner) =>
-                    openPullRequestCommitInApp(commit, targetRepositoryNameWithOwner)
-                  }
-                  onOpenPullRequestReviewCommit={openPullRequestReviewCommitInApp}
-                  onOpenPullRequestTimelineEventCommit={openPullRequestTimelineEventCommitInApp}
-                  onOpenWorkflowRunCommit={openWorkflowRunCommitInApp}
-                  onOpenWorkflowCheckSuiteCommit={openWorkflowCheckSuiteCommitInApp}
-                  onOpenCodePath={openCodePathInApp}
-                  onOpenExternal={(url) => void api.openExternal(url)}
-                  onOpenRepository={openRepositoryInApp}
-                  onOpenTeam={openTeamInApp}
-                  onRefresh={() => refreshRepositorySurface()}
-                  onOpenFileFinder={dialogs.openFileFinder}
-                  onSelectTab={(tab) => selectRepositoryTabInApp(effectiveRepository, tab)}
-                  onOpenFilteredSurface={(tab, filter) =>
-                    openFilteredRepositorySurfaceInApp(effectiveRepository, tab, filter)
-                  }
-                  onSelectIssue={(issue) => selectIssueInApp(effectiveRepository, issue)}
-                  onSelectPullRequest={(pullRequest) =>
-                    selectPullRequestInApp(effectiveRepository, pullRequest)
-                  }
-                  onOpenIssueReference={openLinkedIssueInApp}
-                  onSelectDiscussion={(discussion) => selectDiscussionInApp(effectiveRepository, discussion)}
-                  onSelectProject={(project) => selectProjectInApp(effectiveRepository, project)}
-                  onSelectRelease={(release) => selectReleaseInApp(effectiveRepository, release)}
-                  onSelectReleaseAsset={(release, asset) =>
-                    selectReleaseAssetInApp(effectiveRepository, release, asset)
-                  }
-                  onSelectWorkflowRun={(run) => selectWorkflowRunInApp(effectiveRepository, run)}
-                  onSelectWorkflowArtifact={(run, artifact) =>
-                    selectWorkflowArtifactInApp(effectiveRepository, run, artifact)
-                  }
-                  onSelectSecurityItem={(securityItem) =>
-                    selectSecurityItemInApp(effectiveRepository, securityItem)
-                  }
-                  onSelectWikiPage={(page) => selectWikiPageInApp(effectiveRepository, page)}
-                  onOpenWorkflowRun={(runId, url) =>
-                    openWorkflowRunReferenceInApp(effectiveRepository, runId, url)
-                  }
-                  onSelectContributor={(contributor) =>
-                    selectContributorInApp(effectiveRepository, contributor)
-                  }
-                  onSelectSecurityQualityBranch={(ref) =>
-                    selectSecurityQualityBranchInApp(effectiveRepository, ref)
-                  }
-                  onSelectSettingsCollaborator={(collaborator) =>
-                    selectRepositorySettingsCollaboratorInApp(effectiveRepository, collaborator)
-                  }
-                  onSelectRef={(ref) =>
-                    selectRepositoryRefInApp(
-                      effectiveRepository,
-                      ref,
-                      ref ? repositoryRefKindForName(ref) : "ref"
-                    )
-                  }
-                  expansion={{
-                    onExpandRefs: expandActiveRepositoryRefs,
-                    onExpandIssues: expandActiveRepositoryIssues,
-                    onExpandPullRequests: expandActiveRepositoryPullRequests,
-                    onExpandContributors: expandActiveRepositoryContributors,
-                    onExpandForks: expandActiveRepositoryForks,
-                    onExpandRepositoryAccess: expandActiveRepositoryAccess,
-                    onExpandActions: expandActiveRepositoryActions,
-                    onExpandWorkflowDefinitions: expandActiveRepositoryWorkflowDefinitions,
-                    onExpandProjects: expandActiveRepositoryProjects,
-                    onExpandReleases: expandActiveRepositoryReleases,
-                    onExpandDiscussions: expandActiveRepositoryDiscussions,
-                    onExpandDependabotAlerts: () => expandActiveRepositorySecurityList("dependabot"),
-                    onExpandCodeScanningAlerts: () => expandActiveRepositorySecurityList("codeScanning"),
-                    onExpandSecretScanningAlerts: () => expandActiveRepositorySecurityList("secretScanning"),
-                    onExpandRepositoryRulesets: () => expandActiveRepositorySecurityList("rulesets"),
-                    onExpandRepositorySecurityAdvisories: () =>
-                      expandActiveRepositorySecurityList("advisories")
-                  }}
-                  onTogglePin={() => toggleRepositoryPin(effectiveRepository)}
-                  mutation={{
-                    action: mutation.variables?.action ?? null,
-                    pending: mutation.isPending,
-                    succeeded: mutation.isSuccess,
-                    error: mutation.error instanceof Error ? mutation.error : null,
-                    onMutate: (action, dangerous, payload = {}) => {
-                      if (
-                        dangerous &&
-                        !window.confirm(`Run ${githubActionLabel(action)} on ${owner}/${repo}?`)
-                      ) {
-                        return;
-                      }
-                      mutation.reset();
-                      mutation.mutate(createGitHubMutationInput(action, owner, repo, payload));
-                    }
-                  }}
-                  rightRail={repositoryRightRail}
-                />
-              )}
-
-            {route.kind === "codeBrowser" &&
-              withRepositoryContext(
-                <CodeBrowserPage
-                  repository={repositoryDetail ?? undefined}
-                  availabilityMessage={repositoryAvailabilityMessage}
-                  githubReady={githubReady}
-                  route={route}
-                  branches={branchItems}
-                  tags={tagItems}
-                  refsLoading={branches.isLoading || branches.isFetching || tags.isLoading || tags.isFetching}
-                  refsError={refsError}
-                  refsAvailabilityMessage={refsAvailabilityMessage || null}
-                  contents={contentItems}
-                  contentsLoading={codeBrowserContents.isLoading || codeBrowserContents.isFetching}
-                  contentsError={codeBrowserContents.error}
-                  contentsAvailability={contentsAvailability}
-                  fileContent={fileContentItem ?? undefined}
-                  fileLoading={fileContent.isLoading || fileContent.isFetching}
-                  fileError={fileContent.error}
-                  fileAvailabilityMessage={fileContentAvailabilityMessage}
-                  fileBlame={fileBlame.data}
-                  fileBlameRangeLimit={fileBlameRangeLimit}
-                  fileBlameLoading={fileBlame.isLoading || fileBlame.isFetching}
-                  fileBlameError={fileBlame.error}
-                  commits={fileCommitItems}
-                  commitsLimit={fileCommitHistoryLimit}
-                  commitsLoading={fileCommits.isLoading || fileCommits.isFetching}
-                  commitsError={fileCommits.error}
-                  commitsAvailability={fileCommitsAvailability}
-                  error={
-                    repository.error ??
-                    codeBrowserContents.error ??
-                    fileContent.error ??
-                    fileBlame.error ??
-                    fileCommits.error
-                  }
-                  onRefresh={() => {
-                    return Promise.all([refreshRepositoryDetailNow(), refreshCodeBrowserNow()]);
-                  }}
-                  onBackToRepository={() => {
-                    if (codeBrowserRef) {
-                      selectRepositoryRefInApp(
-                        effectiveRepository,
-                        codeBrowserRef,
-                        repositoryRefKindForName(codeBrowserRef)
-                      );
-                      return;
-                    }
-                    openRepositoryInApp(effectiveRepository, "code");
-                  }}
-                  onOpenCodeBrowser={(path, entryType, refOverride, line) =>
-                    openCodeBrowserInApp(
-                      effectiveRepository,
-                      path,
-                      entryType,
-                      refOverride ?? codeBrowserRef ?? repositoryDetail?.defaultBranch ?? null,
-                      line ?? route.line
-                    )
-                  }
-                  onOpenCommit={(commit, path, entryType, line) =>
-                    openCommitInApp({
-                      nameWithOwner: effectiveRepository,
-                      commit,
-                      path,
-                      entryType,
-                      line
-                    })
-                  }
-                  onSelectRef={(ref) =>
-                    selectRepositoryRefInApp(effectiveRepository, ref, repositoryRefKindForName(ref), {
-                      path: route.path,
-                      entryType: route.entryType,
-                      line: route.line
-                    })
-                  }
-                  onExpandFileBlamePreview={expandFileBlamePreview}
-                  onExpandCommits={expandFileCommitHistory}
-                  onOpenExternal={(url) => void api.openExternal(url)}
-                />
-              )}
-
-            {route.kind === "codeBrowser" && repositoryRightRail}
+            <RepositoryRouteSection
+              route={route}
+              githubReady={githubReady}
+              routeState={repositoryRouteState}
+              navigation={navigationActions}
+              dialogs={dialogs}
+              mutation={mutation}
+              repositoryPinBusy={repositoryPinBusy}
+              repositoryPinError={repositoryPinError}
+              isRepositoryPinned={isRepositoryPinned}
+              toggleRepositoryPin={toggleRepositoryPin}
+              onOpenExternal={(url) => void api.openExternal(url)}
+            />
 
             {route.kind === "repositories" && (
               <RepositoriesRoute

@@ -7,6 +7,7 @@ import {
   File as FileIcon,
   GitBranch,
   GitPullRequest,
+  Inbox,
   MessageSquare,
   Pin,
   ShieldCheck,
@@ -21,7 +22,10 @@ import type {
   OrganizationMemberSummary,
   OrganizationRepositorySummary,
   OrganizationSummary,
+  IssueSummary,
+  NotificationSummary,
   ProjectSummary,
+  PullRequestSummary,
   TeamSummary
 } from "@shared/github";
 import type { LocalRecentItem } from "@shared/local";
@@ -36,6 +40,9 @@ import {
   recentMetadataKeyword,
   recentMetadataString
 } from "../recent/recentRecordInputs";
+import { issueStateLabel } from "../collection/workItemUi";
+import { notificationInAppTarget, notificationReasonLabel } from "../collection/notificationUi";
+import { repositoryNameWithOwnerFromGitHubUrl } from "../repository/githubUrlRoutes";
 
 export function appendPinnedRepositoryCommandPaletteItems(
   items: CommandPaletteItem[],
@@ -436,5 +443,130 @@ export function appendOrganizationCommandPaletteItems(
           )
       });
     }
+  }
+}
+
+export function appendNotificationCommandPaletteItems(
+  items: CommandPaletteItem[],
+  input: {
+    notificationItems: NotificationSummary[];
+    limit: number;
+    onOpenNotification(notification: NotificationSummary): void;
+  }
+): void {
+  for (const notification of input.notificationItems.slice(0, input.limit)) {
+    const target = notificationInAppTarget(notification);
+    const opensInApp = Boolean(target && notification.repositoryNameWithOwner);
+    const notificationIcon =
+      target?.kind === "issue"
+        ? CircleDot
+        : target?.kind === "pullRequest"
+          ? GitPullRequest
+          : target?.kind === "discussion"
+            ? MessageSquare
+            : target?.kind === "release"
+              ? Tag
+              : target?.kind === "workflowRun"
+                ? Workflow
+                : Inbox;
+
+    items.push({
+      id: `notification-${notification.id}`,
+      title: notification.subject.title,
+      subtitle: `${notification.repositoryNameWithOwner ?? "GitHub notification"} · ${notificationReasonLabel(notification.reason)}`,
+      group: "Notifications",
+      icon: notificationIcon,
+      keywords: [
+        notification.subject.title,
+        notification.subject.type,
+        notification.repositoryNameWithOwner ?? "",
+        notification.repositoryHtmlUrl ?? "",
+        notification.reason,
+        notificationReasonLabel(notification.reason),
+        notification.unread ? "unread" : "read",
+        notification.participating ? "participating" : "not participating",
+        opensInApp ? "in app" : "external",
+        opensInApp ? "in-app" : "fallback",
+        opensInApp ? "control" : "github"
+      ],
+      run: () => input.onOpenNotification(notification)
+    });
+  }
+}
+
+export function appendAccountWorkCommandPaletteItems(
+  items: CommandPaletteItem[],
+  input: {
+    accountIssueItems: IssueSummary[];
+    accountPullItems: PullRequestSummary[];
+    limit: number;
+    onOpenIssue(issue: IssueSummary): void;
+    onOpenPullRequest(pullRequest: PullRequestSummary): void;
+  }
+): void {
+  for (const issue of input.accountIssueItems.slice(0, input.limit)) {
+    const nameWithOwner =
+      issue.repositoryNameWithOwner ?? repositoryNameWithOwnerFromGitHubUrl(issue.htmlUrl);
+
+    items.push({
+      id: `account-issue-${nameWithOwner ?? issue.htmlUrl}-${issue.number}`,
+      title: issue.title,
+      subtitle: `${nameWithOwner ?? "GitHub issue"} #${issue.number} · ${issueStateLabel(issue)}`,
+      group: "Account work",
+      icon: CircleDot,
+      keywords: [
+        issue.title,
+        nameWithOwner ?? "",
+        issue.htmlUrl,
+        String(issue.number),
+        `#${issue.number}`,
+        issue.state,
+        issueStateLabel(issue),
+        issue.stateReason ?? "",
+        issue.authorLogin ?? "",
+        issue.milestone?.title ?? "",
+        ...issue.labels.flatMap((label) => [label.name, `label:${label.name}`]),
+        ...(issue.assignees ?? []).flatMap((assignee) => [assignee.login, `assignee:${assignee.login}`])
+      ],
+      run: () => input.onOpenIssue(issue)
+    });
+  }
+
+  for (const pullRequest of input.accountPullItems.slice(0, input.limit)) {
+    const nameWithOwner =
+      pullRequest.repositoryNameWithOwner ?? repositoryNameWithOwnerFromGitHubUrl(pullRequest.htmlUrl);
+
+    items.push({
+      id: `account-pull-${nameWithOwner ?? pullRequest.htmlUrl}-${pullRequest.number}`,
+      title: pullRequest.title,
+      subtitle: `${nameWithOwner ?? "GitHub pull request"} #${pullRequest.number} · ${pullRequest.headRefName} -> ${pullRequest.baseRefName}`,
+      group: "Account work",
+      icon: GitPullRequest,
+      keywords: [
+        pullRequest.title,
+        nameWithOwner ?? "",
+        pullRequest.htmlUrl,
+        String(pullRequest.number),
+        `#${pullRequest.number}`,
+        pullRequest.state,
+        pullRequest.isDraft ? "draft" : "ready",
+        pullRequest.mergeableState ?? "",
+        pullRequest.headRefName,
+        pullRequest.baseRefName,
+        pullRequest.headRepositoryNameWithOwner ?? "",
+        pullRequest.baseRepositoryNameWithOwner ?? "",
+        pullRequest.isCrossRepository === null
+          ? ""
+          : pullRequest.isCrossRepository
+            ? "cross repository cross-repo fork source"
+            : "same repository",
+        pullRequest.authorLogin ?? "",
+        pullRequest.locked ? "locked" : "",
+        `${pullRequest.headRefName}->${pullRequest.baseRefName}`,
+        `${pullRequest.headRefName} -> ${pullRequest.baseRefName}`,
+        `${pullRequest.changedFiles} files`
+      ],
+      run: () => input.onOpenPullRequest(pullRequest)
+    });
   }
 }

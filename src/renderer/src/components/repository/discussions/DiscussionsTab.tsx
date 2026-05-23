@@ -46,6 +46,8 @@ export interface DiscussionsTabPrefetchInput {
   githubReady: boolean;
 }
 
+export type DiscussionsTabRefreshInput = DiscussionsTabPrefetchInput;
+
 export function discussionsTabQueryKey(
   owner: string,
   repo: string,
@@ -82,6 +84,30 @@ export async function prefetchDiscussionsTabData(
     queryFn: () => api.github.listDiscussionsWithStatus({ owner, repo, limit, cacheOnly: !githubReady }),
     staleTime: 60_000
   });
+}
+
+export async function refreshDiscussionsTabData(
+  queryClient: QueryClient,
+  { api, owner, repo, limit, githubReady }: DiscussionsTabRefreshInput
+): Promise<void> {
+  const cachedRead = !githubReady;
+
+  try {
+    await queryClient.fetchQuery({
+      queryKey: discussionsTabQueryKey(owner, repo, limit),
+      staleTime: 0,
+      queryFn: () =>
+        api.github.listDiscussionsWithStatus({
+          owner,
+          repo,
+          limit,
+          cacheOnly: cachedRead,
+          forceRefresh: !cachedRead
+        })
+    });
+  } catch {
+    // React Query owns the visible error state for this refresh.
+  }
 }
 
 export function DiscussionsTab({

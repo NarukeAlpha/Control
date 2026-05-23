@@ -22,7 +22,7 @@ import {
 } from "@renderer/components/repository/repositoryUi";
 
 import { useControlApi } from "@renderer/hooks/useControlApi";
-import { useRepositoryRefs } from "@renderer/hooks/useRepositoryRefs";
+import { refreshRepositoryRefsData, useRepositoryRefs } from "@renderer/hooks/useRepositoryRefs";
 
 import { formatCompactNumber, formatRelativeDate } from "@renderer/utils/format";
 type ReleaseMakeLatestOption = "unchanged" | "true" | "false" | "legacy";
@@ -48,6 +48,10 @@ export interface ReleasesTabPrefetchInput {
   repo: string;
   limit: number;
   githubReady: boolean;
+}
+
+export interface ReleasesTabRefreshInput extends ReleasesTabPrefetchInput {
+  refListLimit: number;
 }
 
 export function releasesTabQueryKey(
@@ -80,6 +84,33 @@ export async function prefetchReleasesTabData(
     queryFn: () => api.github.listReleasesWithStatus({ owner, repo, limit, cacheOnly: !githubReady }),
     staleTime: 120_000
   });
+}
+
+export async function refreshReleasesTabData(
+  queryClient: QueryClient,
+  { api, owner, repo, limit, refListLimit, githubReady }: ReleasesTabRefreshInput
+): Promise<void> {
+  const cachedRead = !githubReady;
+
+  try {
+    await Promise.all([
+      queryClient.fetchQuery({
+        queryKey: releasesTabQueryKey(owner, repo, limit),
+        staleTime: 0,
+        queryFn: () =>
+          api.github.listReleasesWithStatus({
+            owner,
+            repo,
+            limit,
+            cacheOnly: cachedRead,
+            forceRefresh: !cachedRead
+          })
+      }),
+      refreshRepositoryRefsData(queryClient, { api, owner, repo, limit: refListLimit, githubReady })
+    ]);
+  } catch {
+    // React Query owns the visible error state for this refresh.
+  }
 }
 
 export function ReleasesTab({

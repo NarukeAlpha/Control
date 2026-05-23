@@ -44,6 +44,8 @@ export interface ProjectsTabPrefetchInput {
   githubReady: boolean;
 }
 
+export type ProjectsTabRefreshInput = ProjectsTabPrefetchInput;
+
 export function projectsTabQueryKey(
   owner: string,
   repo: string,
@@ -74,6 +76,30 @@ export async function prefetchProjectsTabData(
     queryFn: () => api.github.listProjectsWithStatus({ owner, repo, limit, cacheOnly: !githubReady }),
     staleTime: 60_000
   });
+}
+
+export async function refreshProjectsTabData(
+  queryClient: QueryClient,
+  { api, owner, repo, limit, githubReady }: ProjectsTabRefreshInput
+): Promise<void> {
+  const cachedRead = !githubReady;
+
+  try {
+    await queryClient.fetchQuery({
+      queryKey: projectsTabQueryKey(owner, repo, limit),
+      staleTime: 0,
+      queryFn: () =>
+        api.github.listProjectsWithStatus({
+          owner,
+          repo,
+          limit,
+          cacheOnly: cachedRead,
+          forceRefresh: !cachedRead
+        })
+    });
+  } catch {
+    // React Query owns the visible error state for this refresh.
+  }
 }
 
 export function ProjectsTab({

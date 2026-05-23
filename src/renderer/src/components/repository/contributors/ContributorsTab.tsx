@@ -52,6 +52,14 @@ export interface ContributorsTabPrefetchInput {
   profileRepositoryLimit?: number;
 }
 
+export interface ContributorsTabRefreshInput {
+  api: ReturnType<typeof useControlApi>;
+  owner: string;
+  repo: string;
+  limit: number;
+  githubReady: boolean;
+}
+
 interface ContributorsTabLocalState {
   filter: string;
   selectedContributorLogin: string | null;
@@ -144,6 +152,30 @@ export async function prefetchContributorsTabData(
         })
     })
   ]);
+}
+
+export async function refreshContributorsTabData(
+  queryClient: QueryClient,
+  { api, owner, repo, limit, githubReady }: ContributorsTabRefreshInput
+): Promise<void> {
+  const cachedRead = !githubReady;
+
+  try {
+    await queryClient.fetchQuery({
+      queryKey: contributorsTabQueryKey(owner, repo, limit),
+      staleTime: 0,
+      queryFn: () =>
+        api.github.listContributorsWithStatus({
+          owner,
+          repo,
+          limit,
+          cacheOnly: cachedRead,
+          forceRefresh: !cachedRead
+        })
+    });
+  } catch {
+    // React Query owns the visible error state for this refresh.
+  }
 }
 
 export function ContributorsTab({ repository, ...props }: ContributorsTabProps): JSX.Element {

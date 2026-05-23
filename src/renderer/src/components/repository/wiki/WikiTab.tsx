@@ -54,6 +54,8 @@ export interface WikiTabPrefetchInput {
   githubReady: boolean;
 }
 
+export type WikiTabRefreshInput = WikiTabPrefetchInput;
+
 export function wikiTabQueryKey(
   owner: string,
   repo: string,
@@ -106,6 +108,48 @@ export async function prefetchWikiTabData(
       }),
     staleTime: 120_000
   });
+}
+
+export async function refreshWikiTabData(
+  queryClient: QueryClient,
+  { api, owner, repo, focusedPagePath, pageLimit = defaultWikiPageLimit, githubReady }: WikiTabRefreshInput
+): Promise<void> {
+  const cachedRead = !githubReady;
+  const wikiQueryKeys = queryClient
+    .getQueriesData<RepositoryWikiResult>({ queryKey: ["repository-wiki", owner, repo] })
+    .map(([queryKey]) => queryKey)
+    .filter(
+      (queryKey): queryKey is ReturnType<typeof wikiTabQueryKey> =>
+        queryKey[0] === "repository-wiki" &&
+        queryKey[1] === owner &&
+        queryKey[2] === repo &&
+        typeof queryKey[3] === "string" &&
+        typeof queryKey[4] === "number"
+    );
+  const keys =
+    wikiQueryKeys.length > 0 ? wikiQueryKeys : [wikiTabQueryKey(owner, repo, focusedPagePath, pageLimit)];
+
+  try {
+    await Promise.all(
+      keys.map((queryKey) =>
+        queryClient.fetchQuery({
+          queryKey,
+          staleTime: 0,
+          queryFn: () =>
+            api.github.getRepositoryWiki({
+              owner,
+              repo,
+              pagePath: queryKey[3] === "default" ? null : queryKey[3],
+              limit: queryKey[4],
+              cacheOnly: cachedRead,
+              forceRefresh: !cachedRead
+            })
+        })
+      )
+    );
+  } catch {
+    // React Query owns the visible error state for this refresh.
+  }
 }
 
 export function WikiTab({

@@ -28,18 +28,23 @@ import {
   prefetchCodeTabData,
   refreshCodeTabData
 } from "./code/CodeTab";
-import { discussionsTabQueryKey, prefetchDiscussionsTabData } from "./discussions/DiscussionsTab";
+import { contributorsTabQueryKey, refreshContributorsTabData } from "./contributors/ContributorsTab";
+import {
+  discussionsTabQueryKey,
+  prefetchDiscussionsTabData,
+  refreshDiscussionsTabData
+} from "./discussions/DiscussionsTab";
 import { issueDetailQueryKey } from "./issues/useIssueDetail";
 import { issuesTabQueryKey, prefetchIssuesTabData, refreshIssuesTabData } from "./issues/IssuesTab";
-import { projectsTabQueryKey, prefetchProjectsTabData } from "./projects/ProjectsTab";
+import { projectsTabQueryKey, prefetchProjectsTabData, refreshProjectsTabData } from "./projects/ProjectsTab";
 import {
   prefetchPullRequestsTabData,
   pullRequestDetailQueryKey,
   pullRequestsTabQueryKey,
   refreshPullRequestsTabData
 } from "./pull-requests/PullRequestsTab";
-import { releasesTabQueryKey, prefetchReleasesTabData } from "./releases/ReleasesTab";
-import { prefetchWikiTabData, wikiTabQueryKey } from "./wiki/WikiTab";
+import { prefetchReleasesTabData, refreshReleasesTabData, releasesTabQueryKey } from "./releases/ReleasesTab";
+import { prefetchWikiTabData, refreshWikiTabData, wikiTabQueryKey } from "./wiki/WikiTab";
 import {
   repositoryAssignableUsersQueryKey,
   repositoryLabelsQueryKey,
@@ -470,6 +475,135 @@ describe("repository tab prefetch helpers", () => {
     expect(queryClient.getQueryData(repositoryTagsQueryKey(owner, repo, 80))).toBeDefined();
     expect(queryClient.getQueryData(workflowDefinitionsQueryKey(owner, repo, "main", 24))).toBeDefined();
     expect(queryClient.getQueryData(workflowRunDetailQueryKey(owner, repo, 101))).toBeDefined();
+  });
+
+  it("refreshes single-list tabs with forced online reads", async () => {
+    const queryClient = makeQueryClient();
+    const listContributorsWithStatus = vi.fn<ControlApi["github"]["listContributorsWithStatus"]>(
+      mockControlApi.github.listContributorsWithStatus
+    );
+    const listDiscussionsWithStatus = vi.fn<ControlApi["github"]["listDiscussionsWithStatus"]>(
+      mockControlApi.github.listDiscussionsWithStatus
+    );
+    const listProjectsWithStatus = vi.fn<ControlApi["github"]["listProjectsWithStatus"]>(
+      mockControlApi.github.listProjectsWithStatus
+    );
+    const api = makeApi({
+      listContributorsWithStatus,
+      listDiscussionsWithStatus,
+      listProjectsWithStatus
+    });
+
+    await Promise.all([
+      refreshContributorsTabData(queryClient, { api, owner, repo, limit: 24, githubReady: true }),
+      refreshDiscussionsTabData(queryClient, { api, owner, repo, limit: 30, githubReady: true }),
+      refreshProjectsTabData(queryClient, { api, owner, repo, limit: 18, githubReady: true })
+    ]);
+
+    expect(listContributorsWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      limit: 24,
+      cacheOnly: false,
+      forceRefresh: true
+    });
+    expect(listDiscussionsWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      limit: 30,
+      cacheOnly: false,
+      forceRefresh: true
+    });
+    expect(listProjectsWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      limit: 18,
+      cacheOnly: false,
+      forceRefresh: true
+    });
+    expect(queryClient.getQueryData(contributorsTabQueryKey(owner, repo, 24))).toBeDefined();
+    expect(queryClient.getQueryData(discussionsTabQueryKey(owner, repo, 30))).toBeDefined();
+    expect(queryClient.getQueryData(projectsTabQueryKey(owner, repo, 18))).toBeDefined();
+  });
+
+  it("refreshes releases and refs while offline", async () => {
+    const queryClient = makeQueryClient();
+    const listReleasesWithStatus = vi.fn<ControlApi["github"]["listReleasesWithStatus"]>(
+      mockControlApi.github.listReleasesWithStatus
+    );
+    const listBranchesWithStatus = vi.fn<ControlApi["github"]["listBranchesWithStatus"]>(
+      mockControlApi.github.listBranchesWithStatus
+    );
+    const listTagsWithStatus = vi.fn<ControlApi["github"]["listTagsWithStatus"]>(
+      mockControlApi.github.listTagsWithStatus
+    );
+    const api = makeApi({ listReleasesWithStatus, listBranchesWithStatus, listTagsWithStatus });
+
+    await refreshReleasesTabData(queryClient, {
+      api,
+      owner,
+      repo,
+      limit: 36,
+      refListLimit: 80,
+      githubReady: false
+    });
+
+    expect(listReleasesWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      limit: 36,
+      cacheOnly: true,
+      forceRefresh: false
+    });
+    expect(listBranchesWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      limit: 80,
+      cacheOnly: true,
+      forceRefresh: false
+    });
+    expect(listTagsWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      limit: 80,
+      cacheOnly: true,
+      forceRefresh: false
+    });
+    expect(queryClient.getQueryData(releasesTabQueryKey(owner, repo, 36))).toBeDefined();
+    expect(queryClient.getQueryData(repositoryBranchesQueryKey(owner, repo, 80))).toBeDefined();
+    expect(queryClient.getQueryData(repositoryTagsQueryKey(owner, repo, 80))).toBeDefined();
+  });
+
+  it("refreshes existing wiki query variants before the fallback page", async () => {
+    const queryClient = makeQueryClient();
+    queryClient.setQueryData(wikiTabQueryKey(owner, repo, "Existing", 99), {
+      pages: [],
+      selectedPage: null,
+      availability: available
+    });
+    const getRepositoryWiki = vi.fn<ControlApi["github"]["getRepositoryWiki"]>(
+      mockControlApi.github.getRepositoryWiki
+    );
+    const api = makeApi({ getRepositoryWiki });
+
+    await refreshWikiTabData(queryClient, {
+      api,
+      owner,
+      repo,
+      focusedPagePath: "Home",
+      pageLimit: 12,
+      githubReady: true
+    });
+
+    expect(getRepositoryWiki).toHaveBeenCalledWith({
+      owner,
+      repo,
+      pagePath: "Existing",
+      limit: 99,
+      cacheOnly: false,
+      forceRefresh: true
+    });
+    expect(queryClient.getQueryData(wikiTabQueryKey(owner, repo, "Existing", 99))).toBeDefined();
   });
 
   it("prefetches issues and issue resources without mounting IssuesTab", async () => {

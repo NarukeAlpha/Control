@@ -139,15 +139,23 @@ import {
   workflowRunCommitRecentCommit,
   type CommitRecentCommit
 } from "./components/repository/commitRecent";
-import { useDiscussionsTabQueries } from "./components/repository/discussions/DiscussionsTab";
+import {
+  refreshContributorsTabData,
+  useContributorsTabQueries
+} from "./components/repository/contributors/ContributorsTab";
+import {
+  refreshDiscussionsTabData,
+  useDiscussionsTabQueries
+} from "./components/repository/discussions/DiscussionsTab";
 import { expandedFileBlameRangeLimit } from "./components/repository/FileBlamePanel";
 import { refreshIssuesTabData, useIssuesTabQueries } from "./components/repository/issues/IssuesTab";
-import { useProjectsTabQueries } from "./components/repository/projects/ProjectsTab";
+import { refreshProjectsTabData, useProjectsTabQueries } from "./components/repository/projects/ProjectsTab";
 import {
   refreshPullRequestsTabData,
   usePullRequestsTabQueries
 } from "./components/repository/pull-requests/PullRequestsTab";
-import { useReleasesTabQueries } from "./components/repository/releases/ReleasesTab";
+import { refreshReleasesTabData, useReleasesTabQueries } from "./components/repository/releases/ReleasesTab";
+import { refreshWikiTabData } from "./components/repository/wiki/WikiTab";
 import { RightRail } from "./components/right-rail/RightRail";
 import { SettingsPanel } from "./components/settings/SettingsPanel";
 import { Sidebar } from "./components/sidebar/Sidebar";
@@ -2187,22 +2195,17 @@ export function App(): JSX.Element {
     githubReady
   });
 
-  const contributors = useQuery({
-    queryKey: ["contributors", owner, repo, repositoryContributorLimit],
-    queryFn: () =>
-      api.github.listContributorsWithStatus({
-        owner,
-        repo,
-        limit: repositoryContributorLimit,
-        cacheOnly: !githubReady
-      }),
+  const { contributors } = useContributorsTabQueries({
+    owner,
+    repo,
+    limit: repositoryContributorLimit,
     enabled:
       appState.isSuccess &&
       isRepositoryRoute &&
       activeRepositoryTab === "contributors" &&
       hasRepositoryParts &&
       repository.isSuccess,
-    staleTime: 120_000
+    githubReady
   });
   const releaseItems = releases.data?.items ?? [];
   const releasesAvailability = releases.data?.availability ?? null;
@@ -2518,24 +2521,13 @@ export function App(): JSX.Element {
       return;
     }
 
-    const cachedRead = !githubReady;
-
-    try {
-      await queryClient.fetchQuery({
-        queryKey: ["contributors", owner, repo, repositoryContributorLimit],
-        staleTime: 0,
-        queryFn: () =>
-          api.github.listContributorsWithStatus({
-            owner,
-            repo,
-            limit: repositoryContributorLimit,
-            cacheOnly: cachedRead,
-            forceRefresh: !cachedRead
-          })
-      });
-    } catch {
-      // React Query owns the visible error state for this refresh.
-    }
+    await refreshContributorsTabData(queryClient, {
+      api,
+      owner,
+      repo,
+      limit: repositoryContributorLimit,
+      githubReady
+    });
   }
 
   async function refreshCodeSurfaceNow(): Promise<void> {
@@ -2697,24 +2689,13 @@ export function App(): JSX.Element {
       return;
     }
 
-    const cachedRead = !githubReady;
-
-    try {
-      await queryClient.fetchQuery({
-        queryKey: ["discussions", owner, repo, discussionsLimit],
-        staleTime: 0,
-        queryFn: () =>
-          api.github.listDiscussionsWithStatus({
-            owner,
-            repo,
-            limit: discussionsLimit,
-            cacheOnly: cachedRead,
-            forceRefresh: !cachedRead
-          })
-      });
-    } catch {
-      // React Query owns the visible error state for this refresh.
-    }
+    await refreshDiscussionsTabData(queryClient, {
+      api,
+      owner,
+      repo,
+      limit: discussionsLimit,
+      githubReady
+    });
   }
 
   async function refreshProjectsSurfaceNow(): Promise<void> {
@@ -2722,24 +2703,13 @@ export function App(): JSX.Element {
       return;
     }
 
-    const cachedRead = !githubReady;
-
-    try {
-      await queryClient.fetchQuery({
-        queryKey: ["projects", owner, repo, projectsLimit],
-        staleTime: 0,
-        queryFn: () =>
-          api.github.listProjectsWithStatus({
-            owner,
-            repo,
-            limit: projectsLimit,
-            cacheOnly: cachedRead,
-            forceRefresh: !cachedRead
-          })
-      });
-    } catch {
-      // React Query owns the visible error state for this refresh.
-    }
+    await refreshProjectsTabData(queryClient, {
+      api,
+      owner,
+      repo,
+      limit: projectsLimit,
+      githubReady
+    });
   }
 
   async function refreshWikiSurfaceNow(): Promise<void> {
@@ -2747,44 +2717,14 @@ export function App(): JSX.Element {
       return;
     }
 
-    const cachedRead = !githubReady;
-    const wikiQueryKeys = queryClient
-      .getQueriesData<RepositoryWikiResult>({ queryKey: ["repository-wiki", owner, repo] })
-      .map(([queryKey]) => queryKey)
-      .filter(
-        (queryKey): queryKey is readonly ["repository-wiki", string, string, string, number?] =>
-          queryKey[0] === "repository-wiki" &&
-          queryKey[1] === owner &&
-          queryKey[2] === repo &&
-          typeof queryKey[3] === "string" &&
-          (queryKey[4] === undefined || typeof queryKey[4] === "number")
-      );
-    const keys =
-      wikiQueryKeys.length > 0
-        ? wikiQueryKeys
-        : [["repository-wiki", owner, repo, "default", defaultWikiPageLimit] as const];
-
-    try {
-      await Promise.all(
-        keys.map((queryKey) =>
-          queryClient.fetchQuery({
-            queryKey,
-            staleTime: 0,
-            queryFn: () =>
-              api.github.getRepositoryWiki({
-                owner,
-                repo,
-                pagePath: queryKey[3] === "default" ? null : queryKey[3],
-                limit: queryKey[4] ?? defaultWikiPageLimit,
-                cacheOnly: cachedRead,
-                forceRefresh: !cachedRead
-              })
-          })
-        )
-      );
-    } catch {
-      // React Query owns the visible error state for this refresh.
-    }
+    await refreshWikiTabData(queryClient, {
+      api,
+      owner,
+      repo,
+      focusedPagePath: route.kind === "repository" ? (route.wikiPagePath ?? null) : null,
+      pageLimit: defaultWikiPageLimit,
+      githubReady
+    });
   }
 
   async function refreshReleasesSurfaceNow(): Promise<void> {
@@ -2792,50 +2732,14 @@ export function App(): JSX.Element {
       return;
     }
 
-    const cachedRead = !githubReady;
-
-    try {
-      await Promise.all([
-        queryClient.fetchQuery({
-          queryKey: ["releases", owner, repo, releasesLimit],
-          staleTime: 0,
-          queryFn: () =>
-            api.github.listReleasesWithStatus({
-              owner,
-              repo,
-              limit: releasesLimit,
-              cacheOnly: cachedRead,
-              forceRefresh: !cachedRead
-            })
-        }),
-        queryClient.fetchQuery({
-          queryKey: ["branches", owner, repo, repositoryRefListLimit],
-          staleTime: 0,
-          queryFn: () =>
-            api.github.listBranchesWithStatus({
-              owner,
-              repo,
-              limit: repositoryRefListLimit,
-              cacheOnly: cachedRead,
-              forceRefresh: !cachedRead
-            })
-        }),
-        queryClient.fetchQuery({
-          queryKey: ["tags", owner, repo, repositoryRefListLimit],
-          staleTime: 0,
-          queryFn: () =>
-            api.github.listTagsWithStatus({
-              owner,
-              repo,
-              limit: repositoryRefListLimit,
-              cacheOnly: cachedRead,
-              forceRefresh: !cachedRead
-            })
-        })
-      ]);
-    } catch {
-      // React Query owns the visible error state for this refresh.
-    }
+    await refreshReleasesTabData(queryClient, {
+      api,
+      owner,
+      repo,
+      limit: releasesLimit,
+      refListLimit: repositoryRefListLimit,
+      githubReady
+    });
   }
 
   async function refreshActionsSurfaceNow(): Promise<void> {

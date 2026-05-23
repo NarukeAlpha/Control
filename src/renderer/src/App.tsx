@@ -157,6 +157,7 @@ import { RepositorySettingsTab } from "./components/repository/settings/Reposito
 import { WikiTab } from "./components/repository/wiki/WikiTab";
 import { RightRail } from "./components/right-rail/RightRail";
 import { SettingsPanel } from "./components/settings/SettingsPanel";
+import { AppEventBridge } from "./components/shell/AppEventBridge";
 import { Metric } from "./components/shared/Metric";
 import { TopBar } from "./components/topbar/TopBar";
 
@@ -246,7 +247,6 @@ type PullRequestLinkedIssue =
   | PullRequestLinkedIssueSummary;
 
 const repositoryRefsStorageKey = "control:repository-refs";
-const controlRendererLoadingLogsEnabled = import.meta.env.DEV;
 const emptyRepoEntries: RepoEntry[] = [];
 const emptyRepoTreeEntries: RepoTreeEntry[] = [];
 const defaultFileBlameRangeLimit = 20;
@@ -2208,31 +2208,9 @@ function routeTitle(route: AppRoute): string {
   }
 }
 
-function queryKeyLogLabel(queryKey: readonly unknown[]): string {
-  try {
-    return JSON.stringify(queryKey);
-  } catch {
-    return String(queryKey[0] ?? "query");
-  }
-}
-
-function logRendererLoading(message: string, metadata?: Record<string, unknown>): void {
-  if (!controlRendererLoadingLogsEnabled) {
-    return;
-  }
-
-  if (metadata) {
-    console.info("[Control loading]", message, metadata);
-    return;
-  }
-
-  console.info("[Control loading]", message);
-}
-
 export function App(): JSX.Element {
   const api = useControlApi();
   const queryClient = useQueryClient();
-  const queryFetchStatuses = useRef(new Map<string, string>());
   const route = useUiStore((state) => state.route);
   const selectedAreaId = useUiStore((state) => state.selectedAreaId);
   const selectedRepository = useUiStore((state) => state.selectedRepository);
@@ -2335,63 +2313,10 @@ export function App(): JSX.Element {
   const localRepositoryItems = selectedAreaRepositories.data ?? [];
 
   useEffect(() => {
-    if (!controlRendererLoadingLogsEnabled) {
-      return;
-    }
-
-    return queryClient.getQueryCache().subscribe((event) => {
-      if (event.type !== "updated") {
-        return;
-      }
-
-      const queryKey = queryKeyLogLabel(event.query.queryKey);
-      const fetchStatus = event.query.state.fetchStatus;
-      const previousFetchStatus = queryFetchStatuses.current.get(queryKey) ?? "idle";
-      if (fetchStatus === previousFetchStatus) {
-        return;
-      }
-
-      queryFetchStatuses.current.set(queryKey, fetchStatus);
-
-      if (previousFetchStatus !== "fetching" && fetchStatus === "fetching") {
-        logRendererLoading("renderer query refresh start", { queryKey });
-        return;
-      }
-
-      if (previousFetchStatus === "fetching" && fetchStatus !== "fetching") {
-        logRendererLoading(
-          event.query.state.status === "error"
-            ? "renderer query refresh failed"
-            : "renderer query refresh complete",
-          { queryKey, status: event.query.state.status }
-        );
-      }
-    });
-  }, [queryClient]);
-
-  useEffect(() => {
     if (!selectedAreaId && selectedArea?.id) {
       selectAreaInStore(selectedArea.id);
     }
   }, [selectAreaInStore, selectedArea?.id, selectedAreaId]);
-
-  useEffect(() => {
-    const unsubscribeAreas = api.onAreasUpdated(() => {
-      void queryClient.invalidateQueries({ queryKey: ["areas"] });
-    });
-    const unsubscribeRepositories = api.onAreaRepositoryUpdated((event) => {
-      void queryClient.invalidateQueries({ queryKey: ["area-repositories", event.areaId] });
-      void queryClient.invalidateQueries({ queryKey: ["area-repository", event.areaId, event.repositoryId] });
-    });
-    const unsubscribeWorkspaces = api.onAreaWorkspaceUpdated((event) => {
-      void queryClient.invalidateQueries({ queryKey: ["area-workspaces", event.areaId, event.repositoryId] });
-    });
-    return () => {
-      unsubscribeAreas();
-      unsubscribeRepositories();
-      unsubscribeWorkspaces();
-    };
-  }, [api, queryClient]);
 
   useEffect(() => {
     writeRepositoryRefs(repositoryRefs);
@@ -3622,6 +3547,24 @@ export function App(): JSX.Element {
 
     await Promise.all(invalidations);
   }, [hasRepositoryParts, invalidateRepositoryScopedQueries, owner, queryClient, repo]);
+
+  const handleGitHubRepositoryUpdated = useCallback(
+    (nameWithOwner: string | null): void => {
+      if (!nameWithOwner) {
+        return;
+      }
+
+      const [updatedOwner, updatedRepo] = nameWithOwner.split("/");
+      if (updatedOwner && updatedRepo) {
+        void invalidateRepositoryScopedQueries(updatedOwner, updatedRepo);
+      }
+    },
+    [invalidateRepositoryScopedQueries]
+  );
+
+  const handleGitHubAuthUpdated = useCallback((): void => {
+    void invalidateGitHubSessionQueries();
+  }, [invalidateGitHubSessionQueries]);
 
   const mutation = useMutation({
     mutationFn: api.github.mutate,
@@ -7366,29 +7309,6 @@ export function App(): JSX.Element {
     return items;
   })();
 
-  useEffect(
-    () =>
-      api.onGitHubRepositoriesUpdated((event) => {
-        void queryClient.invalidateQueries({ queryKey: ["repositories"] });
-        if (event.nameWithOwner) {
-          const [updatedOwner, updatedRepo] = event.nameWithOwner.split("/");
-          if (updatedOwner && updatedRepo) {
-            void invalidateRepositoryScopedQueries(updatedOwner, updatedRepo);
-          }
-        }
-      }),
-    [api, invalidateRepositoryScopedQueries, queryClient]
-  );
-
-  useEffect(
-    () =>
-      api.onGitHubAuthUpdated((event) => {
-        queryClient.setQueryData(["app-state"], event.appState);
-        void invalidateGitHubSessionQueries();
-      }),
-    [api, invalidateGitHubSessionQueries, queryClient]
-  );
-
   useEffect(() => {
     function handleCommandPaletteShortcut(event: KeyboardEvent): void {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -7454,6 +7374,10 @@ export function App(): JSX.Element {
 
   return (
     <MarkdownUrlHandlerContext.Provider value={openMarkdownUrl}>
+      <AppEventBridge
+        onGitHubRepositoryUpdated={handleGitHubRepositoryUpdated}
+        onGitHubAuthUpdated={handleGitHubAuthUpdated}
+      />
       <div className={shellClass}>
         <Sidebar
           appState={appState.data}

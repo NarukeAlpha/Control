@@ -19,6 +19,7 @@ import {
 
 import type { RepositorySummary } from "@shared/github";
 import type {
+  BranchSummary,
   OrganizationMemberSummary,
   OrganizationRepositorySummary,
   OrganizationSummary,
@@ -26,8 +27,12 @@ import type {
   NotificationSummary,
   ProjectSummary,
   PullRequestSummary,
+  RepositoryWikiResult,
+  TagSummary,
   TeamSummary
 } from "@shared/github";
+import type { QueryClient } from "@tanstack/react-query";
+import type { ContributorSummary, DiscussionSummary, WikiPageContent, WikiPageSummary } from "@shared/github";
 import type { LocalRecentItem } from "@shared/local";
 import type { CommandPaletteItem } from "./CommandPalette";
 import {
@@ -43,6 +48,34 @@ import {
 import { issueStateLabel } from "../collection/workItemUi";
 import { notificationInAppTarget, notificationReasonLabel } from "../collection/notificationUi";
 import { repositoryNameWithOwnerFromGitHubUrl } from "../repository/githubUrlRoutes";
+import { formatCompactNumber } from "../../utils/format";
+
+export function cachedRepositoryWikiPages(
+  queryClient: QueryClient,
+  nameWithOwner: string
+): Array<WikiPageSummary | WikiPageContent> {
+  const [wikiOwner, wikiRepo] = nameWithOwner.split("/");
+  const cachedWikiPagesByPath = new Map<string, WikiPageSummary | WikiPageContent>();
+  if (!wikiOwner || !wikiRepo) {
+    return [];
+  }
+
+  for (const [, wikiResult] of queryClient.getQueriesData<RepositoryWikiResult>({
+    queryKey: ["repository-wiki", wikiOwner, wikiRepo]
+  })) {
+    if (!wikiResult) {
+      continue;
+    }
+    for (const page of wikiResult.pages) {
+      cachedWikiPagesByPath.set(page.path, page);
+    }
+    if (wikiResult.selectedPage) {
+      cachedWikiPagesByPath.set(wikiResult.selectedPage.path, wikiResult.selectedPage);
+    }
+  }
+
+  return [...cachedWikiPagesByPath.values()];
+}
 
 export function appendPinnedRepositoryCommandPaletteItems(
   items: CommandPaletteItem[],
@@ -567,6 +600,162 @@ export function appendAccountWorkCommandPaletteItems(
         `${pullRequest.changedFiles} files`
       ],
       run: () => input.onOpenPullRequest(pullRequest)
+    });
+  }
+}
+
+export function appendRepositoryContentCommandPaletteItems(
+  items: CommandPaletteItem[],
+  input: {
+    effectiveRepository: string;
+    branchItems: BranchSummary[];
+    tagItems: TagSummary[];
+    branchesLoaded: boolean;
+    tagsLoaded: boolean;
+    wikiPages: Array<WikiPageSummary | WikiPageContent>;
+    discussionItems: DiscussionSummary[];
+    projectItems: ProjectSummary[];
+    contributorItems: ContributorSummary[];
+    generalSourceLimit: number;
+    denseSourceLimit: number;
+    onSelectRepositoryRef(nameWithOwner: string, ref: string, refKind: "branch" | "tag"): void;
+    onSelectWikiPage(nameWithOwner: string, page: WikiPageSummary | WikiPageContent): void;
+    onSelectDiscussion(nameWithOwner: string, discussion: DiscussionSummary): void;
+    onSelectProject(nameWithOwner: string, project: ProjectSummary): void;
+    onSelectContributor(nameWithOwner: string, contributor: ContributorSummary): void;
+  }
+): void {
+  if (input.branchesLoaded) {
+    for (const branch of input.branchItems.slice(0, input.generalSourceLimit)) {
+      items.push({
+        id: `reference-branch-${input.effectiveRepository}-${branch.name}`,
+        title: branch.name,
+        subtitle: `${input.effectiveRepository} branch · ${branch.commitSha.slice(0, 7)}${branch.protected ? " · protected" : ""}`,
+        group: "References",
+        icon: GitBranch,
+        keywords: [
+          branch.name,
+          "branch",
+          input.effectiveRepository,
+          branch.commitSha,
+          branch.protected ? "protected" : ""
+        ],
+        run: () => input.onSelectRepositoryRef(input.effectiveRepository, branch.name, "branch")
+      });
+    }
+  }
+
+  if (input.tagsLoaded) {
+    for (const tag of input.tagItems.slice(0, input.generalSourceLimit)) {
+      items.push({
+        id: `reference-tag-${input.effectiveRepository}-${tag.name}`,
+        title: tag.name,
+        subtitle: `${input.effectiveRepository} tag · ${tag.commitSha.slice(0, 7)}`,
+        group: "References",
+        icon: Tag,
+        keywords: [tag.name, "tag", input.effectiveRepository, tag.commitSha],
+        run: () => input.onSelectRepositoryRef(input.effectiveRepository, tag.name, "tag")
+      });
+    }
+  }
+
+  for (const page of input.wikiPages) {
+    items.push({
+      id: `wiki-page-${input.effectiveRepository}-${page.path}`,
+      title: page.title,
+      subtitle: `${input.effectiveRepository} wiki · ${page.path}`,
+      group: "Wiki pages",
+      icon: BookOpen,
+      keywords: [
+        input.effectiveRepository,
+        "wiki",
+        "docs",
+        "documentation",
+        page.title,
+        page.path,
+        page.sha,
+        page.htmlUrl ?? "",
+        page.size === null ? "" : String(page.size)
+      ],
+      run: () => input.onSelectWikiPage(input.effectiveRepository, page)
+    });
+  }
+
+  for (const discussion of input.discussionItems.slice(0, input.generalSourceLimit)) {
+    items.push({
+      id: `repository-discussion-${input.effectiveRepository}-${discussion.number}`,
+      title: `#${discussion.number} ${discussion.title}`,
+      subtitle: `${input.effectiveRepository} discussion · ${discussion.category ?? "uncategorized"} · ${
+        discussion.closed ? "closed" : "open"
+      }`,
+      group: "Repository items",
+      icon: MessageSquare,
+      keywords: [
+        discussion.title,
+        input.effectiveRepository,
+        String(discussion.number),
+        `#${discussion.number}`,
+        "discussion",
+        discussion.closed ? "closed" : "open",
+        discussion.locked ? "locked" : "",
+        discussion.isAnswered ? "answered" : "unanswered",
+        discussion.category ?? "",
+        discussion.authorLogin ?? "",
+        `${discussion.comments} comments`,
+        `${discussion.upvotes} upvotes`
+      ],
+      run: () => input.onSelectDiscussion(input.effectiveRepository, discussion)
+    });
+  }
+
+  for (const project of input.projectItems.slice(0, input.generalSourceLimit)) {
+    items.push({
+      id: `repository-project-${input.effectiveRepository}-${project.id}`,
+      title: project.number ? `#${project.number} ${project.title}` : project.title,
+      subtitle: `${input.effectiveRepository} project · ${project.closed ? "closed" : "open"}${
+        project.ownerLogin ? ` · ${project.ownerLogin}` : ""
+      }`,
+      group: "Repository items",
+      icon: SquareKanban,
+      keywords: [
+        project.title,
+        input.effectiveRepository,
+        project.id,
+        project.number ? String(project.number) : "",
+        project.number ? `#${project.number}` : "",
+        "project",
+        project.closed ? "closed" : "open",
+        project.shortDescription ?? "",
+        project.ownerLogin ?? "",
+        project.ownerKind,
+        project.isPublic === null ? "" : project.isPublic ? "public" : "private",
+        project.itemsCount === null ? "" : `${project.itemsCount} items`,
+        project.fieldsCount === null ? "" : `${project.fieldsCount} fields`
+      ],
+      run: () => input.onSelectProject(input.effectiveRepository, project)
+    });
+  }
+
+  for (const contributor of input.contributorItems.slice(0, input.denseSourceLimit)) {
+    const contributionCount = `${formatCompactNumber(contributor.contributions)} contributions`;
+    items.push({
+      id: `repository-contributor-${input.effectiveRepository}-${contributor.id}`,
+      title: `@${contributor.login} in ${input.effectiveRepository}`,
+      subtitle: `${contributionCount} · Opens in Control`,
+      group: "Contributors",
+      icon: Users,
+      keywords: [
+        contributor.login,
+        "contributor",
+        "contributors",
+        "people",
+        "author",
+        "authors",
+        input.effectiveRepository,
+        String(contributor.contributions),
+        contributionCount
+      ],
+      run: () => input.onSelectContributor(input.effectiveRepository, contributor)
     });
   }
 }

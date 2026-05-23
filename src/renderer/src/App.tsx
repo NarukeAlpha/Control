@@ -8,7 +8,6 @@ import {
   Download,
   ExternalLink,
   Gauge,
-  GitBranch,
   GitFork,
   GitPullRequest,
   Home,
@@ -53,7 +52,6 @@ import type {
   RepositoryRulesetsResult,
   RepositorySecurityAdvisoriesResult,
   RepositorySummary,
-  RepositoryWikiResult,
   SecretScanningAlertsResult,
   WorkflowRunArtifactSummary,
   WorkflowRunDetail,
@@ -116,8 +114,10 @@ import {
   appendNotificationCommandPaletteItems,
   appendOrganizationCommandPaletteItems,
   appendPinnedRepositoryCommandPaletteItems,
+  appendRepositoryContentCommandPaletteItems,
   appendRecentCommandPaletteItems,
-  appendRepositoryCommandPaletteItems
+  appendRepositoryCommandPaletteItems,
+  cachedRepositoryWikiPages
 } from "./components/command-palette/commandPaletteItemBuilders";
 import { AddRepositoryDialog } from "./components/dialogs/AddRepositoryDialog";
 import { FileFinder } from "./components/file-finder/FileFinder";
@@ -2330,164 +2330,24 @@ export function App(): JSX.Element {
       const repositoryPinCommandDisabledReason = repositoryPinBusy
         ? "Repository pin update is already running."
         : null;
-      const currentRepositoryBranches = branchItems.slice(0, commandPaletteGeneralSourceLimit);
-      const currentRepositoryTags = tagItems.slice(0, commandPaletteGeneralSourceLimit);
-      const [wikiOwner, wikiRepo] = effectiveRepository.split("/");
-      const cachedWikiPagesByPath = new Map<string, WikiPageSummary | WikiPageContent>();
-      if (wikiOwner && wikiRepo) {
-        for (const [, wikiResult] of queryClient.getQueriesData<RepositoryWikiResult>({
-          queryKey: ["repository-wiki", wikiOwner, wikiRepo]
-        })) {
-          if (!wikiResult) {
-            continue;
-          }
-          for (const page of wikiResult.pages) {
-            cachedWikiPagesByPath.set(page.path, page);
-          }
-          if (wikiResult.selectedPage) {
-            cachedWikiPagesByPath.set(wikiResult.selectedPage.path, wikiResult.selectedPage);
-          }
-        }
-      }
-      if (branches.data) {
-        for (const branch of currentRepositoryBranches) {
-          items.push({
-            id: `reference-branch-${effectiveRepository}-${branch.name}`,
-            title: branch.name,
-            subtitle: `${effectiveRepository} branch · ${branch.commitSha.slice(0, 7)}${branch.protected ? " · protected" : ""}`,
-            group: "References",
-            icon: GitBranch,
-            keywords: [
-              branch.name,
-              "branch",
-              effectiveRepository,
-              branch.commitSha,
-              branch.protected ? "protected" : ""
-            ],
-            run: () => selectRepositoryRefInApp(effectiveRepository, branch.name, "branch")
-          });
-        }
-      }
-
-      if (tags.data) {
-        for (const tag of currentRepositoryTags) {
-          items.push({
-            id: `reference-tag-${effectiveRepository}-${tag.name}`,
-            title: tag.name,
-            subtitle: `${effectiveRepository} tag · ${tag.commitSha.slice(0, 7)}`,
-            group: "References",
-            icon: Tag,
-            keywords: [tag.name, "tag", effectiveRepository, tag.commitSha],
-            run: () => selectRepositoryRefInApp(effectiveRepository, tag.name, "tag")
-          });
-        }
-      }
-
-      for (const page of cachedWikiPagesByPath.values()) {
-        items.push({
-          id: `wiki-page-${effectiveRepository}-${page.path}`,
-          title: page.title,
-          subtitle: `${effectiveRepository} wiki · ${page.path}`,
-          group: "Wiki pages",
-          icon: BookOpen,
-          keywords: [
-            effectiveRepository,
-            "wiki",
-            "docs",
-            "documentation",
-            page.title,
-            page.path,
-            page.sha,
-            page.htmlUrl ?? "",
-            page.size === null ? "" : String(page.size)
-          ],
-          run: () => selectWikiPageInApp(effectiveRepository, page)
-        });
-      }
-
-      if (discussions.data?.items) {
-        for (const discussion of discussions.data.items.slice(0, commandPaletteGeneralSourceLimit)) {
-          items.push({
-            id: `repository-discussion-${effectiveRepository}-${discussion.number}`,
-            title: `#${discussion.number} ${discussion.title}`,
-            subtitle: `${effectiveRepository} discussion · ${discussion.category ?? "uncategorized"} · ${
-              discussion.closed ? "closed" : "open"
-            }`,
-            group: "Repository items",
-            icon: MessageSquare,
-            keywords: [
-              discussion.title,
-              effectiveRepository,
-              String(discussion.number),
-              `#${discussion.number}`,
-              "discussion",
-              discussion.closed ? "closed" : "open",
-              discussion.locked ? "locked" : "",
-              discussion.isAnswered ? "answered" : "unanswered",
-              discussion.category ?? "",
-              discussion.authorLogin ?? "",
-              `${discussion.comments} comments`,
-              `${discussion.upvotes} upvotes`
-            ],
-            run: () => selectDiscussionInApp(effectiveRepository, discussion)
-          });
-        }
-      }
-
-      if (projects.data?.items) {
-        for (const project of projects.data.items.slice(0, commandPaletteGeneralSourceLimit)) {
-          items.push({
-            id: `repository-project-${effectiveRepository}-${project.id}`,
-            title: project.number ? `#${project.number} ${project.title}` : project.title,
-            subtitle: `${effectiveRepository} project · ${project.closed ? "closed" : "open"}${
-              project.ownerLogin ? ` · ${project.ownerLogin}` : ""
-            }`,
-            group: "Repository items",
-            icon: SquareKanban,
-            keywords: [
-              project.title,
-              effectiveRepository,
-              project.id,
-              project.number ? String(project.number) : "",
-              project.number ? `#${project.number}` : "",
-              "project",
-              project.closed ? "closed" : "open",
-              project.shortDescription ?? "",
-              project.ownerLogin ?? "",
-              project.ownerKind,
-              project.isPublic === null ? "" : project.isPublic ? "public" : "private",
-              project.itemsCount === null ? "" : `${project.itemsCount} items`,
-              project.fieldsCount === null ? "" : `${project.fieldsCount} fields`
-            ],
-            run: () => selectProjectInApp(effectiveRepository, project)
-          });
-        }
-      }
-
-      if (contributorItems.length > 0) {
-        for (const contributor of contributorItems.slice(0, commandPaletteDenseSourceLimit)) {
-          const contributionCount = `${formatCompactNumber(contributor.contributions)} contributions`;
-          items.push({
-            id: `repository-contributor-${effectiveRepository}-${contributor.id}`,
-            title: `@${contributor.login} in ${effectiveRepository}`,
-            subtitle: `${contributionCount} · Opens in Control`,
-            group: "Contributors",
-            icon: Users,
-            keywords: [
-              contributor.login,
-              "contributor",
-              "contributors",
-              "people",
-              "author",
-              "authors",
-              effectiveRepository,
-              String(contributor.contributions),
-              contributionCount
-            ],
-            run: () => selectContributorInApp(effectiveRepository, contributor)
-          });
-        }
-      }
+      appendRepositoryContentCommandPaletteItems(items, {
+        effectiveRepository,
+        branchItems,
+        tagItems,
+        branchesLoaded: Boolean(branches.data),
+        tagsLoaded: Boolean(tags.data),
+        wikiPages: cachedRepositoryWikiPages(queryClient, effectiveRepository),
+        discussionItems: discussions.data?.items ?? [],
+        projectItems: projects.data?.items ?? [],
+        contributorItems,
+        generalSourceLimit: commandPaletteGeneralSourceLimit,
+        denseSourceLimit: commandPaletteDenseSourceLimit,
+        onSelectRepositoryRef: selectRepositoryRefInApp,
+        onSelectWikiPage: selectWikiPageInApp,
+        onSelectDiscussion: selectDiscussionInApp,
+        onSelectProject: selectProjectInApp,
+        onSelectContributor: selectContributorInApp
+      });
 
       const commandPaletteRepositoryAccess = queryClient.getQueryData<RepositoryAccessResult>([
         "repository-access",

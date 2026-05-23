@@ -91,7 +91,6 @@ import type {
   ReleaseSummary,
   RepoEntry,
   RepoFileBlameCommit,
-  RepoFileBlameRange,
   RepoFileBlameResult,
   RepoFileContent,
   RepoFileContentResult,
@@ -144,10 +143,12 @@ import {
   type RepositoryContextValue
 } from "./components/repository/RepositoryContext";
 import { AgentsTab } from "./components/repository/agents/AgentsTab";
+import { CommitHistoryPanel, maxCommitHistoryLimit } from "./components/repository/CommitHistoryPanel";
 import { ContributorsTab } from "./components/repository/contributors/ContributorsTab";
 import { ActionsTab, useActionsTabQueries } from "./components/repository/actions/ActionsTab";
 import { CodeTab } from "./components/repository/code/CodeTab";
 import { DiscussionsTab, useDiscussionsTabQueries } from "./components/repository/discussions/DiscussionsTab";
+import { FileBlamePanel, expandedFileBlameRangeLimit } from "./components/repository/FileBlamePanel";
 import { IssuesTab, useIssuesTabQueries } from "./components/repository/issues/IssuesTab";
 import { ProjectsTab, useProjectsTabQueries } from "./components/repository/projects/ProjectsTab";
 import { PullRequestsTab } from "./components/repository/pull-requests/PullRequestsTab";
@@ -240,10 +241,8 @@ const controlRendererLoadingLogsEnabled = import.meta.env.DEV;
 const emptyRepoEntries: RepoEntry[] = [];
 const emptyRepoTreeEntries: RepoTreeEntry[] = [];
 const defaultFileBlameRangeLimit = 20;
-const expandedFileBlameRangeLimit = 100;
 const defaultCommitHistoryLimit = 12;
 const defaultRightRailCommitHistoryLimit = 3;
-const maxCommitHistoryLimit = 100;
 const defaultRepositoryListLimit = 80;
 const maxRepositoryListLimit = 100;
 const defaultRepositorySearchLocalLimit = 5;
@@ -2268,283 +2267,6 @@ function fileCommitChangeSummary(file: RepoFileContent | RepoEntry | undefined):
   ].filter(Boolean);
 
   return parts.length > 0 ? parts.join(" ") : null;
-}
-
-function FileBlamePanel({
-  blame,
-  rangeLimit,
-  loading,
-  error,
-  externalUrl,
-  onExpandPreview,
-  onOpenRange,
-  onOpenCommit,
-  onOpenExternal
-}: {
-  blame?: RepoFileBlameResult;
-  rangeLimit: number;
-  loading: boolean;
-  error: Error | null;
-  externalUrl?: string | null;
-  onExpandPreview?(): void;
-  onOpenRange?(range: RepoFileBlameRange): void;
-  onOpenCommit?(commit: RepoFileBlameCommit): void;
-  onOpenExternal(url: string): void;
-}): JSX.Element {
-  const ranges = blame?.ranges ?? [];
-  const availabilityMessage = readAvailabilityMessage("File blame", blame?.availability ?? null);
-  const canExpandPreview =
-    Boolean(blame?.truncated) && rangeLimit < expandedFileBlameRangeLimit && Boolean(onExpandPreview);
-  const blameStatus = loading
-    ? ranges.length > 0
-      ? `Refreshing ${ranges.length} ranges`
-      : "Loading ranges"
-    : error || availabilityMessage
-      ? "Unavailable"
-      : ranges.length === 0
-        ? "No ranges"
-        : blame?.truncated
-          ? `${ranges.length}+ ranges`
-          : `${ranges.length} ranges`;
-
-  return (
-    <section className="readme-panel file-blame-panel">
-      <header>
-        <Eye size={17} />
-        <span>Blame</span>
-        <span className="state-chip">{blameStatus}</span>
-        <button
-          type="button"
-          disabled={!externalUrl}
-          title={externalUrl ? undefined : "GitHub blame URL unavailable."}
-          onClick={() => {
-            if (externalUrl) {
-              onOpenExternal(externalUrl);
-            }
-          }}
-        >
-          <ExternalLink size={14} /> Open GitHub fallback
-        </button>
-        {canExpandPreview && (
-          <button type="button" onClick={() => onExpandPreview?.()}>
-            <Eye size={14} /> Load 100 ranges
-          </button>
-        )}
-      </header>
-      {loading && ranges.length === 0 && <div className="loading-state">Loading blame ranges…</div>}
-      {error && <div className="error-state">File blame unavailable: {error.message}</div>}
-      {availabilityMessage && <div className="error-state">{availabilityMessage}</div>}
-      {!loading && !error && !availabilityMessage && ranges.length === 0 && (
-        <div className="empty-state">Blame loaded, but GitHub returned no ranges for this file.</div>
-      )}
-      {ranges.length > 0 && (
-        <div className="blame-range-list">
-          {ranges.map((range) =>
-            onOpenRange || onOpenCommit ? (
-              <div
-                className="blame-range-row"
-                key={`${range.startingLine}-${range.endingLine}-${range.commit.sha}`}
-              >
-                <strong>
-                  Lines {range.startingLine}-{range.endingLine}
-                </strong>
-                <span>{range.commit.headline}</span>
-                <small>
-                  {range.commit.authorLogin ?? range.commit.authorName ?? "unknown"} ·{" "}
-                  {formatRelativeDate(range.commit.committedDate ?? range.commit.authoredDate)}
-                </small>
-                <code>{range.commit.sha.slice(0, 7)}</code>
-                <div className="blame-range-row-actions">
-                  {onOpenRange ? (
-                    <button type="button" onClick={() => onOpenRange(range)}>
-                      Open file at commit
-                    </button>
-                  ) : null}
-                  {onOpenCommit ? (
-                    <button type="button" onClick={() => onOpenCommit(range.commit)}>
-                      Open commit in Control
-                    </button>
-                  ) : null}
-                  {range.commit.htmlUrl ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (range.commit.htmlUrl) {
-                          onOpenExternal(range.commit.htmlUrl);
-                        }
-                      }}
-                    >
-                      GitHub fallback
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            ) : (
-              <button
-                type="button"
-                key={`${range.startingLine}-${range.endingLine}-${range.commit.sha}`}
-                disabled={!range.commit.htmlUrl}
-                title={range.commit.htmlUrl ? undefined : "Commit URL unavailable."}
-                onClick={() => range.commit.htmlUrl && onOpenExternal(range.commit.htmlUrl)}
-              >
-                <strong>
-                  Lines {range.startingLine}-{range.endingLine}
-                </strong>
-                <span>{range.commit.headline}</span>
-                <small>
-                  {range.commit.authorLogin ?? range.commit.authorName ?? "unknown"} ·{" "}
-                  {formatRelativeDate(range.commit.committedDate ?? range.commit.authoredDate)}
-                </small>
-                <code>{range.commit.sha.slice(0, 7)}</code>
-              </button>
-            )
-          )}
-        </div>
-      )}
-      {blame?.truncated && (
-        <small className="action-disabled-note">
-          {rangeLimit >= expandedFileBlameRangeLimit
-            ? "Control is showing the first 100 blame ranges."
-            : "Showing the first blame ranges only."}
-        </small>
-      )}
-    </section>
-  );
-}
-
-function CommitHistoryPanel({
-  title,
-  subtitle,
-  commits,
-  loading,
-  error,
-  availabilityMessage,
-  externalUrl,
-  currentLimit,
-  openCommitLabel = "Open in Control",
-  onExpandCommits,
-  onOpenCommit,
-  onOpenExternal
-}: {
-  title: string;
-  subtitle: string;
-  commits: RepositoryCommitSummary[];
-  loading: boolean;
-  error: Error | null;
-  availabilityMessage?: string | null;
-  externalUrl?: string | null;
-  currentLimit: number;
-  openCommitLabel?: string;
-  onExpandCommits(): void;
-  onOpenCommit?(commit: RepositoryCommitSummary): void;
-  onOpenExternal(url: string): void;
-}): JSX.Element {
-  const commitsLimitHit = commits.length >= currentLimit;
-  const canExpandCommits = commitsLimitHit && currentLimit < maxCommitHistoryLimit;
-  const historyStatus = loading
-    ? commits.length > 0
-      ? `Refreshing ${commits.length} commits`
-      : "Loading commits"
-    : error
-      ? "Unavailable"
-      : availabilityMessage
-        ? "Unavailable"
-        : commits.length === 0
-          ? "No commits"
-          : canExpandCommits
-            ? `${commits.length}+ commits`
-            : `${commits.length} commits`;
-
-  return (
-    <section className="readme-panel commit-history-panel">
-      <header>
-        <GitBranch size={17} />
-        <span>{title}</span>
-        <small>{subtitle}</small>
-        <span className="state-chip">{historyStatus}</span>
-        <button
-          type="button"
-          disabled={!externalUrl}
-          title={externalUrl ? undefined : "GitHub history URL unavailable."}
-          onClick={() => {
-            if (externalUrl) {
-              onOpenExternal(externalUrl);
-            }
-          }}
-        >
-          <ExternalLink size={14} /> Open GitHub fallback
-        </button>
-      </header>
-      {loading && commits.length === 0 && <div className="loading-state">Loading commits…</div>}
-      {error && <div className="error-state">Commit history unavailable: {error.message}</div>}
-      {!loading && !error && availabilityMessage && <div className="error-state">{availabilityMessage}</div>}
-      {!loading && !error && !availabilityMessage && commits.length === 0 && (
-        <div className="empty-state">History loaded, but GitHub returned no commits for this scope.</div>
-      )}
-      {commits.length > 0 && (
-        <div className="commit-history-list">
-          {commits.map((commit) =>
-            onOpenCommit ? (
-              <div className="commit-history-row" key={commit.sha}>
-                {commit.authorAvatarUrl ? <img src={commit.authorAvatarUrl} alt="" /> : null}
-                <span>
-                  <strong>{commit.headline}</strong>
-                  <small>
-                    {commit.authorLogin ?? commit.authorName ?? "unknown"} · {commit.sha.slice(0, 7)}
-                    {commit.verified ? " · verified" : ""}
-                    {commit.parentCount > 1 ? ` · ${commit.parentCount} parents` : ""}
-                  </small>
-                </span>
-                <time>{formatRelativeDate(commit.committedDate ?? commit.authoredDate)}</time>
-                <div className="commit-history-row-actions">
-                  <button type="button" onClick={() => onOpenCommit(commit)}>
-                    {openCommitLabel}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!commit.htmlUrl}
-                    title={commit.htmlUrl ? undefined : "Commit URL unavailable."}
-                    onClick={() => commit.htmlUrl && onOpenExternal(commit.htmlUrl)}
-                  >
-                    GitHub fallback
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button
-                key={commit.sha}
-                type="button"
-                disabled={!commit.htmlUrl}
-                title={commit.htmlUrl ? undefined : "Commit URL unavailable."}
-                onClick={() => commit.htmlUrl && onOpenExternal(commit.htmlUrl)}
-              >
-                {commit.authorAvatarUrl ? <img src={commit.authorAvatarUrl} alt="" /> : null}
-                <span>
-                  <strong>{commit.headline}</strong>
-                  <small>
-                    {commit.authorLogin ?? commit.authorName ?? "unknown"} · {commit.sha.slice(0, 7)}
-                    {commit.verified ? " · verified" : ""}
-                    {commit.parentCount > 1 ? ` · ${commit.parentCount} parents` : ""}
-                  </small>
-                </span>
-                <time>{formatRelativeDate(commit.committedDate ?? commit.authoredDate)}</time>
-              </button>
-            )
-          )}
-        </div>
-      )}
-      {canExpandCommits && (
-        <div className="table-action-row">
-          <button type="button" onClick={onExpandCommits}>
-            Load more commits
-          </button>
-        </div>
-      )}
-      {!canExpandCommits && commitsLimitHit && (
-        <div className="muted-row">Showing the first {currentLimit} commits returned by GitHub.</div>
-      )}
-    </section>
-  );
 }
 
 function normalizeLanguageStats(repository: RepositoryDetail): LanguageStat[] {

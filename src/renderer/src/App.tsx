@@ -33,11 +33,7 @@ import { useProviderAuth } from "./components/auth/AuthProvider";
 import { CodeBrowserPage } from "./components/code-browser/CodeBrowserPage";
 import { useCodeBrowserQueries } from "./components/code-browser/codeBrowserQueries";
 import { normalizeCodeLineNumber } from "./components/code-browser/codeBrowserUi";
-import {
-  notificationInAppTarget,
-  notificationTargetUrl,
-  parseWorkflowRunIdFromUrl
-} from "./components/collection/notificationUi";
+import { notificationInAppTarget, notificationTargetUrl } from "./components/collection/notificationUi";
 import { RepositoriesRoute } from "./components/collection/RepositoriesRoute";
 import { MailboxRoute } from "./components/collection/MailboxRoute";
 import {
@@ -90,10 +86,9 @@ import { useDiscussionsTabQueries } from "./components/repository/discussions/Di
 import { prefetchIssuesTabData, useIssuesTabQueries } from "./components/repository/issues/IssuesTab";
 import {
   parseGitHubBlobUrl,
-  parseGitHubCodeUrl,
-  parseGitHubRepositoryUrl,
   repositoryNameWithOwnerFromGitHubUrl
 } from "./components/repository/githubUrlRoutes";
+import { createMarkdownUrlHandler } from "./components/repository/markdownUrlNavigation";
 import { createGitHubMutationInput } from "./components/repository/githubMutationHelpers";
 import { useProjectsTabQueries } from "./components/repository/projects/ProjectsTab";
 import {
@@ -106,20 +101,16 @@ import {
   commitRecentInput,
   contributorRecentInput,
   discussionRecentInput,
-  discussionReferenceRecentInput,
   fileRecentInput,
   issueRecentInput,
-  issueReferenceRecentInput,
   linkedIssueRecentInput,
   notificationRecentInput,
   organizationProjectRecentInput,
   organizationRecentInput,
   projectRecentInput,
   pullRequestRecentInput,
-  pullRequestReferenceRecentInput,
   releaseAssetRecentInput,
   releaseRecentInput,
-  releaseTagReferenceRecentInput,
   repositoryRecentInput,
   securityItemRecentInput,
   teamRecentInput,
@@ -1026,127 +1017,23 @@ export function App(): JSX.Element {
     recordRecent(releaseRecentInput(nameWithOwner, release));
   }
 
-  function openMarkdownUrl(url: string): void {
-    const parsed = parseGitHubRepositoryUrl(url);
-    if (!parsed) {
-      void api.openExternal(url);
-      return;
-    }
-
-    const [, , surface, rawValue] = parsed.segments;
-    const nameWithOwner = parsed.nameWithOwner;
-    const number = rawValue ? Number(rawValue) : null;
-
-    if (parsed.segments.length === 2) {
-      openRepositoryInApp(nameWithOwner);
-      return;
-    }
-
-    if (surface === "issues" && number !== null && Number.isInteger(number) && number > 0) {
-      navigate({ kind: "repository", nameWithOwner, tab: "issues", issueNumber: number });
-      recordRecent(issueReferenceRecentInput(nameWithOwner, number, url));
-      return;
-    }
-
-    if (
-      (surface === "pull" || surface === "pulls") &&
-      number !== null &&
-      Number.isInteger(number) &&
-      number > 0
-    ) {
-      navigate({ kind: "repository", nameWithOwner, tab: "pulls", pullNumber: number });
-      recordRecent(pullRequestReferenceRecentInput(nameWithOwner, number, url));
-      return;
-    }
-
-    if (surface === "discussions" && number !== null && Number.isInteger(number) && number > 0) {
-      navigate({ kind: "repository", nameWithOwner, tab: "discussions", discussionNumber: number });
-      recordRecent(discussionReferenceRecentInput(nameWithOwner, number, url));
-      return;
-    }
-
-    if (surface === "actions" && parsed.segments[3] === "runs") {
-      const runId = parseWorkflowRunIdFromUrl(url);
-      if (runId !== null) {
-        openWorkflowRunReferenceInApp(nameWithOwner, runId, url);
-        return;
-      }
-    }
-
-    if (surface === "releases") {
-      const tagName = parsed.segments[3] === "tag" ? parsed.segments.slice(4).join("/") : null;
-      navigate({
-        kind: "repository",
-        nameWithOwner,
-        tab: "releases",
-        releaseTagName: tagName || undefined
-      });
-      if (tagName) {
-        recordRecent(releaseTagReferenceRecentInput(nameWithOwner, tagName, url));
-      } else {
-        recordRecent(repositoryRecentInput(nameWithOwner, repositoryForRecent(nameWithOwner), "releases"));
-      }
-      return;
-    }
-
-    if ((surface === "commit" || surface === "commits") && rawValue) {
-      openCommitInApp({
-        nameWithOwner,
-        commit: {
-          sha: rawValue,
-          headline: rawValue.slice(0, 7),
-          authorLogin: null,
-          authorName: null,
-          authoredDate: null,
-          committedDate: null,
-          htmlUrl: `https://github.com/${nameWithOwner}/commit/${rawValue}`
-        }
-      });
-      return;
-    }
-
-    if (surface === "blob" || surface === "tree") {
-      const refCandidates = [
-        ...branchItems.map((branch) => branch.name),
-        ...tagItems.map((tag) => tag.name),
-        repositoryRefs[nameWithOwner],
-        nameWithOwner.toLowerCase() === effectiveRepository.toLowerCase() ? contentsRef : null,
-        repositoryDetail?.nameWithOwner.toLowerCase() === nameWithOwner.toLowerCase()
-          ? repositoryDetail.defaultBranch
-          : null
-      ].filter((ref): ref is string => Boolean(ref));
-      const codeRoute = parseGitHubCodeUrl(url, refCandidates, rawValue);
-      if (codeRoute) {
-        openCodeBrowserInApp(
-          codeRoute.nameWithOwner,
-          codeRoute.path,
-          codeRoute.entryType,
-          codeRoute.ref,
-          codeRoute.line
-        );
-        return;
-      }
-    }
-
-    if (surface === "wiki") {
-      const pagePath = parsed.segments.slice(3).join("/");
-      if (pagePath) {
-        selectWikiPageInApp(nameWithOwner, {
-          path: pagePath,
-          title: pagePath.split("/").at(-1) ?? pagePath,
-          htmlUrl: url,
-          sha: pagePath,
-          size: null
-        });
-      } else {
-        navigate({ kind: "repository", nameWithOwner, tab: "wiki" });
-        recordRecent(repositoryRecentInput(nameWithOwner, repositoryForRecent(nameWithOwner), "wiki"));
-      }
-      return;
-    }
-
-    void api.openExternal(url);
-  }
+  const openMarkdownUrl = createMarkdownUrlHandler({
+    branchItems,
+    tagItems,
+    repositoryRefs,
+    effectiveRepository,
+    contentsRef,
+    repositoryDetail,
+    navigate,
+    recordRecent,
+    repositoryForRecent,
+    openExternal: (url) => void api.openExternal(url),
+    openRepositoryInApp,
+    openCodeBrowserInApp,
+    openCommitInApp,
+    openWorkflowRunReferenceInApp,
+    selectWikiPageInApp
+  });
 
   function selectReleaseAssetInApp(
     nameWithOwner: string,

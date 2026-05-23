@@ -141,9 +141,17 @@ import {
   type RepositoryContextValue
 } from "./components/repository/RepositoryContext";
 import { maxCommitHistoryLimit } from "./components/repository/CommitHistoryPanel";
-import { refreshActionsTabData, useActionsTabQueries } from "./components/repository/actions/ActionsTab";
+import {
+  prefetchActionsTabData,
+  refreshActionsTabData,
+  useActionsTabQueries
+} from "./components/repository/actions/ActionsTab";
 import { refreshAgentsTabData } from "./components/repository/agents/AgentsTab";
-import { refreshCodeTabData, useCodeTabQueries } from "./components/repository/code/CodeTab";
+import {
+  prefetchCodeTabData,
+  refreshCodeTabData,
+  useCodeTabQueries
+} from "./components/repository/code/CodeTab";
 import {
   commitRecentAuthoredDate,
   commitRecentAuthorName,
@@ -165,9 +173,14 @@ import {
   useDiscussionsTabQueries
 } from "./components/repository/discussions/DiscussionsTab";
 import { expandedFileBlameRangeLimit } from "./components/repository/FileBlamePanel";
-import { refreshIssuesTabData, useIssuesTabQueries } from "./components/repository/issues/IssuesTab";
+import {
+  prefetchIssuesTabData,
+  refreshIssuesTabData,
+  useIssuesTabQueries
+} from "./components/repository/issues/IssuesTab";
 import { refreshProjectsTabData, useProjectsTabQueries } from "./components/repository/projects/ProjectsTab";
 import {
+  prefetchPullRequestsTabData,
   refreshPullRequestsTabData,
   usePullRequestsTabQueries
 } from "./components/repository/pull-requests/PullRequestsTab";
@@ -207,8 +220,6 @@ import { repositoryScopedQueryKeys } from "./queries/repositoryQueryKeys";
 import { useUiStore, type AppRoute, type LocalRepositoryTab, type RepositoryTab } from "./stores/uiStore";
 import { formatCompactNumber } from "./utils/format";
 import { repoTabs } from "./components/repository/repositoryTabs";
-
-const repositoryWarmPrefetchTabs = new Set<RepositoryTab>(["code", "issues", "pulls", "actions"]);
 
 const defaultGitHubAreaId = "github:default";
 
@@ -1622,8 +1633,6 @@ export function App(): JSX.Element {
   const isRepositoryContext = isRepositoryRoute || isCodeBrowserRoute;
   const activeRepositoryTab = isRepositoryRoute ? route.tab : "code";
   const activeLocalRepositoryTab = isLocalRepositoryRoute ? route.tab : "overview";
-  const shouldLoadRepositoryTab = (tab: RepositoryTab): boolean =>
-    activeRepositoryTab === tab || (isRepositoryRoute && repositoryWarmPrefetchTabs.has(tab));
   const activeLocalRepositoryPath = isLocalRepositoryRoute ? (route.path ?? ".") : ".";
   const effectiveRepository = isRepositoryContext ? route.nameWithOwner : (selectedRepository ?? "");
   const [owner = "", repo = ""] = effectiveRepository.split("/");
@@ -1987,25 +1996,8 @@ export function App(): JSX.Element {
     owner,
     repo,
     {
-      branches:
-        appState.isSuccess &&
-        hasRepositoryParts &&
-        ((isRepositoryRoute &&
-          (shouldLoadRepositoryTab("code") ||
-            shouldLoadRepositoryTab("actions") ||
-            shouldLoadRepositoryTab("pulls") ||
-            activeRepositoryTab === "releases" ||
-            activeRepositoryTab === "securityQuality" ||
-            activeRepositoryTab === "settings")) ||
-          isCodeBrowserRoute),
-      tags:
-        appState.isSuccess &&
-        hasRepositoryParts &&
-        ((isRepositoryRoute &&
-          (shouldLoadRepositoryTab("code") ||
-            shouldLoadRepositoryTab("actions") ||
-            activeRepositoryTab === "releases")) ||
-          isCodeBrowserRoute)
+      branches: appState.isSuccess && hasRepositoryParts && isRepositoryContext,
+      tags: appState.isSuccess && hasRepositoryParts && isRepositoryContext
     },
     repositoryRefListLimit,
     { githubReady }
@@ -2026,7 +2018,7 @@ export function App(): JSX.Element {
     defaultBranch: repositoryDetail?.defaultBranch ?? null,
     commitHistoryLimit: repositoryCommitHistoryLimit,
     selectedRootMarkdownPath: null,
-    enabled: appState.isSuccess && isRepositoryRoute && shouldLoadRepositoryTab("code") && hasRepositoryParts,
+    enabled: appState.isSuccess && isRepositoryRoute && activeRepositoryTab === "code" && hasRepositoryParts,
     githubReady
   });
   const { repositoryCommits, repositoryCommitItems, repositoryCommitsAvailability } = codeTabQueries;
@@ -2038,7 +2030,7 @@ export function App(): JSX.Element {
     issuesEnabled:
       appState.isSuccess &&
       isRepositoryRoute &&
-      (shouldLoadRepositoryTab("issues") || activeRepositoryTab === "agents") &&
+      (activeRepositoryTab === "issues" || activeRepositoryTab === "agents") &&
       hasRepositoryParts,
     resourcesEnabled: false,
     githubReady
@@ -2051,10 +2043,10 @@ export function App(): JSX.Element {
     pullsEnabled:
       appState.isSuccess &&
       isRepositoryRoute &&
-      (shouldLoadRepositoryTab("pulls") || activeRepositoryTab === "agents") &&
+      (activeRepositoryTab === "pulls" || activeRepositoryTab === "agents") &&
       hasRepositoryParts,
     resourcesEnabled:
-      appState.isSuccess && isRepositoryRoute && shouldLoadRepositoryTab("pulls") && hasRepositoryParts,
+      appState.isSuccess && isRepositoryRoute && activeRepositoryTab === "pulls" && hasRepositoryParts,
     githubReady
   });
 
@@ -2181,10 +2173,67 @@ export function App(): JSX.Element {
     enabled:
       appState.isSuccess &&
       isRepositoryRoute &&
-      (shouldLoadRepositoryTab("actions") || activeRepositoryTab === "agents") &&
+      (activeRepositoryTab === "actions" || activeRepositoryTab === "agents") &&
       hasRepositoryParts,
     githubReady
   });
+
+  useEffect(() => {
+    if (!appState.isSuccess || !isRepositoryRoute || !hasRepositoryParts) {
+      return;
+    }
+
+    void Promise.all([
+      prefetchCodeTabData(queryClient, {
+        api,
+        owner,
+        repo,
+        selectedRef: repositorySelectedRef,
+        defaultBranch: repositoryDetail?.defaultBranch ?? null,
+        commitHistoryLimit: repositoryCommitHistoryLimit,
+        selectedRootMarkdownPath: null,
+        githubReady
+      }),
+      prefetchIssuesTabData(queryClient, {
+        api,
+        owner,
+        repo,
+        issueListLimit,
+        githubReady
+      }),
+      prefetchPullRequestsTabData(queryClient, {
+        api,
+        owner,
+        repo,
+        pullRequestListLimit,
+        githubReady
+      }),
+      prefetchActionsTabData(queryClient, {
+        api,
+        owner,
+        repo,
+        limit: actionsLimit,
+        githubReady
+      })
+    ]).catch(() => {
+      // Mounted tabs own visible error states; warm prefetch should stay silent.
+    });
+  }, [
+    actionsLimit,
+    api,
+    appState.isSuccess,
+    githubReady,
+    hasRepositoryParts,
+    isRepositoryRoute,
+    issueListLimit,
+    owner,
+    pullRequestListLimit,
+    queryClient,
+    repo,
+    repositoryCommitHistoryLimit,
+    repositoryDetail?.defaultBranch,
+    repositorySelectedRef
+  ]);
 
   const { projects } = useProjectsTabQueries({
     owner,

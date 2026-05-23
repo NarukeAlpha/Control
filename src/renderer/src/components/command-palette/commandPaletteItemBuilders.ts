@@ -17,6 +17,13 @@ import {
 } from "lucide-react";
 
 import type { RepositorySummary } from "@shared/github";
+import type {
+  OrganizationMemberSummary,
+  OrganizationRepositorySummary,
+  OrganizationSummary,
+  ProjectSummary,
+  TeamSummary
+} from "@shared/github";
 import type { LocalRecentItem } from "@shared/local";
 import type { CommandPaletteItem } from "./CommandPalette";
 import {
@@ -191,5 +198,243 @@ export function appendRepositoryCommandPaletteItems(
       ],
       run: () => input.onOpenRepository(repositorySummary.nameWithOwner)
     });
+  }
+}
+
+export function appendOrganizationCommandPaletteItems(
+  items: CommandPaletteItem[],
+  input: {
+    organizationItems: OrganizationSummary[];
+    organizationTeams: TeamSummary[];
+    organizationRepositories: OrganizationRepositorySummary[];
+    organizationTeamRepositories: OrganizationRepositorySummary[];
+    organizationProjects: ProjectSummary[];
+    organizationMembers: OrganizationMemberSummary[];
+    organizationTeamMembers: OrganizationMemberSummary[];
+    selectedOrganization: OrganizationSummary | null;
+    selectedOrganizationTeam: TeamSummary | null;
+    generalSourceLimit: number;
+    denseSourceLimit: number;
+    onOpenOrganization(organization: OrganizationSummary): void;
+    onOpenTeam(team: TeamSummary): void;
+    onOpenRepository(nameWithOwner: string): void;
+    onOpenOrganizationMember(organization: OrganizationSummary, member: OrganizationMemberSummary): void;
+    onOpenOrganizationTeamMember(
+      organization: OrganizationSummary,
+      team: TeamSummary,
+      member: OrganizationMemberSummary
+    ): void;
+    onSelectOrganizationProject(organization: OrganizationSummary, project: ProjectSummary): void;
+  }
+): void {
+  for (const organization of input.organizationItems.slice(0, input.generalSourceLimit)) {
+    const membershipLabel =
+      organization.viewerMembershipRole ??
+      (organization.viewerCanAdminister
+        ? "admin"
+        : organization.viewerIsMember
+          ? "member"
+          : "outside collaborator");
+
+    items.push({
+      id: `organization-${organization.login}`,
+      title: organization.name ?? organization.login,
+      subtitle: `${organization.login} · ${membershipLabel}`,
+      group: "Organizations",
+      icon: Building2,
+      keywords: [
+        organization.login,
+        organization.name ?? "",
+        organization.description ?? "",
+        organization.viewerMembershipRole ?? "",
+        organization.viewerMembershipState ?? "",
+        membershipLabel,
+        organization.viewerCanAdminister ? "admin" : "",
+        organization.viewerIsMember ? "member" : "",
+        organization.viewerCanCreateRepositories ? "can create repositories" : "",
+        organization.viewerCanCreateTeams ? "can create teams" : ""
+      ],
+      run: () => input.onOpenOrganization(organization)
+    });
+  }
+
+  for (const team of input.organizationTeams.slice(0, input.generalSourceLimit)) {
+    items.push({
+      id: `organization-team-${team.organizationLogin}-${team.slug}`,
+      title: team.name,
+      subtitle: `${team.organizationLogin}/${team.slug}${team.privacy ? ` · ${team.privacy}` : ""}`,
+      group: "Teams",
+      icon: Users,
+      keywords: [
+        team.organizationLogin,
+        team.name,
+        team.slug,
+        team.description ?? "",
+        team.privacy ?? "",
+        team.permission ?? "",
+        team.notificationSetting ?? "",
+        team.parent?.name ?? "",
+        team.parent?.slug ?? ""
+      ],
+      run: () => input.onOpenTeam(team)
+    });
+  }
+
+  if (input.selectedOrganization) {
+    for (const repository of input.organizationRepositories.slice(0, input.generalSourceLimit)) {
+      items.push({
+        id: `organization-repository-${input.selectedOrganization.login}-${repository.id}`,
+        title: repository.name,
+        subtitle: `${repository.nameWithOwner} · ${repository.permission ?? "permission unknown"} · ${
+          repository.visibility?.toLowerCase() ?? "visibility unknown"
+        }`,
+        group: "Organization repositories",
+        icon: Code2,
+        keywords: [
+          input.selectedOrganization.login,
+          input.selectedOrganization.name ?? "",
+          repository.id,
+          repository.owner,
+          repository.name,
+          repository.nameWithOwner,
+          repository.description ?? "",
+          repository.visibility ?? "",
+          repository.isPrivate === null ? "" : repository.isPrivate ? "private" : "public",
+          repository.permission ?? "",
+          repository.htmlUrl,
+          repository.defaultBranch ?? "",
+          repository.updatedAt ?? "",
+          repository.pushedAt ?? ""
+        ],
+        run: () => input.onOpenRepository(repository.nameWithOwner)
+      });
+    }
+  }
+
+  if (input.selectedOrganization && input.selectedOrganizationTeam) {
+    for (const repository of input.organizationTeamRepositories.slice(0, input.generalSourceLimit)) {
+      items.push({
+        id: `organization-team-repository-${input.selectedOrganization.login}-${input.selectedOrganizationTeam.slug}-${repository.id}`,
+        title: repository.name,
+        subtitle: `${input.selectedOrganizationTeam.name} · ${repository.nameWithOwner} · ${
+          repository.permission ?? "permission unknown"
+        } · ${repository.visibility?.toLowerCase() ?? "visibility unknown"}`,
+        group: "Organization repositories",
+        icon: Code2,
+        keywords: [
+          input.selectedOrganization.login,
+          input.selectedOrganization.name ?? "",
+          input.selectedOrganizationTeam.name,
+          input.selectedOrganizationTeam.slug,
+          input.selectedOrganizationTeam.privacy ?? "",
+          input.selectedOrganizationTeam.permission ?? "",
+          repository.id,
+          repository.owner,
+          repository.name,
+          repository.nameWithOwner,
+          repository.description ?? "",
+          repository.visibility ?? "",
+          repository.isPrivate === null ? "" : repository.isPrivate ? "private" : "public",
+          repository.permission ?? "",
+          repository.htmlUrl,
+          repository.defaultBranch ?? "",
+          repository.updatedAt ?? "",
+          repository.pushedAt ?? ""
+        ],
+        run: () => input.onOpenRepository(repository.nameWithOwner)
+      });
+    }
+  }
+
+  if (input.selectedOrganization) {
+    for (const project of input.organizationProjects.slice(0, input.generalSourceLimit)) {
+      items.push({
+        id: `organization-project-${input.selectedOrganization.login}-${project.id}`,
+        title: project.number ? `#${project.number} ${project.title}` : project.title,
+        subtitle: `${input.selectedOrganization.login} project · ${project.closed ? "closed" : "open"} · ${
+          project.isPublic === null ? "visibility unknown" : project.isPublic ? "public" : "private"
+        }`,
+        group: "Organization projects",
+        icon: SquareKanban,
+        keywords: [
+          input.selectedOrganization.login,
+          input.selectedOrganization.name ?? "",
+          project.id,
+          project.number ? String(project.number) : "",
+          project.number ? `#${project.number}` : "",
+          project.title,
+          project.shortDescription ?? "",
+          project.readme ?? "",
+          project.ownerLogin ?? "",
+          project.ownerKind,
+          project.ownerHtmlUrl ?? "",
+          project.isPublic === null ? "" : project.isPublic ? "public" : "private",
+          project.closed ? "closed" : "open",
+          project.closedAt ?? "",
+          project.createdAt ?? "",
+          project.updatedAt ?? "",
+          project.itemsCount === null ? "" : `${project.itemsCount} items`,
+          project.fieldsCount === null ? "" : `${project.fieldsCount} fields`,
+          project.viewerCanUpdate === null ? "" : project.viewerCanUpdate ? "can update" : "read only",
+          project.htmlUrl ?? "",
+          ...project.fields.flatMap((field) => [field.id, field.name, field.dataType ?? ""])
+        ],
+        run: () =>
+          input.onSelectOrganizationProject(input.selectedOrganization as OrganizationSummary, project)
+      });
+    }
+  }
+
+  if (input.selectedOrganization) {
+    for (const member of input.organizationMembers.slice(0, input.denseSourceLimit)) {
+      items.push({
+        id: `organization-member-${input.selectedOrganization.login}-${member.id}`,
+        title: member.login,
+        subtitle: `${input.selectedOrganization.login} member${member.siteAdmin ? " · site admin" : ""}`,
+        group: "Organization members",
+        icon: Users,
+        keywords: [
+          input.selectedOrganization.login,
+          input.selectedOrganization.name ?? "",
+          member.id,
+          member.login,
+          member.htmlUrl ?? "",
+          member.avatarUrl ?? "",
+          member.siteAdmin === null ? "" : member.siteAdmin ? "site admin" : "member"
+        ],
+        run: () => input.onOpenOrganizationMember(input.selectedOrganization as OrganizationSummary, member)
+      });
+    }
+  }
+
+  if (input.selectedOrganization && input.selectedOrganizationTeam) {
+    for (const member of input.organizationTeamMembers.slice(0, input.denseSourceLimit)) {
+      items.push({
+        id: `organization-team-member-${input.selectedOrganization.login}-${input.selectedOrganizationTeam.slug}-${member.id}`,
+        title: member.login,
+        subtitle: `${input.selectedOrganizationTeam.name} member${member.siteAdmin ? " · site admin" : ""}`,
+        group: "Organization members",
+        icon: Users,
+        keywords: [
+          input.selectedOrganization.login,
+          input.selectedOrganization.name ?? "",
+          input.selectedOrganizationTeam.name,
+          input.selectedOrganizationTeam.slug,
+          input.selectedOrganizationTeam.privacy ?? "",
+          input.selectedOrganizationTeam.permission ?? "",
+          member.id,
+          member.login,
+          member.htmlUrl ?? "",
+          member.avatarUrl ?? "",
+          member.siteAdmin === null ? "" : member.siteAdmin ? "site admin" : "member"
+        ],
+        run: () =>
+          input.onOpenOrganizationTeamMember(
+            input.selectedOrganization as OrganizationSummary,
+            input.selectedOrganizationTeam as TeamSummary,
+            member
+          )
+      });
+    }
   }
 }

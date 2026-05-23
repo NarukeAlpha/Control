@@ -1,6 +1,12 @@
 import type {
+  DiscussionSummary,
   GitHubAction,
   GitHubReadAvailability,
+  IssueSummary,
+  LanguageStat,
+  ProjectSummary,
+  PullRequestSummary,
+  ReleaseSummary,
   RepositoryDetail,
   RepositorySummary
 } from "@shared/github";
@@ -13,6 +19,59 @@ export const maxProfileRepositoryLimit = 100;
 
 export function repositoryPath(repository: RepositoryDetail, path = ""): string {
   return `${repository.htmlUrl}${path}`;
+}
+
+export function getRepositoryCounts(
+  repository: RepositoryDetail,
+  fallback: {
+    issues: IssueSummary[];
+    pulls: PullRequestSummary[];
+    discussions: DiscussionSummary[];
+    projects: ProjectSummary[];
+    releases?: ReleaseSummary[];
+  }
+): Record<
+  "stars" | "forks" | "watchers" | "issues" | "pulls" | "discussions" | "projects" | "releases",
+  number
+> {
+  const counts = repository.counts;
+
+  return {
+    stars: counts.stars,
+    forks: counts.forks,
+    watchers: counts.watchers,
+    issues: counts.openIssues,
+    pulls: counts.openPullRequests,
+    discussions: counts.discussions,
+    projects: counts.projects,
+    releases: counts.releases || fallback.releases?.length || 0
+  };
+}
+
+export function normalizeLanguageStats(repository: RepositoryDetail): LanguageStat[] {
+  if (repository.languages.length > 0) {
+    return repository.languages;
+  }
+
+  return repository.primaryLanguage
+    ? [
+        {
+          name: repository.primaryLanguage.name,
+          color: repository.primaryLanguage.color,
+          size: 0,
+          percent: 100
+        }
+      ]
+    : [];
+}
+
+export function languageTotalLabel(languages: LanguageStat[]): string | null {
+  const total = languages.reduce((sum, language) => sum + language.size, 0);
+  if (total <= 0) {
+    return null;
+  }
+
+  return `${formatCompactNumber(total)} bytes`;
 }
 
 export function normalizedSearchParts(value: string): string[] {

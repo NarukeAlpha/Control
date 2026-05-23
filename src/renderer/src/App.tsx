@@ -137,6 +137,8 @@ import {
   pullRequestReviewDecisionLabel,
   pullRequestReviewDecisionTone
 } from "./components/collection/workItemUi";
+import { RepositoriesRoute } from "./components/collection/RepositoriesRoute";
+import { matchesCollectionFilter } from "./components/collection/collectionUi";
 import { CommandPalette, type CommandPaletteItem } from "./components/command-palette/CommandPalette";
 import { AddRepositoryDialog } from "./components/dialogs/AddRepositoryDialog";
 import { FileFinder } from "./components/file-finder/FileFinder";
@@ -192,10 +194,7 @@ import {
   displayRepositoryName,
   displayRepositoryShortcutName,
   maxRepositoryListLimit,
-  repositoryActivityDate,
-  repositoryNameWithOwnerInput,
-  repositoryShortcutsFromPins,
-  sortRepositoriesByActivity
+  repositoryShortcutsFromPins
 } from "./components/repository/repositorySearch";
 
 import { useAccountWork } from "./hooks/useAccountWork";
@@ -7419,166 +7418,173 @@ export function App(): JSX.Element {
 
             {route.kind === "codeBrowser" && repositoryRightRail}
 
-            {route.kind !== "home" &&
-              route.kind !== "repository" &&
-              route.kind !== "codeBrowser" &&
-              route.kind !== "localRepository" && (
-                <CollectionView
-                  title={routeTitle(route)}
-                  routeKind={route.kind}
-                  githubReady={githubReady}
-                  issues={accountIssueItems}
-                  issuesLoading={accountIssues.isLoading || accountIssues.isFetching}
-                  issuesError={accountIssues.error}
-                  issuesAvailability={accountIssuesAvailability}
-                  pulls={accountPullItems}
-                  pullsLoading={accountPulls.isLoading || accountPulls.isFetching}
-                  pullsError={accountPulls.error}
-                  pullsAvailability={accountPullsAvailability}
-                  accountWorkLimit={accountWorkLimit}
-                  notifications={notificationItems}
-                  notificationsAvailability={notificationsAvailability}
-                  notificationFilter={notificationFilter}
-                  notificationLimit={notificationLimit}
-                  notificationsLoading={notifications.isLoading || notifications.isFetching}
-                  notificationsError={notifications.error}
-                  notificationMarkingReadId={
-                    markNotificationRead.isPending ? (markNotificationRead.variables?.threadId ?? null) : null
+            {route.kind === "repositories" && (
+              <RepositoriesRoute
+                title={routeTitle(route)}
+                appReady={appState.isSuccess}
+                githubReady={githubReady}
+                repositoryListLimit={repositoryListLimit}
+                pinnedRepositoryNames={pinnedRepositoryNames}
+                repositoryPinBusy={areaPinMutation.isPending}
+                repositoryPinError={areaPinMutation.error instanceof Error ? areaPinMutation.error : null}
+                viewerLogin={appState.data?.viewer?.login ?? accountProfileData?.login ?? null}
+                onOpenExternal={(url) => void api.openExternal(url)}
+                onOpenRepository={openRepositoryInApp}
+                onOpenAddRepository={() => setAddRepositoryOpen(true)}
+                onExpandRepositories={expandRepositoryList}
+                onToggleRepositoryPin={toggleRepositoryPin}
+              />
+            )}
+
+            {(route.kind === "mailbox" || route.kind === "organizations") && (
+              <CollectionView
+                title={routeTitle(route)}
+                routeKind={route.kind}
+                githubReady={githubReady}
+                issues={accountIssueItems}
+                issuesLoading={accountIssues.isLoading || accountIssues.isFetching}
+                issuesError={accountIssues.error}
+                issuesAvailability={accountIssuesAvailability}
+                pulls={accountPullItems}
+                pullsLoading={accountPulls.isLoading || accountPulls.isFetching}
+                pullsError={accountPulls.error}
+                pullsAvailability={accountPullsAvailability}
+                accountWorkLimit={accountWorkLimit}
+                notifications={notificationItems}
+                notificationsAvailability={notificationsAvailability}
+                notificationFilter={notificationFilter}
+                notificationLimit={notificationLimit}
+                notificationsLoading={notifications.isLoading || notifications.isFetching}
+                notificationsError={notifications.error}
+                notificationMarkingReadId={
+                  markNotificationRead.isPending ? (markNotificationRead.variables?.threadId ?? null) : null
+                }
+                notificationUnsubscribingId={
+                  unsubscribeNotification.isPending
+                    ? (unsubscribeNotification.variables?.threadId ?? null)
+                    : null
+                }
+                notificationActionError={
+                  (markNotificationRead.error instanceof Error ? markNotificationRead.error : null) ??
+                  (markVisibleNotificationsRead.error instanceof Error
+                    ? markVisibleNotificationsRead.error
+                    : null) ??
+                  (unsubscribeNotification.error instanceof Error ? unsubscribeNotification.error : null)
+                }
+                notificationBulkMarkingRead={markVisibleNotificationsRead.isPending}
+                organizations={organizationItems}
+                selectedOrganizationLogin={selectedOrganization?.login ?? null}
+                organizationListLimit={organizationListLimit}
+                organizationsAvailability={organizationsAvailability}
+                organizationsLoading={organizations.isLoading || organizations.isFetching}
+                organizationsError={organizations.error}
+                organizationTeams={organizationTeams.data?.items ?? []}
+                organizationTeamsAvailability={organizationTeams.data?.availability ?? null}
+                organizationTeamLimit={organizationTeamLimit}
+                organizationTeamsLoading={organizationTeams.isLoading || organizationTeams.isFetching}
+                organizationTeamsError={organizationTeams.error}
+                organizationRepositories={organizationRepositories.data?.items ?? []}
+                organizationRepositoriesAvailability={organizationRepositories.data?.availability ?? null}
+                organizationRepositoryLimit={organizationRepositoryLimit}
+                organizationRepositoriesLoading={
+                  organizationRepositories.isLoading || organizationRepositories.isFetching
+                }
+                organizationRepositoriesError={organizationRepositories.error}
+                organizationMembers={organizationMembers.data?.items ?? []}
+                organizationMembersAvailability={organizationMembers.data?.availability ?? null}
+                organizationMemberLimit={organizationMemberLimit}
+                organizationMembersLoading={organizationMembers.isLoading || organizationMembers.isFetching}
+                organizationMembersError={organizationMembers.error}
+                selectedOrganizationMemberLogin={selectedOrganizationMemberLogin}
+                selectedOrganizationTeamSlug={selectedOrganizationTeam?.slug ?? null}
+                organizationTeamRepositories={organizationTeamRepositories.data?.items ?? []}
+                organizationTeamRepositoriesAvailability={
+                  organizationTeamRepositories.data?.availability ?? null
+                }
+                organizationTeamRepositoryLimit={organizationTeamRepositoryLimit}
+                organizationTeamRepositoriesLoading={
+                  organizationTeamRepositories.isLoading || organizationTeamRepositories.isFetching
+                }
+                organizationTeamRepositoriesError={organizationTeamRepositories.error}
+                organizationTeamMembers={organizationTeamMembers.data?.items ?? []}
+                organizationTeamMembersAvailability={organizationTeamMembers.data?.availability ?? null}
+                organizationTeamMemberLimit={organizationTeamMemberLimit}
+                organizationTeamMembersLoading={
+                  organizationTeamMembers.isLoading || organizationTeamMembers.isFetching
+                }
+                organizationTeamMembersError={organizationTeamMembers.error}
+                organizationProjects={organizationProjects.data?.items ?? []}
+                organizationProjectsAvailability={organizationProjects.data?.availability ?? null}
+                organizationProjectLimit={organizationProjectLimit}
+                organizationProjectsLoading={
+                  organizationProjects.isLoading || organizationProjects.isFetching
+                }
+                organizationProjectsError={organizationProjects.error}
+                selectedOrganizationProjectId={selectedOrganizationProjectId}
+                pinnedRepositoryNames={pinnedRepositoryNames}
+                repositoryPinBusy={areaPinMutation.isPending}
+                repositoryPinError={areaPinMutation.error instanceof Error ? areaPinMutation.error : null}
+                onOpenExternal={(url) => void api.openExternal(url)}
+                onOpenRepository={openRepositoryInApp}
+                onOpenIssue={openIssueSummaryInApp}
+                onOpenPullRequest={openPullRequestSummaryInApp}
+                onOpenNotification={openNotificationInApp}
+                onNotificationFilterChange={setNotificationFilter}
+                onMarkNotificationRead={(threadId) => {
+                  if (githubReady) {
+                    markNotificationRead.mutate({ threadId });
                   }
-                  notificationUnsubscribingId={
-                    unsubscribeNotification.isPending
-                      ? (unsubscribeNotification.variables?.threadId ?? null)
-                      : null
+                }}
+                onMarkVisibleNotificationsRead={(threadIds) => {
+                  if (githubReady) {
+                    markVisibleNotificationsRead.mutate({ threadIds });
                   }
-                  notificationActionError={
-                    (markNotificationRead.error instanceof Error ? markNotificationRead.error : null) ??
-                    (markVisibleNotificationsRead.error instanceof Error
-                      ? markVisibleNotificationsRead.error
-                      : null) ??
-                    (unsubscribeNotification.error instanceof Error ? unsubscribeNotification.error : null)
+                }}
+                onUnsubscribeNotification={(threadId) => {
+                  if (githubReady && window.confirm("Unsubscribe from this GitHub notification thread?")) {
+                    unsubscribeNotification.mutate({ threadId });
                   }
-                  notificationBulkMarkingRead={markVisibleNotificationsRead.isPending}
-                  organizations={organizationItems}
-                  selectedOrganizationLogin={selectedOrganization?.login ?? null}
-                  organizationListLimit={organizationListLimit}
-                  organizationsAvailability={organizationsAvailability}
-                  organizationsLoading={organizations.isLoading || organizations.isFetching}
-                  organizationsError={organizations.error}
-                  organizationTeams={organizationTeams.data?.items ?? []}
-                  organizationTeamsAvailability={organizationTeams.data?.availability ?? null}
-                  organizationTeamLimit={organizationTeamLimit}
-                  organizationTeamsLoading={organizationTeams.isLoading || organizationTeams.isFetching}
-                  organizationTeamsError={organizationTeams.error}
-                  organizationRepositories={organizationRepositories.data?.items ?? []}
-                  organizationRepositoriesAvailability={organizationRepositories.data?.availability ?? null}
-                  organizationRepositoryLimit={organizationRepositoryLimit}
-                  organizationRepositoriesLoading={
-                    organizationRepositories.isLoading || organizationRepositories.isFetching
+                }}
+                onSelectOrganization={(login) => {
+                  const organization = organizationItems.find((item) => item.login === login);
+                  if (organization) {
+                    recordRecent(organizationRecentInput(organization));
                   }
-                  organizationRepositoriesError={organizationRepositories.error}
-                  organizationMembers={organizationMembers.data?.items ?? []}
-                  organizationMembersAvailability={organizationMembers.data?.availability ?? null}
-                  organizationMemberLimit={organizationMemberLimit}
-                  organizationMembersLoading={organizationMembers.isLoading || organizationMembers.isFetching}
-                  organizationMembersError={organizationMembers.error}
-                  selectedOrganizationMemberLogin={selectedOrganizationMemberLogin}
-                  selectedOrganizationTeamSlug={selectedOrganizationTeam?.slug ?? null}
-                  organizationTeamRepositories={organizationTeamRepositories.data?.items ?? []}
-                  organizationTeamRepositoriesAvailability={
-                    organizationTeamRepositories.data?.availability ?? null
+                  setSelectedOrganizationLogin(login);
+                  setSelectedOrganizationTeamSlug(null);
+                  setSelectedOrganizationMemberLogin(null);
+                  setSelectedOrganizationProjectId(null);
+                }}
+                onSelectOrganizationTeam={(slug) => {
+                  const team = organizationTeams.data?.items.find((item) => item.slug === slug);
+                  if (team) {
+                    recordRecent(teamRecentInput(team));
                   }
-                  organizationTeamRepositoryLimit={organizationTeamRepositoryLimit}
-                  organizationTeamRepositoriesLoading={
-                    organizationTeamRepositories.isLoading || organizationTeamRepositories.isFetching
+                  setSelectedOrganizationTeamSlug(slug);
+                  setSelectedOrganizationMemberLogin(null);
+                  setSelectedOrganizationProjectId(null);
+                }}
+                onSelectOrganizationMember={(login) => {
+                  setSelectedOrganizationMemberLogin(login);
+                  setSelectedOrganizationProjectId(null);
+                }}
+                onSelectOrganizationProject={(project) => {
+                  if (selectedOrganization) {
+                    selectOrganizationProjectInApp(selectedOrganization, project);
                   }
-                  organizationTeamRepositoriesError={organizationTeamRepositories.error}
-                  organizationTeamMembers={organizationTeamMembers.data?.items ?? []}
-                  organizationTeamMembersAvailability={organizationTeamMembers.data?.availability ?? null}
-                  organizationTeamMemberLimit={organizationTeamMemberLimit}
-                  organizationTeamMembersLoading={
-                    organizationTeamMembers.isLoading || organizationTeamMembers.isFetching
-                  }
-                  organizationTeamMembersError={organizationTeamMembers.error}
-                  organizationProjects={organizationProjects.data?.items ?? []}
-                  organizationProjectsAvailability={organizationProjects.data?.availability ?? null}
-                  organizationProjectLimit={organizationProjectLimit}
-                  organizationProjectsLoading={
-                    organizationProjects.isLoading || organizationProjects.isFetching
-                  }
-                  organizationProjectsError={organizationProjects.error}
-                  selectedOrganizationProjectId={selectedOrganizationProjectId}
-                  repositories={repositoryItems}
-                  repositoryListLimit={repositoryListLimit}
-                  repositoriesLoading={repositories.isLoading || repositories.isFetching}
-                  repositoriesError={repositories.error}
-                  repositoriesAvailabilityMessage={repositoriesAvailabilityMessage}
-                  pinnedRepositoryNames={pinnedRepositoryNames}
-                  repositoryPinBusy={areaPinMutation.isPending}
-                  repositoryPinError={areaPinMutation.error instanceof Error ? areaPinMutation.error : null}
-                  viewerLogin={appState.data?.viewer?.login ?? accountProfileData?.login ?? null}
-                  onOpenExternal={(url) => void api.openExternal(url)}
-                  onOpenRepository={openRepositoryInApp}
-                  onOpenAddRepository={() => setAddRepositoryOpen(true)}
-                  onOpenIssue={openIssueSummaryInApp}
-                  onOpenPullRequest={openPullRequestSummaryInApp}
-                  onOpenNotification={openNotificationInApp}
-                  onNotificationFilterChange={setNotificationFilter}
-                  onMarkNotificationRead={(threadId) => {
-                    if (githubReady) {
-                      markNotificationRead.mutate({ threadId });
-                    }
-                  }}
-                  onMarkVisibleNotificationsRead={(threadIds) => {
-                    if (githubReady) {
-                      markVisibleNotificationsRead.mutate({ threadIds });
-                    }
-                  }}
-                  onUnsubscribeNotification={(threadId) => {
-                    if (githubReady && window.confirm("Unsubscribe from this GitHub notification thread?")) {
-                      unsubscribeNotification.mutate({ threadId });
-                    }
-                  }}
-                  onSelectOrganization={(login) => {
-                    const organization = organizationItems.find((item) => item.login === login);
-                    if (organization) {
-                      recordRecent(organizationRecentInput(organization));
-                    }
-                    setSelectedOrganizationLogin(login);
-                    setSelectedOrganizationTeamSlug(null);
-                    setSelectedOrganizationMemberLogin(null);
-                    setSelectedOrganizationProjectId(null);
-                  }}
-                  onSelectOrganizationTeam={(slug) => {
-                    const team = organizationTeams.data?.items.find((item) => item.slug === slug);
-                    if (team) {
-                      recordRecent(teamRecentInput(team));
-                    }
-                    setSelectedOrganizationTeamSlug(slug);
-                    setSelectedOrganizationMemberLogin(null);
-                    setSelectedOrganizationProjectId(null);
-                  }}
-                  onSelectOrganizationMember={(login) => {
-                    setSelectedOrganizationMemberLogin(login);
-                    setSelectedOrganizationProjectId(null);
-                  }}
-                  onSelectOrganizationProject={(project) => {
-                    if (selectedOrganization) {
-                      selectOrganizationProjectInApp(selectedOrganization, project);
-                    }
-                  }}
-                  onExpandOrganizations={expandOrganizationList}
-                  onExpandOrganizationRepositories={expandSelectedOrganizationRepositories}
-                  onExpandOrganizationTeams={expandSelectedOrganizationTeams}
-                  onExpandOrganizationMembers={expandSelectedOrganizationMembers}
-                  onExpandOrganizationProjects={expandSelectedOrganizationProjects}
-                  onExpandOrganizationTeamRepositories={expandSelectedOrganizationTeamRepositories}
-                  onExpandOrganizationTeamMembers={expandSelectedOrganizationTeamMembers}
-                  onExpandMailboxWork={expandMailboxWork}
-                  onExpandMailboxNotifications={expandMailboxNotifications}
-                  onExpandRepositories={expandRepositoryList}
-                  onToggleRepositoryPin={toggleRepositoryPin}
-                />
-              )}
+                }}
+                onExpandOrganizations={expandOrganizationList}
+                onExpandOrganizationRepositories={expandSelectedOrganizationRepositories}
+                onExpandOrganizationTeams={expandSelectedOrganizationTeams}
+                onExpandOrganizationMembers={expandSelectedOrganizationMembers}
+                onExpandOrganizationProjects={expandSelectedOrganizationProjects}
+                onExpandOrganizationTeamRepositories={expandSelectedOrganizationTeamRepositories}
+                onExpandOrganizationTeamMembers={expandSelectedOrganizationTeamMembers}
+                onExpandMailboxWork={expandMailboxWork}
+                onExpandMailboxNotifications={expandMailboxNotifications}
+                onToggleRepositoryPin={toggleRepositoryPin}
+              />
+            )}
           </main>
         </section>
 
@@ -8850,13 +8856,6 @@ function notificationTargetUrl(notification: NotificationSummary): string {
   return notification.htmlUrl ?? notification.repositoryHtmlUrl ?? "https://github.com/notifications";
 }
 
-function matchesCollectionFilter(values: Array<string | null | undefined>, query: string): boolean {
-  if (!query) {
-    return true;
-  }
-  return values.some((value) => (value ?? "").toLowerCase().includes(query));
-}
-
 function CollectionView({
   title,
   routeKind,
@@ -8919,18 +8918,11 @@ function CollectionView({
   organizationProjectsLoading,
   organizationProjectsError,
   selectedOrganizationProjectId,
-  repositories,
-  repositoryListLimit,
-  repositoriesLoading,
-  repositoriesError,
-  repositoriesAvailabilityMessage,
   pinnedRepositoryNames,
   repositoryPinBusy,
   repositoryPinError,
-  viewerLogin,
   onOpenExternal,
   onOpenRepository,
-  onOpenAddRepository,
   onOpenIssue,
   onOpenPullRequest,
   onOpenNotification,
@@ -8951,11 +8943,10 @@ function CollectionView({
   onExpandOrganizationTeamMembers,
   onExpandMailboxWork,
   onExpandMailboxNotifications,
-  onExpandRepositories,
   onToggleRepositoryPin
 }: {
   title: string;
-  routeKind: "mailbox" | "repositories" | "organizations";
+  routeKind: "mailbox" | "organizations";
   githubReady: boolean;
   issues: IssueSummary[];
   issuesLoading: boolean;
@@ -9015,18 +9006,11 @@ function CollectionView({
   organizationProjectsLoading: boolean;
   organizationProjectsError: Error | null;
   selectedOrganizationProjectId: string | null;
-  repositories: RepositorySummary[];
-  repositoryListLimit: number;
-  repositoriesLoading: boolean;
-  repositoriesError: Error | null;
-  repositoriesAvailabilityMessage: string | null;
   pinnedRepositoryNames: string[];
   repositoryPinBusy: boolean;
   repositoryPinError: Error | null;
-  viewerLogin: string | null;
   onOpenExternal(url: string): void;
   onOpenRepository(nameWithOwner: string): void;
-  onOpenAddRepository(): void;
   onOpenIssue(issue: IssueSummary): void;
   onOpenPullRequest(pullRequest: PullRequestSummary): void;
   onOpenNotification(notification: NotificationSummary): void;
@@ -9047,7 +9031,6 @@ function CollectionView({
   onExpandOrganizationTeamMembers(): void;
   onExpandMailboxWork(): void;
   onExpandMailboxNotifications(): void;
-  onExpandRepositories(): void;
   onToggleRepositoryPin(nameWithOwner: string): void;
 }): JSX.Element {
   const api = useControlApi();
@@ -9068,13 +9051,8 @@ function CollectionView({
     readAvailabilityMessage("Account pull requests", pullsAvailability)
   ].filter((message): message is string => Boolean(message));
 
-  const actionLabel = routeKind === "repositories" ? "Add repository" : "GitHub fallback";
   const actionUrl =
-    routeKind === "repositories"
-      ? "https://github.com/new"
-      : routeKind === "organizations"
-        ? "https://github.com/organizations"
-        : "https://github.com/notifications";
+    routeKind === "organizations" ? "https://github.com/organizations" : "https://github.com/notifications";
   const notificationFilters: Array<{ value: MailboxNotificationFilter; label: string }> = [
     { value: "unread", label: "Unread" },
     { value: "all", label: "All" },
@@ -9108,43 +9086,12 @@ function CollectionView({
   const accountWorkLimitHit =
     routeKind === "mailbox" && (issues.length >= accountWorkLimit || pulls.length >= accountWorkLimit);
   const canExpandMailboxWork = accountWorkLimitHit && accountWorkLimit < maxMailboxListLimit;
-  const repositoriesLimitHit = routeKind === "repositories" && repositories.length >= repositoryListLimit;
-  const canExpandRepositories = repositoriesLimitHit && repositoryListLimit < maxRepositoryListLimit;
   const visibleUnreadNotificationIds =
     routeKind === "mailbox"
       ? filteredNotifications
           .filter((notification) => notification.unread)
           .map((notification) => notification.id)
       : [];
-  const filteredRepositories =
-    routeKind === "repositories"
-      ? sortRepositoriesByActivity(repositories).filter((repository) =>
-          matchesCollectionFilter(
-            [
-              repository.name,
-              repository.owner,
-              repository.nameWithOwner,
-              repository.description,
-              repository.primaryLanguage?.name,
-              repository.visibility
-            ],
-            normalizedCollectionFilter
-          )
-        )
-      : [];
-  const directRepositoryTarget =
-    routeKind === "repositories" ? repositoryNameWithOwnerInput(collectionFilter) : null;
-  const directRepositoryTargetAlreadyLoaded = directRepositoryTarget
-    ? repositories.some(
-        (repository) => repository.nameWithOwner.toLowerCase() === directRepositoryTarget.toLowerCase()
-      ) ||
-      filteredRepositories.some(
-        (repository) => repository.nameWithOwner.toLowerCase() === directRepositoryTarget.toLowerCase()
-      )
-    : false;
-  const showDirectRepositoryTarget = Boolean(directRepositoryTarget && !directRepositoryTargetAlreadyLoaded);
-  const directRepositoryName = directRepositoryTarget?.split("/")[1] ?? null;
-  const directRepositoryOwner = directRepositoryTarget?.split("/")[0] ?? null;
   const filteredOrganizations =
     routeKind === "organizations"
       ? organizations.filter((organization) =>
@@ -9433,44 +9380,30 @@ function CollectionView({
           <button
             type="button"
             title={routeKind === "mailbox" ? "Open GitHub notifications fallback" : undefined}
-            onClick={() => {
-              if (routeKind === "repositories") {
-                onOpenAddRepository();
-                return;
-              }
-              onOpenExternal(actionUrl);
-            }}
+            onClick={() => onOpenExternal(actionUrl)}
           >
-            {routeKind === "organizations" ? (
-              <RefreshCw size={16} />
-            ) : routeKind === "mailbox" ? (
-              <ExternalLink size={16} />
-            ) : (
-              <Plus size={16} />
-            )}{" "}
-            {actionLabel}
+            {routeKind === "organizations" ? <RefreshCw size={16} /> : <ExternalLink size={16} />} GitHub
+            fallback
           </button>
         </div>
       </header>
       <div className="table-panel">
-        {(routeKind === "mailbox" || routeKind === "repositories" || routeKind === "organizations") && (
-          <div className="table-action-row surface-filter-row">
-            <label className="surface-filter">
-              <Search size={16} />
-              <input
-                aria-label={`Filter ${routeKind}`}
-                placeholder={`Filter ${routeKind}`}
-                value={collectionFilter}
-                onChange={(event) => setCollectionFilter(event.target.value)}
-              />
-            </label>
-            {collectionFilter.trim() && (
-              <button type="button" onClick={() => setCollectionFilter("")}>
-                <X size={16} /> Clear
-              </button>
-            )}
-          </div>
-        )}
+        <div className="table-action-row surface-filter-row">
+          <label className="surface-filter">
+            <Search size={16} />
+            <input
+              aria-label={`Filter ${routeKind}`}
+              placeholder={`Filter ${routeKind}`}
+              value={collectionFilter}
+              onChange={(event) => setCollectionFilter(event.target.value)}
+            />
+          </label>
+          {collectionFilter.trim() && (
+            <button type="button" onClick={() => setCollectionFilter("")}>
+              <X size={16} /> Clear
+            </button>
+          )}
+        </div>
         {repositoryPinError && (
           <div className="error-state">Local repository pin update failed: {repositoryPinError.message}</div>
         )}
@@ -9710,104 +9643,6 @@ function CollectionView({
         {routeKind === "mailbox" && !canExpandMailboxWork && accountWorkLimitHit && (
           <div className="muted-row">
             Showing the first {accountWorkLimit} issues and pull requests returned by GitHub.
-          </div>
-        )}
-        {routeKind === "repositories" &&
-          filteredRepositories.map((repository) => {
-            const pinned = pinnedRepositoryNames.some(
-              (nameWithOwner) => nameWithOwner.toLowerCase() === repository.nameWithOwner.toLowerCase()
-            );
-            const metadataParts = repositoryCollectionMetadataParts(repository);
-
-            return (
-              <div className="issue-row repository-row repository-row-with-actions" key={repository.id}>
-                <button
-                  className="repository-row-main"
-                  type="button"
-                  onClick={() => onOpenRepository(repository.nameWithOwner)}
-                >
-                  <span className="repo-avatar">{repository.owner.slice(0, 1).toUpperCase()}</span>
-                  <div>
-                    <strong>{displayRepositoryName(repository, viewerLogin)}</strong>
-                    <small>
-                      {repository.description ?? "Repository"} · updated{" "}
-                      {formatRelativeDate(repositoryActivityDate(repository))}
-                    </small>
-                    {metadataParts.length > 0 && (
-                      <small className="notification-detail-line">{metadataParts.join(" · ")}</small>
-                    )}
-                  </div>
-                  <span className="row-chip-stack">
-                    <span className="state-chip">{repository.visibility.toLowerCase()}</span>
-                    {repository.isFork && <span className="state-chip attention">fork</span>}
-                    {pinned && <span className="state-chip success">pinned</span>}
-                  </span>
-                </button>
-                <span className="row-action-stack">
-                  <button
-                    className={`pin-row-button ${pinned ? "selected-action" : ""}`}
-                    type="button"
-                    aria-label={`${pinned ? "Unpin" : "Pin"} ${repository.name}`}
-                    aria-pressed={pinned}
-                    disabled={Boolean(repositoryPinDisabledReason)}
-                    title={
-                      repositoryPinDisabledReason ?? `${pinned ? "Unpin" : "Pin"} ${repository.nameWithOwner}`
-                    }
-                    onClick={() => onToggleRepositoryPin(repository.nameWithOwner)}
-                  >
-                    <Pin size={15} />
-                  </button>
-                  <button
-                    className="pin-row-button"
-                    type="button"
-                    aria-label={`Open GitHub fallback for ${repository.name}`}
-                    title={`Open GitHub fallback for ${repository.nameWithOwner}`}
-                    onClick={() => onOpenExternal(`https://github.com/${repository.nameWithOwner}`)}
-                  >
-                    <ExternalLink size={15} />
-                  </button>
-                </span>
-              </div>
-            );
-          })}
-        {routeKind === "repositories" &&
-          showDirectRepositoryTarget &&
-          directRepositoryTarget &&
-          directRepositoryName &&
-          directRepositoryOwner && (
-            <div
-              className="issue-row repository-row repository-row-with-actions"
-              key="direct-repository-target"
-            >
-              <button
-                className="repository-row-main"
-                type="button"
-                onClick={() => {
-                  onOpenRepository(directRepositoryTarget);
-                  setCollectionFilter("");
-                }}
-              >
-                <span className="repo-avatar">{directRepositoryOwner.slice(0, 1).toUpperCase()}</span>
-                <div>
-                  <strong>{directRepositoryName}</strong>
-                  <small>{directRepositoryTarget}</small>
-                </div>
-                <span className="row-chip-stack">
-                  <span className="state-chip">Direct</span>
-                </span>
-              </button>
-            </div>
-          )}
-        {routeKind === "repositories" && canExpandRepositories && (
-          <div className="table-action-row">
-            <button type="button" onClick={onExpandRepositories}>
-              Load more repositories
-            </button>
-          </div>
-        )}
-        {routeKind === "repositories" && !canExpandRepositories && repositoriesLimitHit && (
-          <div className="muted-row">
-            Showing the first {repositoryListLimit} repositories returned by GitHub.
           </div>
         )}
         {routeKind === "organizations" &&
@@ -10748,27 +10583,6 @@ function CollectionView({
               {notifications.length === 0 && workRows.length === 0
                 ? "No GitHub notifications or open account work."
                 : "No mailbox items match this filter."}
-            </div>
-          )}
-        {routeKind === "repositories" && repositoriesLoading && repositories.length === 0 && (
-          <div className="loading-state">Loading GitHub repositories…</div>
-        )}
-        {routeKind === "repositories" && repositoriesError && (
-          <div className="error-state">Could not load GitHub repositories: {repositoriesError.message}</div>
-        )}
-        {routeKind === "repositories" && repositoriesAvailabilityMessage && (
-          <div className="error-state">{repositoriesAvailabilityMessage}</div>
-        )}
-        {routeKind === "repositories" &&
-          !repositoriesLoading &&
-          !repositoriesError &&
-          !repositoriesAvailabilityMessage &&
-          filteredRepositories.length === 0 &&
-          !showDirectRepositoryTarget && (
-            <div className="empty-state">
-              {repositories.length === 0
-                ? "No repositories loaded from GitHub."
-                : "No repositories match this filter."}
             </div>
           )}
         {routeKind === "organizations" &&

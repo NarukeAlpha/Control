@@ -37,10 +37,7 @@ import { normalizeCodeLineNumber } from "./components/code-browser/codeBrowserUi
 import {
   notificationInAppTarget,
   notificationTargetUrl,
-  parseWorkflowRunIdFromUrl,
-  defaultMailboxListLimit,
-  maxMailboxListLimit,
-  type MailboxNotificationFilter
+  parseWorkflowRunIdFromUrl
 } from "./components/collection/notificationUi";
 import { RepositoriesRoute } from "./components/collection/RepositoriesRoute";
 import { MailboxRoute } from "./components/collection/MailboxRoute";
@@ -49,22 +46,6 @@ import {
   useOrganizationsRouteQueries
 } from "./components/collection/organizationQueries";
 import { OrganizationsRoute } from "./components/collection/OrganizationsRoute";
-import {
-  defaultOrganizationListLimit,
-  defaultOrganizationMemberLimit,
-  defaultOrganizationProjectLimit,
-  defaultOrganizationRepositoryLimit,
-  defaultOrganizationTeamLimit,
-  defaultOrganizationTeamMemberLimit,
-  defaultOrganizationTeamRepositoryLimit,
-  maxOrganizationListLimit,
-  maxOrganizationMemberLimit,
-  maxOrganizationProjectLimit,
-  maxOrganizationRepositoryLimit,
-  maxOrganizationTeamLimit,
-  maxOrganizationTeamMemberLimit,
-  maxOrganizationTeamRepositoryLimit
-} from "./components/collection/organizationUi";
 import { CommandPalette, type CommandPaletteItem } from "./components/command-palette/CommandPalette";
 import {
   appendAccountWorkCommandPaletteItems,
@@ -190,7 +171,6 @@ import {
   readAvailabilityMessage,
   repositoryMutationDisabledReason
 } from "./components/repository/repositoryUi";
-import { maxRepositoryListLimit } from "./components/repository/repositorySearch";
 
 import { refreshAccountProfileData, useAccountProfile } from "./hooks/useAccountProfile";
 import { refreshAccountWorkData, useAccountWork } from "./hooks/useAccountWork";
@@ -202,18 +182,16 @@ import { refreshRepositoryDirectoryData, useRepositoryDirectory } from "./hooks/
 import { refreshRepositoryDetailData, useRepositoryDetail } from "./hooks/useRepositoryDetail";
 import { useRepositoryPins } from "./hooks/useRepositoryPins";
 import { useRepositoryRefs } from "./hooks/useRepositoryRefs";
+import { useCollectionSurfaceState } from "./hooks/useCollectionSurfaceState";
 import { useRepositorySurfaceLimits } from "./hooks/useRepositorySurfaceLimits";
 import { useStoredRepositoryRefs } from "./hooks/useStoredRepositoryRefs";
 import { repositoryScopedQueryKeys } from "./queries/repositoryQueryKeys";
 import { useUiStore, type AppRoute, type LocalRepositoryTab, type RepositoryTab } from "./stores/uiStore";
 
-const defaultRepositoryListLimit = 80;
-const defaultHomeRepositoryActivityLimit = 6;
 const commandPaletteGeneralSourceLimit = 50;
 const commandPaletteDenseSourceLimit = 30;
 const commandPaletteSecuritySourceLimit = 30;
 const defaultWikiPageLimit = 50;
-const defaultRecentItemLimit = 12;
 
 function routeTitle(route: AppRoute): string {
   switch (route.kind) {
@@ -257,37 +235,7 @@ export function App(): JSX.Element {
   const [editingArea, setEditingArea] = useState<AreaSummary | null>(null);
   const [deletingArea, setDeletingArea] = useState<AreaSummary | null>(null);
   const [repositoryRefs, setRepositoryRefs] = useStoredRepositoryRefs();
-  const [repositoryListLimit, setRepositoryListLimit] = useState(defaultRepositoryListLimit);
-  const [organizationListLimit, setOrganizationListLimit] = useState(defaultOrganizationListLimit);
-  const [organizationRepositoryLimits, setOrganizationRepositoryLimits] = useState<Record<string, number>>(
-    {}
-  );
-  const [organizationTeamLimits, setOrganizationTeamLimits] = useState<Record<string, number>>({});
-  const [organizationMemberLimits, setOrganizationMemberLimits] = useState<Record<string, number>>({});
-  const [organizationProjectLimits, setOrganizationProjectLimits] = useState<Record<string, number>>({});
-  const [organizationTeamRepositoryLimits, setOrganizationTeamRepositoryLimits] = useState<
-    Record<string, number>
-  >({});
-  const [organizationTeamMemberLimits, setOrganizationTeamMemberLimits] = useState<Record<string, number>>(
-    {}
-  );
-  const [homeRepositoryActivityLimit, setHomeRepositoryActivityLimit] = useState(
-    defaultHomeRepositoryActivityLimit
-  );
-  const [homeWorkLimit, setHomeWorkLimit] = useState(8);
-  const [mailboxWorkLimit, setMailboxWorkLimit] = useState(defaultMailboxListLimit);
-  const [mailboxNotificationLimits, setMailboxNotificationLimits] = useState<
-    Partial<Record<MailboxNotificationFilter, number>>
-  >({});
-  const recentItemLimit = defaultRecentItemLimit;
   const [fileFinderOpen, setFileFinderOpen] = useState(false);
-  const [selectedOrganizationLogin, setSelectedOrganizationLogin] = useState<string | null>(null);
-  const [selectedOrganizationTeamSlug, setSelectedOrganizationTeamSlug] = useState<string | null>(null);
-  const [selectedOrganizationMemberLogin, setSelectedOrganizationMemberLogin] = useState<string | null>(null);
-  const [selectedOrganizationProjectId, setSelectedOrganizationProjectId] = useState<string | null>(null);
-  const [notificationFilter, setNotificationFilter] = useState<MailboxNotificationFilter>("unread");
-  const accountWorkLimit = route.kind === "mailbox" ? mailboxWorkLimit : defaultMailboxListLimit;
-  const notificationLimit = mailboxNotificationLimits[notificationFilter] ?? defaultMailboxListLimit;
 
   const appState = useQuery({
     queryKey: ["app-state"],
@@ -310,6 +258,48 @@ export function App(): JSX.Element {
     refreshSelectedArea,
     stopSelectedAreaGateway
   } = useAreasShell({ enabled: appState.isSuccess });
+
+  const {
+    repositoryListLimit,
+    organizationListLimit,
+    organizationRepositoryLimits,
+    organizationTeamLimits,
+    organizationMemberLimits,
+    organizationProjectLimits,
+    organizationTeamRepositoryLimits,
+    organizationTeamMemberLimits,
+    homeRepositoryActivityLimit,
+    homeWorkLimit,
+    mailboxWorkLimit,
+    recentItemLimit,
+    selectedOrganizationLogin,
+    selectedOrganizationTeamSlug,
+    selectedOrganizationMemberLogin,
+    selectedOrganizationProjectId,
+    notificationFilter,
+    accountWorkLimit,
+    notificationLimit,
+    maxHomeWorkLimit,
+    setSelectedOrganizationLogin,
+    setSelectedOrganizationTeamSlug,
+    setSelectedOrganizationMemberLogin,
+    setSelectedOrganizationProjectId,
+    setNotificationFilter,
+    expandMailboxWork,
+    loadMoreHomeWork,
+    loadMoreHomeRepositoryActivity,
+    expandMailboxNotifications,
+    expandRepositoryList,
+    expandOrganizationList,
+    expandSelectedOrganizationRepositories,
+    expandSelectedOrganizationTeams,
+    expandSelectedOrganizationMembers,
+    expandSelectedOrganizationProjects,
+    expandSelectedOrganizationTeamRepositories,
+    expandSelectedOrganizationTeamMembers
+  } = useCollectionSurfaceState({
+    activeRouteKind: route.kind
+  });
 
   const repositories = useRepositoryDirectory(repositoryListLimit, {
     enabled: appState.isSuccess,
@@ -473,143 +463,6 @@ export function App(): JSX.Element {
     contentsRef,
     codeBrowserPath
   });
-  const expandMailboxWork = (): void => {
-    setMailboxWorkLimit((currentLimit) => {
-      if (currentLimit >= maxMailboxListLimit) {
-        return currentLimit;
-      }
-
-      return currentLimit < 50 ? 50 : maxMailboxListLimit;
-    });
-  };
-  const loadMoreHomeWork = (): void => {
-    setHomeWorkLimit(defaultMailboxListLimit);
-  };
-  const loadMoreHomeRepositoryActivity = (): void => {
-    setHomeRepositoryActivityLimit((currentLimit) => {
-      const loadedRepositoryLimit = Math.min(repositoryItems.length || currentLimit, maxRepositoryListLimit);
-      if (currentLimit >= loadedRepositoryLimit) {
-        return currentLimit;
-      }
-
-      return Math.min(currentLimit + defaultHomeRepositoryActivityLimit, loadedRepositoryLimit);
-    });
-  };
-  const expandMailboxNotifications = (): void => {
-    setMailboxNotificationLimits((limits) => {
-      const currentLimit = limits[notificationFilter] ?? defaultMailboxListLimit;
-      if (currentLimit >= maxMailboxListLimit) {
-        return limits;
-      }
-
-      const nextLimit = currentLimit < 50 ? 50 : maxMailboxListLimit;
-      return { ...limits, [notificationFilter]: nextLimit };
-    });
-  };
-  const expandRepositoryList = (): void => {
-    setRepositoryListLimit((currentLimit) => {
-      if (currentLimit >= maxRepositoryListLimit) {
-        return currentLimit;
-      }
-
-      return maxRepositoryListLimit;
-    });
-  };
-  const expandOrganizationList = (): void => {
-    setOrganizationListLimit((currentLimit) => {
-      if (currentLimit >= maxOrganizationListLimit) {
-        return currentLimit;
-      }
-
-      return maxOrganizationListLimit;
-    });
-  };
-  const expandSelectedOrganizationRepositories = (): void => {
-    if (!selectedOrganization) {
-      return;
-    }
-
-    setOrganizationRepositoryLimits((limits) => {
-      const currentLimit = limits[selectedOrganization.login] ?? defaultOrganizationRepositoryLimit;
-      if (currentLimit >= maxOrganizationRepositoryLimit) {
-        return limits;
-      }
-
-      return { ...limits, [selectedOrganization.login]: maxOrganizationRepositoryLimit };
-    });
-  };
-  const expandSelectedOrganizationTeams = (): void => {
-    if (!selectedOrganization) {
-      return;
-    }
-
-    setOrganizationTeamLimits((limits) => {
-      const currentLimit = limits[selectedOrganization.login] ?? defaultOrganizationTeamLimit;
-      if (currentLimit >= maxOrganizationTeamLimit) {
-        return limits;
-      }
-
-      return { ...limits, [selectedOrganization.login]: maxOrganizationTeamLimit };
-    });
-  };
-  const expandSelectedOrganizationMembers = (): void => {
-    if (!selectedOrganization) {
-      return;
-    }
-
-    setOrganizationMemberLimits((limits) => {
-      const currentLimit = limits[selectedOrganization.login] ?? defaultOrganizationMemberLimit;
-      if (currentLimit >= maxOrganizationMemberLimit) {
-        return limits;
-      }
-
-      return { ...limits, [selectedOrganization.login]: maxOrganizationMemberLimit };
-    });
-  };
-  const expandSelectedOrganizationProjects = (): void => {
-    if (!selectedOrganization) {
-      return;
-    }
-
-    setOrganizationProjectLimits((limits) => {
-      const currentLimit = limits[selectedOrganization.login] ?? defaultOrganizationProjectLimit;
-      if (currentLimit >= maxOrganizationProjectLimit) {
-        return limits;
-      }
-
-      return { ...limits, [selectedOrganization.login]: maxOrganizationProjectLimit };
-    });
-  };
-  const expandSelectedOrganizationTeamRepositories = (): void => {
-    if (!selectedOrganization || !selectedOrganizationTeam) {
-      return;
-    }
-
-    const key = `${selectedOrganization.login}/${selectedOrganizationTeam.slug}`;
-    setOrganizationTeamRepositoryLimits((limits) => {
-      const currentLimit = limits[key] ?? defaultOrganizationTeamRepositoryLimit;
-      if (currentLimit >= maxOrganizationTeamRepositoryLimit) {
-        return limits;
-      }
-
-      return { ...limits, [key]: maxOrganizationTeamRepositoryLimit };
-    });
-  };
-  const expandSelectedOrganizationTeamMembers = (): void => {
-    if (!selectedOrganization || !selectedOrganizationTeam) {
-      return;
-    }
-
-    const key = `${selectedOrganization.login}/${selectedOrganizationTeam.slug}`;
-    setOrganizationTeamMemberLimits((limits) => {
-      const currentLimit = limits[key] ?? defaultOrganizationTeamMemberLimit;
-      if (currentLimit >= maxOrganizationTeamMemberLimit) {
-        return limits;
-      }
-
-      return { ...limits, [key]: maxOrganizationTeamMemberLimit };
-    });
-  };
 
   const repository = useRepositoryDetail({
     owner,
@@ -944,7 +797,7 @@ export function App(): JSX.Element {
         refreshAccountWorkData(queryClient, {
           api,
           login: authenticatedViewerLogin,
-          limit: defaultMailboxListLimit,
+          limit: maxHomeWorkLimit,
           githubReady
         }),
         refreshRecentItemsData(queryClient, { api, limit: recentItemLimit })
@@ -2244,9 +2097,9 @@ export function App(): JSX.Element {
                 pullsError={accountPulls.error}
                 pullsAvailability={accountPullsAvailability}
                 workLimit={homeWorkLimit}
-                maxWorkLimit={defaultMailboxListLimit}
+                maxWorkLimit={maxHomeWorkLimit}
                 onOpenRepository={openRepositoryInApp}
-                onLoadMoreRepositories={loadMoreHomeRepositoryActivity}
+                onLoadMoreRepositories={() => loadMoreHomeRepositoryActivity(repositoryItems.length)}
                 onLoadMoreWork={loadMoreHomeWork}
                 onOpenMailbox={goToMailbox}
                 onOpenIssue={openIssueSummaryInApp}

@@ -89,6 +89,13 @@ import { areaRepositoryPinKey, isGatewayAreaKind } from "./components/areas/area
 import { SetupPanel } from "./components/auth/SetupPanel";
 import { useProviderAuth } from "./components/auth/AuthProvider";
 import { CodeBrowserPage } from "./components/code-browser/CodeBrowserPage";
+import {
+  codeBrowserCommitsQueryKey,
+  codeBrowserContentsQueryKey,
+  codeBrowserFileBlameQueryKey,
+  codeBrowserFileContentQueryKey,
+  refreshCodeBrowserData
+} from "./components/code-browser/codeBrowserQueries";
 import { encodeRepositoryPath, normalizeCodeLineNumber } from "./components/code-browser/codeBrowserUi";
 import { issueStateLabel } from "./components/collection/workItemUi";
 import {
@@ -2054,7 +2061,7 @@ export function App(): JSX.Element {
   });
 
   const codeBrowserContents = useQuery({
-    queryKey: ["contents", owner, repo, codeBrowserRef ?? "default", codeBrowserPath, codeBrowserEntryType],
+    queryKey: codeBrowserContentsQueryKey(owner, repo, codeBrowserRef, codeBrowserPath, codeBrowserEntryType),
     queryFn: () =>
       api.github.listContentsWithStatus({
         owner,
@@ -2068,7 +2075,7 @@ export function App(): JSX.Element {
   });
 
   const fileContent = useQuery({
-    queryKey: ["file-content", owner, repo, contentsRef ?? "default", codeBrowserPath],
+    queryKey: codeBrowserFileContentQueryKey(owner, repo, contentsRef, codeBrowserPath),
     queryFn: () =>
       api.github.getFileContentWithStatus({
         owner,
@@ -2087,7 +2094,7 @@ export function App(): JSX.Element {
   });
 
   const fileBlame = useQuery<RepoFileBlameResult>({
-    queryKey: ["file-blame", owner, repo, contentsRef ?? "default", codeBrowserPath, fileBlameRangeLimit],
+    queryKey: codeBrowserFileBlameQueryKey(owner, repo, contentsRef, codeBrowserPath, fileBlameRangeLimit),
     queryFn: () =>
       api.github.getFileBlame({
         owner,
@@ -2107,7 +2114,13 @@ export function App(): JSX.Element {
   });
 
   const fileCommits = useQuery({
-    queryKey: ["commits", owner, repo, fileCommitHistoryRefKey, codeBrowserPath, fileCommitHistoryLimit],
+    queryKey: codeBrowserCommitsQueryKey(
+      owner,
+      repo,
+      codeBrowserRef,
+      codeBrowserPath,
+      fileCommitHistoryLimit
+    ),
     queryFn: () =>
       api.github.listCommitsWithStatus({
         owner,
@@ -2512,105 +2525,19 @@ export function App(): JSX.Element {
       return;
     }
 
-    const ref = codeBrowserRef ?? repositoryDetail?.defaultBranch ?? undefined;
-    const refKey = codeBrowserRef ?? "default";
-    const cachedRead = !githubReady;
-    const refreshes: Array<Promise<unknown>> = [
-      queryClient.fetchQuery({
-        queryKey: ["branches", owner, repo, repositoryRefListLimit],
-        staleTime: 0,
-        queryFn: () =>
-          api.github.listBranchesWithStatus({
-            owner,
-            repo,
-            limit: repositoryRefListLimit,
-            cacheOnly: cachedRead,
-            forceRefresh: !cachedRead
-          })
-      }),
-      queryClient.fetchQuery({
-        queryKey: ["tags", owner, repo, repositoryRefListLimit],
-        staleTime: 0,
-        queryFn: () =>
-          api.github.listTagsWithStatus({
-            owner,
-            repo,
-            limit: repositoryRefListLimit,
-            cacheOnly: cachedRead,
-            forceRefresh: !cachedRead
-          })
-      })
-    ];
-
-    if (codeBrowserEntryType === "dir") {
-      refreshes.push(
-        queryClient.fetchQuery({
-          queryKey: ["contents", owner, repo, refKey, codeBrowserPath, "dir"],
-          staleTime: 0,
-          queryFn: () =>
-            api.github.listContentsWithStatus({
-              owner,
-              repo,
-              path: codeBrowserPath,
-              ref,
-              cacheOnly: cachedRead,
-              forceRefresh: !cachedRead
-            })
-        })
-      );
-    }
-
-    if (codeBrowserEntryType === "file" && codeBrowserPath) {
-      refreshes.push(
-        queryClient.fetchQuery({
-          queryKey: ["file-content", owner, repo, refKey, codeBrowserPath],
-          staleTime: 0,
-          queryFn: () =>
-            api.github.getFileContentWithStatus({
-              owner,
-              repo,
-              path: codeBrowserPath,
-              ref,
-              cacheOnly: cachedRead,
-              forceRefresh: !cachedRead
-            })
-        }),
-        queryClient.fetchQuery({
-          queryKey: ["file-blame", owner, repo, refKey, codeBrowserPath, fileBlameRangeLimit],
-          staleTime: 0,
-          queryFn: () =>
-            api.github.getFileBlame({
-              owner,
-              repo,
-              path: codeBrowserPath,
-              ref,
-              maxRanges: fileBlameRangeLimit,
-              cacheOnly: cachedRead,
-              forceRefresh: !cachedRead
-            })
-        }),
-        queryClient.fetchQuery({
-          queryKey: ["commits", owner, repo, refKey, codeBrowserPath, fileCommitHistoryLimit],
-          staleTime: 0,
-          queryFn: () =>
-            api.github.listCommitsWithStatus({
-              owner,
-              repo,
-              ref,
-              path: codeBrowserPath,
-              limit: fileCommitHistoryLimit,
-              cacheOnly: cachedRead,
-              forceRefresh: !cachedRead
-            })
-        })
-      );
-    }
-
-    try {
-      await Promise.all(refreshes);
-    } catch {
-      // React Query owns the visible error state for this refresh.
-    }
+    await refreshCodeBrowserData(queryClient, {
+      api,
+      owner,
+      repo,
+      selectedRef: codeBrowserRef,
+      defaultBranch: repositoryDetail?.defaultBranch ?? null,
+      path: codeBrowserPath,
+      entryType: codeBrowserEntryType,
+      refListLimit: repositoryRefListLimit,
+      fileBlameRangeLimit,
+      fileCommitHistoryLimit,
+      githubReady
+    });
   }
 
   async function refreshIssueSurfaceNow(): Promise<void> {

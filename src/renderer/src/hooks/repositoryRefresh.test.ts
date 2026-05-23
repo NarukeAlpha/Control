@@ -4,6 +4,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ControlApi } from "@shared/ipc";
 
 import {
+  codeBrowserCommitsQueryKey,
+  codeBrowserFileBlameQueryKey,
+  codeBrowserFileContentQueryKey,
+  refreshCodeBrowserData
+} from "../components/code-browser/codeBrowserQueries";
+import {
   organizationMembersQueryKey,
   organizationProjectsQueryKey,
   organizationRepositoriesQueryKey,
@@ -19,6 +25,7 @@ import { accountProfileQueryKey, refreshAccountProfileData } from "./useAccountP
 import { accountIssuesQueryKey, accountPullsQueryKey, refreshAccountWorkData } from "./useAccountWork";
 import { refreshMailboxNotificationsData } from "./useMailboxNotifications";
 import { refreshRepositoryDirectoryData, repositoryDirectoryQueryKey } from "./useRepositoryDirectory";
+import { repositoryBranchesQueryKey, repositoryTagsQueryKey } from "./useRepositoryRefs";
 
 function makeQueryClient(): QueryClient {
   return new QueryClient({
@@ -129,6 +136,96 @@ describe("route refresh helpers", () => {
     expect(queryClient.getQueryData(accountIssuesQueryKey("octocat", 30))).toBeDefined();
     expect(queryClient.getQueryData(accountPullsQueryKey("octocat", 30))).toBeDefined();
     expect(queryClient.getQueryData(notificationQueryKey("participating", 40))).toBeDefined();
+  });
+
+  it("refreshes code browser file data through browser-owned query keys", async () => {
+    const queryClient = makeQueryClient();
+    const listBranchesWithStatus = vi.fn<ControlApi["github"]["listBranchesWithStatus"]>(
+      mockControlApi.github.listBranchesWithStatus
+    );
+    const listTagsWithStatus = vi.fn<ControlApi["github"]["listTagsWithStatus"]>(
+      mockControlApi.github.listTagsWithStatus
+    );
+    const getFileContentWithStatus = vi.fn<ControlApi["github"]["getFileContentWithStatus"]>(
+      mockControlApi.github.getFileContentWithStatus
+    );
+    const getFileBlame = vi.fn<ControlApi["github"]["getFileBlame"]>(mockControlApi.github.getFileBlame);
+    const listCommitsWithStatus = vi.fn<ControlApi["github"]["listCommitsWithStatus"]>(
+      mockControlApi.github.listCommitsWithStatus
+    );
+    const api = makeApi({
+      listBranchesWithStatus,
+      listTagsWithStatus,
+      getFileContentWithStatus,
+      getFileBlame,
+      listCommitsWithStatus
+    });
+
+    await refreshCodeBrowserData(queryClient, {
+      api,
+      owner: "NarukeAlpha",
+      repo: "control",
+      selectedRef: null,
+      defaultBranch: "main",
+      path: "src/App.tsx",
+      entryType: "file",
+      refListLimit: 25,
+      fileBlameRangeLimit: 5,
+      fileCommitHistoryLimit: 8,
+      githubReady: true
+    });
+
+    expect(listBranchesWithStatus).toHaveBeenCalledWith({
+      owner: "NarukeAlpha",
+      repo: "control",
+      limit: 25,
+      cacheOnly: false,
+      forceRefresh: true
+    });
+    expect(listTagsWithStatus).toHaveBeenCalledWith({
+      owner: "NarukeAlpha",
+      repo: "control",
+      limit: 25,
+      cacheOnly: false,
+      forceRefresh: true
+    });
+    expect(getFileContentWithStatus).toHaveBeenCalledWith({
+      owner: "NarukeAlpha",
+      repo: "control",
+      path: "src/App.tsx",
+      ref: "main",
+      cacheOnly: false,
+      forceRefresh: true
+    });
+    expect(getFileBlame).toHaveBeenCalledWith({
+      owner: "NarukeAlpha",
+      repo: "control",
+      path: "src/App.tsx",
+      ref: "main",
+      maxRanges: 5,
+      cacheOnly: false,
+      forceRefresh: true
+    });
+    expect(listCommitsWithStatus).toHaveBeenCalledWith({
+      owner: "NarukeAlpha",
+      repo: "control",
+      ref: "main",
+      path: "src/App.tsx",
+      limit: 8,
+      cacheOnly: false,
+      forceRefresh: true
+    });
+    expect(queryClient.getQueryData(repositoryBranchesQueryKey("NarukeAlpha", "control", 25))).toBeDefined();
+    expect(queryClient.getQueryData(repositoryTagsQueryKey("NarukeAlpha", "control", 25))).toBeDefined();
+    expect(
+      queryClient.getQueryData(codeBrowserFileContentQueryKey("NarukeAlpha", "control", null, "src/App.tsx"))
+    ).toBeDefined();
+    expect(
+      queryClient.getQueryData(codeBrowserFileBlameQueryKey("NarukeAlpha", "control", null, "src/App.tsx", 5))
+    ).toBeDefined();
+    expect(
+      queryClient.getQueryData(codeBrowserCommitsQueryKey("NarukeAlpha", "control", null, "src/App.tsx", 8))
+    ).toBeDefined();
   });
 
   it("refreshes organization route data through route-owned query keys", async () => {

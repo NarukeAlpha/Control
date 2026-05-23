@@ -3,16 +3,13 @@ import {
   CheckCircle2,
   CircleDot,
   Code2,
-  Download,
   Home,
   Inbox,
   Lock,
   Plus,
   RefreshCw,
   Settings,
-  ShieldCheck,
-  Tag,
-  Workflow
+  ShieldCheck
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
@@ -41,7 +38,6 @@ import type {
   SecretScanningAlertsResult,
   WorkflowRunArtifactSummary,
   WorkflowRunDetail,
-  WorkflowRunDetailResult,
   WorkflowRunSummary,
   WikiPageContent,
   WikiPageSummary
@@ -103,8 +99,11 @@ import {
   appendPinnedRepositoryCommandPaletteItems,
   appendRepositoryAdminCommandPaletteItems,
   appendRepositoryContentCommandPaletteItems,
+  appendRepositoryReleaseCommandPaletteItems,
+  appendRepositoryWorkflowCommandPaletteItems,
   cachedRepositoryAccess,
   cachedRepositoryForks,
+  cachedWorkflowRunDetail,
   appendRecentCommandPaletteItems,
   appendRepositoryCommandPaletteItems,
   cachedRepositoryWikiPages
@@ -232,7 +231,6 @@ import { useRepositoryRefs } from "./hooks/useRepositoryRefs";
 import { useStoredRepositoryRefs } from "./hooks/useStoredRepositoryRefs";
 import { repositoryScopedQueryKeys } from "./queries/repositoryQueryKeys";
 import { useUiStore, type AppRoute, type LocalRepositoryTab, type RepositoryTab } from "./stores/uiStore";
-import { formatCompactNumber } from "./utils/format";
 
 const emptyRepoEntries: RepoEntry[] = [];
 const defaultFileBlameRangeLimit = 20;
@@ -2343,158 +2341,29 @@ export function App(): JSX.Element {
         onOpenRepository: openRepositoryInApp
       });
 
-      if (releaseItems.length > 0) {
-        for (const release of releaseItems.slice(0, commandPaletteGeneralSourceLimit)) {
-          const releaseTitle = release.name || release.tagName;
-          items.push({
-            id: `repository-release-${effectiveRepository}-${release.id}`,
-            title: releaseTitle,
-            subtitle: `${effectiveRepository} release · ${release.tagName} · ${
-              release.isDraft ? "draft" : "published"
-            }${release.isPrerelease ? " · prerelease" : ""}`,
-            group: "Repository items",
-            icon: Tag,
-            keywords: [
-              releaseTitle,
-              release.name ?? "",
-              release.tagName,
-              effectiveRepository,
-              String(release.id),
-              "release",
-              "tag",
-              release.isDraft ? "draft" : "published",
-              release.isPrerelease ? "prerelease" : "",
-              release.targetCommitish ?? "",
-              release.publishedAt ?? "",
-              ...release.assets.flatMap((asset) => [asset.name, asset.label ?? "", asset.state ?? ""])
-            ],
-            run: () => selectReleaseInApp(effectiveRepository, release)
-          });
-          for (const asset of release.assets) {
-            items.push({
-              id: `repository-release-asset-${effectiveRepository}-${release.id}-${asset.id}`,
-              title: asset.name,
-              subtitle: `${effectiveRepository} release asset · ${releaseTitle} · ${formatCompactNumber(
-                asset.sizeInBytes
-              )} bytes · ${formatCompactNumber(asset.downloadCount)} downloads`,
-              group: "Release assets",
-              icon: Download,
-              keywords: [
-                asset.name,
-                asset.label ?? "",
-                asset.contentType ?? "",
-                asset.state ?? "",
-                String(asset.id),
-                releaseTitle,
-                release.name ?? "",
-                release.tagName,
-                effectiveRepository,
-                "release",
-                "asset",
-                "download"
-              ],
-              run: () => selectReleaseAssetInApp(effectiveRepository, release, asset)
-            });
-          }
-        }
-      }
+      appendRepositoryReleaseCommandPaletteItems(items, {
+        effectiveRepository,
+        releaseItems,
+        limit: commandPaletteGeneralSourceLimit,
+        onSelectRelease: selectReleaseInApp,
+        onSelectReleaseAsset: selectReleaseAssetInApp
+      });
 
-      if (actionItems.length > 0) {
-        for (const run of actionItems.slice(0, commandPaletteGeneralSourceLimit)) {
-          const runState = run.conclusion ?? run.status ?? "queued";
-          items.push({
-            id: `repository-workflow-run-${effectiveRepository}-${run.id}`,
-            title: run.displayTitle ?? run.name,
-            subtitle: `${effectiveRepository} workflow run · ${runState} · ${run.event} · ${
-              run.branch ?? "unknown branch"
-            }`,
-            group: "Repository items",
-            icon: Workflow,
-            keywords: [
-              run.name,
-              run.displayTitle ?? "",
-              effectiveRepository,
-              String(run.id),
-              `run ${run.id}`,
-              run.runNumber === null ? "" : String(run.runNumber),
-              run.runAttempt === null ? "" : `attempt ${run.runAttempt}`,
-              "workflow",
-              "workflow run",
-              "actions",
-              run.event,
-              run.status ?? "",
-              run.conclusion ?? "",
-              runState,
-              run.branch ?? "",
-              run.commitSha ?? "",
-              run.headRepositoryNameWithOwner ?? "",
-              run.actorLogin ?? "",
-              run.triggeringActorLogin ?? "",
-              run.conclusion === "failure" ? "failed failure" : "",
-              run.conclusion === "success" ? "passed success" : "",
-              run.status === "in_progress" ? "running in progress" : ""
-            ],
-            run: () => selectWorkflowRunInApp(effectiveRepository, run)
-          });
-        }
-
-        const focusedWorkflowRunId =
-          route.kind === "repository" && route.nameWithOwner === effectiveRepository
-            ? (route.workflowRunId ?? null)
-            : null;
-        const focusedWorkflowRunDetailResult =
-          focusedWorkflowRunId !== null
-            ? queryClient.getQueryData<WorkflowRunDetailResult>([
-                "action-detail",
-                owner,
-                repo,
-                focusedWorkflowRunId
-              ])
-            : null;
-        const focusedWorkflowRunDetail = focusedWorkflowRunDetailResult?.detail ?? null;
-        if (focusedWorkflowRunDetail) {
-          for (const artifact of focusedWorkflowRunDetail.artifacts) {
-            items.push({
-              id: `repository-workflow-artifact-${effectiveRepository}-${focusedWorkflowRunDetail.id}-${artifact.id}`,
-              title: artifact.name,
-              subtitle: `${effectiveRepository} workflow artifact · ${
-                focusedWorkflowRunDetail.displayTitle ?? focusedWorkflowRunDetail.name
-              } · ${formatCompactNumber(artifact.sizeInBytes)} bytes · ${
-                artifact.expired ? "expired" : "available"
-              }`,
-              group: "Workflow artifacts",
-              icon: Download,
-              keywords: [
-                artifact.name,
-                String(artifact.id),
-                focusedWorkflowRunDetail.name,
-                focusedWorkflowRunDetail.displayTitle ?? "",
-                effectiveRepository,
-                String(focusedWorkflowRunDetail.id),
-                `run ${focusedWorkflowRunDetail.id}`,
-                focusedWorkflowRunDetail.runNumber === null ? "" : String(focusedWorkflowRunDetail.runNumber),
-                focusedWorkflowRunDetail.runAttempt === null
-                  ? ""
-                  : `attempt ${focusedWorkflowRunDetail.runAttempt}`,
-                "workflow",
-                "workflow artifact",
-                "artifact",
-                "download",
-                "actions",
-                focusedWorkflowRunDetail.event,
-                focusedWorkflowRunDetail.status ?? "",
-                focusedWorkflowRunDetail.conclusion ?? "",
-                focusedWorkflowRunDetail.branch ?? "",
-                artifact.expired ? "expired" : "available",
-                artifact.createdAt,
-                artifact.updatedAt,
-                artifact.expiresAt ?? ""
-              ],
-              run: () => selectWorkflowArtifactInApp(effectiveRepository, focusedWorkflowRunDetail, artifact)
-            });
-          }
-        }
-      }
+      appendRepositoryWorkflowCommandPaletteItems(items, {
+        effectiveRepository,
+        actionItems,
+        focusedWorkflowRunDetail: cachedWorkflowRunDetail(queryClient, {
+          owner,
+          repo,
+          runId:
+            route.kind === "repository" && route.nameWithOwner === effectiveRepository
+              ? (route.workflowRunId ?? null)
+              : null
+        }),
+        limit: commandPaletteGeneralSourceLimit,
+        onSelectWorkflowRun: selectWorkflowRunInApp,
+        onSelectWorkflowArtifact: selectWorkflowArtifactInApp
+      });
 
       const commandPaletteDependabotAlerts =
         queryClient.getQueryData<DependabotAlertsResult>([

@@ -35,13 +35,19 @@ import type {
   NotificationSummary,
   ProjectSummary,
   PullRequestSummary,
+  ReleaseAssetSummary,
+  ReleaseSummary,
   RepositoryAccessResult,
   RepositoryCollaboratorSummary,
   RepositoryForksResult,
   RepositoryRef,
   RepositoryWikiResult,
   TagSummary,
-  TeamSummary
+  TeamSummary,
+  WorkflowRunArtifactSummary,
+  WorkflowRunDetail,
+  WorkflowRunDetailResult,
+  WorkflowRunSummary
 } from "@shared/github";
 import type { QueryClient } from "@tanstack/react-query";
 import type { ContributorSummary, DiscussionSummary, WikiPageContent, WikiPageSummary } from "@shared/github";
@@ -119,6 +125,20 @@ export function cachedRepositoryForks(
       input.limit
     ])?.items ?? []
   );
+}
+
+export function cachedWorkflowRunDetail(
+  queryClient: QueryClient,
+  input: { owner: string; repo: string; runId: number | null }
+): WorkflowRunDetail | null {
+  return input.runId === null
+    ? null
+    : (queryClient.getQueryData<WorkflowRunDetailResult>([
+        "action-detail",
+        input.owner,
+        input.repo,
+        input.runId
+      ])?.detail ?? null);
 }
 
 export function appendPinnedRepositoryCommandPaletteItems(
@@ -927,6 +947,167 @@ export function appendRepositoryAdminCommandPaletteItems(
         "opens in control"
       ],
       run: () => input.onOpenRepository(fork.nameWithOwner)
+    });
+  }
+}
+
+export function appendRepositoryReleaseCommandPaletteItems(
+  items: CommandPaletteItem[],
+  input: {
+    effectiveRepository: string;
+    releaseItems: ReleaseSummary[];
+    limit: number;
+    onSelectRelease(nameWithOwner: string, release: ReleaseSummary): void;
+    onSelectReleaseAsset(nameWithOwner: string, release: ReleaseSummary, asset: ReleaseAssetSummary): void;
+  }
+): void {
+  for (const release of input.releaseItems.slice(0, input.limit)) {
+    const releaseTitle = release.name || release.tagName;
+    items.push({
+      id: `repository-release-${input.effectiveRepository}-${release.id}`,
+      title: releaseTitle,
+      subtitle: `${input.effectiveRepository} release · ${release.tagName} · ${
+        release.isDraft ? "draft" : "published"
+      }${release.isPrerelease ? " · prerelease" : ""}`,
+      group: "Repository items",
+      icon: Tag,
+      keywords: [
+        releaseTitle,
+        release.name ?? "",
+        release.tagName,
+        input.effectiveRepository,
+        String(release.id),
+        "release",
+        "tag",
+        release.isDraft ? "draft" : "published",
+        release.isPrerelease ? "prerelease" : "",
+        release.targetCommitish ?? "",
+        release.publishedAt ?? "",
+        ...release.assets.flatMap((asset) => [asset.name, asset.label ?? "", asset.state ?? ""])
+      ],
+      run: () => input.onSelectRelease(input.effectiveRepository, release)
+    });
+    for (const asset of release.assets) {
+      items.push({
+        id: `repository-release-asset-${input.effectiveRepository}-${release.id}-${asset.id}`,
+        title: asset.name,
+        subtitle: `${input.effectiveRepository} release asset · ${releaseTitle} · ${formatCompactNumber(
+          asset.sizeInBytes
+        )} bytes · ${formatCompactNumber(asset.downloadCount)} downloads`,
+        group: "Release assets",
+        icon: Download,
+        keywords: [
+          asset.name,
+          asset.label ?? "",
+          asset.contentType ?? "",
+          asset.state ?? "",
+          String(asset.id),
+          releaseTitle,
+          release.name ?? "",
+          release.tagName,
+          input.effectiveRepository,
+          "release",
+          "asset",
+          "download"
+        ],
+        run: () => input.onSelectReleaseAsset(input.effectiveRepository, release, asset)
+      });
+    }
+  }
+}
+
+export function appendRepositoryWorkflowCommandPaletteItems(
+  items: CommandPaletteItem[],
+  input: {
+    effectiveRepository: string;
+    actionItems: WorkflowRunSummary[];
+    focusedWorkflowRunDetail: WorkflowRunDetail | null;
+    limit: number;
+    onSelectWorkflowRun(nameWithOwner: string, run: WorkflowRunSummary): void;
+    onSelectWorkflowArtifact(
+      nameWithOwner: string,
+      run: WorkflowRunDetail,
+      artifact: WorkflowRunArtifactSummary
+    ): void;
+  }
+): void {
+  for (const run of input.actionItems.slice(0, input.limit)) {
+    const runState = run.conclusion ?? run.status ?? "queued";
+    items.push({
+      id: `repository-workflow-run-${input.effectiveRepository}-${run.id}`,
+      title: run.displayTitle ?? run.name,
+      subtitle: `${input.effectiveRepository} workflow run · ${runState} · ${run.event} · ${
+        run.branch ?? "unknown branch"
+      }`,
+      group: "Repository items",
+      icon: Workflow,
+      keywords: [
+        run.name,
+        run.displayTitle ?? "",
+        input.effectiveRepository,
+        String(run.id),
+        `run ${run.id}`,
+        run.runNumber === null ? "" : String(run.runNumber),
+        run.runAttempt === null ? "" : `attempt ${run.runAttempt}`,
+        "workflow",
+        "workflow run",
+        "actions",
+        run.event,
+        run.status ?? "",
+        run.conclusion ?? "",
+        runState,
+        run.branch ?? "",
+        run.commitSha ?? "",
+        run.headRepositoryNameWithOwner ?? "",
+        run.actorLogin ?? "",
+        run.triggeringActorLogin ?? "",
+        run.conclusion === "failure" ? "failed failure" : "",
+        run.conclusion === "success" ? "passed success" : "",
+        run.status === "in_progress" ? "running in progress" : ""
+      ],
+      run: () => input.onSelectWorkflowRun(input.effectiveRepository, run)
+    });
+  }
+
+  const focusedWorkflowRunDetail = input.focusedWorkflowRunDetail;
+  if (!focusedWorkflowRunDetail) {
+    return;
+  }
+
+  for (const artifact of focusedWorkflowRunDetail.artifacts) {
+    items.push({
+      id: `repository-workflow-artifact-${input.effectiveRepository}-${focusedWorkflowRunDetail.id}-${artifact.id}`,
+      title: artifact.name,
+      subtitle: `${input.effectiveRepository} workflow artifact · ${
+        focusedWorkflowRunDetail.displayTitle ?? focusedWorkflowRunDetail.name
+      } · ${formatCompactNumber(artifact.sizeInBytes)} bytes · ${artifact.expired ? "expired" : "available"}`,
+      group: "Workflow artifacts",
+      icon: Download,
+      keywords: [
+        artifact.name,
+        String(artifact.id),
+        focusedWorkflowRunDetail.name,
+        focusedWorkflowRunDetail.displayTitle ?? "",
+        input.effectiveRepository,
+        String(focusedWorkflowRunDetail.id),
+        `run ${focusedWorkflowRunDetail.id}`,
+        focusedWorkflowRunDetail.runNumber === null ? "" : String(focusedWorkflowRunDetail.runNumber),
+        focusedWorkflowRunDetail.runAttempt === null ? "" : `attempt ${focusedWorkflowRunDetail.runAttempt}`,
+        "workflow",
+        "workflow artifact",
+        "artifact",
+        "download",
+        "actions",
+        focusedWorkflowRunDetail.event,
+        focusedWorkflowRunDetail.status ?? "",
+        focusedWorkflowRunDetail.conclusion ?? "",
+        focusedWorkflowRunDetail.branch ?? "",
+        artifact.expired ? "expired" : "available",
+        artifact.createdAt,
+        artifact.updatedAt,
+        artifact.expiresAt ?? ""
+      ],
+      run: () => input.onSelectWorkflowArtifact(input.effectiveRepository, focusedWorkflowRunDetail, artifact)
     });
   }
 }

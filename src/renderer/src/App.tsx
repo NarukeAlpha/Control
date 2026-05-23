@@ -23,7 +23,6 @@ import {
   Lock,
   MessageSquare,
   MoreHorizontal,
-  Pencil,
   Pin,
   PlayCircle,
   Plus,
@@ -34,7 +33,6 @@ import {
   Star,
   SquareKanban,
   Tag,
-  Trash2,
   Users,
   Workflow,
   X
@@ -133,6 +131,9 @@ import {
   markdownRepositoryUrlContext
 } from "./components/MarkdownBody";
 import { AreaDeleteDialog, AreaEditDialog, SshAreaDialog } from "./components/areas/AreaDialogs";
+import { AreaTopbarSelector } from "./components/areas/AreaTopbarSelector";
+import { LocalAreaHome } from "./components/areas/LocalAreaHome";
+import { isGatewayAreaKind } from "./components/areas/areaUi";
 import { SetupPanel } from "./components/auth/SetupPanel";
 import { AddRepositoryDialog } from "./components/dialogs/AddRepositoryDialog";
 import { FileFinder } from "./components/file-finder/FileFinder";
@@ -158,6 +159,7 @@ import { RepositorySettingsTab } from "./components/repository/settings/Reposito
 import { WikiTab } from "./components/repository/wiki/WikiTab";
 import { RightRail } from "./components/right-rail/RightRail";
 import { SettingsPanel } from "./components/settings/SettingsPanel";
+import { Metric } from "./components/shared/Metric";
 
 import {
   defaultContributorLimit,
@@ -221,10 +223,6 @@ function areaRepositoryPinKey(
 }
 
 const defaultGitHubAreaId = "github:default";
-
-function isGatewayAreaKind(kind: AreaSummary["kind"] | null | undefined): boolean {
-  return kind === "local" || kind === "ssh";
-}
 
 function defaultGitHubAreaRepositoryId(nameWithOwner: string): string {
   return `github:default:${nameWithOwner.toLowerCase()}`;
@@ -8357,193 +8355,6 @@ function isNavigationActive(route: AppRoute, label: string): boolean {
   return false;
 }
 
-function LocalAreaHome({
-  area,
-  repositories,
-  repositoriesLoading,
-  recentItems,
-  onOpenRepository,
-  onOpenRecent,
-  onRefresh,
-  onStopGateway
-}: {
-  area: AreaSummary;
-  repositories: AreaRepositorySummary[];
-  repositoriesLoading: boolean;
-  recentItems: LocalRecentItem[];
-  onOpenRepository(repository: AreaRepositorySummary): void;
-  onOpenRecent(item: LocalRecentItem): void;
-  onRefresh(): Promise<void>;
-  onStopGateway(): Promise<void>;
-}): JSX.Element {
-  const [refreshing, setRefreshing] = useState(false);
-  const [stoppingGateway, setStoppingGateway] = useState(false);
-  const connectedRepositories = repositories.filter((repository) => repository.connection);
-  const dirtyRepositories = repositories.filter((repository) => repository.isDirty);
-  const jjRepositories = repositories.filter((repository) => repository.kind === "jj");
-  const recentLocalRepositories = recentItems
-    .filter((item) => item.provider === "local" && item.kind === "repository" && item.areaId === area.id)
-    .slice(0, 6);
-  const visibleRepositories = [...repositories]
-    .sort((left, right) => {
-      const leftTime = Date.parse(left.updatedAt ?? left.scannedAt ?? "0") || 0;
-      const rightTime = Date.parse(right.updatedAt ?? right.scannedAt ?? "0") || 0;
-      return rightTime - leftTime || left.displayName.localeCompare(right.displayName);
-    })
-    .slice(0, 8);
-
-  return (
-    <section className="home-dashboard">
-      <header className="account-hero">
-        <span className="avatar-placeholder">{area.kind === "ssh" ? "S" : "L"}</span>
-        <div>
-          <h1>{area.label}</h1>
-          <p>{area.rootPath ?? area.subtitle ?? "Area"}</p>
-          {area.health.message && <small>{area.health.message}</small>}
-          {area.gateway && (
-            <small>
-              Gateway {area.gateway.status}
-              {area.gateway.adminUrl ? ` · admin ${area.gateway.adminUrl}` : ""}
-            </small>
-          )}
-        </div>
-        <div className="surface-header-actions">
-          {area.gateway?.adminUrl && (
-            <button
-              type="button"
-              disabled={stoppingGateway}
-              onClick={() => {
-                setStoppingGateway(true);
-                void onStopGateway().finally(() => setStoppingGateway(false));
-              }}
-            >
-              <X size={16} /> {stoppingGateway ? "Stopping" : "Stop gateway"}
-            </button>
-          )}
-          <button
-            type="button"
-            disabled={refreshing}
-            onClick={() => {
-              setRefreshing(true);
-              void onRefresh().finally(() => setRefreshing(false));
-            }}
-          >
-            <RefreshCw size={16} /> {refreshing ? "Refreshing" : "Refresh"}
-          </button>
-        </div>
-      </header>
-
-      <section className="home-metrics">
-        <Metric label="Repositories" value={repositories.length || area.repositoryCount} />
-        <Metric label="GitHub remotes" value={connectedRepositories.length} />
-        <Metric label="Changed" value={dirtyRepositories.length} />
-        <Metric label="JJ" value={jjRepositories.length} />
-      </section>
-
-      <section className="home-grid">
-        <div className="home-panel">
-          <div className="surface-header">
-            <div>
-              <h2>Local repositories</h2>
-              <p>
-                {repositoriesLoading ? "Scanning local Area." : `${repositories.length} repositories loaded.`}
-              </p>
-            </div>
-          </div>
-          <div className="shortcut-list">
-            {visibleRepositories.length ? (
-              visibleRepositories.map((repository) => (
-                <button
-                  key={repository.id}
-                  type="button"
-                  className="shortcut-item"
-                  onClick={() => onOpenRepository(repository)}
-                >
-                  <span className="repo-avatar">{repository.kind === "jj" ? "J" : "G"}</span>
-                  <span>
-                    <strong>{repository.displayName}</strong>
-                    <small>
-                      {repository.connection?.nameWithOwner ?? repository.path ?? repository.kind}
-                    </small>
-                  </span>
-                </button>
-              ))
-            ) : (
-              <p className="muted-row">
-                {repositoriesLoading ? "Scanning for local repositories." : "No local repositories found."}
-              </p>
-            )}
-          </div>
-        </div>
-
-        <div className="home-panel">
-          <div className="surface-header">
-            <div>
-              <h2>Recent local work</h2>
-              <p>
-                {recentLocalRepositories.length ? "Latest local repository routes." : "No local recents yet."}
-              </p>
-            </div>
-          </div>
-          <div className="shortcut-list">
-            {recentLocalRepositories.length ? (
-              recentLocalRepositories.map((item) => (
-                <button
-                  key={`${item.kind}-${item.itemKey}`}
-                  type="button"
-                  className="shortcut-item"
-                  onClick={() => onOpenRecent(item)}
-                >
-                  <span className="repo-avatar">R</span>
-                  <span>
-                    <strong>{item.title}</strong>
-                    <small>{item.subtitle ?? item.repositoryNameWithOwner ?? item.repositoryId}</small>
-                  </span>
-                </button>
-              ))
-            ) : (
-              <p className="muted-row">Open a local repository to add it here.</p>
-            )}
-          </div>
-        </div>
-
-        <div className="home-panel">
-          <div className="surface-header">
-            <div>
-              <h2>GitHub remotes</h2>
-              <p>
-                {connectedRepositories.length ? "Connected local repositories." : "No GitHub remotes found."}
-              </p>
-            </div>
-          </div>
-          <div className="shortcut-list">
-            {connectedRepositories.length ? (
-              connectedRepositories.slice(0, 6).map((repository) => (
-                <button
-                  key={repository.id}
-                  type="button"
-                  className="shortcut-item"
-                  onClick={() => onOpenRepository(repository)}
-                >
-                  <span className="repo-avatar">
-                    {repository.connection?.owner.slice(0, 1).toUpperCase()}
-                  </span>
-                  <span>
-                    <strong>{repository.connection?.nameWithOwner}</strong>
-                    <small>{repository.displayName}</small>
-                  </span>
-                </button>
-              ))
-            ) : (
-              <p className="muted-row">Add an origin remote to connect a local repository to GitHub.</p>
-            )}
-          </div>
-        </div>
-      </section>
-    </section>
-  );
-}
-
 function Sidebar({
   appState,
   profile,
@@ -9066,226 +8877,6 @@ function Sidebar({
         <MoreHorizontal size={18} />
       </button>
     </aside>
-  );
-}
-
-function AreaTopbarSelector({
-  areas,
-  selectedAreaId,
-  onSelectArea,
-  onAddLocalArea,
-  onAddSshArea,
-  onEditArea,
-  onDeleteArea
-}: {
-  areas: AreaSummary[];
-  selectedAreaId: string | null;
-  onSelectArea(areaId: string): void;
-  onAddLocalArea(): void;
-  onAddSshArea(): void;
-  onEditArea(area: AreaSummary): void;
-  onDeleteArea(area: AreaSummary): void;
-}): JSX.Element {
-  const [open, setOpen] = useState(false);
-  const [actionAreaId, setActionAreaId] = useState<string | null>(null);
-  const selectedArea =
-    areas.find((area) => area.id === selectedAreaId) ??
-    areas.find((area) => area.selected) ??
-    areas.find((area) => area.kind === "github") ??
-    null;
-  const label = selectedArea?.label ?? "GitHub";
-  const mark = selectedArea?.kind === "local" ? "L" : selectedArea?.kind === "ssh" ? "S" : "GH";
-
-  return (
-    <div
-      className="area-topbar-selector"
-      onKeyDown={(event) => {
-        if (event.key === "Escape") {
-          setOpen(false);
-        }
-      }}
-    >
-      <button
-        className="titlebar-provider-button area-topbar-button"
-        type="button"
-        aria-label="Select Area"
-        aria-expanded={open}
-        aria-haspopup="menu"
-        onClick={() => setOpen((current) => !current)}
-      >
-        <span className="brand-mark">{mark}</span>
-        <span>{label}</span>
-        <ChevronDown size={14} />
-      </button>
-      {open && (
-        <div className="area-topbar-menu" role="menu">
-          {areas.map((area) => {
-            const actionsOpen = actionAreaId === area.id;
-            return (
-              <div
-                className={`area-menu-row ${selectedArea?.id === area.id ? "selected" : ""}`}
-                key={area.id}
-                role="none"
-              >
-                <button
-                  className="area-menu-item"
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    onSelectArea(area.id);
-                    setOpen(false);
-                    setActionAreaId(null);
-                  }}
-                >
-                  <span className="repo-avatar">
-                    {area.kind === "github" ? "G" : area.kind === "ssh" ? "S" : "L"}
-                  </span>
-                  <span className="repo-copy">
-                    <span className="repo-name">{area.label}</span>
-                    <span className="repo-meta">
-                      {isGatewayAreaKind(area.kind) ? `${area.repositoryCount} repositories` : area.subtitle}
-                    </span>
-                  </span>
-                </button>
-                <button
-                  className="area-menu-more"
-                  type="button"
-                  aria-label={`Area actions for ${area.label}`}
-                  aria-expanded={actionsOpen}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setActionAreaId(actionsOpen ? null : area.id);
-                  }}
-                >
-                  <MoreHorizontal size={15} />
-                </button>
-                {actionsOpen && (
-                  <div className="area-actions-menu" role="menu" onClick={(event) => event.stopPropagation()}>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        onEditArea(area);
-                        setActionAreaId(null);
-                        setOpen(false);
-                      }}
-                    >
-                      <Pencil size={14} />
-                      <span>Edit Area</span>
-                    </button>
-                    {area.kind === "github" ? (
-                      <button
-                        className="area-action-delete"
-                        type="button"
-                        role="menuitem"
-                        aria-disabled="true"
-                        title="Default GitHub Area cannot be deleted"
-                      >
-                        <Trash2 size={14} />
-                        <span>Delete Area</span>
-                      </button>
-                    ) : (
-                      <AreaArmedDeleteAction
-                        area={area}
-                        onDelete={() => {
-                          onDeleteArea(area);
-                          setActionAreaId(null);
-                          setOpen(false);
-                        }}
-                      />
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          <button
-            className="area-menu-add"
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              onAddLocalArea();
-              setOpen(false);
-            }}
-          >
-            <Plus size={15} />
-            <span>Add local folder Area</span>
-          </button>
-          <button
-            className="area-menu-add"
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              onAddSshArea();
-              setOpen(false);
-            }}
-          >
-            <Plus size={15} />
-            <span>Add SSH Area</span>
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function AreaArmedDeleteAction({ area, onDelete }: { area: AreaSummary; onDelete(): void }): JSX.Element {
-  const [armed, setArmed] = useState(false);
-  const armTimer = useRef<number | null>(null);
-
-  function clearTimer(): void {
-    if (armTimer.current) {
-      window.clearTimeout(armTimer.current);
-      armTimer.current = null;
-    }
-  }
-
-  function beginArming(): void {
-    if (armed || armTimer.current) {
-      return;
-    }
-    setArmed(false);
-    armTimer.current = window.setTimeout(() => {
-      setArmed(true);
-      armTimer.current = null;
-    }, 3_000);
-  }
-
-  function cancelArming(): void {
-    clearTimer();
-    setArmed(false);
-  }
-
-  useEffect(() => {
-    return () => {
-      if (armTimer.current) {
-        window.clearTimeout(armTimer.current);
-      }
-    };
-  }, []);
-
-  return (
-    <button
-      className={`area-action-delete ${armed ? "armed" : ""}`}
-      type="button"
-      role="menuitem"
-      aria-disabled={!armed}
-      title={armed ? `Delete ${area.label}` : "Hover for 3 seconds to enable delete"}
-      onMouseEnter={beginArming}
-      onMouseLeave={cancelArming}
-      onFocus={beginArming}
-      onBlur={cancelArming}
-      onClick={(event) => {
-        if (!armed) {
-          event.preventDefault();
-          return;
-        }
-        onDelete();
-      }}
-    >
-      <Trash2 size={14} />
-      <span>Delete Area</span>
-    </button>
   );
 }
 
@@ -12008,15 +11599,6 @@ function collaboratorRoleLabel(collaborator: RepositoryCollaboratorSummary): str
     return "read";
   }
   return "access";
-}
-
-function Metric({ label, value }: { label: string; value: number }): JSX.Element {
-  return (
-    <div className="metric-tile">
-      <strong>{formatCompactNumber(value)}</strong>
-      <span>{label}</span>
-    </div>
-  );
 }
 
 function notificationReasonLabel(reason: string): string {

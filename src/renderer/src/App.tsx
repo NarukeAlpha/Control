@@ -196,10 +196,8 @@ import {
   projectRecentInput,
   pullRequestRecentInput,
   pullRequestReferenceRecentInput,
-  recentItemRecordInput,
   recentMetadataBooleanKeyword,
   recentMetadataKeyword,
-  recentMetadataNumber,
   recentMetadataString,
   releaseAssetRecentInput,
   releaseRecentInput,
@@ -214,6 +212,7 @@ import {
   type PullRequestLinkedIssue,
   type SecurityItemRecentInput
 } from "./components/recent/recentRecordInputs";
+import { openRecentItemInApp } from "./components/recent/openRecentItem";
 import { SettingsPanel } from "./components/settings/SettingsPanel";
 import { Sidebar } from "./components/sidebar/Sidebar";
 import { AppEventBridge } from "./components/shell/AppEventBridge";
@@ -247,7 +246,6 @@ import { useStoredRepositoryRefs } from "./hooks/useStoredRepositoryRefs";
 import { repositoryScopedQueryKeys } from "./queries/repositoryQueryKeys";
 import { useUiStore, type AppRoute, type LocalRepositoryTab, type RepositoryTab } from "./stores/uiStore";
 import { formatCompactNumber } from "./utils/format";
-import { repoTabs } from "./components/repository/repositoryTabs";
 
 const emptyRepoEntries: RepoEntry[] = [];
 const defaultFileBlameRangeLimit = 20;
@@ -2014,286 +2012,19 @@ export function App(): JSX.Element {
   }
 
   function openRecentItem(item: LocalRecentItem): void {
-    if (item.kind === "organization") {
-      const organizationLogin = recentMetadataString(item, "login") ?? item.itemKey;
-      if (organizationLogin) {
-        setSelectedOrganizationLogin(organizationLogin);
-        setSelectedOrganizationTeamSlug(null);
-        setSelectedOrganizationMemberLogin(null);
-        setSelectedOrganizationProjectId(null);
-        goToOrganizations();
-        recordRecent(recentItemRecordInput(item));
-        return;
-      }
-    }
-
-    if (item.kind === "team") {
-      const [itemKeyOrganizationLogin, itemKeyTeamSlug] = item.itemKey.split("/");
-      const organizationLogin = recentMetadataString(item, "organizationLogin") ?? itemKeyOrganizationLogin;
-      const teamSlug = recentMetadataString(item, "slug") ?? itemKeyTeamSlug;
-      if (organizationLogin && teamSlug) {
-        setSelectedOrganizationLogin(organizationLogin);
-        setSelectedOrganizationTeamSlug(teamSlug);
-        setSelectedOrganizationMemberLogin(null);
-        setSelectedOrganizationProjectId(null);
-        goToOrganizations();
-        recordRecent(recentItemRecordInput(item));
-        return;
-      }
-    }
-
-    if (item.kind === "repository" && item.provider === "local" && item.areaId && item.repositoryId) {
-      goToLocalRepository(item.areaId, item.repositoryId, "overview", item.workspaceId ?? null);
-      recordRecent(recentItemRecordInput(item));
-      return;
-    }
-
-    if (item.kind === "repository" && item.repositoryNameWithOwner) {
-      const tab = recentMetadataString(item, "tab");
-      const repositoryTab = repoTabs.some((repositoryTab) => repositoryTab.key === tab)
-        ? (tab as RepositoryTab)
-        : undefined;
-      const ref = recentMetadataString(item, "ref");
-      if ((repositoryTab ?? "code") === "code" && ref) {
-        openCodeBrowserInApp(item.repositoryNameWithOwner, "", "dir", ref);
-        recordRecent(recentItemRecordInput(item));
-        return;
-      }
-      navigate({
-        kind: "repository",
-        nameWithOwner: item.repositoryNameWithOwner,
-        tab: repositoryTab ?? "code"
-      });
-      recordRecent(recentItemRecordInput(item));
-      return;
-    }
-
-    if (item.kind === "contributor" && item.repositoryNameWithOwner) {
-      const contributorLogin = recentMetadataString(item, "login");
-      if (contributorLogin) {
-        navigate({
-          kind: "repository",
-          nameWithOwner: item.repositoryNameWithOwner,
-          tab: "contributors",
-          contributorLogin
-        });
-        recordRecent(recentItemRecordInput(item));
-        return;
-      }
-    }
-
-    if (item.kind === "file" && item.provider === "local" && item.areaId && item.repositoryId) {
-      const path = recentMetadataString(item, "path");
-      goToLocalRepository(item.areaId, item.repositoryId, "code", item.workspaceId ?? null, path ?? ".");
-      recordRecent(recentItemRecordInput(item));
-      return;
-    }
-
-    if (item.kind === "file" && item.repositoryNameWithOwner) {
-      const path = recentMetadataString(item, "path");
-      if (path) {
-        openCodeBrowserInApp(
-          item.repositoryNameWithOwner,
-          path,
-          "file",
-          recentMetadataString(item, "ref"),
-          recentMetadataNumber(item, "line")
-        );
-        return;
-      }
-    }
-
-    if (item.kind === "commit" && item.repositoryNameWithOwner) {
-      const sha = recentMetadataString(item, "sha") ?? item.itemKey.split(":commit:")[1]?.split(":")[0];
-      if (sha) {
-        const path = recentMetadataString(item, "path") ?? "";
-        const entryType = recentMetadataString(item, "entryType") === "file" ? "file" : "dir";
-        openCodeBrowser(
-          item.repositoryNameWithOwner,
-          path,
-          entryType,
-          sha,
-          recentMetadataNumber(item, "line")
-        );
-        recordRecent(recentItemRecordInput(item));
-        return;
-      }
-    }
-
-    if (item.kind === "issue" && item.repositoryNameWithOwner) {
-      const issueNumber = recentMetadataNumber(item, "number");
-      if (issueNumber !== null) {
-        navigate({
-          kind: "repository",
-          nameWithOwner: item.repositoryNameWithOwner,
-          tab: "issues",
-          issueNumber
-        });
-        recordRecent(recentItemRecordInput(item));
-        return;
-      }
-    }
-
-    if (item.kind === "pullRequest" && item.repositoryNameWithOwner) {
-      const pullNumber = recentMetadataNumber(item, "number");
-      if (pullNumber !== null) {
-        navigate({
-          kind: "repository",
-          nameWithOwner: item.repositoryNameWithOwner,
-          tab: "pulls",
-          pullNumber
-        });
-        recordRecent(recentItemRecordInput(item));
-        return;
-      }
-    }
-
-    if (item.kind === "discussion" && item.repositoryNameWithOwner) {
-      const discussionNumber = recentMetadataNumber(item, "number");
-      if (discussionNumber !== null) {
-        navigate({
-          kind: "repository",
-          nameWithOwner: item.repositoryNameWithOwner,
-          tab: "discussions",
-          discussionNumber
-        });
-        recordRecent(recentItemRecordInput(item));
-        return;
-      }
-    }
-
-    if (item.kind === "release" && item.repositoryNameWithOwner) {
-      const releaseTagName = recentMetadataString(item, "tagName");
-      const releaseId = recentMetadataNumber(item, "releaseId");
-      if (releaseTagName || releaseId !== null) {
-        navigate({
-          kind: "repository",
-          nameWithOwner: item.repositoryNameWithOwner,
-          tab: "releases",
-          releaseId: releaseId ?? undefined,
-          releaseTagName: releaseTagName ?? undefined
-        });
-        recordRecent(recentItemRecordInput(item));
-        return;
-      }
-    }
-
-    if (item.kind === "releaseAsset" && item.repositoryNameWithOwner) {
-      const releaseTagName = recentMetadataString(item, "tagName");
-      const releaseId = recentMetadataNumber(item, "releaseId");
-      const releaseAssetId = recentMetadataNumber(item, "assetId");
-      if ((releaseTagName || releaseId !== null) && releaseAssetId !== null) {
-        navigate({
-          kind: "repository",
-          nameWithOwner: item.repositoryNameWithOwner,
-          tab: "releases",
-          releaseId: releaseId ?? undefined,
-          releaseTagName: releaseTagName ?? undefined,
-          releaseAssetId
-        });
-        recordRecent(recentItemRecordInput(item));
-        return;
-      }
-    }
-
-    if (item.kind === "project" && item.repositoryNameWithOwner) {
-      const projectId = recentMetadataString(item, "projectId");
-      if (projectId) {
-        navigate({
-          kind: "repository",
-          nameWithOwner: item.repositoryNameWithOwner,
-          tab: "projects",
-          projectId
-        });
-        recordRecent(recentItemRecordInput(item));
-        return;
-      }
-    }
-
-    if (item.kind === "project") {
-      const organizationLogin = recentMetadataString(item, "organizationLogin");
-      const projectId = recentMetadataString(item, "projectId");
-      if (organizationLogin && projectId) {
-        setSelectedOrganizationLogin(organizationLogin);
-        setSelectedOrganizationTeamSlug(null);
-        setSelectedOrganizationMemberLogin(null);
-        setSelectedOrganizationProjectId(projectId);
-        goToOrganizations();
-        recordRecent(recentItemRecordInput(item));
-        return;
-      }
-    }
-
-    if (item.kind === "workflowRun" && item.repositoryNameWithOwner) {
-      const workflowRunId = recentMetadataNumber(item, "runId");
-      if (workflowRunId !== null) {
-        navigate({
-          kind: "repository",
-          nameWithOwner: item.repositoryNameWithOwner,
-          tab: "actions",
-          workflowRunId
-        });
-        recordRecent(recentItemRecordInput(item));
-        return;
-      }
-    }
-
-    if (item.kind === "workflowArtifact" && item.repositoryNameWithOwner) {
-      const workflowRunId = recentMetadataNumber(item, "runId");
-      const workflowArtifactId = recentMetadataNumber(item, "artifactId");
-      if (workflowRunId !== null && workflowArtifactId !== null) {
-        navigate({
-          kind: "repository",
-          nameWithOwner: item.repositoryNameWithOwner,
-          tab: "actions",
-          workflowRunId,
-          workflowArtifactId
-        });
-        recordRecent(recentItemRecordInput(item));
-        return;
-      }
-    }
-
-    if (item.kind === "securityItem" && item.repositoryNameWithOwner) {
-      const securityItemKind = recentMetadataString(item, "securityItemKind");
-      const securityItemId = recentMetadataString(item, "securityItemId");
-      if (
-        securityItemId &&
-        (securityItemKind === "dependabot" ||
-          securityItemKind === "codeScanning" ||
-          securityItemKind === "secretScanning" ||
-          securityItemKind === "ruleset" ||
-          securityItemKind === "advisory")
-      ) {
-        navigate({
-          kind: "repository",
-          nameWithOwner: item.repositoryNameWithOwner,
-          tab: "securityQuality",
-          securityItemKind,
-          securityItemId
-        });
-        recordRecent(recentItemRecordInput(item));
-        return;
-      }
-    }
-
-    if (item.kind === "wikiPage" && item.repositoryNameWithOwner) {
-      const wikiPagePath = recentMetadataString(item, "path");
-      if (wikiPagePath) {
-        navigate({
-          kind: "repository",
-          nameWithOwner: item.repositoryNameWithOwner,
-          tab: "wiki",
-          wikiPagePath
-        });
-        recordRecent(recentItemRecordInput(item));
-        return;
-      }
-    }
-
-    if (item.url) {
-      void api.openExternal(item.url);
-    }
+    openRecentItemInApp(item, {
+      navigate,
+      goToOrganizations,
+      goToLocalRepository,
+      openCodeBrowser,
+      openCodeBrowserInApp,
+      recordRecent,
+      setSelectedOrganizationLogin,
+      setSelectedOrganizationTeamSlug,
+      setSelectedOrganizationMemberLogin,
+      setSelectedOrganizationProjectId,
+      openExternal: (url) => void api.openExternal(url)
+    });
   }
 
   async function refreshRepositorySurface(): Promise<void> {

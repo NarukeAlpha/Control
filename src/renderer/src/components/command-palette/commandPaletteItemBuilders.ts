@@ -1,15 +1,22 @@
 import {
   BookOpen,
+  Bot,
   Building2,
   CircleDot,
   Code2,
   Download,
+  ExternalLink,
   File as FileIcon,
+  Gauge,
   GitBranch,
   GitPullRequest,
   Inbox,
   MessageSquare,
   Pin,
+  Plus,
+  RefreshCw,
+  Search,
+  Settings,
   ShieldCheck,
   SquareKanban,
   Tag,
@@ -49,6 +56,7 @@ import { issueStateLabel } from "../collection/workItemUi";
 import { notificationInAppTarget, notificationReasonLabel } from "../collection/notificationUi";
 import { repositoryNameWithOwnerFromGitHubUrl } from "../repository/githubUrlRoutes";
 import { formatCompactNumber } from "../../utils/format";
+import type { RepositoryTab } from "../../stores/uiStore";
 
 export function cachedRepositoryWikiPages(
   queryClient: QueryClient,
@@ -758,4 +766,229 @@ export function appendRepositoryContentCommandPaletteItems(
       run: () => input.onSelectContributor(input.effectiveRepository, contributor)
     });
   }
+}
+
+export function appendCurrentRepositoryCommandPaletteItems(
+  items: CommandPaletteItem[],
+  input: {
+    effectiveRepository: string;
+    githubReady: boolean;
+    currentRepositoryPinned: boolean;
+    repositoryCommandDisabledReason: string | null;
+    repositoryRefreshDisabledReason: string | null;
+    repositoryPinCommandDisabledReason: string | null;
+    onOpenRepository(nameWithOwner: string, tab?: RepositoryTab): void;
+    onToggleRepositoryPin(nameWithOwner: string): void;
+    onRefreshRepository(): void;
+    onOpenFileFinder(nameWithOwner: string): void;
+    onCreateIssue(nameWithOwner: string): void;
+    onCreatePullRequest(nameWithOwner: string): void;
+    onCreateRelease(nameWithOwner: string): void;
+    onRunWorkflow(nameWithOwner: string): void;
+    onOpenExternalGitHub(nameWithOwner: string): void;
+  }
+): void {
+  items.push(
+    {
+      id: "command-current-repository",
+      title: `Open ${input.effectiveRepository}`,
+      subtitle: "Jump to the current repository",
+      group: "Commands",
+      icon: Code2,
+      keywords: ["current", "repo"],
+      run: () => input.onOpenRepository(input.effectiveRepository)
+    },
+    {
+      id: "command-current-toggle-pin",
+      title: `${input.currentRepositoryPinned ? "Unpin" : "Pin"} ${input.effectiveRepository}`,
+      subtitle: `${input.currentRepositoryPinned ? "Remove from" : "Add to"} local pinned repositories`,
+      group: "Commands",
+      icon: Pin,
+      keywords: ["pin", "unpin", "pinned", "favorite", "local", input.effectiveRepository],
+      disabledReason: input.repositoryPinCommandDisabledReason,
+      run: () => input.onToggleRepositoryPin(input.effectiveRepository)
+    },
+    {
+      id: "command-current-refresh",
+      title: `Refresh ${input.effectiveRepository}`,
+      subtitle: input.githubReady
+        ? "Refresh the current repository surface"
+        : "Reload cached repository data",
+      group: "Commands",
+      icon: RefreshCw,
+      keywords: ["refresh", "reload", "stale", "sync", input.effectiveRepository],
+      disabledReason: input.repositoryRefreshDisabledReason,
+      run: () => input.onRefreshRepository()
+    },
+    {
+      id: "command-current-issues",
+      title: `Issues in ${input.effectiveRepository}`,
+      subtitle: "Open the repository issues tab",
+      group: "Commands",
+      icon: CircleDot,
+      keywords: ["issues", input.effectiveRepository],
+      run: () => input.onOpenRepository(input.effectiveRepository, "issues")
+    },
+    {
+      id: "command-current-go-to-file",
+      title: `Go to file in ${input.effectiveRepository}`,
+      subtitle: "Open the in-app repository file finder",
+      group: "Commands",
+      icon: Search,
+      keywords: ["file finder", "go to file", "jump file", "tree", input.effectiveRepository],
+      run: () => input.onOpenFileFinder(input.effectiveRepository)
+    },
+    {
+      id: "command-current-create-issue",
+      title: `Create issue in ${input.effectiveRepository}`,
+      subtitle: "Open the in-app issue composer",
+      group: "Commands",
+      icon: Plus,
+      keywords: ["new issue", "create issue", "issue composer", input.effectiveRepository],
+      disabledReason: input.repositoryCommandDisabledReason,
+      run: () => input.onCreateIssue(input.effectiveRepository)
+    },
+    {
+      id: "command-current-pulls",
+      title: `Pull requests in ${input.effectiveRepository}`,
+      subtitle: "Open the repository pull requests tab",
+      group: "Commands",
+      icon: GitPullRequest,
+      keywords: ["pulls", "prs", input.effectiveRepository],
+      run: () => input.onOpenRepository(input.effectiveRepository, "pulls")
+    },
+    {
+      id: "command-current-create-pull",
+      title: `Create pull request in ${input.effectiveRepository}`,
+      subtitle: "Open the in-app pull request composer",
+      group: "Commands",
+      icon: GitPullRequest,
+      keywords: [
+        "new pull request",
+        "create pr",
+        "create pull",
+        "pull request composer",
+        input.effectiveRepository
+      ],
+      disabledReason: input.repositoryCommandDisabledReason,
+      run: () => input.onCreatePullRequest(input.effectiveRepository)
+    },
+    {
+      id: "command-current-discussions",
+      title: `Discussions in ${input.effectiveRepository}`,
+      subtitle: "Open the repository discussions tab",
+      group: "Commands",
+      icon: MessageSquare,
+      keywords: ["discussions", "community", input.effectiveRepository],
+      run: () => input.onOpenRepository(input.effectiveRepository, "discussions")
+    },
+    {
+      id: "command-current-contributors",
+      title: `Contributors in ${input.effectiveRepository}`,
+      subtitle: "Open the repository contributors tab",
+      group: "Commands",
+      icon: Users,
+      keywords: ["contributors", "people", "authors", input.effectiveRepository],
+      run: () => input.onOpenRepository(input.effectiveRepository, "contributors")
+    },
+    {
+      id: "command-current-agents",
+      title: `Agents in ${input.effectiveRepository}`,
+      subtitle: "Open in-app agent triage",
+      group: "Commands",
+      icon: Bot,
+      keywords: ["agents", "agent issues", "automation", "triage", input.effectiveRepository],
+      run: () => input.onOpenRepository(input.effectiveRepository, "agents")
+    },
+    {
+      id: "command-current-projects",
+      title: `Projects in ${input.effectiveRepository}`,
+      subtitle: "Open the repository projects tab",
+      group: "Commands",
+      icon: SquareKanban,
+      keywords: ["projects", "planning", input.effectiveRepository],
+      run: () => input.onOpenRepository(input.effectiveRepository, "projects")
+    },
+    {
+      id: "command-current-releases",
+      title: `Releases in ${input.effectiveRepository}`,
+      subtitle: "Open the repository releases tab",
+      group: "Commands",
+      icon: Tag,
+      keywords: ["releases", "tags", input.effectiveRepository],
+      run: () => input.onOpenRepository(input.effectiveRepository, "releases")
+    },
+    {
+      id: "command-current-create-release",
+      title: `Create release in ${input.effectiveRepository}`,
+      subtitle: "Open the in-app release composer",
+      group: "Commands",
+      icon: Tag,
+      keywords: ["new release", "create release", "release composer", "tag", input.effectiveRepository],
+      disabledReason: input.repositoryCommandDisabledReason,
+      run: () => input.onCreateRelease(input.effectiveRepository)
+    },
+    {
+      id: "command-current-actions",
+      title: `Actions in ${input.effectiveRepository}`,
+      subtitle: "Open repository workflow runs",
+      group: "Commands",
+      icon: Workflow,
+      keywords: ["actions", "workflow runs", "ci", input.effectiveRepository],
+      run: () => input.onOpenRepository(input.effectiveRepository, "actions")
+    },
+    {
+      id: "command-current-run-workflow",
+      title: `Run workflow in ${input.effectiveRepository}`,
+      subtitle: "Open the in-app workflow dispatch form",
+      group: "Commands",
+      icon: Workflow,
+      keywords: ["actions", "workflow", "dispatch", "run workflow", input.effectiveRepository],
+      disabledReason: input.repositoryCommandDisabledReason,
+      run: () => input.onRunWorkflow(input.effectiveRepository)
+    },
+    {
+      id: "command-current-wiki",
+      title: `Wiki in ${input.effectiveRepository}`,
+      subtitle: "Open repository wiki availability",
+      group: "Commands",
+      icon: BookOpen,
+      keywords: ["wiki", "docs", input.effectiveRepository],
+      run: () => input.onOpenRepository(input.effectiveRepository, "wiki")
+    },
+    {
+      id: "command-current-security-quality",
+      title: `Security and Quality in ${input.effectiveRepository}`,
+      subtitle: "Open alerts, scanning, and branch protection",
+      group: "Commands",
+      icon: Gauge,
+      keywords: [
+        "security",
+        "quality",
+        "security quality",
+        "alerts",
+        "branch protection",
+        input.effectiveRepository
+      ],
+      run: () => input.onOpenRepository(input.effectiveRepository, "securityQuality")
+    },
+    {
+      id: "command-current-settings",
+      title: `Repository settings in ${input.effectiveRepository}`,
+      subtitle: "Open in-app repository settings",
+      group: "Commands",
+      icon: Settings,
+      keywords: ["repository settings", "admin", "features", "permissions", input.effectiveRepository],
+      run: () => input.onOpenRepository(input.effectiveRepository, "settings")
+    },
+    {
+      id: "command-current-open-github",
+      title: `Open ${input.effectiveRepository} on GitHub`,
+      subtitle: "Use the external GitHub fallback",
+      group: "External",
+      icon: ExternalLink,
+      keywords: ["github.com", "external", "external fallback", "open in browser", input.effectiveRepository],
+      run: () => input.onOpenExternalGitHub(input.effectiveRepository)
+    }
+  );
 }

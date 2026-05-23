@@ -64,7 +64,7 @@ import type {
   WikiPageSummary
 } from "@shared/github";
 import type { AreaRepositorySummary, AreaSummary } from "@shared/areas";
-import type { LocalRecentItem, LocalRecentRecordInput } from "@shared/local";
+import type { LocalRecentItem } from "@shared/local";
 import { MarkdownUrlHandlerContext } from "./components/MarkdownBody";
 import { AreaDeleteDialog, AreaEditDialog, SshAreaDialog } from "./components/areas/AreaDialogs";
 import { LocalAreaHome } from "./components/areas/LocalAreaHome";
@@ -237,7 +237,8 @@ import { refreshAccountProfileData, useAccountProfile } from "./hooks/useAccount
 import { refreshAccountWorkData, useAccountWork } from "./hooks/useAccountWork";
 import { useControlApi } from "./hooks/useControlApi";
 import { refreshMailboxNotificationsData, useMailboxNotifications } from "./hooks/useMailboxNotifications";
-import { recentItemsQueryKey, refreshRecentItemsData, useRecentItems } from "./hooks/useRecentItems";
+import { refreshRecentItemsData, useRecentItems } from "./hooks/useRecentItems";
+import { useRecentRecorder } from "./hooks/useRecentRecorder";
 import { refreshRepositoryDirectoryData, useRepositoryDirectory } from "./hooks/useRepositoryDirectory";
 import { refreshRepositoryDetailData, useRepositoryDetail } from "./hooks/useRepositoryDetail";
 import { useRepositoryPins } from "./hooks/useRepositoryPins";
@@ -444,8 +445,8 @@ export function App(): JSX.Element {
     [repositoryItems]
   );
 
-  const activeRecentItemsQueryKey = recentItemsQueryKey(recentItemLimit);
   const recentItems = useRecentItems(recentItemLimit, { enabled: appState.isSuccess });
+  const { recordRecent } = useRecentRecorder(recentItemLimit);
 
   const accountProfile = useAccountProfile({ enabled: appState.isSuccess, githubReady });
   const accountProfileData = accountProfile.data?.profile ?? null;
@@ -1246,47 +1247,6 @@ export function App(): JSX.Element {
       ]);
     }
   });
-  const recentMutation = useMutation({
-    mutationFn: api.recordRecentItem,
-    onMutate: async (input) => {
-      await queryClient.cancelQueries({ queryKey: ["local-recents"] });
-      const previousItems = queryClient.getQueryData<LocalRecentItem[]>(activeRecentItemsQueryKey) ?? [];
-      const optimisticItem: LocalRecentItem = {
-        kind: input.kind,
-        provider: input.provider ?? "github",
-        itemKey: input.itemKey,
-        title: input.title,
-        subtitle: input.subtitle ?? null,
-        repositoryNameWithOwner: input.repositoryNameWithOwner ?? null,
-        areaId: input.areaId ?? null,
-        repositoryId: input.repositoryId ?? null,
-        workspaceId: input.workspaceId ?? null,
-        url: input.url ?? null,
-        metadata: input.metadata ?? {},
-        updatedAt: new Date().toISOString()
-      };
-      queryClient.setQueryData(
-        activeRecentItemsQueryKey,
-        [
-          optimisticItem,
-          ...previousItems.filter((item) => item.kind !== input.kind || item.itemKey !== input.itemKey)
-        ].slice(0, recentItemLimit)
-      );
-      return { previousItems };
-    },
-    onError: (_error, _input, context) => {
-      if (context?.previousItems) {
-        queryClient.setQueryData(activeRecentItemsQueryKey, context.previousItems);
-      }
-    },
-    onSuccess: (items) => {
-      queryClient.setQueryData(activeRecentItemsQueryKey, items.slice(0, recentItemLimit));
-    },
-    onSettled: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["local-recents"] });
-    }
-  });
-
   function repositoryForRecent(nameWithOwner: string): RepositorySummary | RepositoryDetail | undefined {
     const normalized = nameWithOwner.toLowerCase();
     if (repositoryDetail?.nameWithOwner.toLowerCase() === normalized) {
@@ -1294,10 +1254,6 @@ export function App(): JSX.Element {
     }
 
     return repositoriesByName.get(normalized);
-  }
-
-  function recordRecent(input: LocalRecentRecordInput): void {
-    recentMutation.mutate(input);
   }
 
   async function refreshHomeNow(): Promise<void> {

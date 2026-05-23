@@ -1,4 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, type QueryClient } from "@tanstack/react-query";
+
+import type { ControlApi } from "@shared/ipc";
 
 import { useControlApi } from "./useControlApi";
 
@@ -56,4 +58,48 @@ export function useAccountWork(
   });
 
   return { issues, pulls };
+}
+
+export async function refreshAccountWorkData(
+  queryClient: QueryClient,
+  {
+    api,
+    login,
+    limit,
+    githubReady
+  }: {
+    api: ControlApi;
+    login: string | null | undefined;
+    limit: number;
+    githubReady: boolean;
+  }
+): Promise<void> {
+  const cachedRead = !githubReady;
+
+  await Promise.all([
+    queryClient.fetchQuery({
+      queryKey: accountIssuesQueryKey(login, limit),
+      staleTime: 0,
+      queryFn: () =>
+        api.github.listAccountIssuesWithStatus({
+          ...(login ? { login } : {}),
+          state: "open",
+          limit,
+          cacheOnly: cachedRead,
+          forceRefresh: !cachedRead
+        })
+    }),
+    queryClient.fetchQuery({
+      queryKey: accountPullsQueryKey(login, limit),
+      staleTime: 0,
+      queryFn: () =>
+        api.github.listAccountPullRequestsWithStatus({
+          ...(login ? { login } : {}),
+          state: "open",
+          limit,
+          cacheOnly: cachedRead,
+          forceRefresh: !cachedRead
+        })
+    })
+  ]);
 }

@@ -1,6 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 
 import type { NotificationListResult } from "@shared/github";
+import type { ControlApi } from "@shared/ipc";
 import {
   notificationQueryKey,
   type MailboxNotificationFilter
@@ -157,4 +158,36 @@ export function useMailboxNotifications({
     markVisibleNotificationsRead,
     unsubscribeNotification
   };
+}
+
+export async function refreshMailboxNotificationsData(
+  queryClient: QueryClient,
+  {
+    api,
+    filter,
+    limit,
+    githubReady
+  }: {
+    api: ControlApi;
+    filter: MailboxNotificationFilter;
+    limit: number;
+    githubReady: boolean;
+  }
+): Promise<void> {
+  const cachedRead = !githubReady;
+  const notificationInput = {
+    all: filter === "all",
+    limit,
+    cacheOnly: cachedRead,
+    forceRefresh: !cachedRead
+  };
+
+  await queryClient.fetchQuery({
+    queryKey: notificationQueryKey(filter, limit),
+    staleTime: 0,
+    queryFn: () =>
+      api.github.listNotificationsWithStatus(
+        filter === "participating" ? { ...notificationInput, participating: true } : notificationInput
+      )
+  });
 }

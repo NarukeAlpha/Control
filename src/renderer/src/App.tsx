@@ -93,7 +93,6 @@ import { encodeRepositoryPath, normalizeCodeLineNumber } from "./components/code
 import { issueStateLabel } from "./components/collection/workItemUi";
 import {
   notificationInAppTarget,
-  notificationQueryKey,
   notificationReasonLabel,
   notificationTargetUrl,
   parseWorkflowRunIdFromUrl,
@@ -179,10 +178,11 @@ import {
   repositoryShortcutsFromPins
 } from "./components/repository/repositorySearch";
 
-import { useAccountWork } from "./hooks/useAccountWork";
+import { refreshAccountProfileData, useAccountProfile } from "./hooks/useAccountProfile";
+import { refreshAccountWorkData, useAccountWork } from "./hooks/useAccountWork";
 import { useControlApi } from "./hooks/useControlApi";
-import { useMailboxNotifications } from "./hooks/useMailboxNotifications";
-import { useRepositoryDirectory } from "./hooks/useRepositoryDirectory";
+import { refreshMailboxNotificationsData, useMailboxNotifications } from "./hooks/useMailboxNotifications";
+import { refreshRepositoryDirectoryData, useRepositoryDirectory } from "./hooks/useRepositoryDirectory";
 import { useRepositoryRefs } from "./hooks/useRepositoryRefs";
 import { repositoryScopedQueryKeys } from "./queries/repositoryQueryKeys";
 import { useUiStore, type AppRoute, type LocalRepositoryTab, type RepositoryTab } from "./stores/uiStore";
@@ -1444,11 +1444,7 @@ export function App(): JSX.Element {
     staleTime: 30_000
   });
 
-  const accountProfile = useQuery({
-    queryKey: ["account-profile"],
-    queryFn: () => api.github.getAccountProfileWithStatus({ cacheOnly: !githubReady }),
-    enabled: appState.isSuccess
-  });
+  const accountProfile = useAccountProfile({ enabled: appState.isSuccess, githubReady });
   const accountProfileData = accountProfile.data?.profile ?? null;
   const accountProfileAvailabilityMessage = readAvailabilityMessage(
     "Account profile",
@@ -2422,52 +2418,15 @@ export function App(): JSX.Element {
       return;
     }
 
-    const cachedRead = !githubReady;
-
     try {
       await Promise.all([
-        queryClient.fetchQuery({
-          queryKey: ["account-profile"],
-          staleTime: 0,
-          queryFn: () =>
-            api.github.getAccountProfileWithStatus({
-              cacheOnly: cachedRead,
-              forceRefresh: !cachedRead
-            })
-        }),
-        queryClient.fetchQuery({
-          queryKey: ["repositories", repositoryListLimit],
-          staleTime: 0,
-          queryFn: () =>
-            api.github.listRepositoriesWithStatus({
-              limit: repositoryListLimit,
-              cacheOnly: cachedRead,
-              forceRefresh: !cachedRead
-            })
-        }),
-        queryClient.fetchQuery({
-          queryKey: ["account-issues", authenticatedViewerLogin ?? "viewer", defaultMailboxListLimit],
-          staleTime: 0,
-          queryFn: () =>
-            api.github.listAccountIssuesWithStatus({
-              ...(authenticatedViewerLogin ? { login: authenticatedViewerLogin } : {}),
-              state: "open",
-              limit: defaultMailboxListLimit,
-              cacheOnly: cachedRead,
-              forceRefresh: !cachedRead
-            })
-        }),
-        queryClient.fetchQuery({
-          queryKey: ["account-pulls", authenticatedViewerLogin ?? "viewer", defaultMailboxListLimit],
-          staleTime: 0,
-          queryFn: () =>
-            api.github.listAccountPullRequestsWithStatus({
-              ...(authenticatedViewerLogin ? { login: authenticatedViewerLogin } : {}),
-              state: "open",
-              limit: defaultMailboxListLimit,
-              cacheOnly: cachedRead,
-              forceRefresh: !cachedRead
-            })
+        refreshAccountProfileData(queryClient, { api, githubReady }),
+        refreshRepositoryDirectoryData(queryClient, { api, limit: repositoryListLimit, githubReady }),
+        refreshAccountWorkData(queryClient, {
+          api,
+          login: authenticatedViewerLogin,
+          limit: defaultMailboxListLimit,
+          githubReady
         }),
         queryClient.fetchQuery({
           queryKey: recentItemsQueryKey,
@@ -2482,16 +2441,7 @@ export function App(): JSX.Element {
 
   async function refreshRepositoriesNow(): Promise<void> {
     try {
-      await queryClient.fetchQuery({
-        queryKey: ["repositories", repositoryListLimit],
-        staleTime: 0,
-        queryFn: () =>
-          api.github.listRepositoriesWithStatus({
-            limit: repositoryListLimit,
-            cacheOnly: !githubReady,
-            forceRefresh: githubReady
-          })
-      });
+      await refreshRepositoryDirectoryData(queryClient, { api, limit: repositoryListLimit, githubReady });
     } catch {
       // React Query owns the visible error state for this refresh.
     }
@@ -2823,49 +2773,19 @@ export function App(): JSX.Element {
       return;
     }
 
-    const cachedRead = !githubReady;
-    const notificationInput = {
-      all: notificationFilter === "all",
-      limit: notificationLimit,
-      cacheOnly: cachedRead,
-      forceRefresh: !cachedRead
-    };
-
     try {
       await Promise.all([
-        queryClient.fetchQuery({
-          queryKey: ["account-issues", authenticatedViewerLogin ?? "viewer", mailboxWorkLimit],
-          staleTime: 0,
-          queryFn: () =>
-            api.github.listAccountIssuesWithStatus({
-              ...(authenticatedViewerLogin ? { login: authenticatedViewerLogin } : {}),
-              state: "open",
-              limit: mailboxWorkLimit,
-              cacheOnly: cachedRead,
-              forceRefresh: !cachedRead
-            })
+        refreshAccountWorkData(queryClient, {
+          api,
+          login: authenticatedViewerLogin,
+          limit: mailboxWorkLimit,
+          githubReady
         }),
-        queryClient.fetchQuery({
-          queryKey: ["account-pulls", authenticatedViewerLogin ?? "viewer", mailboxWorkLimit],
-          staleTime: 0,
-          queryFn: () =>
-            api.github.listAccountPullRequestsWithStatus({
-              ...(authenticatedViewerLogin ? { login: authenticatedViewerLogin } : {}),
-              state: "open",
-              limit: mailboxWorkLimit,
-              cacheOnly: cachedRead,
-              forceRefresh: !cachedRead
-            })
-        }),
-        queryClient.fetchQuery({
-          queryKey: notificationQueryKey(notificationFilter, notificationLimit),
-          staleTime: 0,
-          queryFn: () =>
-            api.github.listNotificationsWithStatus(
-              notificationFilter === "participating"
-                ? { ...notificationInput, participating: true }
-                : notificationInput
-            )
+        refreshMailboxNotificationsData(queryClient, {
+          api,
+          filter: notificationFilter,
+          limit: notificationLimit,
+          githubReady
         })
       ]);
     } catch {

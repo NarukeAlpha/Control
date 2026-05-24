@@ -17,6 +17,7 @@ import {
   prefetchContributorsTabData,
   type ContributorsTabProps
 } from "./ContributorsTab";
+import { useContributorsTabStateStore } from "./contributorsTabState";
 
 const available = { status: "available", message: null } satisfies GitHubReadAvailability;
 
@@ -186,6 +187,19 @@ describe("ContributorsTab", () => {
 
     expect(screen.getByLabelText("Filter contributors")).toHaveValue("hubot");
     expect(screen.queryByTitle("View @octocat in Control")).not.toBeInTheDocument();
+  });
+
+  it("bounds retained tab state entries", () => {
+    const updateState = useContributorsTabStateStore.getState().updateState;
+
+    for (let index = 0; index < 30; index += 1) {
+      updateState(`NarukeAlpha/repo-${index}:default`, { filter: `repo-${index}` });
+    }
+
+    const records = useContributorsTabStateStore.getState().records;
+    expect(Object.keys(records)).toHaveLength(25);
+    expect(records["NarukeAlpha/repo-0:default"]).toBeUndefined();
+    expect(records["NarukeAlpha/repo-29:default"]?.filter).toBe("repo-29");
   });
 
   it("contains render failures inside the contributors tab boundary", () => {

@@ -1,5 +1,5 @@
 import { ExternalLink, Search } from "lucide-react";
-import { Component, useMemo, useState, type ErrorInfo, type JSX, type ReactNode } from "react";
+import { Component, useMemo, type ErrorInfo, type JSX, type ReactNode } from "react";
 import { useQuery, type QueryClient } from "@tanstack/react-query";
 
 import type {
@@ -12,6 +12,11 @@ import type {
 import { useControlApi } from "../../../hooks/useControlApi";
 import type { RepositoryTab } from "../../../stores/uiStore";
 import { formatCompactNumber } from "../../../utils/format";
+import {
+  clearContributorsTabStateForTests,
+  useContributorsTabLocalState,
+  useContributorsTabStateStore
+} from "./contributorsTabState";
 import {
   defaultContributorProfileRepositoryLimit,
   fieldsMatchSearchParts,
@@ -60,17 +65,7 @@ export interface ContributorsTabRefreshInput {
   githubReady: boolean;
 }
 
-interface ContributorsTabLocalState {
-  filter: string;
-  selectedContributorLogin: string | null;
-  profileRepositoryLimits: Record<string, number>;
-}
-
-const contributorsTabState = new Map<string, ContributorsTabLocalState>();
-
-export function clearContributorsTabStateForTests(): void {
-  contributorsTabState.clear();
-}
+export { clearContributorsTabStateForTests };
 
 export function contributorsTabQueryKey(
   owner: string,
@@ -104,23 +99,6 @@ function contributorsTabStateKey(
   focusedContributorLogin: string | null
 ): string {
   return `${repository.nameWithOwner}:${focusedContributorLogin ?? "default"}`;
-}
-
-function readContributorsTabState(key: string): ContributorsTabLocalState {
-  return (
-    contributorsTabState.get(key) ?? {
-      filter: "",
-      selectedContributorLogin: null,
-      profileRepositoryLimits: {}
-    }
-  );
-}
-
-function updateContributorsTabState(key: string, patch: Partial<ContributorsTabLocalState>): void {
-  contributorsTabState.set(key, {
-    ...readContributorsTabState(key),
-    ...patch
-  });
 }
 
 export async function prefetchContributorsTabData(
@@ -243,28 +221,20 @@ function ContributorsTabContent({
   const loading = contributorsQuery.isLoading || contributorsQuery.isFetching;
   const error = contributorsQuery.error;
   const stateKey = contributorsTabStateKey(repository, focusedContributorLogin);
-  const initialState = readContributorsTabState(stateKey);
-  const [filter, setFilterValue] = useState(initialState.filter);
-  const [selectedContributorLogin, setSelectedContributorLoginValue] = useState<string | null>(
-    initialState.selectedContributorLogin
-  );
-  const [profileRepositoryLimits, setProfileRepositoryLimitsValue] = useState<Record<string, number>>(
-    initialState.profileRepositoryLimits
-  );
+  const { filter, selectedContributorLogin, profileRepositoryLimits } =
+    useContributorsTabLocalState(stateKey);
+  const updateTabState = useContributorsTabStateStore((state) => state.updateState);
 
   function setFilter(filterValue: string): void {
-    setFilterValue(filterValue);
-    updateContributorsTabState(stateKey, { filter: filterValue });
+    updateTabState(stateKey, { filter: filterValue });
   }
 
   function setSelectedContributorLogin(login: string | null): void {
-    setSelectedContributorLoginValue(login);
-    updateContributorsTabState(stateKey, { selectedContributorLogin: login });
+    updateTabState(stateKey, { selectedContributorLogin: login });
   }
 
   function setProfileRepositoryLimits(limits: Record<string, number>): void {
-    setProfileRepositoryLimitsValue(limits);
-    updateContributorsTabState(stateKey, { profileRepositoryLimits: limits });
+    updateTabState(stateKey, { profileRepositoryLimits: limits });
   }
   const filterParts = useMemo(() => normalizedSearchParts(filter), [filter]);
   const filteredContributors = useMemo(

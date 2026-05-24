@@ -1,14 +1,11 @@
 import { ChevronDown, Download, ExternalLink, Search, Workflow } from "lucide-react";
 import { useState, type JSX } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, type QueryClient } from "@tanstack/react-query";
 
 import type {
-  BranchSummary,
   GitHubAction,
   GitHubMutationFields,
-  GitHubReadAvailability,
   RepositoryDetail,
-  TagSummary,
   WorkflowDefinitionListResult,
   WorkflowDefinitionSummary,
   WorkflowDispatchInputSummary,
@@ -17,9 +14,11 @@ import type {
   WorkflowRunCheckSuiteSummary,
   WorkflowRunDetail,
   WorkflowRunDetailResult,
+  WorkflowRunListResult,
   WorkflowRunJobSummary,
   WorkflowRunSummary
 } from "@shared/github";
+import type { ControlApi } from "@shared/ipc";
 
 import {
   fieldsMatchSearchParts,
@@ -30,10 +29,154 @@ import {
 } from "@renderer/components/repository/repositoryUi";
 import { isWorkflowRunAttention } from "@renderer/components/repository/workflows/workflowRunState";
 import { useControlApi } from "@renderer/hooks/useControlApi";
+import { refreshRepositoryRefsData, useRepositoryRefs } from "@renderer/hooks/useRepositoryRefs";
 
 import { formatCompactNumber, formatRelativeDate } from "@renderer/utils/format";
 const maxActionsLimit = 100;
 const maxWorkflowDefinitionLimit = 100;
+
+export interface ActionsTabQueryInput {
+  owner: string;
+  repo: string;
+  limit: number;
+  enabled: boolean;
+  githubReady: boolean;
+}
+
+export interface ActionsTabPrefetchInput {
+  api: ControlApi;
+  owner: string;
+  repo: string;
+  limit: number;
+  githubReady: boolean;
+}
+
+export interface ActionsTabRefreshInput extends ActionsTabPrefetchInput {
+  selectedRef: string | null;
+  defaultBranch?: string | null;
+  refListLimit: number;
+  workflowDefinitionLimit: number;
+  focusedWorkflowRunId: number | null;
+}
+
+export function actionsTabQueryKey(
+  owner: string,
+  repo: string,
+  limit: number
+): readonly ["actions", string, string, number] {
+  return ["actions", owner, repo, limit] as const;
+}
+
+export function workflowDefinitionsQueryKey(
+  owner: string,
+  repo: string,
+  ref: string | null | undefined,
+  limit: number
+): readonly ["workflows", string, string, string, number] {
+  return ["workflows", owner, repo, ref || "default", limit] as const;
+}
+
+export function workflowRunDetailQueryKey(
+  owner: string,
+  repo: string,
+  runId: number | null
+): readonly ["action-detail", string, string, number | "none"] {
+  return ["action-detail", owner, repo, runId ?? "none"] as const;
+}
+
+export function useActionsTabQueries({ owner, repo, limit, enabled, githubReady }: ActionsTabQueryInput) {
+  const api = useControlApi();
+
+  const actions = useQuery<WorkflowRunListResult>({
+    queryKey: actionsTabQueryKey(owner, repo, limit),
+    queryFn: () => api.github.listActionsWithStatus({ owner, repo, limit, cacheOnly: !githubReady }),
+    enabled,
+    staleTime: 60_000
+  });
+
+  return { actions };
+}
+
+export async function prefetchActionsTabData(
+  queryClient: QueryClient,
+  { api, owner, repo, limit, githubReady }: ActionsTabPrefetchInput
+): Promise<void> {
+  await queryClient.prefetchQuery({
+    queryKey: actionsTabQueryKey(owner, repo, limit),
+    queryFn: () => api.github.listActionsWithStatus({ owner, repo, limit, cacheOnly: !githubReady }),
+    staleTime: 60_000
+  });
+}
+
+export async function refreshActionsTabData(
+  queryClient: QueryClient,
+  {
+    api,
+    owner,
+    repo,
+    limit,
+    selectedRef,
+    defaultBranch,
+    refListLimit,
+    workflowDefinitionLimit,
+    focusedWorkflowRunId,
+    githubReady
+  }: ActionsTabRefreshInput
+): Promise<void> {
+  const cachedRead = !githubReady;
+  const ref = selectedRef ?? defaultBranch ?? undefined;
+  const refreshes: Array<Promise<unknown>> = [
+    queryClient.fetchQuery({
+      queryKey: actionsTabQueryKey(owner, repo, limit),
+      staleTime: 0,
+      queryFn: () =>
+        api.github.listActionsWithStatus({
+          owner,
+          repo,
+          limit,
+          cacheOnly: cachedRead,
+          forceRefresh: !cachedRead
+        })
+    }),
+    refreshRepositoryRefsData(queryClient, { api, owner, repo, limit: refListLimit, githubReady }),
+    queryClient.fetchQuery({
+      queryKey: workflowDefinitionsQueryKey(owner, repo, ref, workflowDefinitionLimit),
+      staleTime: 0,
+      queryFn: () =>
+        api.github.listWorkflowsWithStatus({
+          owner,
+          repo,
+          ref: ref ?? null,
+          limit: workflowDefinitionLimit,
+          cacheOnly: cachedRead,
+          forceRefresh: !cachedRead
+        })
+    })
+  ];
+
+  if (focusedWorkflowRunId !== null) {
+    refreshes.push(
+      queryClient.fetchQuery({
+        queryKey: workflowRunDetailQueryKey(owner, repo, focusedWorkflowRunId),
+        staleTime: 0,
+        queryFn: () =>
+          api.github.getWorkflowRunDetailWithStatus({
+            owner,
+            repo,
+            runId: focusedWorkflowRunId,
+            cacheOnly: cachedRead,
+            forceRefresh: !cachedRead
+          })
+      })
+    );
+  }
+
+  try {
+    await Promise.all(refreshes);
+  } catch {
+    // React Query owns the visible error state for this refresh.
+  }
+}
 
 function workflowRerunDisabledReason(repository: RepositoryDetail, run: WorkflowRunSummary): string | null {
   const repositoryReason = repositoryMutationDisabledReason(repository);
@@ -304,20 +447,13 @@ export function ActionsTab({
   repository,
   githubReady,
   selectedRef,
-  branches,
-  tags,
-  refsError,
-  refsAvailabilityMessage,
-  actions,
+  refListLimit,
   actionsLimit,
   workflowDefinitionLimit,
-  availability,
   focusedWorkflowRunId,
   focusedWorkflowArtifactId,
   initialFilter,
   initialDispatching,
-  loading,
-  error,
   mutationAction,
   mutationPending,
   mutationSucceeded,
@@ -335,20 +471,13 @@ export function ActionsTab({
   repository: RepositoryDetail;
   githubReady: boolean;
   selectedRef: string | null;
-  branches: BranchSummary[];
-  tags: TagSummary[];
-  refsError: Error | null;
-  refsAvailabilityMessage: string | null;
-  actions: WorkflowRunSummary[];
+  refListLimit: number;
   actionsLimit: number;
   workflowDefinitionLimit: number;
-  availability: GitHubReadAvailability | null;
   focusedWorkflowRunId: number | null;
   focusedWorkflowArtifactId: number | null;
   initialFilter: string;
   initialDispatching: boolean;
-  loading: boolean;
-  error: Error | null;
   mutationAction: GitHubAction | null;
   mutationPending: boolean;
   mutationSucceeded: boolean;
@@ -378,6 +507,23 @@ export function ActionsTab({
   onExpandWorkflowDefinitions(): void;
   onMutate(action: GitHubAction, dangerous: boolean, payload?: GitHubMutationFields): void;
 }): JSX.Element {
+  const { actions: actionsQuery } = useActionsTabQueries({
+    owner: repository.owner,
+    repo: repository.name,
+    limit: actionsLimit,
+    enabled: true,
+    githubReady
+  });
+  const {
+    branchItems: branches,
+    tagItems: tags,
+    error: refsError,
+    availabilityMessage: refsAvailabilityMessage
+  } = useRepositoryRefs(repository.owner, repository.name, true, refListLimit, { githubReady });
+  const actions = actionsQuery.data?.items ?? [];
+  const availability = actionsQuery.data?.availability ?? null;
+  const loading = actionsQuery.isLoading || actionsQuery.isFetching;
+  const error = actionsQuery.error;
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
   const [filter, setFilter] = useState(initialFilter);
   const [dispatching, setDispatching] = useState(initialDispatching);
@@ -466,7 +612,7 @@ export function ActionsTab({
       : initialExpandedWorkflowDetailItems;
   const api = useControlApi();
   const workflows = useQuery<WorkflowDefinitionListResult>({
-    queryKey: ["workflows", repository.owner, repository.name, ref || "default", workflowDefinitionLimit],
+    queryKey: workflowDefinitionsQueryKey(repository.owner, repository.name, ref, workflowDefinitionLimit),
     queryFn: () =>
       api.github.listWorkflowsWithStatus({
         owner: repository.owner,
@@ -479,7 +625,7 @@ export function ActionsTab({
     staleTime: 120_000
   });
   const runDetail = useQuery<WorkflowRunDetailResult>({
-    queryKey: ["action-detail", repository.owner, repository.name, effectiveSelectedRunId ?? "none"],
+    queryKey: workflowRunDetailQueryKey(repository.owner, repository.name, effectiveSelectedRunId),
     queryFn: () =>
       api.github.getWorkflowRunDetailWithStatus({
         owner: repository.owner,

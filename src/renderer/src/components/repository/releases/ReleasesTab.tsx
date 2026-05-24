@@ -1,16 +1,16 @@
 import { ChevronDown, Download, ExternalLink, Plus, Tag } from "lucide-react";
 import { useState, type JSX } from "react";
+import { useQuery, type QueryClient } from "@tanstack/react-query";
 
 import type {
-  BranchSummary,
   GitHubAction,
   GitHubMutationFields,
-  GitHubReadAvailability,
+  ReleaseListResult,
   ReleaseAssetSummary,
   ReleaseSummary,
-  RepositoryDetail,
-  TagSummary
+  RepositoryDetail
 } from "@shared/github";
+import type { ControlApi } from "@shared/ipc";
 
 import { MarkdownBody, markdownRepositoryUrlContext } from "@renderer/components/MarkdownBody";
 
@@ -20,6 +20,9 @@ import {
   repositoryMutationDisabledReason,
   repositoryPath
 } from "@renderer/components/repository/repositoryUi";
+
+import { useControlApi } from "@renderer/hooks/useControlApi";
+import { refreshRepositoryRefsData, useRepositoryRefs } from "@renderer/hooks/useRepositoryRefs";
 
 import { formatCompactNumber, formatRelativeDate } from "@renderer/utils/format";
 type ReleaseMakeLatestOption = "unchanged" | "true" | "false" | "legacy";
@@ -31,23 +34,95 @@ const releaseMakeLatestOptions: Array<{ value: ReleaseMakeLatestOption; label: s
   { value: "legacy", label: "Use GitHub legacy rules" }
 ];
 
+export interface ReleasesTabQueryInput {
+  owner: string;
+  repo: string;
+  limit: number;
+  enabled: boolean;
+  githubReady: boolean;
+}
+
+export interface ReleasesTabPrefetchInput {
+  api: ControlApi;
+  owner: string;
+  repo: string;
+  limit: number;
+  githubReady: boolean;
+}
+
+export interface ReleasesTabRefreshInput extends ReleasesTabPrefetchInput {
+  refListLimit: number;
+}
+
+export function releasesTabQueryKey(
+  owner: string,
+  repo: string,
+  limit: number
+): readonly ["releases", string, string, number] {
+  return ["releases", owner, repo, limit] as const;
+}
+
+export function useReleasesTabQueries({ owner, repo, limit, enabled, githubReady }: ReleasesTabQueryInput) {
+  const api = useControlApi();
+
+  const releases = useQuery<ReleaseListResult>({
+    queryKey: releasesTabQueryKey(owner, repo, limit),
+    queryFn: () => api.github.listReleasesWithStatus({ owner, repo, limit, cacheOnly: !githubReady }),
+    enabled,
+    staleTime: 120_000
+  });
+
+  return { releases };
+}
+
+export async function prefetchReleasesTabData(
+  queryClient: QueryClient,
+  { api, owner, repo, limit, githubReady }: ReleasesTabPrefetchInput
+): Promise<void> {
+  await queryClient.prefetchQuery({
+    queryKey: releasesTabQueryKey(owner, repo, limit),
+    queryFn: () => api.github.listReleasesWithStatus({ owner, repo, limit, cacheOnly: !githubReady }),
+    staleTime: 120_000
+  });
+}
+
+export async function refreshReleasesTabData(
+  queryClient: QueryClient,
+  { api, owner, repo, limit, refListLimit, githubReady }: ReleasesTabRefreshInput
+): Promise<void> {
+  const cachedRead = !githubReady;
+
+  try {
+    await Promise.all([
+      queryClient.fetchQuery({
+        queryKey: releasesTabQueryKey(owner, repo, limit),
+        staleTime: 0,
+        queryFn: () =>
+          api.github.listReleasesWithStatus({
+            owner,
+            repo,
+            limit,
+            cacheOnly: cachedRead,
+            forceRefresh: !cachedRead
+          })
+      }),
+      refreshRepositoryRefsData(queryClient, { api, owner, repo, limit: refListLimit, githubReady })
+    ]);
+  } catch {
+    // React Query owns the visible error state for this refresh.
+  }
+}
+
 export function ReleasesTab({
   repository,
   githubReady,
   selectedRef,
-  branches,
-  tags,
-  refsError,
-  refsAvailabilityMessage,
-  releases,
+  refListLimit,
   releasesLimit,
-  availability,
   focusedReleaseId,
   focusedReleaseTagName,
   focusedReleaseAssetId,
   initialCreating,
-  loading,
-  error,
   onOpenExternal,
   onOpenReleaseTarget,
   onSelectRelease,
@@ -62,19 +137,12 @@ export function ReleasesTab({
   repository: RepositoryDetail;
   githubReady: boolean;
   selectedRef: string | null;
-  branches: BranchSummary[];
-  tags: TagSummary[];
-  refsError: Error | null;
-  refsAvailabilityMessage: string | null;
-  releases: ReleaseSummary[];
+  refListLimit: number;
   releasesLimit: number;
-  availability: GitHubReadAvailability | null;
   focusedReleaseId: number | null;
   focusedReleaseTagName: string | null;
   focusedReleaseAssetId: number | null;
   initialCreating: boolean;
-  loading: boolean;
-  error: Error | null;
   onOpenExternal(url: string): void;
   onOpenReleaseTarget(ref: string): void;
   onSelectRelease(release: ReleaseSummary): void;
@@ -86,6 +154,23 @@ export function ReleasesTab({
   mutationError: Error | null;
   onMutate(action: GitHubAction, dangerous: boolean, payload?: GitHubMutationFields): void;
 }): JSX.Element {
+  const { releases: releasesQuery } = useReleasesTabQueries({
+    owner: repository.owner,
+    repo: repository.name,
+    limit: releasesLimit,
+    enabled: true,
+    githubReady
+  });
+  const {
+    branchItems: branches,
+    tagItems: tags,
+    error: refsError,
+    availabilityMessage: refsAvailabilityMessage
+  } = useRepositoryRefs(repository.owner, repository.name, true, refListLimit, { githubReady });
+  const releases = releasesQuery.data?.items ?? [];
+  const availability = releasesQuery.data?.availability ?? null;
+  const loading = releasesQuery.isLoading || releasesQuery.isFetching;
+  const error = releasesQuery.error;
   const focusedRelease =
     (focusedReleaseId !== null ? releases.find((release) => release.id === focusedReleaseId) : null) ??
     (focusedReleaseTagName ? releases.find((release) => release.tagName === focusedReleaseTagName) : null);

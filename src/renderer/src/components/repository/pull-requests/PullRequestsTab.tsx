@@ -1,22 +1,19 @@
 import { ExternalLink, GitPullRequest, Plus, Search, X } from "lucide-react";
 import { useState, type JSX } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, type QueryClient } from "@tanstack/react-query";
 
 import type {
-  AssignableUserSummary,
-  BranchSummary,
   BranchProtectionResult,
   GitHubAction,
   GitHubMutationFields,
   GitHubReadAvailability,
-  LabelSummary,
-  MilestoneSummary,
   PullRequestDetail,
   PullRequestChecksResult,
   PullRequestCommentsResult,
   PullRequestCommitsResult,
   PullRequestFilesResult,
   PullRequestLinkedIssuesResult,
+  PullRequestListResult,
   PullRequestOverviewResult,
   PullRequestReviewsResult,
   PullRequestReviewThreadsResult,
@@ -31,12 +28,9 @@ import type {
   RepositoryDetail,
   TimelineCommentSummary
 } from "@shared/github";
+import type { ControlApi } from "@shared/ipc";
 
-import {
-  MarkdownBody,
-  markdownRepositoryUrlContext,
-  type MarkdownUrlContext
-} from "@renderer/components/MarkdownBody";
+import { markdownRepositoryUrlContext, type MarkdownUrlContext } from "@renderer/components/MarkdownBody";
 
 import {
   fieldsMatchSearchParts,
@@ -46,8 +40,18 @@ import {
   readAvailabilityStatusLabel,
   repositoryMutationDisabledReason
 } from "@renderer/components/repository/repositoryUi";
+import { TimelineComment } from "@renderer/components/shared/TimelineComment";
+import { TimelineThread } from "@renderer/components/shared/TimelineThread";
 
 import { useControlApi } from "@renderer/hooks/useControlApi";
+import {
+  repositoryAssignableUsersQueryKey,
+  repositoryLabelsQueryKey,
+  repositoryMilestonesQueryKey,
+  refreshRepositoryIssueResources,
+  useRepositoryIssueResources
+} from "@renderer/hooks/useRepositoryIssueResources";
+import { repositoryBranchesQueryKey, useRepositoryRefs } from "@renderer/hooks/useRepositoryRefs";
 
 import { formatCompactNumber, formatRelativeDate } from "@renderer/utils/format";
 
@@ -56,6 +60,231 @@ type PullRequestLinkedIssue =
   | PullRequestLinkedIssueSummary;
 const maxPullRequestListLimit = 100;
 const notLoadedAvailability: GitHubReadAvailability = { status: "not_loaded", message: null };
+type PullRequestDetailSection =
+  | "overview"
+  | "comments"
+  | "files"
+  | "commits"
+  | "reviews"
+  | "checks"
+  | "review-threads"
+  | "timeline"
+  | "linked-issues";
+
+export interface PullRequestsTabQueryInput {
+  owner: string;
+  repo: string;
+  pullRequestListLimit: number;
+  pullsEnabled: boolean;
+  resourcesEnabled: boolean;
+  githubReady: boolean;
+}
+
+export interface PullRequestsTabPrefetchInput {
+  api: ControlApi;
+  owner: string;
+  repo: string;
+  pullRequestListLimit: number;
+  githubReady: boolean;
+}
+
+export interface PullRequestsTabRefreshInput extends PullRequestsTabPrefetchInput {
+  refListLimit: number;
+  focusedPullNumber: number | null;
+}
+
+export function pullRequestsTabQueryKey(
+  owner: string,
+  repo: string,
+  pullRequestListLimit: number
+): readonly ["pulls", string, string, number] {
+  return ["pulls", owner, repo, pullRequestListLimit] as const;
+}
+
+export function pullRequestDetailQueryKey(
+  section: PullRequestDetailSection,
+  owner: string,
+  repo: string,
+  pullNumber: number | null
+): readonly ["pull-detail", PullRequestDetailSection, string, string, number | null] {
+  return ["pull-detail", section, owner, repo, pullNumber] as const;
+}
+
+export function usePullRequestsTabQueries({
+  owner,
+  repo,
+  pullRequestListLimit,
+  pullsEnabled,
+  resourcesEnabled,
+  githubReady
+}: PullRequestsTabQueryInput) {
+  const api = useControlApi();
+  const pulls = useQuery<PullRequestListResult>({
+    queryKey: pullRequestsTabQueryKey(owner, repo, pullRequestListLimit),
+    queryFn: () =>
+      api.github.listPullRequestsWithStatus({
+        owner,
+        repo,
+        state: "all",
+        limit: pullRequestListLimit,
+        cacheOnly: !githubReady
+      }),
+    enabled: pullsEnabled,
+    staleTime: 60_000
+  });
+  const resources = useRepositoryIssueResources(owner, repo, resourcesEnabled, { githubReady });
+
+  return { pulls, ...resources };
+}
+
+export async function prefetchPullRequestsTabData(
+  queryClient: QueryClient,
+  { api, owner, repo, pullRequestListLimit, githubReady }: PullRequestsTabPrefetchInput
+): Promise<void> {
+  await Promise.all([
+    queryClient.prefetchQuery({
+      queryKey: pullRequestsTabQueryKey(owner, repo, pullRequestListLimit),
+      queryFn: () =>
+        api.github.listPullRequestsWithStatus({
+          owner,
+          repo,
+          state: "all",
+          limit: pullRequestListLimit,
+          cacheOnly: !githubReady
+        }),
+      staleTime: 60_000
+    }),
+    queryClient.prefetchQuery({
+      queryKey: repositoryLabelsQueryKey(owner, repo),
+      queryFn: () => api.github.listLabelsWithStatus({ owner, repo, limit: 100, cacheOnly: !githubReady }),
+      staleTime: 120_000
+    }),
+    queryClient.prefetchQuery({
+      queryKey: repositoryAssignableUsersQueryKey(owner, repo),
+      queryFn: () =>
+        api.github.listAssignableUsersWithStatus({ owner, repo, limit: 100, cacheOnly: !githubReady }),
+      staleTime: 120_000
+    }),
+    queryClient.prefetchQuery({
+      queryKey: repositoryMilestonesQueryKey(owner, repo),
+      queryFn: () =>
+        api.github.listMilestonesWithStatus({
+          owner,
+          repo,
+          state: "all",
+          limit: 100,
+          cacheOnly: !githubReady
+        }),
+      staleTime: 120_000
+    })
+  ]);
+}
+
+export async function refreshPullRequestsTabData(
+  queryClient: QueryClient,
+  {
+    api,
+    owner,
+    repo,
+    pullRequestListLimit,
+    refListLimit,
+    focusedPullNumber,
+    githubReady
+  }: PullRequestsTabRefreshInput
+): Promise<void> {
+  const cachedRead = !githubReady;
+  const refreshes: Array<Promise<unknown>> = [
+    queryClient.fetchQuery({
+      queryKey: pullRequestsTabQueryKey(owner, repo, pullRequestListLimit),
+      staleTime: 0,
+      queryFn: () =>
+        api.github.listPullRequestsWithStatus({
+          owner,
+          repo,
+          state: "all",
+          limit: pullRequestListLimit,
+          cacheOnly: cachedRead,
+          forceRefresh: !cachedRead
+        })
+    }),
+    refreshRepositoryIssueResources(queryClient, { api, owner, repo, githubReady }),
+    queryClient.fetchQuery({
+      queryKey: repositoryBranchesQueryKey(owner, repo, refListLimit),
+      staleTime: 0,
+      queryFn: () =>
+        api.github.listBranchesWithStatus({
+          owner,
+          repo,
+          limit: refListLimit,
+          cacheOnly: cachedRead,
+          forceRefresh: !cachedRead
+        })
+    })
+  ];
+
+  if (focusedPullNumber !== null) {
+    const pullDetailInput = {
+      owner,
+      repo,
+      pullNumber: focusedPullNumber,
+      cacheOnly: cachedRead,
+      forceRefresh: !cachedRead
+    };
+    refreshes.push(
+      queryClient.fetchQuery<PullRequestOverviewResult>({
+        queryKey: pullRequestDetailQueryKey("overview", owner, repo, focusedPullNumber),
+        staleTime: 0,
+        queryFn: () => api.github.getPullRequestOverviewWithStatus(pullDetailInput)
+      }),
+      queryClient.fetchQuery<PullRequestCommentsResult>({
+        queryKey: pullRequestDetailQueryKey("comments", owner, repo, focusedPullNumber),
+        staleTime: 0,
+        queryFn: () => api.github.listPullRequestCommentsWithStatus(pullDetailInput)
+      }),
+      queryClient.fetchQuery<PullRequestFilesResult>({
+        queryKey: pullRequestDetailQueryKey("files", owner, repo, focusedPullNumber),
+        staleTime: 0,
+        queryFn: () => api.github.listPullRequestFilesWithStatus(pullDetailInput)
+      }),
+      queryClient.fetchQuery<PullRequestCommitsResult>({
+        queryKey: pullRequestDetailQueryKey("commits", owner, repo, focusedPullNumber),
+        staleTime: 0,
+        queryFn: () => api.github.listPullRequestCommitsWithStatus(pullDetailInput)
+      }),
+      queryClient.fetchQuery<PullRequestReviewsResult>({
+        queryKey: pullRequestDetailQueryKey("reviews", owner, repo, focusedPullNumber),
+        staleTime: 0,
+        queryFn: () => api.github.listPullRequestReviewsWithStatus(pullDetailInput)
+      }),
+      queryClient.fetchQuery<PullRequestChecksResult>({
+        queryKey: pullRequestDetailQueryKey("checks", owner, repo, focusedPullNumber),
+        staleTime: 0,
+        queryFn: () => api.github.listPullRequestChecksWithStatus(pullDetailInput)
+      }),
+      queryClient.fetchQuery<PullRequestReviewThreadsResult>({
+        queryKey: pullRequestDetailQueryKey("review-threads", owner, repo, focusedPullNumber),
+        staleTime: 0,
+        queryFn: () => api.github.listPullRequestReviewThreadsWithStatus(pullDetailInput)
+      }),
+      queryClient.fetchQuery<PullRequestTimelineResult>({
+        queryKey: pullRequestDetailQueryKey("timeline", owner, repo, focusedPullNumber),
+        staleTime: 0,
+        queryFn: () => api.github.listPullRequestTimelineWithStatus(pullDetailInput)
+      }),
+      queryClient.fetchQuery<PullRequestLinkedIssuesResult>({
+        queryKey: pullRequestDetailQueryKey("linked-issues", owner, repo, focusedPullNumber),
+        staleTime: 0,
+        queryFn: () => api.github.listPullRequestLinkedIssuesWithStatus(pullDetailInput)
+      })
+    );
+  }
+
+  try {
+    await Promise.all(refreshes);
+  } catch {
+    // React Query owns the visible error state for this refresh.
+  }
+}
 
 function conversationCommentDisabledReason(
   repository: RepositoryDetail,
@@ -107,47 +336,47 @@ function useComposedPullRequestDetail({
   };
   const queryEnabled = enabled && pullNumber !== null;
   const overview = useQuery<PullRequestOverviewResult>({
-    queryKey: ["pull-detail", "overview", repository.owner, repository.name, pullNumber],
+    queryKey: pullRequestDetailQueryKey("overview", repository.owner, repository.name, pullNumber),
     queryFn: () => api.github.getPullRequestOverviewWithStatus(detailInput),
     enabled: queryEnabled
   });
   const comments = useQuery<PullRequestCommentsResult>({
-    queryKey: ["pull-detail", "comments", repository.owner, repository.name, pullNumber],
+    queryKey: pullRequestDetailQueryKey("comments", repository.owner, repository.name, pullNumber),
     queryFn: () => api.github.listPullRequestCommentsWithStatus(detailInput),
     enabled: queryEnabled
   });
   const files = useQuery<PullRequestFilesResult>({
-    queryKey: ["pull-detail", "files", repository.owner, repository.name, pullNumber],
+    queryKey: pullRequestDetailQueryKey("files", repository.owner, repository.name, pullNumber),
     queryFn: () => api.github.listPullRequestFilesWithStatus(detailInput),
     enabled: queryEnabled
   });
   const commits = useQuery<PullRequestCommitsResult>({
-    queryKey: ["pull-detail", "commits", repository.owner, repository.name, pullNumber],
+    queryKey: pullRequestDetailQueryKey("commits", repository.owner, repository.name, pullNumber),
     queryFn: () => api.github.listPullRequestCommitsWithStatus(detailInput),
     enabled: queryEnabled
   });
   const reviews = useQuery<PullRequestReviewsResult>({
-    queryKey: ["pull-detail", "reviews", repository.owner, repository.name, pullNumber],
+    queryKey: pullRequestDetailQueryKey("reviews", repository.owner, repository.name, pullNumber),
     queryFn: () => api.github.listPullRequestReviewsWithStatus(detailInput),
     enabled: queryEnabled
   });
   const checks = useQuery<PullRequestChecksResult>({
-    queryKey: ["pull-detail", "checks", repository.owner, repository.name, pullNumber],
+    queryKey: pullRequestDetailQueryKey("checks", repository.owner, repository.name, pullNumber),
     queryFn: () => api.github.listPullRequestChecksWithStatus(detailInput),
     enabled: queryEnabled
   });
   const reviewThreads = useQuery<PullRequestReviewThreadsResult>({
-    queryKey: ["pull-detail", "review-threads", repository.owner, repository.name, pullNumber],
+    queryKey: pullRequestDetailQueryKey("review-threads", repository.owner, repository.name, pullNumber),
     queryFn: () => api.github.listPullRequestReviewThreadsWithStatus(detailInput),
     enabled: queryEnabled
   });
   const timeline = useQuery<PullRequestTimelineResult>({
-    queryKey: ["pull-detail", "timeline", repository.owner, repository.name, pullNumber],
+    queryKey: pullRequestDetailQueryKey("timeline", repository.owner, repository.name, pullNumber),
     queryFn: () => api.github.listPullRequestTimelineWithStatus(detailInput),
     enabled: queryEnabled
   });
   const linkedIssues = useQuery<PullRequestLinkedIssuesResult>({
-    queryKey: ["pull-detail", "linked-issues", repository.owner, repository.name, pullNumber],
+    queryKey: pullRequestDetailQueryKey("linked-issues", repository.owner, repository.name, pullNumber),
     queryFn: () => api.github.listPullRequestLinkedIssuesWithStatus(detailInput),
     enabled: queryEnabled
   });
@@ -366,181 +595,6 @@ function parseWorkflowRunIdFromUrl(url: string | null | undefined): number | nul
   return Number(match[1]);
 }
 
-function TimelineThread({
-  title,
-  authorLogin,
-  authorAvatarUrl,
-  createdAt,
-  body,
-  comments,
-  loading,
-  availabilityMessage,
-  emptyBody,
-  markdownUrlContext,
-  onOpenExternal,
-  commentActions
-}: {
-  title: string;
-  authorLogin: string | null;
-  authorAvatarUrl: string | null;
-  createdAt: string;
-  body: string | null | undefined;
-  comments: TimelineCommentSummary[];
-  loading: boolean;
-  availabilityMessage: string | null;
-  emptyBody: string;
-  markdownUrlContext?: MarkdownUrlContext;
-  onOpenExternal(url: string): void;
-  commentActions?: {
-    getDisabledReason(comment: TimelineCommentSummary): string | null;
-    onEdit(comment: TimelineCommentSummary, body: string): void;
-    onDelete(comment: TimelineCommentSummary): void;
-  };
-}): JSX.Element {
-  return (
-    <div className="timeline-thread" aria-label={title}>
-      <TimelineComment
-        authorLogin={authorLogin}
-        authorAvatarUrl={authorAvatarUrl}
-        createdAt={createdAt}
-        body={body?.trim() || emptyBody}
-        markdownUrlContext={markdownUrlContext}
-        onOpenExternal={onOpenExternal}
-      />
-      {loading ? (
-        <div className="loading-state">Loading discussion…</div>
-      ) : availabilityMessage ? (
-        <div className="error-state">{availabilityMessage}</div>
-      ) : (
-        comments.map((comment) => (
-          <TimelineComment
-            key={comment.id}
-            authorLogin={comment.authorLogin}
-            authorAvatarUrl={comment.authorAvatarUrl}
-            createdAt={comment.createdAt}
-            body={comment.body?.trim() || "No comment body."}
-            disabledReason={commentActions?.getDisabledReason(comment) ?? null}
-            markdownUrlContext={markdownUrlContext}
-            onOpenExternal={onOpenExternal}
-            onEdit={commentActions ? (body) => commentActions.onEdit(comment, body) : undefined}
-            onDelete={commentActions ? () => commentActions.onDelete(comment) : undefined}
-          />
-        ))
-      )}
-    </div>
-  );
-}
-
-function TimelineComment({
-  authorLogin,
-  authorAvatarUrl,
-  createdAt,
-  body,
-  disabledReason,
-  markdownUrlContext,
-  onOpenExternal,
-  onEdit,
-  onDelete
-}: {
-  authorLogin: string | null;
-  authorAvatarUrl: string | null;
-  createdAt: string;
-  body: string;
-  disabledReason?: string | null;
-  markdownUrlContext?: MarkdownUrlContext;
-  onOpenExternal(url: string): void;
-  onEdit?(body: string): void;
-  onDelete?(): void;
-}): JSX.Element {
-  const [editing, setEditing] = useState(false);
-  const [editBody, setEditBody] = useState(body);
-  const hasActions = Boolean(onEdit || onDelete);
-  const editSubmitDisabledReason = disabledReason ?? (!editBody.trim() ? "Comment body is required." : null);
-
-  return (
-    <article className="timeline-comment">
-      <div className="timeline-avatar">
-        {authorAvatarUrl ? (
-          <img src={authorAvatarUrl} alt="" />
-        ) : (
-          <span>{authorLogin?.slice(0, 1).toUpperCase() ?? "?"}</span>
-        )}
-      </div>
-      <div className="timeline-card">
-        <header className="timeline-card-header">
-          <strong>{authorLogin ?? "unknown"}</strong>
-          <span>commented {formatRelativeDate(createdAt)}</span>
-          {hasActions && (
-            <div className="timeline-actions">
-              {onEdit && (
-                <button
-                  type="button"
-                  disabled={Boolean(disabledReason)}
-                  title={disabledReason ?? undefined}
-                  onClick={() => {
-                    setEditBody(body);
-                    setEditing(true);
-                  }}
-                >
-                  Edit comment
-                </button>
-              )}
-              {onDelete && (
-                <button
-                  type="button"
-                  disabled={Boolean(disabledReason)}
-                  title={disabledReason ?? undefined}
-                  onClick={onDelete}
-                >
-                  Delete comment
-                </button>
-              )}
-            </div>
-          )}
-        </header>
-        {editing ? (
-          <form
-            className="timeline-edit-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (editSubmitDisabledReason) {
-                return;
-              }
-              onEdit?.(editBody.trim());
-            }}
-          >
-            <textarea
-              value={editBody}
-              disabled={Boolean(disabledReason)}
-              title={disabledReason ?? undefined}
-              onChange={(event) => setEditBody(event.target.value)}
-              placeholder="Edit comment body"
-            />
-            <div>
-              <button
-                className="dark-action"
-                type="submit"
-                disabled={Boolean(editSubmitDisabledReason)}
-                title={editSubmitDisabledReason ?? undefined}
-              >
-                Save comment
-              </button>
-              <button type="button" onClick={() => setEditing(false)}>
-                Cancel
-              </button>
-              {editSubmitDisabledReason && (
-                <small className="action-disabled-note">{editSubmitDisabledReason}</small>
-              )}
-            </div>
-          </form>
-        ) : (
-          <MarkdownBody markdown={body} onOpenExternal={onOpenExternal} urlContext={markdownUrlContext} />
-        )}
-      </div>
-    </article>
-  );
-}
-
 function pullRequestTimelineEventLabel(event: PullRequestTimelineEventSummary): string {
   if (event.sourceIssue) {
     const repository =
@@ -593,27 +647,11 @@ export function PullRequestsTab({
   repository,
   githubReady,
   selectedRef,
-  branches,
-  branchesError,
-  pulls,
+  refListLimit,
   pullRequestListLimit,
-  availability,
   focusedPullNumber,
   initialFilter,
   initialCreating,
-  labels,
-  labelsLoading,
-  labelsError,
-  labelsAvailability,
-  assignableUsers,
-  assignableUsersLoading,
-  assignableUsersError,
-  assignableUsersAvailability,
-  milestones,
-  milestonesLoading,
-  milestonesError,
-  milestonesAvailability,
-  loading,
   mutationAction,
   mutationPending,
   mutationSucceeded,
@@ -632,27 +670,11 @@ export function PullRequestsTab({
   repository: RepositoryDetail;
   githubReady: boolean;
   selectedRef: string | null;
-  branches: BranchSummary[];
-  branchesError: Error | null;
-  pulls: PullRequestSummary[];
+  refListLimit: number;
   pullRequestListLimit: number;
-  availability: GitHubReadAvailability | null;
   focusedPullNumber: number | null;
   initialFilter: string;
   initialCreating: boolean;
-  labels: LabelSummary[];
-  labelsLoading: boolean;
-  labelsError: Error | null;
-  labelsAvailability: GitHubReadAvailability | null;
-  assignableUsers: AssignableUserSummary[];
-  assignableUsersLoading: boolean;
-  assignableUsersError: Error | null;
-  assignableUsersAvailability: GitHubReadAvailability | null;
-  milestones: MilestoneSummary[];
-  milestonesLoading: boolean;
-  milestonesError: Error | null;
-  milestonesAvailability: GitHubReadAvailability | null;
-  loading: boolean;
   mutationAction: GitHubAction | null;
   mutationPending: boolean;
   mutationSucceeded: boolean;
@@ -688,6 +710,45 @@ export function PullRequestsTab({
   const [creating, setCreating] = useState(initialCreating);
   const [title, setTitle] = useState("");
   const [head, setHead] = useState("");
+  const refs = useRepositoryRefs(
+    repository.owner,
+    repository.name,
+    { branches: true, tags: false },
+    refListLimit,
+    {
+      githubReady
+    }
+  );
+  const {
+    pulls,
+    labels: labelsQuery,
+    assignableUsers: assignableUsersQuery,
+    milestones: milestonesQuery,
+    labelItems: labels,
+    labelAvailability: labelsAvailability,
+    assignableUserItems: assignableUsers,
+    assignableUsersAvailability,
+    milestoneItems: milestones,
+    milestonesAvailability
+  } = usePullRequestsTabQueries({
+    owner: repository.owner,
+    repo: repository.name,
+    pullRequestListLimit,
+    pullsEnabled: true,
+    resourcesEnabled: true,
+    githubReady
+  });
+  const branches = refs.branchItems;
+  const branchesError = refs.branches.error;
+  const pullItems = pulls.data?.items ?? [];
+  const availability = pulls.data?.availability ?? null;
+  const loading = pulls.isLoading || pulls.isFetching;
+  const labelsLoading = labelsQuery.isLoading || labelsQuery.isFetching;
+  const labelsError = labelsQuery.error;
+  const assignableUsersLoading = assignableUsersQuery.isLoading || assignableUsersQuery.isFetching;
+  const assignableUsersError = assignableUsersQuery.error;
+  const milestonesLoading = milestonesQuery.isLoading || milestonesQuery.isFetching;
+  const milestonesError = milestonesQuery.error;
   const defaultBaseBranch =
     selectedRef && branches.some((branch) => branch.name === selectedRef)
       ? selectedRef
@@ -715,7 +776,7 @@ export function PullRequestsTab({
   const milestonesAvailabilityMessage = readAvailabilityMessage("Milestones", milestonesAvailability);
   const pullsAvailabilityMessage = readAvailabilityMessage("Pull requests", availability);
   const filterParts = normalizedSearchParts(filter);
-  const filteredPulls = pulls.filter((pull) =>
+  const filteredPulls = pullItems.filter((pull) =>
     fieldsMatchSearchParts(
       [
         pull.number,
@@ -958,7 +1019,7 @@ export function PullRequestsTab({
   const selectedMergeCommitSha = detail?.mergeCommitSha ?? selectedPull?.mergeCommitSha ?? null;
   const selectedMerged = selectedPullForActions?.merged ?? null;
   const selectedMergedAt = selectedPullForActions?.mergedAt ?? null;
-  const unfilteredPullRequestListLimitHit = !filter.trim() && pulls.length >= pullRequestListLimit;
+  const unfilteredPullRequestListLimitHit = !filter.trim() && pullItems.length >= pullRequestListLimit;
 
   function addReviewerSuggestion(login: string): void {
     setReviewerEntry((current) => {
@@ -1011,7 +1072,7 @@ export function PullRequestsTab({
       </div>
       <div className="github-split">
         <div className="thread-list">
-          {loading && pulls.length === 0 && <div className="loading-state">Loading pull requests…</div>}
+          {loading && pullItems.length === 0 && <div className="loading-state">Loading pull requests…</div>}
           {!loading && pullsAvailabilityMessage && (
             <div className="error-state">{pullsAvailabilityMessage}</div>
           )}

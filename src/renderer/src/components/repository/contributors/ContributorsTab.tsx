@@ -1,17 +1,22 @@
 import { ExternalLink, Search } from "lucide-react";
-import { Component, useMemo, useState, type ErrorInfo, type JSX, type ReactNode } from "react";
+import { Component, useMemo, type ErrorInfo, type JSX, type ReactNode } from "react";
 import { useQuery, type QueryClient } from "@tanstack/react-query";
 
 import type {
   AccountProfileResult,
   AccountRepositoryListResult,
+  ContributorListResult,
   ContributorSummary,
-  GitHubReadAvailability,
   RepositoryDetail
 } from "@shared/github";
 import { useControlApi } from "../../../hooks/useControlApi";
 import type { RepositoryTab } from "../../../stores/uiStore";
 import { formatCompactNumber } from "../../../utils/format";
+import {
+  clearContributorsTabStateForTests,
+  useContributorsTabLocalState,
+  useContributorsTabStateStore
+} from "./contributorsTabState";
 import {
   defaultContributorProfileRepositoryLimit,
   fieldsMatchSearchParts,
@@ -23,19 +28,25 @@ import {
   repositoryPath
 } from "../repositoryUi";
 
+const emptyContributors: ContributorSummary[] = [];
+
 export interface ContributorsTabProps {
   repository: RepositoryDetail;
   githubReady: boolean;
-  contributors: ContributorSummary[];
   contributorLimit: number;
-  availability: GitHubReadAvailability | null;
   focusedContributorLogin: string | null;
-  loading: boolean;
-  error: Error | null;
   onOpenRepository(nameWithOwner: string, tab?: RepositoryTab): void;
   onOpenExternal(url: string): void;
   onSelectContributor(contributor: ContributorSummary): void;
   onExpandContributors(): void;
+}
+
+export interface ContributorsTabQueryInput {
+  owner: string;
+  repo: string;
+  limit: number;
+  enabled: boolean;
+  githubReady: boolean;
 }
 
 export interface ContributorsTabPrefetchInput {
@@ -46,16 +57,41 @@ export interface ContributorsTabPrefetchInput {
   profileRepositoryLimit?: number;
 }
 
-interface ContributorsTabLocalState {
-  filter: string;
-  selectedContributorLogin: string | null;
-  profileRepositoryLimits: Record<string, number>;
+export interface ContributorsTabRefreshInput {
+  api: ReturnType<typeof useControlApi>;
+  owner: string;
+  repo: string;
+  limit: number;
+  githubReady: boolean;
 }
 
-const contributorsTabState = new Map<string, ContributorsTabLocalState>();
+export { clearContributorsTabStateForTests };
 
-export function clearContributorsTabStateForTests(): void {
-  contributorsTabState.clear();
+export function contributorsTabQueryKey(
+  owner: string,
+  repo: string,
+  limit: number
+): readonly ["contributors", string, string, number] {
+  return ["contributors", owner, repo, limit] as const;
+}
+
+export function useContributorsTabQueries({
+  owner,
+  repo,
+  limit,
+  enabled,
+  githubReady
+}: ContributorsTabQueryInput) {
+  const api = useControlApi();
+
+  const contributors = useQuery<ContributorListResult>({
+    queryKey: contributorsTabQueryKey(owner, repo, limit),
+    queryFn: () => api.github.listContributorsWithStatus({ owner, repo, limit, cacheOnly: !githubReady }),
+    enabled,
+    staleTime: 120_000
+  });
+
+  return { contributors };
 }
 
 function contributorsTabStateKey(
@@ -63,23 +99,6 @@ function contributorsTabStateKey(
   focusedContributorLogin: string | null
 ): string {
   return `${repository.nameWithOwner}:${focusedContributorLogin ?? "default"}`;
-}
-
-function readContributorsTabState(key: string): ContributorsTabLocalState {
-  return (
-    contributorsTabState.get(key) ?? {
-      filter: "",
-      selectedContributorLogin: null,
-      profileRepositoryLimits: {}
-    }
-  );
-}
-
-function updateContributorsTabState(key: string, patch: Partial<ContributorsTabLocalState>): void {
-  contributorsTabState.set(key, {
-    ...readContributorsTabState(key),
-    ...patch
-  });
 }
 
 export async function prefetchContributorsTabData(
@@ -111,6 +130,30 @@ export async function prefetchContributorsTabData(
         })
     })
   ]);
+}
+
+export async function refreshContributorsTabData(
+  queryClient: QueryClient,
+  { api, owner, repo, limit, githubReady }: ContributorsTabRefreshInput
+): Promise<void> {
+  const cachedRead = !githubReady;
+
+  try {
+    await queryClient.fetchQuery({
+      queryKey: contributorsTabQueryKey(owner, repo, limit),
+      staleTime: 0,
+      queryFn: () =>
+        api.github.listContributorsWithStatus({
+          owner,
+          repo,
+          limit,
+          cacheOnly: cachedRead,
+          forceRefresh: !cachedRead
+        })
+    });
+  } catch {
+    // React Query owns the visible error state for this refresh.
+  }
 }
 
 export function ContributorsTab({ repository, ...props }: ContributorsTabProps): JSX.Element {
@@ -158,41 +201,40 @@ export class ContributorsTabBoundary extends Component<
 function ContributorsTabContent({
   repository,
   githubReady,
-  contributors,
   contributorLimit,
-  availability,
   focusedContributorLogin,
-  loading,
-  error,
   onOpenRepository,
   onOpenExternal,
   onSelectContributor,
   onExpandContributors
 }: ContributorsTabProps): JSX.Element {
   const api = useControlApi();
+  const { contributors: contributorsQuery } = useContributorsTabQueries({
+    owner: repository.owner,
+    repo: repository.name,
+    limit: contributorLimit,
+    enabled: true,
+    githubReady
+  });
+  const contributors = contributorsQuery.data?.items ?? emptyContributors;
+  const availability = contributorsQuery.data?.availability ?? null;
+  const loading = contributorsQuery.isLoading || contributorsQuery.isFetching;
+  const error = contributorsQuery.error;
   const stateKey = contributorsTabStateKey(repository, focusedContributorLogin);
-  const initialState = readContributorsTabState(stateKey);
-  const [filter, setFilterValue] = useState(initialState.filter);
-  const [selectedContributorLogin, setSelectedContributorLoginValue] = useState<string | null>(
-    initialState.selectedContributorLogin
-  );
-  const [profileRepositoryLimits, setProfileRepositoryLimitsValue] = useState<Record<string, number>>(
-    initialState.profileRepositoryLimits
-  );
+  const { filter, selectedContributorLogin, profileRepositoryLimits } =
+    useContributorsTabLocalState(stateKey);
+  const updateTabState = useContributorsTabStateStore((state) => state.updateState);
 
   function setFilter(filterValue: string): void {
-    setFilterValue(filterValue);
-    updateContributorsTabState(stateKey, { filter: filterValue });
+    updateTabState(stateKey, { filter: filterValue });
   }
 
   function setSelectedContributorLogin(login: string | null): void {
-    setSelectedContributorLoginValue(login);
-    updateContributorsTabState(stateKey, { selectedContributorLogin: login });
+    updateTabState(stateKey, { selectedContributorLogin: login });
   }
 
   function setProfileRepositoryLimits(limits: Record<string, number>): void {
-    setProfileRepositoryLimitsValue(limits);
-    updateContributorsTabState(stateKey, { profileRepositoryLimits: limits });
+    updateTabState(stateKey, { profileRepositoryLimits: limits });
   }
   const filterParts = useMemo(() => normalizedSearchParts(filter), [filter]);
   const filteredContributors = useMemo(

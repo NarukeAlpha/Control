@@ -1,24 +1,20 @@
 import { CircleDot, ExternalLink, Plus, Search, X } from "lucide-react";
 import { useState, type JSX } from "react";
+import { useQuery, type QueryClient } from "@tanstack/react-query";
 
 import type {
-  AssignableUserSummary,
   GitHubAction,
   GitHubMutationFields,
-  GitHubReadAvailability,
+  IssueDetailResult,
+  IssueListResult,
   IssueSummary,
-  LabelSummary,
-  MilestoneSummary,
   RepositoryDetail,
   TimelineCommentSummary
 } from "@shared/github";
+import type { ControlApi } from "@shared/ipc";
 
-import {
-  MarkdownBody,
-  markdownRepositoryUrlContext,
-  type MarkdownUrlContext
-} from "@renderer/components/MarkdownBody";
-import { useIssueDetail } from "@renderer/components/repository/issues/useIssueDetail";
+import { markdownRepositoryUrlContext } from "@renderer/components/MarkdownBody";
+import { issueDetailQueryKey, useIssueDetail } from "@renderer/components/repository/issues/useIssueDetail";
 import {
   fieldsMatchSearchParts,
   githubActionLabel,
@@ -26,9 +22,163 @@ import {
   readAvailabilityMessage,
   repositoryMutationDisabledReason
 } from "@renderer/components/repository/repositoryUi";
+import { TimelineThread } from "@renderer/components/shared/TimelineThread";
+import { useControlApi } from "@renderer/hooks/useControlApi";
+import {
+  repositoryAssignableUsersQueryKey,
+  repositoryLabelsQueryKey,
+  repositoryMilestonesQueryKey,
+  refreshRepositoryIssueResources,
+  useRepositoryIssueResources
+} from "@renderer/hooks/useRepositoryIssueResources";
 
 import { formatRelativeDate } from "@renderer/utils/format";
 const maxIssueListLimit = 100;
+
+export interface IssuesTabQueryInput {
+  owner: string;
+  repo: string;
+  issueListLimit: number;
+  issuesEnabled: boolean;
+  resourcesEnabled: boolean;
+  githubReady: boolean;
+}
+
+export interface IssuesTabPrefetchInput {
+  api: ControlApi;
+  owner: string;
+  repo: string;
+  issueListLimit: number;
+  githubReady: boolean;
+}
+
+export interface IssuesTabRefreshInput extends IssuesTabPrefetchInput {
+  focusedIssueNumber: number | null;
+}
+
+export function issuesTabQueryKey(
+  owner: string,
+  repo: string,
+  issueListLimit: number
+): readonly ["issues", string, string, number] {
+  return ["issues", owner, repo, issueListLimit] as const;
+}
+
+export function useIssuesTabQueries({
+  owner,
+  repo,
+  issueListLimit,
+  issuesEnabled,
+  resourcesEnabled,
+  githubReady
+}: IssuesTabQueryInput) {
+  const api = useControlApi();
+  const issues = useQuery<IssueListResult>({
+    queryKey: issuesTabQueryKey(owner, repo, issueListLimit),
+    queryFn: () =>
+      api.github.listIssuesWithStatus({
+        owner,
+        repo,
+        state: "all",
+        limit: issueListLimit,
+        cacheOnly: !githubReady
+      }),
+    enabled: issuesEnabled,
+    staleTime: 60_000
+  });
+  const resources = useRepositoryIssueResources(owner, repo, resourcesEnabled, { githubReady });
+
+  return { issues, ...resources };
+}
+
+export async function prefetchIssuesTabData(
+  queryClient: QueryClient,
+  { api, owner, repo, issueListLimit, githubReady }: IssuesTabPrefetchInput
+): Promise<void> {
+  await Promise.all([
+    queryClient.prefetchQuery({
+      queryKey: issuesTabQueryKey(owner, repo, issueListLimit),
+      queryFn: () =>
+        api.github.listIssuesWithStatus({
+          owner,
+          repo,
+          state: "all",
+          limit: issueListLimit,
+          cacheOnly: !githubReady
+        }),
+      staleTime: 60_000
+    }),
+    queryClient.prefetchQuery({
+      queryKey: repositoryLabelsQueryKey(owner, repo),
+      queryFn: () => api.github.listLabelsWithStatus({ owner, repo, limit: 100, cacheOnly: !githubReady }),
+      staleTime: 120_000
+    }),
+    queryClient.prefetchQuery({
+      queryKey: repositoryAssignableUsersQueryKey(owner, repo),
+      queryFn: () =>
+        api.github.listAssignableUsersWithStatus({ owner, repo, limit: 100, cacheOnly: !githubReady }),
+      staleTime: 120_000
+    }),
+    queryClient.prefetchQuery({
+      queryKey: repositoryMilestonesQueryKey(owner, repo),
+      queryFn: () =>
+        api.github.listMilestonesWithStatus({
+          owner,
+          repo,
+          state: "all",
+          limit: 100,
+          cacheOnly: !githubReady
+        }),
+      staleTime: 120_000
+    })
+  ]);
+}
+
+export async function refreshIssuesTabData(
+  queryClient: QueryClient,
+  { api, owner, repo, issueListLimit, focusedIssueNumber, githubReady }: IssuesTabRefreshInput
+): Promise<void> {
+  const cachedRead = !githubReady;
+  const refreshes: Array<Promise<unknown>> = [
+    queryClient.fetchQuery({
+      queryKey: issuesTabQueryKey(owner, repo, issueListLimit),
+      staleTime: 0,
+      queryFn: () =>
+        api.github.listIssuesWithStatus({
+          owner,
+          repo,
+          state: "all",
+          limit: issueListLimit,
+          cacheOnly: cachedRead,
+          forceRefresh: !cachedRead
+        })
+    }),
+    refreshRepositoryIssueResources(queryClient, { api, owner, repo, githubReady })
+  ];
+
+  if (focusedIssueNumber !== null) {
+    refreshes.push(
+      queryClient.fetchQuery<IssueDetailResult>({
+        queryKey: issueDetailQueryKey(owner, repo, focusedIssueNumber),
+        staleTime: 0,
+        queryFn: () =>
+          api.github.getIssueDetailWithStatus({
+            owner,
+            repo,
+            issueNumber: focusedIssueNumber,
+            cacheOnly: cachedRead,
+            forceRefresh: !cachedRead
+          })
+      })
+    );
+  }
+
+  try {
+    await Promise.all(refreshes);
+  } catch {
+    // React Query owns the visible error state for this refresh.
+  }
+}
 
 function conversationCommentDisabledReason(
   repository: RepositoryDetail,
@@ -87,181 +237,6 @@ function commentMutationDisabledReason(
   return null;
 }
 
-function TimelineThread({
-  title,
-  authorLogin,
-  authorAvatarUrl,
-  createdAt,
-  body,
-  comments,
-  loading,
-  availabilityMessage,
-  emptyBody,
-  markdownUrlContext,
-  onOpenExternal,
-  commentActions
-}: {
-  title: string;
-  authorLogin: string | null;
-  authorAvatarUrl: string | null;
-  createdAt: string;
-  body: string | null | undefined;
-  comments: TimelineCommentSummary[];
-  loading: boolean;
-  availabilityMessage: string | null;
-  emptyBody: string;
-  markdownUrlContext?: MarkdownUrlContext;
-  onOpenExternal(url: string): void;
-  commentActions?: {
-    getDisabledReason(comment: TimelineCommentSummary): string | null;
-    onEdit(comment: TimelineCommentSummary, body: string): void;
-    onDelete(comment: TimelineCommentSummary): void;
-  };
-}): JSX.Element {
-  return (
-    <div className="timeline-thread" aria-label={title}>
-      <TimelineComment
-        authorLogin={authorLogin}
-        authorAvatarUrl={authorAvatarUrl}
-        createdAt={createdAt}
-        body={body?.trim() || emptyBody}
-        markdownUrlContext={markdownUrlContext}
-        onOpenExternal={onOpenExternal}
-      />
-      {loading ? (
-        <div className="loading-state">Loading discussion…</div>
-      ) : availabilityMessage ? (
-        <div className="error-state">{availabilityMessage}</div>
-      ) : (
-        comments.map((comment) => (
-          <TimelineComment
-            key={comment.id}
-            authorLogin={comment.authorLogin}
-            authorAvatarUrl={comment.authorAvatarUrl}
-            createdAt={comment.createdAt}
-            body={comment.body?.trim() || "No comment body."}
-            disabledReason={commentActions?.getDisabledReason(comment) ?? null}
-            markdownUrlContext={markdownUrlContext}
-            onOpenExternal={onOpenExternal}
-            onEdit={commentActions ? (body) => commentActions.onEdit(comment, body) : undefined}
-            onDelete={commentActions ? () => commentActions.onDelete(comment) : undefined}
-          />
-        ))
-      )}
-    </div>
-  );
-}
-
-function TimelineComment({
-  authorLogin,
-  authorAvatarUrl,
-  createdAt,
-  body,
-  disabledReason,
-  markdownUrlContext,
-  onOpenExternal,
-  onEdit,
-  onDelete
-}: {
-  authorLogin: string | null;
-  authorAvatarUrl: string | null;
-  createdAt: string;
-  body: string;
-  disabledReason?: string | null;
-  markdownUrlContext?: MarkdownUrlContext;
-  onOpenExternal(url: string): void;
-  onEdit?(body: string): void;
-  onDelete?(): void;
-}): JSX.Element {
-  const [editing, setEditing] = useState(false);
-  const [editBody, setEditBody] = useState(body);
-  const hasActions = Boolean(onEdit || onDelete);
-  const editSubmitDisabledReason = disabledReason ?? (!editBody.trim() ? "Comment body is required." : null);
-
-  return (
-    <article className="timeline-comment">
-      <div className="timeline-avatar">
-        {authorAvatarUrl ? (
-          <img src={authorAvatarUrl} alt="" />
-        ) : (
-          <span>{authorLogin?.slice(0, 1).toUpperCase() ?? "?"}</span>
-        )}
-      </div>
-      <div className="timeline-card">
-        <header className="timeline-card-header">
-          <strong>{authorLogin ?? "unknown"}</strong>
-          <span>commented {formatRelativeDate(createdAt)}</span>
-          {hasActions && (
-            <div className="timeline-actions">
-              {onEdit && (
-                <button
-                  type="button"
-                  disabled={Boolean(disabledReason)}
-                  title={disabledReason ?? undefined}
-                  onClick={() => {
-                    setEditBody(body);
-                    setEditing(true);
-                  }}
-                >
-                  Edit comment
-                </button>
-              )}
-              {onDelete && (
-                <button
-                  type="button"
-                  disabled={Boolean(disabledReason)}
-                  title={disabledReason ?? undefined}
-                  onClick={onDelete}
-                >
-                  Delete comment
-                </button>
-              )}
-            </div>
-          )}
-        </header>
-        {editing ? (
-          <form
-            className="timeline-edit-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (editSubmitDisabledReason) {
-                return;
-              }
-              onEdit?.(editBody.trim());
-            }}
-          >
-            <textarea
-              value={editBody}
-              disabled={Boolean(disabledReason)}
-              title={disabledReason ?? undefined}
-              onChange={(event) => setEditBody(event.target.value)}
-              placeholder="Edit comment body"
-            />
-            <div>
-              <button
-                className="dark-action"
-                type="submit"
-                disabled={Boolean(editSubmitDisabledReason)}
-                title={editSubmitDisabledReason ?? undefined}
-              >
-                Save comment
-              </button>
-              <button type="button" onClick={() => setEditing(false)}>
-                Cancel
-              </button>
-              {editSubmitDisabledReason && (
-                <small className="action-disabled-note">{editSubmitDisabledReason}</small>
-              )}
-            </div>
-          </form>
-        ) : (
-          <MarkdownBody markdown={body} onOpenExternal={onOpenExternal} urlContext={markdownUrlContext} />
-        )}
-      </div>
-    </article>
-  );
-}
-
 function issueStateLabel(issue: IssueSummary): string {
   return issue.stateReason ? `${issue.state} · ${issue.stateReason.replace(/_/g, " ")}` : issue.state;
 }
@@ -269,25 +244,10 @@ function issueStateLabel(issue: IssueSummary): string {
 export function IssuesTab({
   repository,
   githubReady,
-  issues,
   issueListLimit,
-  availability,
   focusedIssueNumber,
   initialFilter,
   initialCreating,
-  labels,
-  labelsLoading,
-  labelsError,
-  labelsAvailability,
-  assignableUsers,
-  assignableUsersLoading,
-  assignableUsersError,
-  assignableUsersAvailability,
-  milestones,
-  milestonesLoading,
-  milestonesError,
-  milestonesAvailability,
-  loading,
   mutationAction,
   mutationPending,
   mutationSucceeded,
@@ -299,25 +259,10 @@ export function IssuesTab({
 }: {
   repository: RepositoryDetail;
   githubReady: boolean;
-  issues: IssueSummary[];
   issueListLimit: number;
-  availability: GitHubReadAvailability | null;
   focusedIssueNumber: number | null;
   initialFilter: string;
   initialCreating: boolean;
-  labels: LabelSummary[];
-  labelsLoading: boolean;
-  labelsError: Error | null;
-  labelsAvailability: GitHubReadAvailability | null;
-  assignableUsers: AssignableUserSummary[];
-  assignableUsersLoading: boolean;
-  assignableUsersError: Error | null;
-  assignableUsersAvailability: GitHubReadAvailability | null;
-  milestones: MilestoneSummary[];
-  milestonesLoading: boolean;
-  milestonesError: Error | null;
-  milestonesAvailability: GitHubReadAvailability | null;
-  loading: boolean;
   mutationAction: GitHubAction | null;
   mutationPending: boolean;
   mutationSucceeded: boolean;
@@ -347,6 +292,34 @@ export function IssuesTab({
   const [showAllIssueLabels, setShowAllIssueLabels] = useState(false);
   const [showAllIssueAssignableUsers, setShowAllIssueAssignableUsers] = useState(false);
   const [showAllIssueMilestones, setShowAllIssueMilestones] = useState(false);
+  const {
+    issues: issuesQuery,
+    labels: labelsQuery,
+    assignableUsers: assignableUsersQuery,
+    milestones: milestonesQuery,
+    labelItems: labels,
+    labelAvailability: labelsAvailability,
+    assignableUserItems: assignableUsers,
+    assignableUsersAvailability,
+    milestoneItems: milestones,
+    milestonesAvailability
+  } = useIssuesTabQueries({
+    owner: repository.owner,
+    repo: repository.name,
+    issueListLimit,
+    issuesEnabled: true,
+    resourcesEnabled: true,
+    githubReady
+  });
+  const issues = issuesQuery.data?.items ?? [];
+  const availability = issuesQuery.data?.availability ?? null;
+  const loading = issuesQuery.isLoading || issuesQuery.isFetching;
+  const labelsLoading = labelsQuery.isLoading || labelsQuery.isFetching;
+  const labelsError = labelsQuery.error;
+  const assignableUsersLoading = assignableUsersQuery.isLoading || assignableUsersQuery.isFetching;
+  const assignableUsersError = assignableUsersQuery.error;
+  const milestonesLoading = milestonesQuery.isLoading || milestonesQuery.isFetching;
+  const milestonesError = milestonesQuery.error;
   const labelsAvailabilityMessage = readAvailabilityMessage("Labels", labelsAvailability);
   const assignableUsersAvailabilityMessage = readAvailabilityMessage(
     "Assignable users",

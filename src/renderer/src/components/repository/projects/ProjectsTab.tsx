@@ -1,16 +1,16 @@
 import { ChevronDown, ExternalLink, Plus, Search, SquareKanban, X } from "lucide-react";
 import { useMemo, useState, type JSX } from "react";
+import { useQuery, type QueryClient } from "@tanstack/react-query";
 
 import type {
   GitHubAction,
   GitHubMutationFields,
-  GitHubReadAvailability,
-  IssueSummary,
   ProjectItemFieldValueSummary,
+  ProjectListResult,
   ProjectSummary,
-  PullRequestSummary,
   RepositoryDetail
 } from "@shared/github";
+import type { ControlApi } from "@shared/ipc";
 
 import { MarkdownBody, markdownProjectUrlContext } from "@renderer/components/MarkdownBody";
 
@@ -21,20 +21,92 @@ import {
   repositoryPath
 } from "@renderer/components/repository/repositoryUi";
 
+import { useControlApi } from "@renderer/hooks/useControlApi";
+
 import { formatCompactNumber, formatRelativeDate } from "@renderer/utils/format";
+import { useIssuesTabQueries } from "../issues/IssuesTab";
+import { usePullRequestsTabQueries } from "../pull-requests/PullRequestsTab";
 const maxProjectsLimit = 100;
+
+export interface ProjectsTabQueryInput {
+  owner: string;
+  repo: string;
+  limit: number;
+  enabled: boolean;
+  githubReady: boolean;
+}
+
+export interface ProjectsTabPrefetchInput {
+  api: ControlApi;
+  owner: string;
+  repo: string;
+  limit: number;
+  githubReady: boolean;
+}
+
+export type ProjectsTabRefreshInput = ProjectsTabPrefetchInput;
+
+export function projectsTabQueryKey(
+  owner: string,
+  repo: string,
+  limit: number
+): readonly ["projects", string, string, number] {
+  return ["projects", owner, repo, limit] as const;
+}
+
+export function useProjectsTabQueries({ owner, repo, limit, enabled, githubReady }: ProjectsTabQueryInput) {
+  const api = useControlApi();
+
+  const projects = useQuery<ProjectListResult>({
+    queryKey: projectsTabQueryKey(owner, repo, limit),
+    queryFn: () => api.github.listProjectsWithStatus({ owner, repo, limit, cacheOnly: !githubReady }),
+    enabled,
+    staleTime: 60_000
+  });
+
+  return { projects };
+}
+
+export async function prefetchProjectsTabData(
+  queryClient: QueryClient,
+  { api, owner, repo, limit, githubReady }: ProjectsTabPrefetchInput
+): Promise<void> {
+  await queryClient.prefetchQuery({
+    queryKey: projectsTabQueryKey(owner, repo, limit),
+    queryFn: () => api.github.listProjectsWithStatus({ owner, repo, limit, cacheOnly: !githubReady }),
+    staleTime: 60_000
+  });
+}
+
+export async function refreshProjectsTabData(
+  queryClient: QueryClient,
+  { api, owner, repo, limit, githubReady }: ProjectsTabRefreshInput
+): Promise<void> {
+  const cachedRead = !githubReady;
+
+  try {
+    await queryClient.fetchQuery({
+      queryKey: projectsTabQueryKey(owner, repo, limit),
+      staleTime: 0,
+      queryFn: () =>
+        api.github.listProjectsWithStatus({
+          owner,
+          repo,
+          limit,
+          cacheOnly: cachedRead,
+          forceRefresh: !cachedRead
+        })
+    });
+  } catch {
+    // React Query owns the visible error state for this refresh.
+  }
+}
 
 export function ProjectsTab({
   repository,
   githubReady,
-  issues,
-  pulls,
-  projects,
   projectsLimit,
   focusedProjectId,
-  loading,
-  availability,
-  error,
   onOpenExternal,
   onSelectProject,
   onExpandProjects,
@@ -46,14 +118,8 @@ export function ProjectsTab({
 }: {
   repository: RepositoryDetail;
   githubReady: boolean;
-  issues: IssueSummary[];
-  pulls: PullRequestSummary[];
-  projects: ProjectSummary[];
   projectsLimit: number;
   focusedProjectId: string | null;
-  loading: boolean;
-  availability: GitHubReadAvailability | null;
-  error: Error | null;
   onOpenExternal(url: string): void;
   onSelectProject(project: ProjectSummary): void;
   onExpandProjects(): void;
@@ -63,6 +129,33 @@ export function ProjectsTab({
   mutationError: Error | null;
   onMutate(action: GitHubAction, dangerous: boolean, payload?: GitHubMutationFields): void;
 }): JSX.Element {
+  const { projects: projectsQuery } = useProjectsTabQueries({
+    owner: repository.owner,
+    repo: repository.name,
+    limit: projectsLimit,
+    enabled: true,
+    githubReady
+  });
+  const { issues } = useIssuesTabQueries({
+    owner: repository.owner,
+    repo: repository.name,
+    issueListLimit: 100,
+    issuesEnabled: true,
+    resourcesEnabled: false,
+    githubReady
+  });
+  const { pulls } = usePullRequestsTabQueries({
+    owner: repository.owner,
+    repo: repository.name,
+    pullRequestListLimit: 100,
+    pullsEnabled: true,
+    resourcesEnabled: false,
+    githubReady
+  });
+  const projects = projectsQuery.data?.items ?? [];
+  const availability = projectsQuery.data?.availability ?? null;
+  const loading = projectsQuery.isLoading || projectsQuery.isFetching;
+  const error = projectsQuery.error;
   const [filter, setFilter] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
     focusedProjectId ?? projects[0]?.id ?? null
@@ -107,22 +200,22 @@ export function ProjectsTab({
       : null;
   const projectsLimitHit = projects.length >= projectsLimit;
   const canExpandProjects = !disabledFeatureMessage && projectsLimitHit && projectsLimit < maxProjectsLimit;
-  const projectItemOptions = useMemo(
-    () =>
-      [
-        ...issues.map((issue) => ({
-          id: issue.nodeId,
-          label: `Issue #${issue.number}: ${issue.title}`,
-          state: issue.state
-        })),
-        ...pulls.map((pull) => ({
-          id: pull.nodeId,
-          label: `PR #${pull.number}: ${pull.title}`,
-          state: pull.merged ? "merged" : pull.state
-        }))
-      ].filter((item): item is { id: string; label: string; state: string } => Boolean(item.id)),
-    [issues, pulls]
-  );
+  const projectItemOptions = useMemo(() => {
+    const issueItems = issues.data?.items ?? [];
+    const pullItems = pulls.data?.items ?? [];
+    return [
+      ...issueItems.map((issue) => ({
+        id: issue.nodeId,
+        label: `Issue #${issue.number}: ${issue.title}`,
+        state: issue.state
+      })),
+      ...pullItems.map((pull) => ({
+        id: pull.nodeId,
+        label: `PR #${pull.number}: ${pull.title}`,
+        state: pull.merged ? "merged" : pull.state
+      }))
+    ].filter((item): item is { id: string; label: string; state: string } => Boolean(item.id));
+  }, [issues.data?.items, pulls.data?.items]);
   const selectedProjectItem =
     projectItemOptions.find((item) => item.id === projectItemContentId) ?? projectItemOptions[0] ?? null;
   const liveProjectDisabledReason = !githubReady ? "Sign in with GitHub to change projects." : null;

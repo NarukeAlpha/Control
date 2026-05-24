@@ -1,24 +1,21 @@
 import { ChevronDown, ExternalLink, MessageSquare, Plus, Search } from "lucide-react";
 import { useState, type JSX } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, type QueryClient } from "@tanstack/react-query";
 
 import type {
   DiscussionCategoryListResult,
   DiscussionDetailResult,
+  DiscussionListResult,
   DiscussionCommentSummary,
   DiscussionSummary,
   GitHubAction,
   GitHubMutationFields,
-  GitHubReadAvailability,
   RepositoryDetail,
   TimelineCommentSummary
 } from "@shared/github";
+import type { ControlApi } from "@shared/ipc";
 
-import {
-  MarkdownBody,
-  markdownRepositoryUrlContext,
-  type MarkdownUrlContext
-} from "@renderer/components/MarkdownBody";
+import { markdownRepositoryUrlContext } from "@renderer/components/MarkdownBody";
 
 import {
   githubActionLabel,
@@ -26,131 +23,98 @@ import {
   repositoryMutationDisabledReason,
   repositoryPath
 } from "@renderer/components/repository/repositoryUi";
+import { TimelineComment } from "@renderer/components/shared/TimelineComment";
 
 import { useControlApi } from "@renderer/hooks/useControlApi";
 
 import { formatCompactNumber, formatRelativeDate } from "@renderer/utils/format";
 const maxDiscussionsLimit = 100;
 
-function TimelineComment({
-  authorLogin,
-  authorAvatarUrl,
-  createdAt,
-  body,
-  disabledReason,
-  markdownUrlContext,
-  onOpenExternal,
-  onEdit,
-  onDelete
-}: {
-  authorLogin: string | null;
-  authorAvatarUrl: string | null;
-  createdAt: string;
-  body: string;
-  disabledReason?: string | null;
-  markdownUrlContext?: MarkdownUrlContext;
-  onOpenExternal(url: string): void;
-  onEdit?(body: string): void;
-  onDelete?(): void;
-}): JSX.Element {
-  const [editing, setEditing] = useState(false);
-  const [editBody, setEditBody] = useState(body);
-  const hasActions = Boolean(onEdit || onDelete);
-  const editSubmitDisabledReason = disabledReason ?? (!editBody.trim() ? "Comment body is required." : null);
+export interface DiscussionsTabQueryInput {
+  owner: string;
+  repo: string;
+  limit: number;
+  enabled: boolean;
+  githubReady: boolean;
+}
 
-  return (
-    <article className="timeline-comment">
-      <div className="timeline-avatar">
-        {authorAvatarUrl ? (
-          <img src={authorAvatarUrl} alt="" />
-        ) : (
-          <span>{authorLogin?.slice(0, 1).toUpperCase() ?? "?"}</span>
-        )}
-      </div>
-      <div className="timeline-card">
-        <header className="timeline-card-header">
-          <strong>{authorLogin ?? "unknown"}</strong>
-          <span>commented {formatRelativeDate(createdAt)}</span>
-          {hasActions && (
-            <div className="timeline-actions">
-              {onEdit && (
-                <button
-                  type="button"
-                  disabled={Boolean(disabledReason)}
-                  title={disabledReason ?? undefined}
-                  onClick={() => {
-                    setEditBody(body);
-                    setEditing(true);
-                  }}
-                >
-                  Edit comment
-                </button>
-              )}
-              {onDelete && (
-                <button
-                  type="button"
-                  disabled={Boolean(disabledReason)}
-                  title={disabledReason ?? undefined}
-                  onClick={onDelete}
-                >
-                  Delete comment
-                </button>
-              )}
-            </div>
-          )}
-        </header>
-        {editing ? (
-          <form
-            className="timeline-edit-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (editSubmitDisabledReason) {
-                return;
-              }
-              onEdit?.(editBody.trim());
-            }}
-          >
-            <textarea
-              value={editBody}
-              disabled={Boolean(disabledReason)}
-              title={disabledReason ?? undefined}
-              onChange={(event) => setEditBody(event.target.value)}
-              placeholder="Edit comment body"
-            />
-            <div>
-              <button
-                className="dark-action"
-                type="submit"
-                disabled={Boolean(editSubmitDisabledReason)}
-                title={editSubmitDisabledReason ?? undefined}
-              >
-                Save comment
-              </button>
-              <button type="button" onClick={() => setEditing(false)}>
-                Cancel
-              </button>
-              {editSubmitDisabledReason && (
-                <small className="action-disabled-note">{editSubmitDisabledReason}</small>
-              )}
-            </div>
-          </form>
-        ) : (
-          <MarkdownBody markdown={body} onOpenExternal={onOpenExternal} urlContext={markdownUrlContext} />
-        )}
-      </div>
-    </article>
-  );
+export interface DiscussionsTabPrefetchInput {
+  api: ControlApi;
+  owner: string;
+  repo: string;
+  limit: number;
+  githubReady: boolean;
+}
+
+export type DiscussionsTabRefreshInput = DiscussionsTabPrefetchInput;
+
+export function discussionsTabQueryKey(
+  owner: string,
+  repo: string,
+  limit: number
+): readonly ["discussions", string, string, number] {
+  return ["discussions", owner, repo, limit] as const;
+}
+
+export function useDiscussionsTabQueries({
+  owner,
+  repo,
+  limit,
+  enabled,
+  githubReady
+}: DiscussionsTabQueryInput) {
+  const api = useControlApi();
+
+  const discussions = useQuery<DiscussionListResult>({
+    queryKey: discussionsTabQueryKey(owner, repo, limit),
+    queryFn: () => api.github.listDiscussionsWithStatus({ owner, repo, limit, cacheOnly: !githubReady }),
+    enabled,
+    staleTime: 60_000
+  });
+
+  return { discussions };
+}
+
+export async function prefetchDiscussionsTabData(
+  queryClient: QueryClient,
+  { api, owner, repo, limit, githubReady }: DiscussionsTabPrefetchInput
+): Promise<void> {
+  await queryClient.prefetchQuery({
+    queryKey: discussionsTabQueryKey(owner, repo, limit),
+    queryFn: () => api.github.listDiscussionsWithStatus({ owner, repo, limit, cacheOnly: !githubReady }),
+    staleTime: 60_000
+  });
+}
+
+export async function refreshDiscussionsTabData(
+  queryClient: QueryClient,
+  { api, owner, repo, limit, githubReady }: DiscussionsTabRefreshInput
+): Promise<void> {
+  const cachedRead = !githubReady;
+
+  try {
+    await queryClient.fetchQuery({
+      queryKey: discussionsTabQueryKey(owner, repo, limit),
+      staleTime: 0,
+      queryFn: () =>
+        api.github.listDiscussionsWithStatus({
+          owner,
+          repo,
+          limit,
+          cacheOnly: cachedRead,
+          forceRefresh: !cachedRead
+        })
+    });
+  } catch {
+    // React Query owns the visible error state for this refresh.
+  }
 }
 
 export function DiscussionsTab({
   repository,
-  discussions,
   discussionsLimit,
   focusedDiscussionNumber,
   githubReady,
-  loading,
-  availability,
-  error,
   onOpenExternal,
   onSelectDiscussion,
   onExpandDiscussions,
@@ -161,13 +125,9 @@ export function DiscussionsTab({
   onMutate
 }: {
   repository: RepositoryDetail;
-  discussions: DiscussionSummary[];
   discussionsLimit: number;
   focusedDiscussionNumber: number | null;
   githubReady: boolean;
-  loading: boolean;
-  availability: GitHubReadAvailability | null;
-  error: Error | null;
   onOpenExternal(url: string): void;
   onSelectDiscussion(discussion: DiscussionSummary): void;
   onExpandDiscussions(): void;
@@ -177,6 +137,17 @@ export function DiscussionsTab({
   mutationError: Error | null;
   onMutate(action: GitHubAction, dangerous: boolean, payload?: GitHubMutationFields): void;
 }): JSX.Element {
+  const { discussions: discussionsQuery } = useDiscussionsTabQueries({
+    owner: repository.owner,
+    repo: repository.name,
+    limit: discussionsLimit,
+    enabled: true,
+    githubReady
+  });
+  const discussions = discussionsQuery.data?.items ?? [];
+  const availability = discussionsQuery.data?.availability ?? null;
+  const loading = discussionsQuery.isLoading || discussionsQuery.isFetching;
+  const error = discussionsQuery.error;
   const api = useControlApi();
   const [filter, setFilter] = useState("");
   const [composingDiscussion, setComposingDiscussion] = useState(false);

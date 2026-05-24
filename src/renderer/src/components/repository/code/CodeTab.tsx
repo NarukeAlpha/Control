@@ -10,26 +10,325 @@ import {
 } from "lucide-react";
 import { useMemo, useRef, useState, type JSX } from "react";
 
+import { useQuery, type QueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 import type {
-  BranchSummary,
-  GitHubReadAvailability,
+  RepoContentsResult,
   RepoEntry,
+  RepoReadmeResult,
   RepoFileContent,
   RepoFileContentResult,
+  RepositoryCommitListResult,
   RepositoryDetail,
-  RepositorySummary,
-  TagSummary
+  RepositorySummary
 } from "@shared/github";
+import type { ControlApi } from "@shared/ipc";
 
 import { MarkdownBody, markdownRepositoryUrlContext } from "@renderer/components/MarkdownBody";
 
+import { isMarkdownPath, isReadmeMarkdownPath } from "@renderer/components/code-browser/codeBrowserUi";
 import { readAvailabilityMessage } from "@renderer/components/repository/repositoryUi";
+import { useControlApi } from "@renderer/hooks/useControlApi";
+import { refreshRepositoryRefsData, useRepositoryRefs } from "@renderer/hooks/useRepositoryRefs";
 
 import { firstMarkdownHeading, formatCompactNumber, formatRelativeDate } from "@renderer/utils/format";
 
 const expandedRefListLimit = 200;
+const emptyCodeTabEntries: RepoEntry[] = [];
+
+export interface CodeTabQueryInput {
+  owner: string;
+  repo: string;
+  selectedRef: string | null;
+  defaultBranch: string | null | undefined;
+  commitHistoryLimit: number;
+  selectedRootMarkdownPath: string | null;
+  enabled: boolean;
+  githubReady: boolean;
+}
+
+export interface CodeTabPrefetchInput {
+  api: ControlApi;
+  owner: string;
+  repo: string;
+  selectedRef: string | null;
+  defaultBranch?: string | null;
+  commitHistoryLimit: number;
+  selectedRootMarkdownPath?: string | null;
+  githubReady: boolean;
+}
+
+export interface CodeTabRefreshInput extends CodeTabPrefetchInput {
+  refListLimit: number;
+}
+
+export function codeTabContentsQueryKey(
+  owner: string,
+  repo: string,
+  selectedRef: string | null
+): readonly ["contents", string, string, string, "", "dir"] {
+  return ["contents", owner, repo, selectedRef ?? "default", "", "dir"] as const;
+}
+
+export function codeTabReadmeQueryKey(
+  owner: string,
+  repo: string,
+  selectedRef: string | null
+): readonly ["readme", string, string, string] {
+  return ["readme", owner, repo, selectedRef ?? "default"] as const;
+}
+
+export function codeTabRootMarkdownContentQueryKey(
+  owner: string,
+  repo: string,
+  selectedRef: string | null,
+  path: string | null
+): readonly ["file-content", string, string, string, string] {
+  return ["file-content", owner, repo, selectedRef ?? "default", path ?? ""] as const;
+}
+
+export function codeTabCommitsQueryKey(
+  owner: string,
+  repo: string,
+  selectedRef: string | null,
+  limit: number
+): readonly ["commits", string, string, string, "", number] {
+  return ["commits", owner, repo, selectedRef ?? "default", "", limit] as const;
+}
+
+function rootMarkdownItemsFor(contents: RepoEntry[]): RepoEntry[] {
+  return contents.filter(
+    (item) =>
+      item.type === "file" &&
+      !item.path.includes("/") &&
+      isMarkdownPath(item.path) &&
+      !isReadmeMarkdownPath(item.path)
+  );
+}
+
+function selectedRootMarkdownPathFor(
+  rootMarkdownItems: RepoEntry[],
+  selectedRootMarkdownPath: string | null | undefined
+): string | null {
+  return rootMarkdownItems.some((item) => item.path === selectedRootMarkdownPath)
+    ? (selectedRootMarkdownPath ?? null)
+    : (rootMarkdownItems[0]?.path ?? null);
+}
+
+export function useCodeTabQueries({
+  owner,
+  repo,
+  selectedRef,
+  defaultBranch,
+  commitHistoryLimit,
+  selectedRootMarkdownPath,
+  enabled,
+  githubReady
+}: CodeTabQueryInput) {
+  const api = useControlApi();
+  const ref = selectedRef ?? undefined;
+  const commitRef = selectedRef ?? defaultBranch ?? undefined;
+
+  const contents = useQuery<RepoContentsResult>({
+    queryKey: codeTabContentsQueryKey(owner, repo, selectedRef),
+    queryFn: () =>
+      api.github.listContentsWithStatus({
+        owner,
+        repo,
+        ref,
+        cacheOnly: !githubReady
+      }),
+    enabled,
+    staleTime: 120_000
+  });
+
+  const readme = useQuery<RepoReadmeResult>({
+    queryKey: codeTabReadmeQueryKey(owner, repo, selectedRef),
+    queryFn: () => api.github.getReadme({ owner, repo, ref, cacheOnly: !githubReady }),
+    enabled,
+    staleTime: 120_000
+  });
+
+  const repositoryCommits = useQuery<RepositoryCommitListResult>({
+    queryKey: codeTabCommitsQueryKey(owner, repo, selectedRef, commitHistoryLimit),
+    queryFn: () =>
+      api.github.listCommitsWithStatus({
+        owner,
+        repo,
+        ref: commitRef,
+        limit: commitHistoryLimit,
+        cacheOnly: !githubReady
+      }),
+    enabled,
+    staleTime: 60_000
+  });
+
+  const contentItems = contents.data?.items ?? emptyCodeTabEntries;
+  const rootMarkdownItems = useMemo(() => rootMarkdownItemsFor(contentItems), [contentItems]);
+  const effectiveSelectedRootMarkdownPath = selectedRootMarkdownPathFor(
+    rootMarkdownItems,
+    selectedRootMarkdownPath
+  );
+
+  const rootMarkdownContent = useQuery<RepoFileContentResult>({
+    queryKey: codeTabRootMarkdownContentQueryKey(owner, repo, selectedRef, effectiveSelectedRootMarkdownPath),
+    queryFn: () =>
+      api.github.getFileContentWithStatus({
+        owner,
+        repo,
+        path: effectiveSelectedRootMarkdownPath ?? "",
+        ref,
+        cacheOnly: !githubReady
+      }),
+    enabled: enabled && Boolean(effectiveSelectedRootMarkdownPath),
+    staleTime: 120_000
+  });
+
+  return {
+    contents,
+    readme,
+    repositoryCommits,
+    rootMarkdownContent,
+    contentItems,
+    contentsAvailability: contents.data?.availability ?? null,
+    repositoryCommitItems: repositoryCommits.data?.items ?? [],
+    repositoryCommitsAvailability: repositoryCommits.data?.availability ?? null,
+    rootMarkdownItems,
+    effectiveSelectedRootMarkdownPath
+  };
+}
+
+export async function prefetchCodeTabData(
+  queryClient: QueryClient,
+  {
+    api,
+    owner,
+    repo,
+    selectedRef,
+    defaultBranch,
+    commitHistoryLimit,
+    selectedRootMarkdownPath,
+    githubReady
+  }: CodeTabPrefetchInput
+): Promise<void> {
+  const ref = selectedRef ?? undefined;
+  const commitRef = selectedRef ?? defaultBranch ?? undefined;
+  const contentsPromise = queryClient.fetchQuery({
+    queryKey: codeTabContentsQueryKey(owner, repo, selectedRef),
+    queryFn: () =>
+      api.github.listContentsWithStatus({
+        owner,
+        repo,
+        ref,
+        cacheOnly: !githubReady
+      }),
+    staleTime: 120_000
+  });
+
+  await Promise.all([
+    contentsPromise.then(async (contents) => {
+      const rootMarkdownItems = rootMarkdownItemsFor(contents.items);
+      const rootMarkdownPath = selectedRootMarkdownPathFor(rootMarkdownItems, selectedRootMarkdownPath);
+      if (!rootMarkdownPath) {
+        return;
+      }
+
+      await queryClient.prefetchQuery({
+        queryKey: codeTabRootMarkdownContentQueryKey(owner, repo, selectedRef, rootMarkdownPath),
+        queryFn: () =>
+          api.github.getFileContentWithStatus({
+            owner,
+            repo,
+            path: rootMarkdownPath,
+            ref,
+            cacheOnly: !githubReady
+          }),
+        staleTime: 120_000
+      });
+    }),
+    queryClient.prefetchQuery({
+      queryKey: codeTabReadmeQueryKey(owner, repo, selectedRef),
+      queryFn: () => api.github.getReadme({ owner, repo, ref, cacheOnly: !githubReady }),
+      staleTime: 120_000
+    }),
+    queryClient.prefetchQuery({
+      queryKey: codeTabCommitsQueryKey(owner, repo, selectedRef, commitHistoryLimit),
+      queryFn: () =>
+        api.github.listCommitsWithStatus({
+          owner,
+          repo,
+          ref: commitRef,
+          limit: commitHistoryLimit,
+          cacheOnly: !githubReady
+        }),
+      staleTime: 60_000
+    })
+  ]);
+}
+
+export async function refreshCodeTabData(
+  queryClient: QueryClient,
+  {
+    api,
+    owner,
+    repo,
+    selectedRef,
+    defaultBranch,
+    commitHistoryLimit,
+    refListLimit,
+    githubReady
+  }: CodeTabRefreshInput
+): Promise<void> {
+  const ref = selectedRef ?? defaultBranch ?? undefined;
+  const commitRef = selectedRef ?? defaultBranch ?? undefined;
+  const cachedRead = !githubReady;
+
+  try {
+    await Promise.all([
+      refreshRepositoryRefsData(queryClient, { api, owner, repo, limit: refListLimit, githubReady }),
+      queryClient.fetchQuery({
+        queryKey: codeTabContentsQueryKey(owner, repo, selectedRef),
+        staleTime: 0,
+        queryFn: () =>
+          api.github.listContentsWithStatus({
+            owner,
+            repo,
+            ref,
+            cacheOnly: cachedRead,
+            forceRefresh: !cachedRead
+          })
+      }),
+      queryClient.fetchQuery({
+        queryKey: codeTabReadmeQueryKey(owner, repo, selectedRef),
+        staleTime: 0,
+        queryFn: () =>
+          api.github.getReadme({
+            owner,
+            repo,
+            ref,
+            cacheOnly: cachedRead,
+            forceRefresh: !cachedRead
+          })
+      }),
+      queryClient.fetchQuery({
+        queryKey: codeTabCommitsQueryKey(owner, repo, selectedRef, commitHistoryLimit),
+        staleTime: 0,
+        queryFn: () =>
+          api.github.listCommitsWithStatus({
+            owner,
+            repo,
+            ref: commitRef,
+            limit: commitHistoryLimit,
+            cacheOnly: cachedRead,
+            forceRefresh: !cachedRead
+          })
+      })
+    ]);
+  } catch {
+    // React Query owns the visible error state for this refresh.
+  }
+}
 
 function repositoryActivityDate(repository: RepositorySummary): string | null {
   return repository.pushedAt ?? repository.updatedAt;
@@ -219,98 +518,101 @@ function fileCommitChangeSummary(file: RepoFileContent | RepoEntry | undefined):
 
 export function CodeTab({
   repository,
+  githubReady,
   selectedRef,
-  branches,
-  tags,
   refListLimit,
-  refsLoading,
-  refsError,
-  refsAvailabilityMessage,
-  contents,
-  contentsLoading,
-  contentsError,
-  contentsAvailability,
-  readmeMarkdown,
-  readmeAvailability,
-  readmeLoading,
-  readmeError,
-  rootMarkdownItems,
-  selectedRootMarkdownPath,
-  rootMarkdownContent,
-  rootMarkdownLoading,
-  rootMarkdownError,
+  commitHistoryLimit,
   onOpenCodeBrowser,
   onOpenExternal,
   onOpenFileFinder,
   onSelectRef,
-  onSelectRootMarkdown,
   onExpandRefs
 }: {
   repository: RepositoryDetail;
+  githubReady: boolean;
   selectedRef: string | null;
-  branches: BranchSummary[];
-  tags: TagSummary[];
   refListLimit: number;
-  refsLoading: boolean;
-  refsError: Error | null;
-  refsAvailabilityMessage: string | null;
-  contents: RepoEntry[];
-  contentsLoading: boolean;
-  contentsError: Error | null;
-  contentsAvailability: GitHubReadAvailability | null;
-  readmeMarkdown: string | null;
-  readmeAvailability: GitHubReadAvailability | null;
-  readmeLoading: boolean;
-  readmeError: Error | null;
-  rootMarkdownItems: RepoEntry[];
-  selectedRootMarkdownPath: string | null;
-  rootMarkdownContent: RepoFileContentResult | null;
-  rootMarkdownLoading: boolean;
-  rootMarkdownError: Error | null;
+  commitHistoryLimit: number;
   onOpenCodeBrowser(entry: RepoEntry): void;
   onOpenExternal(url: string): void;
   onOpenFileFinder(): void;
   onSelectRef(ref: string | null): void;
-  onSelectRootMarkdown(path: string): void;
   onExpandRefs(): void;
 }): JSX.Element {
   const parentRef = useRef<HTMLDivElement | null>(null);
+  const [selectedRootMarkdownPath, setSelectedRootMarkdownPath] = useState<string | null>(null);
+  const {
+    branches,
+    tags,
+    branchItems,
+    tagItems,
+    error: refsError,
+    availabilityMessage: refsAvailabilityMessage
+  } = useRepositoryRefs(repository.owner, repository.name, true, refListLimit, { githubReady });
+  const {
+    contents,
+    readme,
+    rootMarkdownContent,
+    contentItems,
+    contentsAvailability,
+    rootMarkdownItems,
+    effectiveSelectedRootMarkdownPath
+  } = useCodeTabQueries({
+    owner: repository.owner,
+    repo: repository.name,
+    selectedRef,
+    defaultBranch: repository.defaultBranch,
+    commitHistoryLimit,
+    selectedRootMarkdownPath,
+    enabled: true,
+    githubReady
+  });
+  const readmeMarkdown = readme.data?.markdown ?? repository.readmeMarkdown ?? null;
+  const readmeAvailability = readme.data?.availability ?? null;
+  const readmeLoading = readme.isLoading || readme.isFetching;
+  const readmeError = readme.error;
+  const contentsLoading = contents.isLoading || contents.isFetching;
+  const contentsError = contents.error;
+  const refsLoading = branches.isLoading || branches.isFetching || tags.isLoading || tags.isFetching;
+  const rootMarkdownData = rootMarkdownContent.data ?? null;
+  const rootMarkdownLoading = rootMarkdownContent.isLoading || rootMarkdownContent.isFetching;
+  const rootMarkdownError = rootMarkdownContent.error;
   const repositoryUpdatedAt = repositoryActivityDate(repository);
   const currentRef = selectedRef ?? repository.defaultBranch ?? "HEAD";
   const contentsAvailabilityMessage = readAvailabilityMessage("Repository contents", contentsAvailability);
   const readmeAvailabilityMessage = readAvailabilityMessage("README", readmeAvailability);
   const rootMarkdownAvailabilityMessage = readAvailabilityMessage(
-    selectedRootMarkdownPath ?? "Root markdown",
-    rootMarkdownContent?.availability ?? null
+    effectiveSelectedRootMarkdownPath ?? "Root markdown",
+    rootMarkdownData?.availability ?? null
   );
   const selectedRootMarkdownName =
-    rootMarkdownItems.find((item) => item.path === selectedRootMarkdownPath)?.name ??
-    selectedRootMarkdownPath;
+    rootMarkdownItems.find((item) => item.path === effectiveSelectedRootMarkdownPath)?.name ??
+    effectiveSelectedRootMarkdownPath;
   const readmeEmptyMessage =
     !readmeMarkdown && readmeAvailability?.status === "available" && readmeAvailability.message
       ? readmeAvailability.message
       : "No project README returned.";
   const refOptions = [
-    ...branches.map((branch) => ({ kind: "branch" as const, name: branch.name })),
-    ...tags.map((tag) => ({ kind: "tag" as const, name: tag.name }))
+    ...branchItems.map((branch) => ({ kind: "branch" as const, name: branch.name })),
+    ...tagItems.map((tag) => ({ kind: "tag" as const, name: tag.name }))
   ];
   const hasCurrentRefOption = refOptions.some((option) => option.name === currentRef);
   const refsExceedLoadedCounts =
-    branches.length < repository.branchCount || tags.length < repository.tagCount;
+    branchItems.length < repository.branchCount || tagItems.length < repository.tagCount;
   const canExpandRefs = refsExceedLoadedCounts && refListLimit < expandedRefListLimit;
   const refsLimitNote =
     refsExceedLoadedCounts && refListLimit >= expandedRefListLimit
       ? `Showing the first ${expandedRefListLimit} refs.`
       : null;
   const virtualizer = useVirtualizer({
-    count: contents.length,
+    count: contentItems.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => 36,
     overscan: 8
   });
   const virtualRows = virtualizer.getVirtualItems();
   const visibleFileRows =
-    virtualRows.length > 0 ? virtualRows : contents.map((_, index) => ({ index, start: index * 36 }));
+    virtualRows.length > 0 ? virtualRows : contentItems.map((_, index) => ({ index, start: index * 36 }));
 
   return (
     <section className="code-layout">
@@ -325,9 +627,9 @@ export function CodeTab({
               onChange={(event) => onSelectRef(event.currentTarget.value || null)}
             >
               {!hasCurrentRefOption && <option value={currentRef}>{currentRef}</option>}
-              {branches.length > 0 && (
+              {branchItems.length > 0 && (
                 <optgroup label="Branches">
-                  {branches.map((branch) => (
+                  {branchItems.map((branch) => (
                     <option key={`branch-${branch.name}`} value={branch.name}>
                       {branch.name}
                       {branch.protected ? " (protected)" : ""}
@@ -335,9 +637,9 @@ export function CodeTab({
                   ))}
                 </optgroup>
               )}
-              {tags.length > 0 && (
+              {tagItems.length > 0 && (
                 <optgroup label="Tags">
-                  {tags.map((tag) => (
+                  {tagItems.map((tag) => (
                     <option key={`tag-${tag.name}`} value={tag.name}>
                       {tag.name}
                     </option>
@@ -383,13 +685,13 @@ export function CodeTab({
           <small>updated</small>
         </div>
         <div className="virtual-file-list" ref={parentRef}>
-          {contentsError && contents.length === 0 ? (
+          {contentsError && contentItems.length === 0 ? (
             <div className="error-state">Repository files unavailable: {contentsError.message}</div>
-          ) : contentsLoading && contents.length === 0 ? (
+          ) : contentsLoading && contentItems.length === 0 ? (
             <div className="loading-state">Loading files…</div>
-          ) : contentsAvailabilityMessage && contents.length === 0 ? (
+          ) : contentsAvailabilityMessage && contentItems.length === 0 ? (
             <div className="error-state">{contentsAvailabilityMessage}</div>
-          ) : !contentsError && contents.length === 0 ? (
+          ) : !contentsError && contentItems.length === 0 ? (
             <div className="empty-state">No files returned for this repository path.</div>
           ) : (
             <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
@@ -402,7 +704,7 @@ export function CodeTab({
                 </div>
               )}
               {visibleFileRows.map((virtualRow) => {
-                const item = contents[virtualRow.index];
+                const item = contentItems[virtualRow.index];
                 return (
                   <button
                     className="file-row"
@@ -472,22 +774,22 @@ export function CodeTab({
             {rootMarkdownItems.map((item) => (
               <button
                 key={item.path}
-                className={item.path === selectedRootMarkdownPath ? "active" : ""}
+                className={item.path === effectiveSelectedRootMarkdownPath ? "active" : ""}
                 type="button"
                 role="tab"
-                aria-selected={item.path === selectedRootMarkdownPath}
-                onClick={() => onSelectRootMarkdown(item.path)}
+                aria-selected={item.path === effectiveSelectedRootMarkdownPath}
+                onClick={() => setSelectedRootMarkdownPath(item.path)}
               >
                 {item.name}
               </button>
             ))}
           </div>
           <div className="readme-content root-markdown-preview">
-            {rootMarkdownError && !rootMarkdownContent?.item ? (
+            {rootMarkdownError && !rootMarkdownData?.item ? (
               <div className="error-state">Markdown unavailable: {rootMarkdownError.message}</div>
-            ) : rootMarkdownLoading && !rootMarkdownContent?.item ? (
+            ) : rootMarkdownLoading && !rootMarkdownData?.item ? (
               <div className="loading-state">Loading {selectedRootMarkdownName ?? "markdown"}…</div>
-            ) : rootMarkdownAvailabilityMessage && !rootMarkdownContent?.item ? (
+            ) : rootMarkdownAvailabilityMessage && !rootMarkdownData?.item ? (
               <div className="error-state">{rootMarkdownAvailabilityMessage}</div>
             ) : (
               <>
@@ -500,7 +802,7 @@ export function CodeTab({
                   </div>
                 )}
                 <MarkdownBody
-                  markdown={rootMarkdownContent?.item?.content ?? null}
+                  markdown={rootMarkdownData?.item?.content ?? null}
                   emptyText={
                     selectedRootMarkdownName
                       ? `${selectedRootMarkdownName} is empty or could not be rendered.`

@@ -1,7 +1,15 @@
 import type {
+  DiscussionSummary,
   GitHubAction,
   GitHubReadAvailability,
+  IssueSummary,
+  LanguageStat,
+  ProjectSummary,
+  PullRequestSummary,
+  ReleaseSummary,
   RepositoryDetail,
+  RepositoryCollaboratorSummary,
+  RepositoryRef,
   RepositorySummary
 } from "@shared/github";
 import { formatCompactNumber, formatRelativeDate } from "../../utils/format";
@@ -13,6 +21,59 @@ export const maxProfileRepositoryLimit = 100;
 
 export function repositoryPath(repository: RepositoryDetail, path = ""): string {
   return `${repository.htmlUrl}${path}`;
+}
+
+export function getRepositoryCounts(
+  repository: RepositoryDetail,
+  fallback: {
+    issues: IssueSummary[];
+    pulls: PullRequestSummary[];
+    discussions: DiscussionSummary[];
+    projects: ProjectSummary[];
+    releases?: ReleaseSummary[];
+  }
+): Record<
+  "stars" | "forks" | "watchers" | "issues" | "pulls" | "discussions" | "projects" | "releases",
+  number
+> {
+  const counts = repository.counts;
+
+  return {
+    stars: counts.stars,
+    forks: counts.forks,
+    watchers: counts.watchers,
+    issues: counts.openIssues,
+    pulls: counts.openPullRequests,
+    discussions: counts.discussions,
+    projects: counts.projects,
+    releases: counts.releases || fallback.releases?.length || 0
+  };
+}
+
+export function normalizeLanguageStats(repository: RepositoryDetail): LanguageStat[] {
+  if (repository.languages.length > 0) {
+    return repository.languages;
+  }
+
+  return repository.primaryLanguage
+    ? [
+        {
+          name: repository.primaryLanguage.name,
+          color: repository.primaryLanguage.color,
+          size: 0,
+          percent: 100
+        }
+      ]
+    : [];
+}
+
+export function languageTotalLabel(languages: LanguageStat[]): string | null {
+  const total = languages.reduce((sum, language) => sum + language.size, 0);
+  if (total <= 0) {
+    return null;
+  }
+
+  return `${formatCompactNumber(total)} bytes`;
 }
 
 export function normalizedSearchParts(value: string): string[] {
@@ -97,6 +158,55 @@ export function repositoryMutationDisabledReason(repository: RepositoryDetail): 
     return "Repository is archived.";
   }
   return null;
+}
+
+export function accessRoleLabel(role: string | null): string {
+  return role ? role.replace(/[_-]/g, " ") : "access";
+}
+
+export function collaboratorRoleLabel(collaborator: RepositoryCollaboratorSummary): string {
+  if (collaborator.roleName) {
+    return accessRoleLabel(collaborator.roleName);
+  }
+
+  if (collaborator.permissions.admin) {
+    return "admin";
+  }
+  if (collaborator.permissions.maintain) {
+    return "maintain";
+  }
+  if (collaborator.permissions.push) {
+    return "write";
+  }
+  if (collaborator.permissions.triage) {
+    return "triage";
+  }
+  if (collaborator.permissions.pull) {
+    return "read";
+  }
+  return "access";
+}
+
+function unknownableCompactNumber(value: number | null | undefined): string {
+  return value === null || value === undefined ? "unknown" : formatCompactNumber(value);
+}
+
+export function repositoryForkMetadataLabel(repository: RepositoryRef): string {
+  const visibility =
+    repository.visibility ??
+    (repository.isPrivate === null || repository.isPrivate === undefined
+      ? "unknown visibility"
+      : repository.isPrivate
+        ? "private"
+        : "public");
+  const permission = repository.viewerPermission ?? "unknown permission";
+
+  return [
+    visibility.toLowerCase(),
+    `${unknownableCompactNumber(repository.stargazerCount)} stars`,
+    `${unknownableCompactNumber(repository.forkCount)} forks`,
+    permission.toLowerCase()
+  ].join(" · ");
 }
 
 const githubActionLabels: Record<GitHubAction, string> = {

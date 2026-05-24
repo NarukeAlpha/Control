@@ -1,40 +1,327 @@
 import { ExternalLink, GitFork } from "lucide-react";
 import { useState, type FormEvent, type JSX } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, type QueryClient } from "@tanstack/react-query";
 
 import type {
   AccountProfileResult,
   AccountRepositoryListResult,
-  BranchSummary,
   BranchProtectionResult,
   GitHubAction,
   GitHubMutationFields,
-  GitHubReadAvailability,
   RepositoryAccessResult,
   RepositoryCollaboratorSummary,
   RepositoryDetail,
-  RepositoryRef,
   RepositoryForksResult,
+  RepositoryRulesetsResult,
   RepositoryRulesetSummary,
   TeamSummary
 } from "@shared/github";
+import type { ControlApi } from "@shared/ipc";
 
 import {
+  repositoryBranchProtectionBranchFor,
+  repositoryBranchProtectionQueryKey,
+  repositoryRulesetsQueryKey
+} from "@renderer/components/repository/repositoryAdminQueryKeys";
+import {
+  accessRoleLabel,
+  collaboratorRoleLabel,
   githubActionLabel,
   maxProfileRepositoryLimit,
   readAvailabilityMessage,
   repositoryCollectionMetadataParts,
+  repositoryForkMetadataLabel,
   repositoryMutationDisabledReason,
   repositoryPath
 } from "@renderer/components/repository/repositoryUi";
 
 import { useControlApi } from "@renderer/hooks/useControlApi";
+import { refreshRepositoryRefsData, useRepositoryRefs } from "@renderer/hooks/useRepositoryRefs";
 
 import type { RepositoryTab } from "@renderer/stores/uiStore";
 import { formatCompactNumber } from "@renderer/utils/format";
 const defaultMemberProfileRepositoryLimit = 8;
 const maxForksLimit = 100;
 const maxRepositoryAccessLimit = 100;
+
+export interface RepositorySettingsTabQueryInput {
+  owner: string;
+  repo: string;
+  selectedRef: string | null;
+  defaultBranch: string | null;
+  refListLimit: number;
+  repositoryAccessLimit: number;
+  forksLimit: number;
+  repositoryRulesetsLimit: number;
+  enabled: boolean;
+  githubReady: boolean;
+}
+
+export interface RepositorySettingsTabPrefetchInput {
+  api: ControlApi;
+  owner: string;
+  repo: string;
+  branchProtectionBranch: string | null;
+  repositoryAccessLimit: number;
+  forksLimit: number;
+  repositoryRulesetsLimit: number;
+  githubReady: boolean;
+}
+
+export interface RepositorySettingsTabRefreshInput extends RepositorySettingsTabPrefetchInput {
+  refListLimit: number;
+}
+
+export function repositoryAccessQueryKey(
+  owner: string,
+  repo: string,
+  limit: number
+): readonly ["repository-access", string, string, number] {
+  return ["repository-access", owner, repo, limit] as const;
+}
+
+export function repositoryForksQueryKey(
+  owner: string,
+  repo: string,
+  limit: number
+): readonly ["repository-forks", string, string, number] {
+  return ["repository-forks", owner, repo, limit] as const;
+}
+
+export function useRepositorySettingsTabQueries({
+  owner,
+  repo,
+  selectedRef,
+  defaultBranch,
+  refListLimit,
+  repositoryAccessLimit,
+  forksLimit,
+  repositoryRulesetsLimit,
+  enabled,
+  githubReady
+}: RepositorySettingsTabQueryInput) {
+  const api = useControlApi();
+  const refs = useRepositoryRefs(owner, repo, { branches: enabled, tags: false }, refListLimit, {
+    githubReady
+  });
+  const branchProtectionBranch = repositoryBranchProtectionBranchFor(
+    selectedRef,
+    refs.branchItems,
+    defaultBranch
+  );
+
+  const branchProtection = useQuery<BranchProtectionResult>({
+    queryKey: repositoryBranchProtectionQueryKey(owner, repo, branchProtectionBranch),
+    queryFn: () =>
+      api.github.getBranchProtection({
+        owner,
+        repo,
+        branch: branchProtectionBranch!,
+        cacheOnly: !githubReady
+      }),
+    enabled: enabled && Boolean(branchProtectionBranch),
+    staleTime: 60_000
+  });
+
+  const repositoryRulesets = useQuery<RepositoryRulesetsResult>({
+    queryKey: repositoryRulesetsQueryKey(owner, repo, repositoryRulesetsLimit),
+    queryFn: () =>
+      api.github.listRepositoryRulesets({
+        owner,
+        repo,
+        includesParents: true,
+        limit: repositoryRulesetsLimit,
+        cacheOnly: !githubReady
+      }),
+    enabled,
+    staleTime: 60_000
+  });
+
+  const repositoryAccess = useQuery<RepositoryAccessResult>({
+    queryKey: repositoryAccessQueryKey(owner, repo, repositoryAccessLimit),
+    queryFn: () =>
+      api.github.getRepositoryAccess({ owner, repo, limit: repositoryAccessLimit, cacheOnly: !githubReady }),
+    enabled,
+    staleTime: 120_000
+  });
+
+  const repositoryForks = useQuery<RepositoryForksResult>({
+    queryKey: repositoryForksQueryKey(owner, repo, forksLimit),
+    queryFn: () =>
+      api.github.listRepositoryForks({
+        owner,
+        repo,
+        sort: "stargazers",
+        limit: forksLimit,
+        cacheOnly: !githubReady
+      }),
+    enabled,
+    staleTime: 120_000
+  });
+
+  return {
+    branches: refs.branchItems,
+    branchesError: refs.branches.error,
+    branchProtectionBranch,
+    branchProtection,
+    repositoryRulesets,
+    repositoryAccess,
+    repositoryForks
+  };
+}
+
+export async function prefetchRepositorySettingsTabData(
+  queryClient: QueryClient,
+  {
+    api,
+    owner,
+    repo,
+    branchProtectionBranch,
+    repositoryAccessLimit,
+    forksLimit,
+    repositoryRulesetsLimit,
+    githubReady
+  }: RepositorySettingsTabPrefetchInput
+): Promise<void> {
+  await Promise.all([
+    branchProtectionBranch
+      ? queryClient.prefetchQuery({
+          queryKey: repositoryBranchProtectionQueryKey(owner, repo, branchProtectionBranch),
+          queryFn: () =>
+            api.github.getBranchProtection({
+              owner,
+              repo,
+              branch: branchProtectionBranch,
+              cacheOnly: !githubReady
+            }),
+          staleTime: 60_000
+        })
+      : Promise.resolve(),
+    queryClient.prefetchQuery({
+      queryKey: repositoryRulesetsQueryKey(owner, repo, repositoryRulesetsLimit),
+      queryFn: () =>
+        api.github.listRepositoryRulesets({
+          owner,
+          repo,
+          includesParents: true,
+          limit: repositoryRulesetsLimit,
+          cacheOnly: !githubReady
+        }),
+      staleTime: 60_000
+    }),
+    queryClient.prefetchQuery({
+      queryKey: repositoryAccessQueryKey(owner, repo, repositoryAccessLimit),
+      queryFn: () =>
+        api.github.getRepositoryAccess({
+          owner,
+          repo,
+          limit: repositoryAccessLimit,
+          cacheOnly: !githubReady
+        }),
+      staleTime: 120_000
+    }),
+    queryClient.prefetchQuery({
+      queryKey: repositoryForksQueryKey(owner, repo, forksLimit),
+      queryFn: () =>
+        api.github.listRepositoryForks({
+          owner,
+          repo,
+          sort: "stargazers",
+          limit: forksLimit,
+          cacheOnly: !githubReady
+        }),
+      staleTime: 120_000
+    })
+  ]);
+}
+
+export async function refreshRepositorySettingsTabData(
+  queryClient: QueryClient,
+  {
+    api,
+    owner,
+    repo,
+    branchProtectionBranch,
+    refListLimit,
+    repositoryAccessLimit,
+    forksLimit,
+    repositoryRulesetsLimit,
+    githubReady
+  }: RepositorySettingsTabRefreshInput
+): Promise<void> {
+  const cachedRead = !githubReady;
+  const refreshes: Array<Promise<unknown>> = [
+    refreshRepositoryRefsData(queryClient, {
+      api,
+      owner,
+      repo,
+      limit: refListLimit,
+      githubReady,
+      include: { branches: true, tags: false }
+    }),
+    queryClient.fetchQuery({
+      queryKey: repositoryRulesetsQueryKey(owner, repo, repositoryRulesetsLimit),
+      staleTime: 0,
+      queryFn: () =>
+        api.github.listRepositoryRulesets({
+          owner,
+          repo,
+          includesParents: true,
+          limit: repositoryRulesetsLimit,
+          cacheOnly: cachedRead,
+          forceRefresh: !cachedRead
+        })
+    }),
+    queryClient.fetchQuery({
+      queryKey: repositoryAccessQueryKey(owner, repo, repositoryAccessLimit),
+      staleTime: 0,
+      queryFn: () =>
+        api.github.getRepositoryAccess({
+          owner,
+          repo,
+          limit: repositoryAccessLimit,
+          cacheOnly: cachedRead,
+          forceRefresh: !cachedRead
+        })
+    }),
+    queryClient.fetchQuery({
+      queryKey: repositoryForksQueryKey(owner, repo, forksLimit),
+      staleTime: 0,
+      queryFn: () =>
+        api.github.listRepositoryForks({
+          owner,
+          repo,
+          sort: "stargazers",
+          limit: forksLimit,
+          cacheOnly: cachedRead,
+          forceRefresh: !cachedRead
+        })
+    })
+  ];
+
+  if (branchProtectionBranch) {
+    refreshes.push(
+      queryClient.fetchQuery({
+        queryKey: repositoryBranchProtectionQueryKey(owner, repo, branchProtectionBranch),
+        staleTime: 0,
+        queryFn: () =>
+          api.github.getBranchProtection({
+            owner,
+            repo,
+            branch: branchProtectionBranch,
+            cacheOnly: cachedRead,
+            forceRefresh: !cachedRead
+          })
+      })
+    );
+  }
+
+  try {
+    await Promise.all(refreshes);
+  } catch {
+    // React Query owns the visible error state for this refresh.
+  }
+}
 
 function repositorySettingsMutationDisabledReason(repository: RepositoryDetail): string | null {
   const repositoryReason = repositoryMutationDisabledReason(repository);
@@ -45,28 +332,6 @@ function repositorySettingsMutationDisabledReason(repository: RepositoryDetail):
     return "Repository settings require admin access.";
   }
   return null;
-}
-
-function unknownableCompactNumber(value: number | null | undefined): string {
-  return value === null || value === undefined ? "unknown" : formatCompactNumber(value);
-}
-
-function repositoryForkMetadataLabel(repository: RepositoryRef): string {
-  const visibility =
-    repository.visibility ??
-    (repository.isPrivate === null || repository.isPrivate === undefined
-      ? "unknown visibility"
-      : repository.isPrivate
-        ? "private"
-        : "public");
-  const permission = repository.viewerPermission ?? "unknown permission";
-
-  return [
-    visibility.toLowerCase(),
-    `${unknownableCompactNumber(repository.stargazerCount)} stars`,
-    `${unknownableCompactNumber(repository.forkCount)} forks`,
-    permission.toLowerCase()
-  ].join(" · ");
 }
 
 function repositoryStatusMutationDisabledReason(repository: RepositoryDetail): string | null {
@@ -130,10 +395,6 @@ function permissionStateLabel(value: boolean | null): string {
   return value ? "Allowed" : "Not allowed";
 }
 
-function accessRoleLabel(role: string | null): string {
-  return role ? role.replace(/[_-]/g, " ") : "access";
-}
-
 function rulesetConditionLabel(condition: RepositoryRulesetSummary["conditions"][number]): string {
   const refDetails = [
     ...condition.include.map((ref) => `include ${ref}`),
@@ -169,29 +430,6 @@ function rulesetCompactSummary(ruleset: RepositoryRulesetSummary): string {
   return parts.length > 0 ? parts.join(" · ") : "No detailed ruleset payload returned.";
 }
 
-function collaboratorRoleLabel(collaborator: RepositoryCollaboratorSummary): string {
-  if (collaborator.roleName) {
-    return accessRoleLabel(collaborator.roleName);
-  }
-
-  if (collaborator.permissions.admin) {
-    return "admin";
-  }
-  if (collaborator.permissions.maintain) {
-    return "maintain";
-  }
-  if (collaborator.permissions.push) {
-    return "write";
-  }
-  if (collaborator.permissions.triage) {
-    return "triage";
-  }
-  if (collaborator.permissions.pull) {
-    return "read";
-  }
-  return "access";
-}
-
 function collaboratorPermissionForMutation(collaborator: RepositoryCollaboratorSummary): string {
   const role = collaborator.roleName?.toLowerCase();
   if (role === "admin" || role === "maintain" || role === "triage" || role === "pull") {
@@ -221,26 +459,12 @@ function collaboratorPermissionForMutation(collaborator: RepositoryCollaboratorS
 export function RepositorySettingsTab({
   repository,
   githubReady,
-  branches,
-  branchesError,
-  branchProtectionBranch,
-  branchProtection,
-  branchProtectionLoading,
-  branchProtectionError,
-  repositoryRulesets,
+  selectedRef,
+  refListLimit,
   repositoryRulesetsLimit,
-  repositoryRulesetsLoading,
-  repositoryRulesetsAvailability,
-  repositoryRulesetsError,
-  repositoryAccess,
   repositoryAccessLimit,
-  repositoryAccessLoading,
-  repositoryAccessError,
   focusedCollaboratorLogin,
-  repositoryForks,
   forksLimit,
-  repositoryForksLoading,
-  repositoryForksError,
   saving,
   saveSucceeded,
   saveError,
@@ -258,26 +482,12 @@ export function RepositorySettingsTab({
 }: {
   repository: RepositoryDetail;
   githubReady: boolean;
-  branches: BranchSummary[];
-  branchesError: Error | null;
-  branchProtectionBranch: string | null;
-  branchProtection: BranchProtectionResult | null;
-  branchProtectionLoading: boolean;
-  branchProtectionError: Error | null;
-  repositoryRulesets: RepositoryRulesetSummary[];
+  selectedRef: string | null;
+  refListLimit: number;
   repositoryRulesetsLimit: number;
-  repositoryRulesetsLoading: boolean;
-  repositoryRulesetsAvailability: GitHubReadAvailability | null;
-  repositoryRulesetsError: Error | null;
-  repositoryAccess: RepositoryAccessResult | null;
   repositoryAccessLimit: number;
-  repositoryAccessLoading: boolean;
-  repositoryAccessError: Error | null;
   focusedCollaboratorLogin: string | null;
-  repositoryForks: RepositoryForksResult | null;
   forksLimit: number;
-  repositoryForksLoading: boolean;
-  repositoryForksError: Error | null;
   saving: boolean;
   saveSucceeded: boolean;
   saveError: Error | null;
@@ -295,6 +505,39 @@ export function RepositorySettingsTab({
 }): JSX.Element {
   const api = useControlApi();
   const administration = repository.administration;
+  const {
+    branches,
+    branchesError,
+    branchProtectionBranch,
+    branchProtection: branchProtectionQuery,
+    repositoryRulesets: repositoryRulesetsQuery,
+    repositoryAccess: repositoryAccessQuery,
+    repositoryForks: repositoryForksQuery
+  } = useRepositorySettingsTabQueries({
+    owner: repository.owner,
+    repo: repository.name,
+    selectedRef,
+    defaultBranch: repository.defaultBranch ?? null,
+    refListLimit,
+    repositoryAccessLimit,
+    forksLimit,
+    repositoryRulesetsLimit,
+    enabled: true,
+    githubReady
+  });
+  const branchProtection = branchProtectionQuery.data ?? null;
+  const branchProtectionLoading = branchProtectionQuery.isLoading || branchProtectionQuery.isFetching;
+  const branchProtectionError = branchProtectionQuery.error;
+  const repositoryRulesets = repositoryRulesetsQuery.data?.items ?? [];
+  const repositoryRulesetsLoading = repositoryRulesetsQuery.isLoading || repositoryRulesetsQuery.isFetching;
+  const repositoryRulesetsAvailability = repositoryRulesetsQuery.data?.availability ?? null;
+  const repositoryRulesetsError = repositoryRulesetsQuery.error;
+  const repositoryAccess = repositoryAccessQuery.data ?? null;
+  const repositoryAccessLoading = repositoryAccessQuery.isLoading || repositoryAccessQuery.isFetching;
+  const repositoryAccessError = repositoryAccessQuery.error;
+  const repositoryForks = repositoryForksQuery.data ?? null;
+  const repositoryForksLoading = repositoryForksQuery.isLoading || repositoryForksQuery.isFetching;
+  const repositoryForksError = repositoryForksQuery.error;
   const [description, setDescription] = useState(repository.description ?? "");
   const [homepage, setHomepage] = useState(repository.homepageUrl ?? "");
   const [defaultBranch, setDefaultBranch] = useState(

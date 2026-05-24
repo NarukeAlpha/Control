@@ -173,6 +173,11 @@ Renderer application:
   - `data-accent={resolvedTheme.accent}`
 - Add a `matchMedia("(prefers-color-scheme: dark)")` listener in a focused
   hook or theme module, not inline inside unrelated App logic.
+- The listener must be stateful from React's perspective. Add a hook such as
+  `useResolvedTheme(settings.theme)` that stores current system preference,
+  subscribes to `matchMedia` changes, and forces `App` to re-render when the OS
+  preference changes. A plain resolver function is not enough because it cannot
+  update rendered `data-color-scheme` attributes on its own.
 - Keep `glassMode` class derivation separate from theme class derivation.
 
 Main process:
@@ -194,6 +199,11 @@ Main process:
   After the store returns the merged normalized settings, call
   `applyNativeThemeSource` with that merged result before broadcasting updated
   app state to the renderer.
+  `src/main/index.ts` does not currently observe settings writes, so this needs
+  an explicit callback/event bridge from the store update path back to the
+  native-theme owner. If that bridge is not added in pass 1, dynamic
+  `nativeTheme.themeSource` updates must be marked deferred and only bootstrap
+  alignment can be accepted.
 - Partial write rule: unrelated updates such as
   `GitHubProviderManager` calling
   `store.updateSettings({ credentialProvider: "github-oauth" })` must merge
@@ -225,6 +235,9 @@ include at least:
   `--color-success-muted`, `--color-warning`, `--color-warning-muted`,
   `--color-danger`, `--color-danger-muted`
 - Focus and selection: `--color-focus-ring`, `--color-selection-background`
+- Overlays: `--color-overlay-background` for modal backdrops, command-palette
+  scrims, and other temporary layers. This token should differ from persistent
+  glass/surface tokens because overlays need a stronger light/dark veil.
 - Code/logs: `--color-code-background`, `--color-code-text`,
   `--color-code-border`, `--color-diff-addition`,
   `--color-diff-deletion`
@@ -232,7 +245,18 @@ include at least:
   `--glass-panel-blur`, `--glass-panel-saturation`
 - Geometry: `--radius-shell: 30px`, `--radius-panel: 18px`,
   `--radius-glass-panel: 24px`, `--radius-control: 10px`,
-  `--topbar-height: 52px`
+  `--topbar-height: 52px`, `--shell-margin: 16px`
+
+Scope semantic token blocks to explicit theme attributes, such as
+`.app-shell[data-theme-preset="control-light"]` and
+`.app-shell[data-theme-preset="control-dark"]`, with
+`data-color-scheme` available for mode-dependent adjustments. Do not rely only
+on `@media (prefers-color-scheme: dark)`, because manual preset selection must
+win even when it conflicts with the OS preference.
+
+Effect tokens that are consumed as CSS lengths or filter values must include
+their units, for example `--glass-panel-blur: 26px` and
+`--glass-panel-saturation: 1.55`.
 
 Compatibility aliases are acceptable for one PR if they reduce churn:
 
@@ -249,6 +273,11 @@ Compatibility aliases are acceptable for one PR if they reduce churn:
 If aliases are kept, add a TODO in the PR description and remove them in the
 next token cleanup pass. Do not add new component CSS that consumes the old
 alias names.
+
+Do not assume alias replacement catches every color. Run a selector-level spot
+check for hard-coded hex/rgb/hsl values in `src/renderer/src/styles.css`,
+especially values such as `#111827`, `#f8fafc`, low-alpha reds, and old
+blue/slate borders that may bypass the alias layer entirely.
 
 Token inventory cleanup:
 
@@ -315,7 +344,9 @@ Fallback mode (`body.no-liquid-glass`) owns CSS-painted glass:
   `linear-gradient(135deg, #fdfefe, #f8fafc, #f1f6fb)` is too close to plain
   white and should be treated as stale unless screenshots show otherwise.
 - `body.no-liquid-glass .app-shell` may keep margin, border, background,
-  shadow, and backdrop-filter because native material is absent.
+  shadow, and backdrop-filter because native material is absent. Use
+  `--shell-margin` for the margin and any `height: calc(100vh - ...)` fallback
+  so shell spacing cannot drift between margin and height calculations.
 - `body.no-liquid-glass .solid-shell` should use
   `--color-surface-solid`, not a hard-coded `#f8fafc`.
 - Reduced glass should reduce blur/saturation across panel tokens, not only
@@ -503,6 +534,9 @@ Minimum contrast targets:
   and fallback glass.
 - Focus rings: visible on every tokenized surface; do not rely on box-shadow
   that disappears on glass.
+  Standardize on `outline: 2px solid var(--color-focus-ring)` plus
+  `outline-offset: 2px` for focusable controls unless a component has a proven
+  reason to differ. Avoid focus-only box shadows on glass surfaces.
 - Danger/warning/success states: color plus text/icon/border shape. Do not
   rely on hue alone.
 - Disabled controls: do not rely on global opacity alone. Disabled text,
@@ -533,6 +567,8 @@ Specific checks:
   `.compose-form textarea` in each preset.
 - Respect reduced-motion expectations if adding transitions for theme changes;
   do not animate large glass surfaces by default.
+- Apply `--color-selection-background` globally through `::selection` and verify
+  selected text remains readable in every preset.
 
 ## Visual Regression Risks
 
@@ -567,7 +603,8 @@ Specific checks:
    writes, and preserve theme through unrelated partial writes.
 5. Replace root CSS variables with semantic tokens plus temporary aliases. Add
    light and dark token blocks first; then dim and high-contrast dark. Fix
-   `.code-preview` `var(--text)` in this step.
+   `.code-preview` `var(--text)` in this step. Include the hard-coded color
+   spot check before moving to component surfaces.
 6. Fix Liquid Glass shell constraints: transparent native `.app-shell`,
    removal/re-scope of the unscoped fallback media rule, tokenized
    `body.no-liquid-glass`, synced shell radius, and tokenized
@@ -716,6 +753,7 @@ bun run format
 bun run lint
 bun run typecheck
 bun run test
+bun run test:e2e
 bun run build
 ```
 

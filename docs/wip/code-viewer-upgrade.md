@@ -63,10 +63,11 @@ Concrete constraints:
 - Map language from filename/extension only.
 - Do not mutate, normalize, trim, or format repository file content.
 - Do not send highlighted HTML over IPC.
-- Prefer Shiki token output rendered as React elements. If the implementation
-  uses generated HTML instead, the code path must be isolated to Shiki-produced
-  output and covered by a test that repository text containing HTML renders as
-  text, not executable markup.
+- Use Shiki token or HAST output rendered as React elements. Do not use Shiki's
+  default raw HTML string output for repository content. Acceptable APIs include
+  `codeToTokensBase` with a custom token-to-`<span>` renderer, or `codeToHast`
+  with a small recursive React renderer that escapes text nodes and maps only
+  known element/tag/style fields.
 - The renderer token model must preserve the source string exactly at copy time.
   Tokenization can split display into lines and spans, but it must preserve
   original whitespace, empty lines, and trailing-newline behavior from the raw
@@ -74,6 +75,13 @@ Concrete constraints:
   for repository text; still add a test with HTML-like source such as
   `<script>alert(1)</script>` to prove it renders as text.
 - Use a long-lived highlighter singleton and load languages/themes on demand.
+- Verify Shiki's browser engine assets under Electron Vite before landing the
+  dependency. If the chosen Shiki path needs the Oniguruma WASM asset, update
+  `electron.vite.config.ts` or the Shiki import strategy so the renderer can
+  load the WASM file in both `bun run dev` and packaged production builds.
+  Prefer a Shiki JavaScript engine only if it preserves required grammar support
+  and avoids a WASM asset entirely. Add one packaged-build smoke check to the
+  implementation notes before calling syntax highlighting complete.
 - Keep the first theme local to the code viewer, with names/classes that can be
   connected to the future theme system later.
 
@@ -224,7 +232,10 @@ Raw-body rules:
   `accept: application/vnd.github.raw` header.
 - Use the JSON Contents `content` field only as a fallback when the raw body
   request is not possible and `encoding === "base64"`. Decode it as bytes, then
-  validate UTF-8 before producing `kind: "text"`.
+  validate UTF-8 before producing `kind: "text"`. Validation must be strict:
+  use `TextDecoder("utf-8", { fatal: true })` or an equivalent byte-level check.
+  Do not use `Buffer.toString("utf8")` as the validator because it silently
+  replaces invalid bytes and can misclassify binary files as garbled text.
 - Treat `encoding: "none"`, an unsupported encoding, invalid base64, or invalid
   UTF-8 as non-previewable. Return `kind: "unavailable"` with a clear message if
   metadata is usable but the text body cannot be represented safely.
@@ -368,6 +379,10 @@ Performance risks to handle:
 
 - Shiki startup and WASM loading can be slow on first use. Lazy-load on first
   eligible code file, and keep the highlighter singleton alive.
+- Electron Vite must know how to serve or bundle any required Shiki engine/WASM
+  asset. Validate the renderer build output and packaged asset path, not only
+  the dev server, because Shiki can work in development while failing after
+  packaging if `.wasm` is emitted to an unexpected URL.
 - Rapid route changes can resolve old highlight promises late. Guard async
   updates with a request key built from `owner/repo/ref/path/content`.
 - Token rendering can create many spans. Enforce highlight line and byte limits
@@ -594,9 +609,16 @@ state handling merged before highlighting.
 - A successful fresh `too_large`, `image`, `binary`, or `unavailable` result
   replaces any older cached text preview. Stale cached text is preserved only
   for background refresh failures.
+- The reverse replacement must work too: a successful fresh `kind: "text"`
+  result replaces an older cached `too_large`, `image`, `binary`, or
+  `unavailable` state for the same path/ref when the file changes back into a
+  previewable text file.
 - Previewable images render through `downloadUrl` without being classified as
   generic binary files. If no `downloadUrl` is available, the image preview shows
   a clear unavailable fallback.
+- Disabled raw/download/copy actions use native `disabled` attributes and expose
+  useful reasons, for example "Raw download URL unavailable for this file type"
+  when `downloadUrl` is null.
 - Binary files do not render as text and cannot be copied as raw text from the
   viewer.
 - Markdown file previews and README/root markdown rendering remain safe and

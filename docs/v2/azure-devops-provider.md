@@ -253,13 +253,25 @@ object.
 Keep all Azure credentials in the main process:
 
 - `src/main/azureDevOps/credentials.ts`
-  - Store secret material in `keytar`.
+  - Store small credential secrets in the platform credential boundary, but do
+    not assume `keytar` can hold the full MSAL serialized token cache. The
+    GitHub provider currently uses `keytar` for one token string; MSAL cache
+    blobs can be much larger and may contain multiple accounts, refresh tokens,
+    and metadata.
+  - Preferred first implementation: persist the serialized MSAL cache in a
+    main-process-only encrypted file or SQLite blob protected by Electron
+    `safeStorage`, and keep any small wrapping key/account pointer in the OS
+    credential store only if needed. If `safeStorage` is unavailable on a
+    platform, fail Azure auth with a typed credential-store state rather than
+    writing plaintext cache data.
   - Use a service/account naming scheme that is provider-specific, for example
     service `Control Azure DevOps Token` and account keyed by tenant/user or
     `dev.azure.com`.
-  - Store refresh tokens or MSAL token cache material only in the platform
-    credential store. Do not persist access tokens, refresh tokens, PATs, client
-    secrets, or token cache blobs in SQLite.
+  - Do not persist access tokens, refresh tokens, PATs, client secrets, or token
+    cache blobs in plaintext SQLite. If encrypted SQLite is chosen for the MSAL
+    cache, the encryption/decryption stays behind
+    `src/main/azureDevOps/credentials.ts`, and exported/imported data must
+    classify it as secret and exclude it.
   - Mirror the GitHub `CONTROL_E2E` test-token convention only if Azure E2E
     coverage is explicitly added.
 - `src/main/azureDevOps/webOAuth.ts`
@@ -267,12 +279,18 @@ Keep all Azure credentials in the main process:
     plus PKCE as the preferred interactive flow. Microsoft recommends MSAL for
     desktop apps, and this gives the provider the best path for tenant MFA,
     Conditional Access, broker/browser interaction, and silent token refresh.
+  - Define the redirect capture mechanism before implementation. The default
+    should be a local loopback listener such as `http://127.0.0.1:<port>/auth`
+    registered in the Entra app, because it avoids app-protocol registration
+    drift and matches desktop OAuth expectations. A custom `control://auth`
+    protocol handler is acceptable only if an ADR documents OS registration,
+    multi-window handling, and app registration requirements.
   - Device code flow is not the default for Control because Microsoft positions
     it mainly for headless/CLI scenarios. Use it only if an ADR accepts the UX
     tradeoff and documents why auth-code-with-PKCE/MSAL cannot satisfy Electron.
   - Keep every MSAL cache read/write behind `src/main/azureDevOps/credentials.ts`.
-    If MSAL serializes cache material, persist that serialized cache only through
-    `keytar` and never in SQLite.
+    If MSAL serializes cache material, persist that serialized cache only
+    through the encrypted credential boundary described above.
   - Request Azure DevOps tokens for resource id
     `499b84ac-1321-427f-aa17-267ca6975798` / resource URI
     `https://app.vssps.visualstudio.com`.
@@ -284,6 +302,11 @@ Keep all Azure credentials in the main process:
     implemented.
   - Include `offline_access` or the Microsoft-recommended refresh-token
     equivalent only when MSAL requires it for silent refresh.
+  - Handle `InteractionRequiredAuthError` and Entra Continuous Access
+    Evaluation claims challenges explicitly. Silent refresh failures with claims
+    must transition the renderer into a typed "interaction required" state that
+    preserves the claims challenge for the next interactive MSAL request instead
+    of collapsing into a generic offline/auth error.
   - Treat tokens as opaque. Do not decode token claims for identity, tenant, or
     organization routing.
 - `AzureDevOpsProviderManager.createAppState()` should read cached auth/account
@@ -351,6 +374,32 @@ Renderer auth work:
 ## Runtime And API Boundary
 
 Azure DevOps API calls should live behind `src/main/azureDevOps/restClient.ts`.
+
+### Local Git Credential Boundary
+
+REST authentication is not enough for Control to behave as a local Git client.
+The first slice that can clone, fetch, or push Azure repositories must define
+how local Git processes authenticate without depending on a user's global Git
+Credential Manager configuration.
+
+Implementation requirements:
+
+- `src/main/azureDevOps/gitCredentials.ts` or an equivalent focused helper owns
+  Git credential material for spawned `git` commands.
+- Use a temporary credential helper or per-process HTTP extra header generated
+  by main only for the target command. Do not write Azure tokens into repository
+  `.git/config`, global Git config, shell history, command-line arguments, or
+  renderer state.
+- The helper must request the same Entra/Azure DevOps resource token family used
+  by REST reads, refresh it through MSAL when needed, and fail with typed
+  `interaction_required`, `credential_unavailable`, or `permission_denied`
+  states rather than prompting from the Git subprocess.
+- Git subprocess logs, operation results, and sync errors must redact
+  authorization headers, helper paths containing secrets, and remote URLs with
+  embedded credentials.
+- Acceptance for repository clone/open cannot pass until at least one test or
+  scripted validation proves a Git operation receives credentials through this
+  boundary and that no credential lands in persistent Git config.
 
 Requirements:
 
@@ -445,7 +494,10 @@ offline repository-directory UX:
 
 Credential storage:
 
-- Azure OAuth tokens and token cache material go through `keytar`, not SQLite.
+- Azure OAuth tokens and token cache material go through the encrypted
+  main-process credential boundary, not plaintext SQLite. Use `keytar` only for
+  small secrets or wrapping pointers when it is technically appropriate; do not
+  require it to store the full MSAL serialized cache blob.
 - Future PAT fallback must use the same credential boundary.
 - SQLite may contain non-secret Azure organization/project/repository metadata,
   cache payloads, and web URLs.
@@ -465,7 +517,7 @@ Recents and pins:
   provider-specific labels and metadata. Azure Pipelines runs should reuse
   `"workflowRun"`. Do not add `"workItem"` or `"pipelineRun"` until a separate
   recent-kind migration proves the generic kinds are insufficient.
-- Azure repository pins are a non-goal for Phases 0-2. Existing repository pins
+- Azure repository pins are a non-goal for Phases 0-3. Existing repository pins
   remain GitHub/Area-oriented because `RepositoryPinRecord` has no provider and
   `area_repository_pins` is keyed by area/repository/workspace identity. A later
   pin implementation must either add provider repository pins with a provider
@@ -635,6 +687,11 @@ Follow the GitHub read-through cache behavior:
   precise availability status.
 - Mutations, when added, must invalidate only affected Azure cache prefixes and
   emit provider-specific update events.
+- Real-time updates are out of scope for the first shippable Azure slice. Azure
+  DevOps Service Hooks are project/server scoped and not a user-scoped desktop
+  streaming API. Freshness must rely on manual refresh, stale-while-revalidate,
+  mutation invalidation, and bounded TTLs until a later plan justifies polling or
+  service-hook configuration.
 
 Suggested initial TTLs:
 
@@ -656,7 +713,9 @@ text:
   provider.
 - User cancelled sign-in.
 - Device/browser authorization expired.
-- Tenant requires interaction or Conditional Access blocked token refresh.
+- Tenant requires interaction or Conditional Access blocked token refresh,
+  including MSAL `InteractionRequiredAuthError` and CAE claims challenges that
+  must be replayed into the next interactive request.
 - Credential missing from keychain after SQLite still has cached data.
 - Authenticated user has no visible organizations.
 - Organization is visible but selected project is not accessible.
@@ -721,6 +780,8 @@ Work:
   `provider.ts` with auth-only manager behavior.
 - Use MSAL with authorization code plus PKCE for Microsoft Entra OAuth. Device
   code flow requires a separate ADR and is not the default Electron path.
+- Implement the redirect capture chosen in the Auth Boundary section, including
+  Entra app registration documentation for the loopback or custom protocol URI.
 - Configure Azure DevOps delegated permissions for `vso.profile`, `vso.project`,
   and `vso.code`; request tokens for `https://app.vssps.visualstudio.com` using
   `.default`.
@@ -732,7 +793,10 @@ Work:
 - Add Azure auth adapter/controller in renderer auth components.
 - Store non-secret viewer/account snapshot in `accounts` with provider
   `"azure-devops"`.
-- Store token material only in `keytar`.
+- Store MSAL cache material only through the encrypted main-process credential
+  boundary. Do not force the full serialized MSAL cache into `keytar`; use
+  `safeStorage`-protected SQLite/file storage when the cache exceeds
+  credential-store-safe size.
 - Add environment/config handling for the Azure OAuth client id. Use a
   provider-specific variable such as `CONTROL_AZURE_DEVOPS_CLIENT_ID`.
 
@@ -790,6 +854,9 @@ Goal: open an Azure repository without GitHub route assumptions.
 Work:
 
 - Add provider-aware repository route state.
+- Add clone/open support for Azure repositories using the Local Git Credential
+  Boundary above. Repository detail without clone/open is not enough for the
+  first useful desktop slice.
 - Add repository detail, branches, default branch, tree/contents, file content,
   commit list, and readme support only where Azure endpoints provide enough
   data.
@@ -799,6 +866,9 @@ Work:
 Acceptance criteria:
 
 - Azure repository detail opens from the Azure repository directory and recents.
+- User can clone/open an Azure repository into a local workspace through
+  main-owned Git credentials, and validation proves no Azure credential is
+  written into persistent Git config.
 - Offline cached repository detail can render.
 - GitHub repository pages continue to use existing GitHub routes.
 
@@ -884,18 +954,25 @@ Work:
 
 ## Acceptance Criteria For First Shippable Azure Slice
 
-The first shippable slice is Phases 0-2:
+The first shippable slice is Phases 0-3. Phases 0-2 are a necessary foundation,
+but they only prove auth and directory listing; they are not enough user value
+for a desktop Git client unless repository detail and clone/open are included.
 
 - Azure DevOps Services auth uses Microsoft Entra OAuth, not legacy Azure DevOps
   OAuth and not PATs.
 - Personal Microsoft account/MSA-backed Azure DevOps users are explicitly
   unsupported in the Entra-only slice and receive a typed auth error.
 - Electron auth uses MSAL authorization code with PKCE, with MSAL cache material
-  wrapped by the keytar credential boundary.
+  wrapped by the encrypted main-process credential boundary.
+- The redirect mechanism is implemented and documented for the Entra app
+  registration, including loopback/custom protocol behavior and cancellation.
 - App registration and consent cover `vso.profile`, `vso.project`, and
   `vso.code`, and token requests target the Azure DevOps resource URI with
   `.default`.
-- Azure tokens are stored through the platform credential store.
+- Azure tokens and MSAL cache data are never persisted in plaintext SQLite or
+  renderer-accessible state.
+- Silent token refresh handles `InteractionRequiredAuthError` and CAE claims
+  challenges by returning a typed interaction-required auth state.
 - Shared contracts can represent provider-specific auth, organizations,
   projects, and repositories without `unknown` or broad metadata bags.
 - App state cannot confuse Azure identity with GitHub `Viewer`; `AppState.viewer`
@@ -908,6 +985,8 @@ The first shippable slice is Phases 0-2:
   `src/preload/index.ts` all expose Azure provider manager, auth, and event
   ownership explicitly.
 - Renderer can list Azure organizations, projects, and repositories.
+- Renderer can open Azure repository detail and initialize a local clone/open
+  flow through main-owned Git credentials.
 - Organization discovery uses Profile/Accounts APIs on
   `app.vssps.visualstudio.com`; project/repository calls use
   `dev.azure.com/{organization}`.
@@ -920,6 +999,9 @@ The first shippable slice is Phases 0-2:
 - Recents can persist Azure rows and continue to list existing GitHub/local rows.
 - Azure repository pins and Azure Areas are not part of the first shippable
   slice.
+- Azure DevOps live updates rely on manual refresh, TTLs, and
+  stale-while-revalidate; user-scoped streaming or Service Hook integration is
+  deferred.
 - Error states distinguish not loaded, offline, permission denied, rate limited,
   stale, and generic error.
 - Repository list pagination preserves continuation tokens.
@@ -931,7 +1013,7 @@ The first shippable slice is Phases 0-2:
 Doc-only changes:
 
 ```bash
-bunx prettier --check docs/wip/azure-devops-provider.md
+bunx prettier --check docs/v2/azure-devops-provider.md
 ```
 
 Provider-foundation implementation:

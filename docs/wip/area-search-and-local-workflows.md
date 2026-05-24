@@ -191,6 +191,10 @@ Responsibilities:
   `localDiscovery.ts` and `localFileSearch.ts`. Update
   `src/main/areas/localDiscovery.test.ts` and the new
   `src/main/areas/localFileSearch.test.ts` so the policy has one owner.
+- Apply the ignored-directory check before `lstat`, `realpath`, or symlink
+  evaluation for child entries. This keeps deep ignored trees such as
+  `node_modules`, `.git`, and `.jj` from causing unnecessary blocking
+  filesystem work.
 - Never descend into `.git` or `.jj`.
 - Use `resolveInsideRoot` behavior equivalent to `localFiles.ts`. If sharing is
   practical, extract a local root resolver from `localFiles.ts`; otherwise keep
@@ -218,6 +222,12 @@ Expose through `AreaManager.searchFilePaths(input)`:
 - Resolve `workspaceId` with the existing `resolveLocalRoot(input)` logic after
   validating the Area and repository. Use the resolved workspace root when
   `workspaceId` is present; otherwise use `repository.path`.
+- Clamp malformed IPC input before it reaches the scanner. `limit` should follow
+  the same defensive pattern as `AreaManager.searchAreas`: default to 30, floor
+  non-integer values, reject or normalize non-positive values to the default,
+  and cap at 50. The scanner must also keep `maxEntriesScanned`, `timeoutMs`,
+  and `maxDepth` internal so renderer payloads cannot turn a path search into
+  an unbounded filesystem walk.
 - For `area.kind === "local"`, prefer `searchLocalFilePaths` whenever the
   repository path or resolved workspace root is local, even if a gateway client
   is currently running for that Area. Do not copy the `listContents` /
@@ -527,6 +537,11 @@ Implementation guidance:
   `gatewayOperation.error` in addition to the last result.
 - Keep the last visible operation result or thrown error after mutation settle so
   a refetch or state transition does not immediately erase the failure context.
+  React Query clears `useMutation().error` when a new mutation starts, so store
+  the last visible thrown error/result in component state keyed by operation kind
+  and replace it only when a new result settles or the user intentionally
+  dismisses it. Rapid retry should show the in-flight state without erasing the
+  previous failure explanation.
 - If `prepareGatewayOperation` throws "This Area does not have a running
   gateway.", show an inline unavailable state and keep fetch/push buttons
   disabled for gateway-only Areas. Local fallback Areas can keep fallback sync
@@ -655,6 +670,10 @@ Gateway:
   Area repositories for local/SSH Areas.
 - JJ repository opens land on a concrete workspace when one exists, and the
   workspace switcher changes route state.
+- JJ default workspace selection is deterministic: `listAreaWorkspaces` or the
+  route helper orders workspace rows by a stable key, such as explicit name then
+  root path, before selecting the first fallback workspace. Do not rely on
+  database insertion order for `workspaceItems[0]`.
 - JJ overview/status/sync/workspace copy uses JJ-native language instead of Git
   branch/staging language.
 - Local file-path search finds paths inside the selected local repository or
@@ -691,6 +710,7 @@ Add or update focused tests near the changed code:
     workspaces;
   - duplicate repository names in different Areas are preserved;
   - `searchFilePaths` resolves workspace roots;
+  - `searchFilePaths` clamps malformed `limit` values before scanning;
   - local Areas with a running gateway still use local path search when a local
     root is available;
   - SSH/gateway-only roots without file-search protocol return typed
@@ -718,7 +738,8 @@ Add or update focused tests near the changed code:
   - local Area renders Area repositories and refresh state;
   - local repository pin state matches by Area/repository/workspace identity.
 - Local-repository coverage
-  - repository-only JJ route selects a workspace;
+  - repository-only JJ route selects a deterministic workspace across repeated
+    reads;
   - missing non-null workspace routes stay visible instead of redirecting;
   - workspace switcher preserves route tab;
   - JJ labels do not show "Current branch" in overview/sync;

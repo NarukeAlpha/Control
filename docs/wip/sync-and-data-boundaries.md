@@ -221,6 +221,13 @@ Future export may optionally include reconstructable cache as a warm-start
 optimization, but import must behave correctly when cache data is absent,
 expired, partially imported, or intentionally excluded.
 
+Large reconstructable cache export needs explicit bounds. If a user opts into
+GitHub README/cache payloads or Area cache rows, export should either stream the
+JSON writer from main-process storage or enforce a documented maximum payload
+size/depth with preview counts. Do not build one unbounded in-memory object that
+contains every `readme_markdown`, detail JSON, and snapshot payload for a large
+workspace.
+
 ### Field-Level Export Mapper Requirements
 
 Export/import mappers must classify fields, not only tables. JSON blobs are not
@@ -403,6 +410,14 @@ Implementation rules:
     `["area-sync-status", areaId, repositoryId, workspaceId]`.
   - Gateway operation success should either emit the repository/workspace events
     above or explicitly refetch the same query families in the owning mutation.
+- Gateway metadata changes are covered by `areas:updated` only when that event
+  causes `["areas"]` and Area summary queries to refetch. If future UI adds
+  gateway-specific query keys, add a gateway-specific event and map it here
+  rather than relying on repository/workspace invalidation.
+- Importing pins and recents must invalidate their renderer query families:
+  `["repository-pins"]`, Area pin queries if split later, and
+  `["local-recents"]`. Do not require restart/manual refresh for imported pins
+  or recent items to appear.
 - Pinning, recents, and Area operations are not GitHub mutations. Keep them out
   of GitHub mutation invalidation.
 - Do not use `repositoryScopedQueryKeys` as the only invalidation strategy for
@@ -497,13 +512,18 @@ existing route parsers. Preload only forwards those methods.
 - Imported Area durable data should emit `areas:updated`; imported Area
   repository/workspace cache should emit the more specific Area repository or
   workspace events when possible.
+- Imported gateway metadata should emit `areas:updated` at minimum, because
+  gateway summaries are surfaced through `AreaSummary.gateway`. If gateway state
+  grows its own query family, import must emit that gateway event too.
+- Imported pins and recents should emit or directly trigger invalidations for
+  repository pin and local recent query keys.
 - Imported GitHub reconstructable cache should emit
   `github:repositories-updated` with `nameWithOwner: null` unless the import can
   name a single affected repository.
 - Import apply must run in a main-process storage transaction. It must insert or
-  update `areas` before `area_repositories`, `area_repositories` before
-  `area_workspaces`, and referenced Area/repository/workspace rows before
-  `area_repository_pins`.
+  update `areas` before `area_gateways`, `area_repositories`, and any Area
+  child rows; `area_repositories` before `area_workspaces`; and referenced
+  Area/repository/workspace rows before `area_repository_pins`.
 - Import must preserve exactly one selected Area. If the payload selects no
   Area, keep the current selected Area or select the default GitHub Area. If it
   selects multiple Areas, preview must report the conflict and apply must choose
@@ -573,8 +593,11 @@ Owner files:
 
 Tasks:
 
-1. Move gateway `apiToken` and `adminToken` to keytar-backed main-process
-   storage, or explicitly exclude `area_gateways.record_json` from any export.
+1. Move gateway `apiToken` and `adminToken` to encrypted main-process
+   credential storage, or explicitly exclude `area_gateways.record_json` from
+   any export. If the gateway runtime plan still uses `keytar` initially, keep
+   that choice behind a focused credential module so a later `safeStorage`
+   migration does not change export/import contracts.
 2. Keep `AreaGatewaySummary` token-free.
 3. Add migration behavior for existing SQLite gateway records that contain
    tokens.
@@ -632,11 +655,21 @@ Tasks:
 4. Emit existing main-to-renderer events after apply.
 5. Do not import credentials.
 6. Apply imports in a transaction with ordered writes for `areas`,
-   `area_repositories`, `area_workspaces`, snapshots, recents, and pins.
+   `area_gateways`, `area_repositories`, `area_workspaces`, snapshots, recents,
+   and pins. `area_gateways` must come after `areas` because it references
+   `areas(id)`, and before renderer events because it changes
+   `AreaSummary.gateway`.
 7. Preserve exactly one selected Area and maintain
    `area_repository_pins` references after ID collision handling/remapping.
 8. Roll back the entire import on parser, invariant, foreign-key, or write
    failure.
+9. After import, choose an explicit health-check policy for imported Areas. The
+   preferred behavior is to mark imported local/SSH/gateway state as
+   unverified/stale, emit renderer invalidation, and schedule
+   `AreaManager.refreshArea` in the background only after apply commits. If the
+   implementation does not auto-refresh, the UI must show that imported
+   machine-specific paths/gateways need validation before treating them as
+   ready.
 
 ### Phase 6: Consider Local-Folder Or Hosted Sync
 
@@ -694,6 +727,8 @@ Implementation acceptance for later phases:
   ID collision handling, and rollback on partial failure.
 - Renderer query invalidation after import uses existing events or explicitly
   documented new events.
+- Imported pins, recents, and gateway summaries appear after import through
+  documented invalidation events without restarting the app.
 - Gateway secret migration acceptance inspects raw `area_gateways.record_json`
   rows and focused credential-store behavior, not only renderer-visible
   summaries.

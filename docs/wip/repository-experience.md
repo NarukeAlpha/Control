@@ -164,6 +164,16 @@ The implementation should introduce a small shared renderer module, for example
 - `repositoryTabQueryEnabled(tab, route, visibility)` or equivalent helpers so
   route-level query hooks and UI rendering use the same decision.
 
+Initial-load behavior must avoid tab strip pop-in. When
+`RepositoryTabVisibilityInput.repository` is `null` because the repository
+detail query is still loading, the helper should return a stable loading tab
+layout instead of applying "unknown means hidden" Auto rules. Required tabs stay
+visible, preference-forced `show` tabs stay visible, preference-forced `hide`
+tabs stay hidden, and Auto optional tabs should either reserve their previous
+layout for the same route or render a deterministic loading placeholder state
+until repository detail resolves. Do not let Projects/Discussions/Wiki appear
+mid-frame as an avoidable layout shift after the detail query succeeds.
+
 User preferences should be global per preference-controlled tab for this pass,
 not per repository. Store them in existing app settings:
 
@@ -190,6 +200,10 @@ Auto visibility rules:
 - Projects auto-shows when `repository.administration.features.projects` is
   `true` or `repository.counts.projects > 0`. Auto-hides on explicit `false`
   with zero count.
+  These signals may represent classic GitHub Projects rather than Projects V2.
+  Document this limitation in code comments/tests so a repository with only
+  Projects V2 does not surprise implementers when Auto hides the tab. Forced
+  Show remains the escape hatch until the provider exposes a reliable V2 count.
 - Wiki auto-shows when `repository.administration.features.wiki === true`.
   Auto-hides when explicitly `false`. If unknown, hide in Auto until the user
   chooses Show.
@@ -368,8 +382,15 @@ Required behavior:
   Do not invent an agent-detail entity in this pass. Agents remains a workflow
   collection over agent-labeled issues, attention workflow runs, and open pull
   requests. Direct detail should route to the underlying Issue, Pull request, or
-  Workflow run route. A future true Agent detail requires a shared data model
-  first.
+  Workflow run route. Because `uiStore.ts` does not provide a browser-style
+  history stack, preserve source context explicitly when the user launches a
+  detail from Agents. Use a small ephemeral route-source field or return target
+  in UI state, for example `{ sourceTab: "agents" }`, so closing the detail can
+  return to Agents instead of dropping the user into the Issues, Pull requests,
+  or Actions list. Deep links without a source should open the underlying tab
+  directly. If implementation chooses the simpler context-loss behavior, it must
+  document that tradeoff in UI copy/tests before shipping. A future true Agent
+  detail requires a shared data model first.
 - Contributor, Wiki, Security, and Settings focus routes can remain tab-owned,
   but they must not require unrelated tabs to fetch.
 
@@ -425,6 +446,8 @@ Minimum mapping:
   account profile where applicable.
 - Issue mutations invalidate `issues`, `issue-detail`, shared issue resources
   when labels/assignees/milestones change, account issues, and notifications.
+  Label and assignee mutations must also invalidate `pulls` and `pull-detail`
+  because GitHub pull requests are issue-backed and can share labels/assignees.
 - Pull request mutations invalidate `pulls`, affected `pull-detail` sections,
   branch protection only when branch/base state can change, account pulls, and
   notifications.
@@ -434,6 +457,11 @@ Minimum mapping:
   counts.
 - Security/settings mutations invalidate only the relevant settings/security
   query families.
+- Project mutations should define their invalidation conservatively. If
+  `GitHubMutationInput` does not carry enough information to prove whether
+  project-item summaries are reused by Issues or Pull requests, invalidate
+  `issues`, `issue-detail`, `pulls`, and `pull-detail` rather than depending on
+  an implicit condition the invalidation router cannot know.
 - Pinning local/repository records is not a GitHub mutation and should stay out
   of GitHub query invalidation.
 
@@ -447,7 +475,8 @@ Use exact `GitHubMutationInput["action"]` names in the mapping:
 | `star`, `unstar`, `watch`, `unwatch`, `fork`                                                                                                                     | `repository`                                                                                                                                                                 | `repositories`, `github-account-repositories`, `account-profile`, `notifications`                                                                                                 |
 | `editRepository`                                                                                                                                                 | `repository`, `issues`, `pulls`, `discussions`, `projects`, `releases`, `repository-wiki`, `repository-access`, `repository-security-policy`, `repository-community-profile` | `repositories`, `github-account-repositories`, `organizations`, `organization-repositories`, `organization-team-repositories`, `account-issues`, `account-pulls`, `notifications` |
 | `createIssue`, `editIssue`, `closeIssue`, `reopenIssue`                                                                                                          | `issues`, `issue-detail`, `repository`                                                                                                                                       | `account-issues`, `account-pulls` when PR-linked fields can change, `notifications`                                                                                               |
-| `addComment`, `editComment`, `deleteComment`, `addLabels`, `removeLabel`, `setAssignees`, `removeAssignees`                                                      | `issues`, `issue-detail`, `labels`, `assignable-users`, `milestones` only when the payload changes those resources                                                           | `account-issues`, `account-pulls`, `notifications`                                                                                                                                |
+| `addComment`, `editComment`, `deleteComment`                                                                                                                     | `issues`, `issue-detail`                                                                                                                                                     | `account-issues`, `notifications`                                                                                                                                                 |
+| `addLabels`, `removeLabel`, `setAssignees`, `removeAssignees`                                                                                                    | `issues`, `issue-detail`, `pulls`, `pull-detail`, `labels`, `assignable-users`, `milestones` only when the payload changes those shared resources                            | `account-issues`, `account-pulls`, `notifications`                                                                                                                                |
 | `createPullRequest`, `mergePullRequest`, `closePullRequest`, `reopenPullRequest`                                                                                 | `pulls`, `pull-detail`, `commits`, `branches`, `repository`                                                                                                                  | `account-pulls`, `notifications`                                                                                                                                                  |
 | `approvePullRequest`, `commentPullRequestReview`, `requestChanges`, `requestReviewers`, `removeReviewers`, `editReviewComment`, `deleteReviewComment`            | `pulls`, `pull-detail`                                                                                                                                                       | `account-pulls`, `notifications`                                                                                                                                                  |
 | `rerunWorkflow`, `rerunFailedWorkflowJobs`, `rerunWorkflowJob`, `dispatchWorkflow`, `cancelWorkflow`                                                             | `actions`, `action-detail`, `workflows`                                                                                                                                      | `notifications`                                                                                                                                                                   |
@@ -577,6 +606,8 @@ Tests and mocks:
    - Add preference normalization and settings UI.
    - Add unit tests for Auto, Show, Hide, unknown metadata, and direct hidden
      routes.
+   - Add initial-load tests proving Auto optional tabs do not pop into the tab
+     strip only after repository detail resolves.
 
 2. Wire visibility into repository route state and `RepositoryPage`.
    - Pass visible tab descriptors to the page.
@@ -602,6 +633,9 @@ Tests and mocks:
      it deferred.
    - Keep Agents as a collection and route detail actions to the underlying
      surfaces.
+   - Preserve Agents return context for details opened from the Agents tab, or
+     explicitly test the chosen context-loss behavior if the implementation
+     defers source preservation.
 
 5. Narrow mutation invalidation.
    - Add mutation-to-query-family mapping tests.
@@ -631,7 +665,15 @@ Tests and mocks:
 - Hidden preference-controlled tabs do not run their full tab content queries.
 - A direct route to a hidden tab preserves the route and explains that the tab
   is hidden by preference instead of silently redirecting.
+- Clicking "Show this tab" from a route-only hidden-tab panel removes the
+  route-only descriptor in the same render cycle, so the tab strip never renders
+  duplicate headers for the same tab.
 - Force-shown empty optional tabs render clear empty/unavailable states.
+- Agents hides in Auto by default unless future repository detail signals make
+  it visible, and forced Show is covered by tests.
+- Opening Issue/PR/Workflow detail from Agents preserves an explicit return path
+  to Agents, or the implementation documents and tests the intentional
+  context-loss tradeoff.
 - Issue, pull request, workflow run, and release detail routes can load without
   assuming the list query already contains the selected item.
 - Discussion detail routes can load without assuming the list query already

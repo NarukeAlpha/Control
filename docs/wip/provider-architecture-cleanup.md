@@ -351,6 +351,13 @@ Cache-write rules must be explicit before converting methods:
   live retries would be harmful.
 - On live failure after a stale hit, return the stale available payload and do
   not downgrade the stored cache to the failure result.
+- Background refresh after a stale hit must be fully observed. The helper should
+  catch and log asynchronous refresh failures so there are no unhandled promise
+  rejections, and successful background refreshes must notify the renderer. Use
+  the existing repository update events when the cache key is repository-scoped,
+  or add a narrow invalidation callback to the cache spec for non-repository
+  keys. Without this, React Query can keep rendering stale data until focus or a
+  manual refresh even though main already refreshed the cache.
 
 Then define narrow helpers on top:
 
@@ -527,6 +534,14 @@ Do not start with a new main-process combined endpoint unless measuring or code
 inspection shows the renderer cannot solve the serial dependency. The current
 provider methods already expose the needed units with availability.
 
+Default cold start remains the risk case for the renderer-only approach. If the
+selected organization is not known until the organization list returns, the app
+still has a serial path: list organizations, choose first organization, then
+start organization repositories/members/teams/projects. Implement the string-key
+cleanup first, but measure this default path; if it is the common slow path,
+promote the later `OrganizationOverviewResult` endpoint into the next slice
+rather than treating it as distant future work.
+
 Implementation direction:
 
 1. Split selected keys from selected objects.
@@ -572,6 +587,9 @@ Tests:
 
 - opening Organizations starts dependent org queries after the first org login
   is known without requiring user selection
+- default cold start timing is measured before and after the renderer-only
+  cleanup; if the org-list -> first-org -> dependent-query waterfall remains
+  user-visible, create the combined overview slice immediately after Phase 6
 - opening an explicit organization from recents, command palette, or a deep link
   starts repos/members/teams/projects immediately from the selected login
 - selecting an organization starts repos/members/teams/projects in parallel
@@ -615,6 +633,9 @@ Tasks:
    registered.
 7. Ensure `githubIpcRouteChannels` remains checked with
    `satisfies Record<keyof GitHubIpcApi, IpcChannel>`.
+8. Add or preserve a hard duplicate-channel guard in the IPC router startup path.
+   Incremental migration should fail fast if a route remains registered in both
+   `registerControlIpc.ts` and `registerGithubIpc.ts`.
 
 Tests:
 
@@ -624,6 +645,8 @@ Tests:
 - the old `registerControlIpc.ts` registration is gone for every moved channel,
   and `createControlIpcRoutes` still composes `createGithubIpcRoutes(github)`
   exactly once
+- duplicate channel registration throws during test/startup rather than
+  silently shadowing one handler
 - preload invokes the exact channel from `githubIpcRouteChannels`
 
 ### Phase 8: Remove Or Document Legacy Raw Reads
@@ -701,6 +724,10 @@ Tasks:
   `requireRepoScopedInput`, `requirePullRequestDetailInput`, and
   `requireIssueDetailInput` returning concrete input types without generic
   `as unknown as TInput` at each route.
+- Parser-return helpers must perform runtime validation of required strings,
+  positive integers, booleans, arrays, and nullable fields. They are not allowed
+  to be thin wrappers around `payload as T`; malformed renderer payloads should
+  fail before reaching provider code.
 - Keep `githubMutationHelpers.ts` cast only if discriminated union construction
   cannot be expressed cleanly. If it remains, it should be the only mutation
   input cast, and mutation payload validation stays in IPC.

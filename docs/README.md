@@ -26,7 +26,7 @@
   sensitive Area metadata, gateway tokens, and redaction requirements.
 - `wip/theme-and-liquid-glass.md` - theme tokens, dark mode, and remaining
   Liquid Glass fixes.
-- `wip/azure-devops-provider.md` - future Azure DevOps provider architecture.
+- `v2/azure-devops-provider.md` - future Azure DevOps provider architecture.
 
 ## Done Index
 

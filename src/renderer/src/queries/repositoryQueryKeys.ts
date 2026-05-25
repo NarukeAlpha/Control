@@ -33,6 +33,7 @@ const repositoryScopedQueryKeyPrefixes = [
   "repository-security-policy",
   "repository-community-profile",
   "releases",
+  "release-detail",
   "contributors"
 ] as const;
 

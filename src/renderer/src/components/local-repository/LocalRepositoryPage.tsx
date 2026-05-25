@@ -15,7 +15,7 @@ import {
   RefreshCw,
   Workflow
 } from "lucide-react";
-import type { JSX } from "react";
+import { useEffect, useMemo, useState, type JSX } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
 import type {
@@ -25,7 +25,8 @@ import type {
   AreaGatewayOperationResult,
   AreaRepositoryDetail,
   AreaRepositorySummary,
-  AreaSyncStatus
+  AreaSyncStatus,
+  AreaWorkspaceSummary
 } from "@shared/areas";
 import { useControlApi } from "../../hooks/useControlApi";
 import type { AppRoute, LocalRepositoryTab } from "../../stores/uiStore";
@@ -46,6 +47,12 @@ const localRepoTabs: Array<{ key: LocalRepositoryTab; label: string; icon: typeo
   { key: "workspaces", label: "Workspaces", icon: Folder },
   { key: "operations", label: "Operations", icon: MoreHorizontal }
 ];
+
+interface LocalGatewayOperationFeedback {
+  kind: AreaGatewayOperationInput["kind"];
+  result: AreaGatewayOperationResult | null;
+  error: Error | null;
+}
 
 function localRepositoryTabDisabledReason(
   detail: AreaRepositoryDetail,
@@ -68,10 +75,12 @@ export function LocalRepositoryPage({
   pinned,
   pinBusy,
   onSelectTab,
+  onSelectWorkspace,
   onOpenPath,
   onTogglePin,
   onOpenGitHub,
-  onOpenExternal
+  onOpenExternal,
+  githubReady
 }: {
   route: Extract<AppRoute, { kind: "localRepository" }>;
   activeTab: LocalRepositoryTab;
@@ -79,10 +88,12 @@ export function LocalRepositoryPage({
   pinned: boolean;
   pinBusy: boolean;
   onSelectTab(tab: LocalRepositoryTab): void;
+  onSelectWorkspace(workspaceId: string): void;
   onOpenPath(entry: AreaFileEntry): void;
   onTogglePin(repository: AreaRepositorySummary, workspaceId: string | null): void;
   onOpenGitHub(nameWithOwner: string): void;
   onOpenExternal(url: string): void;
+  githubReady: boolean;
 }): JSX.Element {
   const api = useControlApi();
   const repository = useQuery({
@@ -127,7 +138,13 @@ export function LocalRepositoryPage({
     enabled: activeTab === "code" && activePath !== "."
   });
   const detail = repository.data;
-  const workspaceItems = workspaces.data ?? detail?.workspaces ?? [];
+  const workspaceItems = useMemo(
+    () => sortWorkspaces(workspaces.data ?? detail?.workspaces ?? []),
+    [detail?.workspaces, workspaces.data]
+  );
+  const selectedWorkspace = route.workspaceId
+    ? (workspaceItems.find((workspace) => workspace.id === route.workspaceId) ?? null)
+    : null;
   const githubConnection = detail?.connection ?? null;
   const localIssues = useQuery({
     queryKey: ["area-github-issues", route.areaId, route.repositoryId, route.workspaceId ?? "none"],
@@ -137,7 +154,8 @@ export function LocalRepositoryPage({
         repositoryId: route.repositoryId,
         workspaceId: route.workspaceId ?? null,
         state: "open",
-        limit: 20
+        limit: 20,
+        cacheOnly: !githubReady
       }),
     enabled: activeTab === "issues" && Boolean(detail)
   });
@@ -149,7 +167,8 @@ export function LocalRepositoryPage({
         repositoryId: route.repositoryId,
         workspaceId: route.workspaceId ?? null,
         state: "open",
-        limit: 20
+        limit: 20,
+        cacheOnly: !githubReady
       }),
     enabled: activeTab === "pulls" && Boolean(detail)
   });
@@ -160,7 +179,8 @@ export function LocalRepositoryPage({
         areaId: route.areaId,
         repositoryId: route.repositoryId,
         workspaceId: route.workspaceId ?? null,
-        limit: 20
+        limit: 20,
+        cacheOnly: !githubReady
       }),
     enabled: activeTab === "actions" && Boolean(detail)
   });
@@ -174,6 +194,9 @@ export function LocalRepositoryPage({
       }),
     enabled: activeTab === "sync" && Boolean(detail)
   });
+  const [lastOperationFeedback, setLastOperationFeedback] = useState<LocalGatewayOperationFeedback | null>(
+    null
+  );
   const gatewayOperation = useMutation({
     mutationFn: async (kind: AreaGatewayOperationInput["kind"]) => {
       const preview = await api.areas.prepareGatewayOperation({
@@ -183,17 +206,28 @@ export function LocalRepositoryPage({
         kind
       });
       if (!window.confirm(`${preview.title}\n\n${preview.summary}`)) {
-        return null;
+        return { kind, result: null };
       }
-      return api.areas.runGatewayOperation({
+      const result = await api.areas.runGatewayOperation({
         areaId: route.areaId,
         operationId: preview.id,
         confirmed: true
       });
+      return { kind, result };
     },
-    onSuccess: async () => {
+    onSuccess: async (feedback) => {
+      if (feedback.result) {
+        setLastOperationFeedback({ kind: feedback.kind, result: feedback.result, error: null });
+      }
       await syncStatus.refetch();
       await repository.refetch();
+    },
+    onError: (error, kind) => {
+      setLastOperationFeedback({
+        kind,
+        result: null,
+        error: error instanceof Error ? error : new Error("Gateway operation failed.")
+      });
     }
   });
   const localIssuesAvailabilityMessage = readAvailabilityMessage(
@@ -209,6 +243,26 @@ export function LocalRepositoryPage({
     localActions.data?.availability ?? null
   );
   const status = detail?.status;
+
+  useEffect(() => {
+    if (
+      detail?.kind !== "jj" ||
+      route.workspaceId ||
+      workspaces.isLoading ||
+      workspaces.isFetching ||
+      workspaceItems.length === 0
+    ) {
+      return;
+    }
+    onSelectWorkspace(workspaceItems[0].id);
+  }, [
+    detail?.kind,
+    onSelectWorkspace,
+    route.workspaceId,
+    workspaceItems,
+    workspaces.isFetching,
+    workspaces.isLoading
+  ]);
 
   if (repository.isLoading) {
     return <div className="loading-state">Loading local repository...</div>;
@@ -235,8 +289,32 @@ export function LocalRepositoryPage({
           <h1>{detail.displayName}</h1>
           {detail.path && <p className="muted-row">{detail.path}</p>}
           {detail.health.message && <p className="error-state">{detail.health.message}</p>}
+          {detail.kind === "jj" && route.workspaceId && !selectedWorkspace && !workspaces.isLoading && (
+            <p className="error-state">Local workspace was not found.</p>
+          )}
         </div>
         <div className="button-row">
+          {detail.capabilities.supportsWorkspaces && workspaceItems.length > 0 && (
+            <label className="local-workspace-select">
+              <span>Workspace</span>
+              <select
+                value={route.workspaceId ?? ""}
+                onChange={(event) => {
+                  if (event.target.value) {
+                    onSelectWorkspace(event.target.value);
+                  }
+                }}
+              >
+                {!route.workspaceId && <option value="">Repository root</option>}
+                {workspaceItems.map((workspace) => (
+                  <option key={workspace.id} value={workspace.id}>
+                    {workspace.name}
+                    {workspace.isStale ? " (stale)" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <button
             className="icon-button"
             type="button"
@@ -299,13 +377,35 @@ export function LocalRepositoryPage({
                 <dd>{detail.path ?? "Unknown"}</dd>
               </div>
               <div>
-                <dt>Current branch</dt>
-                <dd>{detail.currentBranch ?? "None"}</dd>
+                <dt>{detail.kind === "jj" ? "Working-copy change" : "Current branch"}</dt>
+                <dd>
+                  {detail.kind === "jj"
+                    ? (selectedWorkspace?.workingCopyChangeId ??
+                      workspaceItems[0]?.workingCopyChangeId ??
+                      "None")
+                    : (detail.currentBranch ?? "None")}
+                </dd>
               </div>
+              {detail.kind === "jj" && (
+                <div>
+                  <dt>Working-copy commit</dt>
+                  <dd>
+                    {selectedWorkspace?.workingCopyCommitId ??
+                      workspaceItems[0]?.workingCopyCommitId ??
+                      "None"}
+                  </dd>
+                </div>
+              )}
               <div>
                 <dt>Status</dt>
                 <dd>{status?.clean ? "Clean" : `${status?.dirtyCount ?? 0} changed`}</dd>
               </div>
+              {detail.kind === "jj" && (
+                <div>
+                  <dt>Latest operation</dt>
+                  <dd>{detail.recentOperations[0]?.description ?? "No recent operation"}</dd>
+                </div>
+              )}
               <div>
                 <dt>Remote</dt>
                 <dd>{githubConnection?.nameWithOwner ?? "No GitHub remote"}</dd>
@@ -407,29 +507,50 @@ export function LocalRepositoryPage({
           loading={syncStatus.isLoading || syncStatus.isFetching}
           error={syncStatus.error}
           operationPending={gatewayOperation.isPending}
-          operationResult={gatewayOperation.data ?? null}
+          operationFeedback={lastOperationFeedback}
           onRunOperation={(kind) => gatewayOperation.mutate(kind)}
         />
       )}
       {activeTab === "status" && (
         <LocalListPanel
-          title="Status"
+          title={detail.kind === "jj" ? "Working-copy changes" : "Status"}
           rows={detail.status.entries.map(
             (entry) => `${entry.indexStatus ?? ""}${entry.workingTreeStatus ?? ""} ${entry.path}`
           )}
-          emptyLabel={detail.status.clean ? "Working tree is clean." : "No status entries."}
+          emptyLabel={
+            detail.status.clean
+              ? detail.kind === "jj"
+                ? "Working copy is clean."
+                : "Working tree is clean."
+              : "No status entries."
+          }
         />
       )}
       {activeTab === "activity" && (
         <LocalListPanel
           title="Activity"
-          rows={detail.recentCommits.map((commit) => `${commit.shortId} ${commit.summary}`)}
+          rows={[
+            ...detail.recentOperations.map((operation) => `${operation.shortId} ${operation.description}`),
+            ...detail.recentCommits.map((commit) => `${commit.shortId} ${commit.summary}`)
+          ]}
         />
       )}
       {activeTab === "workspaces" && (
         <LocalListPanel
           title="Workspaces"
-          rows={workspaceItems.map((workspace) => `${workspace.name} ${workspace.rootPath}`)}
+          rows={workspaceItems.map((workspace) =>
+            [
+              workspace.name,
+              workspace.rootPath,
+              workspace.isStale ? "stale" : null,
+              workspace.sparseSummary ? `sparse ${workspace.sparseSummary}` : null,
+              workspace.workingCopyChangeId ? `change ${workspace.workingCopyChangeId}` : null,
+              workspace.workingCopyCommitId ? `commit ${workspace.workingCopyCommitId}` : null,
+              workspace.health.message
+            ]
+              .filter(Boolean)
+              .join(" · ")
+          )}
         />
       )}
       {activeTab === "operations" && (
@@ -448,7 +569,7 @@ function LocalSyncPanel({
   loading,
   error,
   operationPending,
-  operationResult,
+  operationFeedback,
   onRunOperation
 }: {
   detail: AreaRepositoryDetail;
@@ -456,13 +577,17 @@ function LocalSyncPanel({
   loading: boolean;
   error: Error | null;
   operationPending: boolean;
-  operationResult: AreaGatewayOperationResult | null;
+  operationFeedback: LocalGatewayOperationFeedback | null;
   onRunOperation(kind: AreaGatewayOperationInput["kind"]): void;
 }): JSX.Element {
   const fetchKind = detail.kind === "jj" ? "jj.git.fetch" : "git.fetch";
   const pushKind = detail.kind === "jj" ? "jj.git.push" : "git.push";
-  const canFetch = syncStatus?.capabilities.canFetch ?? Boolean(detail.remotes.length);
-  const canPush = syncStatus?.capabilities.canPush ?? Boolean(detail.remotes.length);
+  const gatewayUnavailable = operationFeedback?.error?.message.includes("running gateway") ?? false;
+  const canFetch =
+    (syncStatus?.capabilities.canFetch ?? Boolean(detail.remotes.length)) && !gatewayUnavailable;
+  const canPush = (syncStatus?.capabilities.canPush ?? Boolean(detail.remotes.length)) && !gatewayUnavailable;
+  const operationResult = operationFeedback?.result ?? null;
+  const operationError = operationFeedback?.error ?? null;
 
   return (
     <section className="glass-panel local-sync-panel">
@@ -496,12 +621,12 @@ function LocalSyncPanel({
             <dd>{syncStatus.provider.toUpperCase()}</dd>
           </div>
           <div>
-            <dt>Current branch</dt>
-            <dd>{syncStatus.currentBranch ?? "None"}</dd>
-          </div>
-          <div>
-            <dt>Current bookmark</dt>
-            <dd>{syncStatus.currentBookmark ?? "None"}</dd>
+            <dt>{detail.kind === "jj" ? "Current bookmark" : "Current branch"}</dt>
+            <dd>
+              {detail.kind === "jj"
+                ? (syncStatus.currentBookmark ?? "None")
+                : (syncStatus.currentBranch ?? "None")}
+            </dd>
           </div>
           <div>
             <dt>Working copy</dt>
@@ -526,9 +651,21 @@ function LocalSyncPanel({
         ))}
       </div>
       {operationPending && <div className="loading-state">Running gateway operation...</div>}
+      {gatewayUnavailable && (
+        <div className="error-state">
+          Gateway operations are unavailable until this Area has a running gateway.
+        </div>
+      )}
+      {operationError && !gatewayUnavailable && (
+        <div className="error-state">
+          {operationFeedback?.kind}: {operationError.message}
+        </div>
+      )}
       {operationResult && (
         <div className={operationResult.status === "succeeded" ? "muted-row" : "error-state"}>
           {operationResult.message}
+          {operationResult.stderr && <pre className="local-file-preview">{operationResult.stderr}</pre>}
+          {operationResult.stdout && <pre className="local-file-preview">{operationResult.stdout}</pre>}
         </div>
       )}
     </section>
@@ -613,6 +750,12 @@ function LocalListPanel({
         <p className="muted-row">{emptyLabel}</p>
       )}
     </section>
+  );
+}
+
+function sortWorkspaces(workspaces: AreaWorkspaceSummary[]): AreaWorkspaceSummary[] {
+  return [...workspaces].sort(
+    (left, right) => left.name.localeCompare(right.name) || left.rootPath.localeCompare(right.rootPath)
   );
 }
 

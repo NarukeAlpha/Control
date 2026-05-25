@@ -14,6 +14,7 @@ import { createEffectIpcBridge } from "./effect/ipcBridge";
 import { denyAndOpenExternalHttps } from "./externalLinks";
 import { sendMainToRendererEvent } from "./ipc/events";
 import { registerControlIpc } from "./ipc/registerControlIpc";
+import { applyNativeThemeSource } from "./theme/nativeThemeSource";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -98,7 +99,6 @@ function applyLiquidGlass(window: BrowserWindowType | null): void {
 }
 
 app.commandLine.appendSwitch("enable-features", "PlatformHEVCDecoderSupport");
-nativeTheme.themeSource = "light";
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
@@ -120,6 +120,7 @@ async function bootstrap(): Promise<void> {
   await app.whenReady();
 
   const store = await createLocalStore(app.getPath("userData"));
+  applyNativeThemeSource(store.getSettings(), nativeTheme);
   const github = new GitHubProviderManager(
     store,
     (nameWithOwner) => {
@@ -158,7 +159,13 @@ async function bootstrap(): Promise<void> {
   );
   await areaManager.initialize();
 
-  registerControlIpc({ ipcMain, store, github, effectBridge });
+  registerControlIpc({
+    ipcMain,
+    store,
+    github,
+    effectBridge,
+    onSettingsUpdated: (settings) => applyNativeThemeSource(settings, nativeTheme)
+  });
   registerAreaIpc(areaManager);
   createWindow();
 }

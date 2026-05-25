@@ -2,8 +2,11 @@ import { File as FileIcon, Folder } from "lucide-react";
 import { useMemo, useState, type JSX } from "react";
 
 import type { RepoEntry, RepoFileContent, RepositoryDetail } from "@shared/github";
+import { fileExtension, isNonImageBinaryPath } from "@shared/filePreviewPolicy";
 
 import { readAvailabilityMessage, repositoryPath } from "../repository/repositoryUi";
+
+export { isMarkdownPath, isPreviewableImagePath, isReadmeMarkdownPath } from "@shared/filePreviewPolicy";
 
 const vscodeIconsVersion = "v12.17.0";
 const vscodeIconsBaseUrl = `https://cdn.jsdelivr.net/gh/vscode-icons/vscode-icons@${vscodeIconsVersion}/icons`;
@@ -84,33 +87,6 @@ const extensionIconNames: Record<string, string> = {
   zip: "file_type_zip.svg"
 };
 
-const previewableImageExtensions = new Set(["avif", "gif", "jpeg", "jpg", "png", "svg", "webp"]);
-const markdownFileExtensions = new Set(["md", "markdown", "mdown", "mdx", "mkd"]);
-const binaryFileExtensions = new Set([
-  "7z",
-  "avif",
-  "bin",
-  "bmp",
-  "dmg",
-  "exe",
-  "gif",
-  "gz",
-  "ico",
-  "jpeg",
-  "jpg",
-  "mov",
-  "mp3",
-  "mp4",
-  "pdf",
-  "png",
-  "tar",
-  "tgz",
-  "webp",
-  "woff",
-  "woff2",
-  "zip"
-]);
-
 export function encodeRepositoryPath(path: string): string {
   return path.split("/").map(encodeURIComponent).join("/");
 }
@@ -141,28 +117,8 @@ export function pathSegments(path: string): Array<{ label: string; path: string 
   }));
 }
 
-function fileExtension(path: string): string | null {
-  const name = path.toLowerCase().split("/").pop() ?? "";
-  return name.includes(".") ? (name.split(".").pop() ?? null) : null;
-}
-
-export function isPreviewableImagePath(path: string): boolean {
-  const extension = fileExtension(path);
-  return extension ? previewableImageExtensions.has(extension) : false;
-}
-
-export function isMarkdownPath(path: string): boolean {
-  const extension = fileExtension(path);
-  return extension ? markdownFileExtensions.has(extension) : false;
-}
-
-export function isReadmeMarkdownPath(path: string): boolean {
-  return /^readme(?:\.[^.]+)?\.(?:md|markdown)$/i.test(path.split("/").pop() ?? "");
-}
-
 export function isLikelyBinaryFile(path: string, content?: string | null): boolean {
-  const extension = fileExtension(path);
-  return Boolean(extension && binaryFileExtensions.has(extension)) || Boolean(content?.includes("\u0000"));
+  return isNonImageBinaryPath(path) || Boolean(content?.includes("\u0000"));
 }
 
 export function iconUrlForEntry(entry: RepoEntry): string {

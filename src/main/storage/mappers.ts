@@ -217,10 +217,10 @@ export function areaGatewaySummary(record: AreaGatewayRecord): AreaSummary["gate
     status: record.status,
     version: record.version,
     apiUrl: record.apiUrl,
-    adminUrl: record.adminUrl,
     serviceName: record.serviceName,
     lastStartedAt: record.lastStartedAt,
     lastSeenAt: record.lastSeenAt,
+    failureCode: record.failureCode,
     message: record.message
   };
 }
@@ -349,6 +349,7 @@ function resetGatewayRecord(
     status: "not-installed",
     pid: null,
     processId: null,
+    failureCode: null,
     message: null,
     lastStartedAt: null,
     lastSeenAt: null,

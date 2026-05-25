@@ -1,10 +1,42 @@
 # Theme And Liquid Glass
 
+Status: implemented in pass 1 and moved to `docs/done`.
+
 This is the pass-1 implementation plan for converting Control from scattered
 light-only renderer colors to a small, typed theme system while preserving the
 native macOS Liquid Glass shell. The plan is intentionally scoped to renderer
 visual infrastructure, persisted app settings, and visual verification. It is
 not a general component redesign.
+
+## Implemented Notes
+
+- Added typed shared glass and theme settings constants, labels, defaults, and
+  unions in `src/shared/github.ts`.
+- Extended `ControlSettings` with a JSON-serializable `theme` object and
+  normalized missing or invalid persisted theme fields independently in
+  `src/main/storage/localStoreHelpers.ts`.
+- Preserved nested theme values through unrelated partial settings writes for
+  SQLite and memory stores.
+- Added renderer theme resolution in `src/renderer/src/theme/themeSettings.ts`,
+  including `prefers-color-scheme` subscription for system mode.
+- Wired `.app-shell` theme attributes for requested mode, resolved color
+  scheme, preset, and accent.
+- Updated Settings to save glass mode, theme mode, preset, and accent as a
+  complete typed settings object while preserving unsaved selections on save
+  failure.
+- Aligned Electron `nativeTheme.themeSource` with normalized settings at
+  bootstrap and after settings IPC writes.
+- Added semantic CSS tokens, dark/dim/high-contrast preset values, accent
+  tokens, fallback glass scoping, native shell transparency, reduced/solid
+  glass token behavior, focus rings, selection tokens, and high-risk dark-mode
+  overrides for shell, settings, command palette, rows, status, forms, code,
+  logs, and dense surfaces.
+- Fixed `.code-preview` to use code tokens instead of the undefined `--text`
+  variable.
+- Addressed final verification feedback by applying dark-surface compatibility
+  overrides to dark presets even when the requested mode resolves light,
+  routing fixed search blur through solid/reduced glass tokens, and adding the
+  explicit semantic token names called out by the plan.
 
 ## Current Ground Truth
 

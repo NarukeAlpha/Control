@@ -63,9 +63,16 @@ Current tables:
 
 - GitHub OAuth tokens are stored through `src/main/github/credentials.ts`, not
   in SQLite.
-- Gateway `apiToken` and `adminToken` are currently fields on
-  `AreaGatewayRecord` in `src/main/storage/areaGatewayStore.ts`, persisted in
-  `area_gateways.record_json`.
+- Gateway `apiToken` and `adminToken` are stored through
+  `src/main/areas/gatewayCredentials.ts`, not in SQLite. Gateway records in
+  `src/main/storage/areaGatewayStore.ts` contain only non-secret metadata.
+- Legacy gateway records that still contain `apiToken` or `adminToken` are
+  migrated after SQLite schema/bootstrap and before `GatewayManager` starts.
+  Successful migration writes tokens to the credential module and rewrites
+  `area_gateways.record_json` without token fields. Failed or partial migration
+  marks the gateway as `gateway-credentials-migration-pending` and still strips
+  raw token fields from SQLite so export previews can fail closed without
+  retaining plaintext secrets.
 - The renderer sees `AreaGatewaySummary` through `AreaSummary.gateway`; it does
   not receive gateway tokens today.
 
@@ -81,9 +88,13 @@ Current tables:
 - `src/main/storage/cacheStore.ts` owns generic cache row read/write/delete by
   provider and cache-key prefix.
 - `src/main/areas/areaManager.ts` owns Area refresh. Local/gateway refreshes
-  currently clear and replace Area repository/workspace read models. Gateway
-  refresh failure falls back to local refresh for local Areas, and marks SSH
-  Areas with `AreaHealth.status === "error"`.
+  collect replacement repository/workspace read models before publishing them
+  through `LocalStore.replaceAreaReadModels`, which gives SQLite one
+  transactional clear/insert boundary. Failed discovery or gateway reads
+  preserve existing rows and update health instead of deleting useful read
+  models. Local Area gateway refresh failure is persisted on
+  `AreaGatewaySummary` and falls back to local filesystem refresh when possible;
+  SSH gateway failure remains explicit on `AreaHealth`.
 
 ### IPC And Renderer Query Ownership
 
@@ -150,8 +161,8 @@ tokens, construct gateway bearer headers, or infer provider error classes.
 
 ### Secret Migration Blocker
 
-`area_gateways.record_json` currently contains `apiToken` and `adminToken`. Any
-export/import implementation must be blocked until one of these is true:
+Legacy `area_gateways.record_json` rows may contain `apiToken` and `adminToken`.
+Any export/import implementation must be blocked until one of these is true:
 
 1. Gateway tokens are migrated to a main-process credential module, following
    the discipline in `src/main/github/credentials.ts`, and SQLite stores only
@@ -164,20 +175,18 @@ Prefer option 1. The matching gateway plan is in
 `src/main/areas/gatewayCredentials.ts`, persist only non-secret metadata in
 `area_gateways`, and keep token lookup in the main process.
 
-Gateway token migration has an async startup boundary. It cannot be hidden
-inside the synchronous `SqliteLocalStore` constructor after
-`bootstrapSqliteSchema()`. The migration must run through an explicit
-main-process startup gate after SQLite schema/bootstrap is complete and before
-`GatewayManager` starts, or through an equivalent `await`ed migration service
-that blocks gateway startup. That gate must:
+Gateway token migration has an async startup boundary. It is implemented through
+`createLocalStore()`: the synchronous `SqliteLocalStore` constructor bootstraps
+schema and non-secret migrations, then `createLocalStore()` awaits legacy
+gateway-token migration before returning the store used to construct
+`GatewayManager`. That gate must:
 
 - Read existing `area_gateways.record_json` rows that contain `apiToken` or
   `adminToken`.
 - Persist those tokens to the main-process credential module.
-- Rewrite the SQLite `record_json` rows with token fields removed or set to
-  `null`.
-- Fail closed for export/import if the migration cannot prove SQLite is
-  token-free.
+- Rewrite the SQLite `record_json` rows with token fields removed.
+- Fail closed for export/import if any gateway remains in
+  `gateway-credentials-migration-pending`, while keeping raw SQLite token-free.
 - Test raw `area_gateways.record_json` payloads directly, not only
   `AreaSummary.gateway`, because summaries are already token-free.
 
@@ -473,7 +482,27 @@ Implementation rules:
 
 ## IPC And Query Contracts
 
-### Do Not Add Export/Import Until These Contracts Exist
+### Preview-Only Contracts Added In Pass 1
+
+Pass 1 adds typed preview contracts without adding a broad export UI or file
+writer:
+
+- `src/shared/sync.ts` defines `ControlDataClass`, `ControlExportScope`,
+  `ControlExportManifest`, `ControlExportPreview`, export result types, and
+  import preview/apply result types.
+- `ControlApi.previewDataExport()` and `control:preview-data-export` return
+  counts, included scopes, blockers, cache flags, and a field-level redaction
+  summary. The route reads main-process storage only; it does not write a file.
+- `ControlApi.previewDataImport()` and `control:preview-data-import` read a
+  candidate export manifest enough to report schema compatibility and the
+  explicit pass-1 apply blocker. It does not write imported data.
+- `src/main/storage/exportPreview.ts` owns the pass-1 redaction inventory for
+  settings, accounts, provider cache rows, recents, pins, Areas, gateway
+  metadata, GitHub repository cache, Area read models, and snapshots.
+- Import/export file write/apply routes remain future work and must build on
+  these contracts rather than React Query state.
+
+### Do Not Add File Export/Import Until These Contracts Exist
 
 Add shared types first, likely in a new `src/shared/sync.ts` or
 `src/shared/export.ts`:
@@ -490,7 +519,8 @@ Add shared types first, likely in a new `src/shared/sync.ts` or
 - `ControlImportPreview` that reports what will be inserted, skipped, redacted,
   or treated as cache.
 
-Only after those types exist should `ControlApi` grow methods such as:
+The pass-1 type names are now in place. Only after file IO and apply services
+are implemented should `ControlApi` grow methods such as:
 
 - `previewDataExport(input: ControlExportScope): Promise<ControlExportPreview>`
 - `exportData(input: ControlExportInput): Promise<ControlExportResult>`
@@ -537,6 +567,25 @@ existing route parsers. Preload only forwards those methods.
   repositories, or the database with zero/multiple selected Areas.
 
 ## Implementation Sequence
+
+### Pass 1 Implementation Notes
+
+The current implementation covers the pass-1 code boundaries:
+
+- `LocalStore.replaceAreaReadModels()` gives Area refresh one publish boundary
+  for repository/workspace replacement data. `AreaManager.refreshLocalArea()`
+  and `refreshGatewayArea()` collect replacement sets before writing them.
+- Gateway credentials are kept out of SQLite through
+  `src/main/areas/gatewayCredentials.ts`; legacy token rows are stripped even
+  when keychain migration is unavailable.
+- Local Repository GitHub tabs receive the app `githubReady` signal and pass
+  `cacheOnly: !githubReady` for passive issues, pull request, and actions
+  enrichment reads.
+- Renderer Area event invalidation covers repository detail, workspaces,
+  content, file content, GitHub enrichment, and VCS sync-status query families.
+- `src/shared/sync.ts` and `control:preview-data-export` define preview-only
+  data-class/redaction contracts with `control:preview-data-import` symmetry,
+  without adding file export/import apply behavior or hosted sync.
 
 ### Phase 1: Lock The Boundary Inventory
 
@@ -738,7 +787,7 @@ Implementation acceptance for later phases:
 For this doc-only pass:
 
 ```bash
-bunx prettier --check docs/wip/sync-and-data-boundaries.md
+bunx prettier --check docs/done/sync-and-data-boundaries.md
 ```
 
 Before closing implementation work in this repository:

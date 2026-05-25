@@ -9,6 +9,7 @@ import type {
   PullRequestSummary,
   RepositorySummary
 } from "@shared/github";
+import type { LocalRecentItem } from "@shared/local";
 
 import {
   issueStateLabel,
@@ -41,6 +42,7 @@ export function HomeDashboard({
   repositoriesError,
   repositoriesAvailabilityMessage,
   pinnedRepositoryNames,
+  recentItems,
   issues,
   issuesLoading,
   issuesError,
@@ -54,6 +56,7 @@ export function HomeDashboard({
   onOpenRepository,
   onLoadMoreRepositories,
   onLoadMoreWork,
+  onOpenRecent,
   onOpenMailbox,
   onOpenIssue,
   onOpenPullRequest,
@@ -68,6 +71,7 @@ export function HomeDashboard({
   repositoriesError: Error | null;
   repositoriesAvailabilityMessage: string | null;
   pinnedRepositoryNames: string[];
+  recentItems: LocalRecentItem[];
   issues: IssueSummary[];
   issuesLoading: boolean;
   issuesError: Error | null;
@@ -81,6 +85,7 @@ export function HomeDashboard({
   onOpenRepository(nameWithOwner: string): void;
   onLoadMoreRepositories(): void;
   onLoadMoreWork(): void;
+  onOpenRecent(item: LocalRecentItem): void;
   onOpenMailbox(): void;
   onOpenIssue(issue: IssueSummary): void;
   onOpenPullRequest(pullRequest: PullRequestSummary): void;
@@ -106,6 +111,7 @@ export function HomeDashboard({
     latestRepositories.length >= Math.min(sortedRepositories.length, maxRepositoryListLimit);
   const pinnedRepositoryNameSet = new Set(pinnedRepositoryNames.map((name) => name.toLowerCase()));
   const pinnedRepositories = repositoryShortcutsFromPins(pinnedRepositoryNames, repositories);
+  const recentGitHubItems = recentItems.filter((item) => item.provider === "github").slice(0, 6);
   const workItems = [
     ...issues.map((issue) => ({ ...issue, kind: "issue" as const })),
     ...pulls.map((pull) => ({ ...pull, kind: "pull" as const }))
@@ -195,6 +201,32 @@ export function HomeDashboard({
             </div>
           </article>
         )}
+
+        <article className="home-panel">
+          <header>
+            <h2>Recents</h2>
+          </header>
+          <div className="shortcut-list">
+            {recentGitHubItems.length > 0 ? (
+              recentGitHubItems.map((item) => (
+                <button
+                  key={`${item.kind}-${item.itemKey}`}
+                  type="button"
+                  className="shortcut-item"
+                  onClick={() => onOpenRecent(item)}
+                >
+                  <span className="repo-avatar">{item.kind.slice(0, 1).toUpperCase()}</span>
+                  <span>
+                    <strong>{item.title}</strong>
+                    <small>{item.subtitle ?? item.repositoryNameWithOwner ?? item.url ?? "Recent"}</small>
+                  </span>
+                </button>
+              ))
+            ) : (
+              <p className="muted-row">Open GitHub work to add it here.</p>
+            )}
+          </div>
+        </article>
 
         <article className="home-panel">
           <header>

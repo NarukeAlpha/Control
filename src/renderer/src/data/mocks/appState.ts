@@ -1,4 +1,4 @@
-import type { AppState, GitHubSignInSession } from "@shared/github";
+import { DEFAULT_CONTROL_THEME_SETTINGS, type AppState, type GitHubSignInSession } from "@shared/github";
 
 import { mockViewer } from "./repository";
 
@@ -7,7 +7,9 @@ export const mockAppState: AppState = {
   isMac: true,
   settings: {
     credentialProvider: "github-oauth",
-    glassMode: "glass-shell"
+    glassMode: "glass-shell",
+    theme: DEFAULT_CONTROL_THEME_SETTINGS,
+    repositoryTabPreferences: {}
   },
   github: {
     available: true,

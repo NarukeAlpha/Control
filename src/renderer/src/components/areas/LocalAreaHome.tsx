@@ -49,15 +49,10 @@ export function LocalAreaHome({
           <h1>{area.label}</h1>
           <p>{area.rootPath ?? area.subtitle ?? "Area"}</p>
           {area.health.message && <small>{area.health.message}</small>}
-          {area.gateway && (
-            <small>
-              Gateway {area.gateway.status}
-              {area.gateway.adminUrl ? ` · admin ${area.gateway.adminUrl}` : ""}
-            </small>
-          )}
+          {area.gateway && <small>Gateway {area.gateway.status}</small>}
         </div>
         <div className="surface-header-actions">
-          {area.gateway?.adminUrl && (
+          {area.gateway && area.gateway.status !== "stopped" && area.gateway.status !== "not-installed" && (
             <button
               type="button"
               disabled={stoppingGateway}

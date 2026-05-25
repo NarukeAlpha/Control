@@ -21,10 +21,11 @@ import type {
   RepositorySummary
 } from "@shared/github";
 import type { LocalRecentItem, LocalRecentListInput, RepositoryPinRecord } from "@shared/local";
-import { saveAccountRecord, readLastAccount } from "./accountStore";
+import { deleteAccountRecords, readLastAccount, saveAccountRecord } from "./accountStore";
 import {
   clearAreaGateway as deleteAreaGateway,
   getAreaGateway as readAreaGateway,
+  migrateLegacyAreaGatewayTokens,
   setAreaGateway as writeAreaGateway,
   type AreaGatewayRecord
 } from "./areaGatewayStore";
@@ -75,7 +76,7 @@ import {
   type CachedRepositoryList,
   type CachedRepositoryValue
 } from "./githubRepositoryStore";
-import { cacheExpiresAtIsExpired, normalizeSettings } from "./localStoreHelpers";
+import { cacheExpiresAtIsExpired, mergeSettingsPatch, normalizeSettings } from "./localStoreHelpers";
 import { MemoryLocalStore } from "./memoryStore";
 import {
   listAreaRepositoryPins as readAreaRepositoryPins,
@@ -94,6 +95,7 @@ import {
 import { runStorageSync } from "./runtime";
 import { bootstrapSqliteSchema } from "./schema";
 import { readSettings, writeSettings } from "./settingsStore";
+import { setGatewayCredentials } from "../areas/gatewayCredentials";
 
 export type { CachedRepositoryList, CachedRepositoryValue } from "./githubRepositoryStore";
 export type { AreaGatewayRecord } from "./areaGatewayStore";
@@ -118,10 +120,21 @@ export interface CacheEntry<T> {
   isExpired: boolean;
 }
 
+export interface AreaRepositoryReadModelReplacement {
+  summary: AreaRepositorySummary;
+  detail: AreaRepositoryDetail | null;
+}
+
+export interface AreaWorkspaceReadModelReplacement {
+  summary: AreaWorkspaceSummary;
+  detail: AreaWorkspaceDetail | null;
+}
+
 export interface LocalStore {
   getSettings(): ControlSettings;
   updateSettings(settings: Partial<ControlSettings>): ControlSettings;
   saveAccount(provider: string, login: string, payload: unknown): void;
+  deleteAccount(provider: string): void;
   getLastAccount<T>(provider: string): T | null;
   getCache<T>(provider: string, cacheKey: string, options?: CacheReadOptions): T | null;
   getCacheEntry<T>(provider: string, cacheKey: string): CacheEntry<T> | null;
@@ -146,6 +159,11 @@ export interface LocalStore {
   getAreaRepository(input: AreaRepositoryInput): AreaRepositoryDetail | null;
   clearAreaRepositories(areaId: string): void;
   upsertAreaWorkspace(summary: AreaWorkspaceSummary, detail?: AreaWorkspaceDetail | null): void;
+  replaceAreaReadModels(input: {
+    areaId: string;
+    repositories: AreaRepositoryReadModelReplacement[];
+    workspaces: AreaWorkspaceReadModelReplacement[];
+  }): void;
   listAreaWorkspaces(input: ListAreaWorkspacesInput): AreaWorkspaceSummary[];
   getAreaWorkspace(areaId: string, workspaceId: string): AreaWorkspaceDetail | null;
   clearAreaWorkspaces(areaId: string, repositoryId?: string | null): void;
@@ -199,7 +217,9 @@ export async function createLocalStore(userDataPath: string): Promise<LocalStore
     const sqlite = await import("better-sqlite3");
     const Database = sqlite.default;
     const db = createStorageDatabaseAdapter(new Database(join(dbDir, "control.sqlite")));
-    return new SqliteLocalStore(db);
+    const store = new SqliteLocalStore(db);
+    await migrateLegacyAreaGatewayTokens(db, setGatewayCredentials);
+    return store;
   } catch (error) {
     console.warn("Control SQLite store unavailable; using in-memory storage for this session.", error);
     return new MemoryLocalStore();
@@ -220,15 +240,16 @@ class SqliteLocalStore implements LocalStore {
 
   updateSettings(settings: Partial<ControlSettings>): ControlSettings {
     return runStorageSync("settings.write", () =>
-      writeSettings(this.db, {
-        ...this.getSettings(),
-        ...settings
-      })
+      writeSettings(this.db, mergeSettingsPatch(this.getSettings(), settings))
     );
   }
 
   saveAccount(provider: string, login: string, payload: unknown): void {
     saveAccountRecord(this.db, provider, login, payload);
+  }
+
+  deleteAccount(provider: string): void {
+    deleteAccountRecords(this.db, provider);
   }
 
   getLastAccount<T>(provider: string): T | null {
@@ -334,6 +355,23 @@ class SqliteLocalStore implements LocalStore {
 
   upsertAreaWorkspace(summary: AreaWorkspaceSummary, detail: AreaWorkspaceDetail | null = null): void {
     writeAreaWorkspace(this.db, summary, detail);
+  }
+
+  replaceAreaReadModels(input: {
+    areaId: string;
+    repositories: AreaRepositoryReadModelReplacement[];
+    workspaces: AreaWorkspaceReadModelReplacement[];
+  }): void {
+    this.db.transaction("areaReadModels.replace", () => {
+      deleteAreaWorkspaces(this.db, input.areaId);
+      deleteAreaRepositories(this.db, input.areaId);
+      for (const repository of input.repositories) {
+        writeAreaRepository(this.db, repository.summary, repository.detail);
+      }
+      for (const workspace of input.workspaces) {
+        writeAreaWorkspace(this.db, workspace.summary, workspace.detail);
+      }
+    });
   }
 
   listAreaWorkspaces(input: ListAreaWorkspacesInput): AreaWorkspaceSummary[] {

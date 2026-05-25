@@ -1,8 +1,30 @@
 import { LogIn, X } from "lucide-react";
 import { useEffect, useRef, useState, type JSX } from "react";
 
-import type { AppState, GlassMode } from "@shared/github";
+import type {
+  AppState,
+  ControlAccentColor,
+  ControlThemeMode,
+  ControlThemePreset,
+  GlassMode,
+  RepositoryTabPreference,
+  RepositoryTabPreferenceKey
+} from "@shared/github";
+import {
+  CONTROL_ACCENT_COLORS,
+  CONTROL_ACCENT_COLOR_LABELS,
+  CONTROL_GLASS_MODES,
+  CONTROL_GLASS_MODE_LABELS,
+  CONTROL_THEME_MODES,
+  CONTROL_THEME_PRESETS,
+  CONTROL_THEME_PRESET_LABELS,
+  DEFAULT_CONTROL_THEME_SETTINGS
+} from "@shared/github";
 import type { ProviderAuthController } from "../auth/providerAuthAdapters";
+import {
+  repositoryTabPreferenceKeys,
+  repositoryTabPreferenceLabels
+} from "../repository/repositoryTabVisibility";
 
 export function SettingsPanel({
   appState,
@@ -22,6 +44,18 @@ export function SettingsPanel({
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [glassMode, setGlassMode] = useState<GlassMode>(appState?.settings.glassMode ?? "glass-shell");
+  const [themeMode, setThemeMode] = useState<ControlThemeMode>(
+    appState?.settings.theme.mode ?? DEFAULT_CONTROL_THEME_SETTINGS.mode
+  );
+  const [themePreset, setThemePreset] = useState<ControlThemePreset>(
+    appState?.settings.theme.preset ?? DEFAULT_CONTROL_THEME_SETTINGS.preset
+  );
+  const [themeAccent, setThemeAccent] = useState<ControlAccentColor>(
+    appState?.settings.theme.accent ?? DEFAULT_CONTROL_THEME_SETTINGS.accent
+  );
+  const [repositoryTabPreferences, setRepositoryTabPreferences] = useState<
+    Partial<Record<RepositoryTabPreferenceKey, RepositoryTabPreference>>
+  >(appState?.settings.repositoryTabPreferences ?? {});
   const observedCompletedAt = useRef(authController.completedAt);
   const authenticated = appState?.github.authenticated ?? false;
   const githubUser = appState?.github.user ?? null;
@@ -107,7 +141,13 @@ export function SettingsPanel({
     try {
       await onSave({
         credentialProvider: appState?.settings.credentialProvider ?? "github-oauth",
-        glassMode
+        glassMode,
+        theme: {
+          mode: themeMode,
+          preset: themePreset,
+          accent: themeAccent
+        },
+        repositoryTabPreferences
       });
       setSaveStatus("saved");
     } catch (error) {
@@ -122,6 +162,23 @@ export function SettingsPanel({
 
   function handleCancelSignIn(): void {
     void authController.cancelSignIn();
+  }
+
+  function updateRepositoryTabPreference(
+    tab: RepositoryTabPreferenceKey,
+    preference: RepositoryTabPreference
+  ): void {
+    setRepositoryTabPreferences((current) => ({
+      ...current,
+      [tab]: preference
+    }));
+    setSaveStatus("idle");
+    setSaveError(null);
+  }
+
+  function resetSaveState(): void {
+    setSaveStatus("idle");
+    setSaveError(null);
   }
 
   return (
@@ -189,16 +246,86 @@ export function SettingsPanel({
           <select
             value={glassMode}
             onChange={(event) => {
-              setGlassMode(event.target.value as GlassMode);
-              setSaveStatus("idle");
-              setSaveError(null);
+              setGlassMode(readOptionValue(event.target.value, CONTROL_GLASS_MODES, glassMode));
+              resetSaveState();
             }}
           >
-            <option value="glass-shell">Glass shell</option>
-            <option value="reduced">Reduced glass</option>
-            <option value="solid">Solid</option>
+            {CONTROL_GLASS_MODES.map((mode) => (
+              <option key={mode} value={mode}>
+                {CONTROL_GLASS_MODE_LABELS[mode]}
+              </option>
+            ))}
           </select>
         </label>
+
+        <label>
+          Theme mode
+          <select
+            value={themeMode}
+            onChange={(event) => {
+              setThemeMode(readOptionValue(event.target.value, CONTROL_THEME_MODES, themeMode));
+              resetSaveState();
+            }}
+          >
+            <option value="system">System</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </label>
+
+        <label>
+          Preset
+          <select
+            value={themePreset}
+            onChange={(event) => {
+              setThemePreset(readOptionValue(event.target.value, CONTROL_THEME_PRESETS, themePreset));
+              resetSaveState();
+            }}
+          >
+            {CONTROL_THEME_PRESETS.map((preset) => (
+              <option key={preset} value={preset}>
+                {CONTROL_THEME_PRESET_LABELS[preset]}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          Accent
+          <select
+            value={themeAccent}
+            onChange={(event) => {
+              setThemeAccent(readOptionValue(event.target.value, CONTROL_ACCENT_COLORS, themeAccent));
+              resetSaveState();
+            }}
+          >
+            {CONTROL_ACCENT_COLORS.map((accent) => (
+              <option key={accent} value={accent}>
+                {CONTROL_ACCENT_COLOR_LABELS[accent]}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div>
+          <h3>Repository tabs</h3>
+          {repositoryTabPreferenceKeys.map((tab) => (
+            <label key={tab}>
+              {repositoryTabPreferenceLabels[tab]}
+              <select
+                aria-label={`${repositoryTabPreferenceLabels[tab]} tab visibility`}
+                value={repositoryTabPreferences[tab] ?? "auto"}
+                onChange={(event) =>
+                  updateRepositoryTabPreference(tab, event.target.value as RepositoryTabPreference)
+                }
+              >
+                <option value="auto">Auto</option>
+                <option value="show">Show</option>
+                <option value="hide">Hide</option>
+              </select>
+            </label>
+          ))}
+        </div>
 
         <footer>
           <button type="button" onClick={handleClose}>
@@ -217,4 +344,8 @@ export function SettingsPanel({
       </section>
     </div>
   );
+}
+
+function readOptionValue<T extends string>(value: string, values: readonly T[], fallback: T): T {
+  return values.includes(value as T) ? (value as T) : fallback;
 }

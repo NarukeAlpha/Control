@@ -189,21 +189,24 @@ export function DiscussionsTab({
           .some((value) => String(value).toLowerCase().includes(normalizedFilter))
       )
     : discussions;
-  const selectedDiscussion =
+  const selectedDiscussionSummary =
     filteredDiscussions.find((discussion) => discussion.number === selectedDiscussionNumber) ??
     filteredDiscussions[0] ??
     null;
-  const selectedDiscussionKey = selectedDiscussion
-    ? `${repository.nameWithOwner}:discussion:${selectedDiscussion.number}`
-    : null;
+  const detailDiscussionNumber = focusedDiscussionNumber ?? selectedDiscussionSummary?.number ?? null;
+  const selectedDiscussionKey =
+    detailDiscussionNumber !== null
+      ? `${repository.nameWithOwner}:discussion:${detailDiscussionNumber}`
+      : null;
   const selectedDiscussionRepliesLimit =
     discussionSelection.repositoryKey === repository.nameWithOwner &&
-    discussionSelection.discussionNumber === selectedDiscussion?.number
+    discussionSelection.discussionNumber === detailDiscussionNumber
       ? discussionSelection.repliesLimit
       : defaultDiscussionRepliesLimit;
   const selectedPreviewComments =
-    selectedDiscussion?.previewComments.filter((comment) => comment.id !== selectedDiscussion.answer?.id) ??
-    [];
+    selectedDiscussionSummary?.previewComments.filter(
+      (comment) => comment.id !== selectedDiscussionSummary.answer?.id
+    ) ?? [];
   const availabilityMessage = readAvailabilityMessage("Discussions", availability);
   const disabledFeatureMessage =
     !availabilityMessage && repository.administration.features.discussions === false
@@ -217,19 +220,23 @@ export function DiscussionsTab({
       "discussion-detail",
       repository.owner,
       repository.name,
-      selectedDiscussion?.number ?? null,
+      detailDiscussionNumber,
       selectedDiscussionRepliesLimit
     ],
-    queryFn: () =>
-      api.github.getDiscussionDetail({
+    queryFn: () => {
+      if (detailDiscussionNumber === null) {
+        throw new Error("Discussion detail requires a discussion number.");
+      }
+      return api.github.getDiscussionDetail({
         owner: repository.owner,
         repo: repository.name,
-        discussionNumber: selectedDiscussion!.number,
+        discussionNumber: detailDiscussionNumber,
         commentsLimit: 100,
         repliesLimit: selectedDiscussionRepliesLimit,
         cacheOnly: !githubReady
-      }),
-    enabled: Boolean(selectedDiscussion)
+      });
+    },
+    enabled: detailDiscussionNumber !== null
   });
   const categories = useQuery<DiscussionCategoryListResult>({
     queryKey: ["discussion-categories", repository.owner, repository.name],
@@ -239,10 +246,12 @@ export function DiscussionsTab({
         repo: repository.name,
         limit: 100,
         cacheOnly: !githubReady
-      })
+      }),
+    enabled: composingDiscussion || editingDiscussion
   });
   const selectedDiscussionDetail =
-    detail.data?.item && detail.data.item.number === selectedDiscussion?.number ? detail.data.item : null;
+    detail.data?.item && detail.data.item.number === detailDiscussionNumber ? detail.data.item : null;
+  const selectedDiscussion = selectedDiscussionDetail ?? selectedDiscussionSummary;
   const detailAvailabilityMessage = readAvailabilityMessage(
     "Discussion detail",
     detail.data?.availability ?? null
@@ -810,7 +819,9 @@ export function DiscussionsTab({
             </>
           ) : (
             <div className="empty-state">
-              {loading ? "Loading discussion detail…" : "Select a discussion to inspect."}
+              {detail.isLoading && detailDiscussionNumber !== null
+                ? `Loading discussion #${detailDiscussionNumber}…`
+                : "Select a discussion to inspect."}
             </div>
           )}
         </div>

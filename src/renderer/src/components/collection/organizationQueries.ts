@@ -110,61 +110,78 @@ export function useOrganizationsRouteQueries({
     organizationItems.find((organization) => organization.login === selectedOrganizationLogin) ??
     organizationItems[0] ??
     null;
-  const organizationRepositoryLimit = selectedOrganization
-    ? (organizationRepositoryLimits[selectedOrganization.login] ?? defaultOrganizationRepositoryLimit)
+  const selectedOrganizationKey = selectedOrganizationLogin ?? selectedOrganization?.login ?? null;
+  const organizationQueriesEnabled = enabled && selectedOrganizationKey !== null;
+  const organizationQueryKeyLogin = selectedOrganizationKey ?? "none";
+  const organizationRepositoryLimit = selectedOrganizationKey
+    ? (organizationRepositoryLimits[selectedOrganizationKey] ?? defaultOrganizationRepositoryLimit)
     : defaultOrganizationRepositoryLimit;
-  const organizationTeamLimit = selectedOrganization
-    ? (organizationTeamLimits[selectedOrganization.login] ?? defaultOrganizationTeamLimit)
+  const organizationTeamLimit = selectedOrganizationKey
+    ? (organizationTeamLimits[selectedOrganizationKey] ?? defaultOrganizationTeamLimit)
     : defaultOrganizationTeamLimit;
-  const organizationMemberLimit = selectedOrganization
-    ? (organizationMemberLimits[selectedOrganization.login] ?? defaultOrganizationMemberLimit)
+  const organizationMemberLimit = selectedOrganizationKey
+    ? (organizationMemberLimits[selectedOrganizationKey] ?? defaultOrganizationMemberLimit)
     : defaultOrganizationMemberLimit;
-  const organizationProjectLimit = selectedOrganization
-    ? (organizationProjectLimits[selectedOrganization.login] ?? defaultOrganizationProjectLimit)
+  const organizationProjectLimit = selectedOrganizationKey
+    ? (organizationProjectLimits[selectedOrganizationKey] ?? defaultOrganizationProjectLimit)
     : defaultOrganizationProjectLimit;
-  const organizationTeams = useQuery<OrganizationTeamsResult>({
-    queryKey: organizationTeamsQueryKey(selectedOrganization?.login ?? "none", organizationTeamLimit),
-    queryFn: () =>
+  const organizationTeams = useQuery<
+    OrganizationTeamsResult,
+    Error,
+    OrganizationTeamsResult,
+    ReturnType<typeof organizationTeamsQueryKey>
+  >({
+    queryKey: organizationTeamsQueryKey(organizationQueryKeyLogin, organizationTeamLimit),
+    queryFn: ({ queryKey: [, org, limit] }) =>
       api.github.listOrganizationTeamsWithStatus({
-        org: selectedOrganization!.login,
-        limit: organizationTeamLimit,
+        org,
+        limit,
         cacheOnly: !githubReady
       }),
-    enabled: enabled && Boolean(selectedOrganization),
+    enabled: organizationQueriesEnabled,
     staleTime: 120_000
   });
-  const organizationRepositories = useQuery<OrganizationRepositoriesResult>({
-    queryKey: organizationRepositoriesQueryKey(
-      selectedOrganization?.login ?? "none",
-      organizationRepositoryLimit
-    ),
-    queryFn: () =>
+  const organizationRepositories = useQuery<
+    OrganizationRepositoriesResult,
+    Error,
+    OrganizationRepositoriesResult,
+    ReturnType<typeof organizationRepositoriesQueryKey>
+  >({
+    queryKey: organizationRepositoriesQueryKey(organizationQueryKeyLogin, organizationRepositoryLimit),
+    queryFn: ({ queryKey: [, org, limit] }) =>
       api.github.listOrganizationRepositoriesWithStatus({
-        org: selectedOrganization!.login,
-        limit: organizationRepositoryLimit,
+        org,
+        limit,
         cacheOnly: !githubReady
       }),
-    enabled: enabled && Boolean(selectedOrganization),
+    enabled: organizationQueriesEnabled,
     staleTime: 120_000
   });
-  const organizationMembers = useQuery<OrganizationMembersResult>({
-    queryKey: organizationMembersQueryKey(selectedOrganization?.login ?? "none", organizationMemberLimit),
-    queryFn: () =>
+  const organizationMembers = useQuery<
+    OrganizationMembersResult,
+    Error,
+    OrganizationMembersResult,
+    ReturnType<typeof organizationMembersQueryKey>
+  >({
+    queryKey: organizationMembersQueryKey(organizationQueryKeyLogin, organizationMemberLimit),
+    queryFn: ({ queryKey: [, org, limit] }) =>
       api.github.listOrganizationMembersWithStatus({
-        org: selectedOrganization!.login,
-        limit: organizationMemberLimit,
+        org,
+        limit,
         cacheOnly: !githubReady
       }),
-    enabled: enabled && Boolean(selectedOrganization),
+    enabled: organizationQueriesEnabled,
     staleTime: 120_000
   });
   const selectedOrganizationTeam =
     organizationTeams.data?.items.find((team) => team.slug === selectedOrganizationTeamSlug) ??
     organizationTeams.data?.items[0] ??
     null;
+  const selectedOrganizationTeamKey = selectedOrganizationTeamSlug ?? selectedOrganizationTeam?.slug ?? null;
+  const teamQueriesEnabled = organizationQueriesEnabled && selectedOrganizationTeamKey !== null;
   const selectedOrganizationTeamLimitKey =
-    selectedOrganization && selectedOrganizationTeam
-      ? `${selectedOrganization.login}/${selectedOrganizationTeam.slug}`
+    selectedOrganizationKey && selectedOrganizationTeamKey
+      ? `${selectedOrganizationKey}/${selectedOrganizationTeamKey}`
       : null;
   const organizationTeamRepositoryLimit = selectedOrganizationTeamLimitKey
     ? (organizationTeamRepositoryLimits[selectedOrganizationTeamLimitKey] ??
@@ -173,47 +190,63 @@ export function useOrganizationsRouteQueries({
   const organizationTeamMemberLimit = selectedOrganizationTeamLimitKey
     ? (organizationTeamMemberLimits[selectedOrganizationTeamLimitKey] ?? defaultOrganizationTeamMemberLimit)
     : defaultOrganizationTeamMemberLimit;
-  const organizationTeamRepositories = useQuery<OrganizationTeamRepositoriesResult>({
+  const organizationTeamQueryKeySlug = selectedOrganizationTeamKey ?? "none";
+  const organizationTeamRepositories = useQuery<
+    OrganizationTeamRepositoriesResult,
+    Error,
+    OrganizationTeamRepositoriesResult,
+    ReturnType<typeof organizationTeamRepositoriesQueryKey>
+  >({
     queryKey: organizationTeamRepositoriesQueryKey(
-      selectedOrganization?.login ?? "none",
-      selectedOrganizationTeam?.slug ?? "none",
+      organizationQueryKeyLogin,
+      organizationTeamQueryKeySlug,
       organizationTeamRepositoryLimit
     ),
-    queryFn: () =>
+    queryFn: ({ queryKey: [, org, teamSlug, limit] }) =>
       api.github.listOrganizationTeamRepositoriesWithStatus({
-        org: selectedOrganization!.login,
-        teamSlug: selectedOrganizationTeam!.slug,
-        limit: organizationTeamRepositoryLimit,
+        org,
+        teamSlug,
+        limit,
         cacheOnly: !githubReady
       }),
-    enabled: enabled && Boolean(selectedOrganization) && Boolean(selectedOrganizationTeam),
+    enabled: teamQueriesEnabled,
     staleTime: 120_000
   });
-  const organizationTeamMembers = useQuery<OrganizationTeamMembersResult>({
+  const organizationTeamMembers = useQuery<
+    OrganizationTeamMembersResult,
+    Error,
+    OrganizationTeamMembersResult,
+    ReturnType<typeof organizationTeamMembersQueryKey>
+  >({
     queryKey: organizationTeamMembersQueryKey(
-      selectedOrganization?.login ?? "none",
-      selectedOrganizationTeam?.slug ?? "none",
+      organizationQueryKeyLogin,
+      organizationTeamQueryKeySlug,
       organizationTeamMemberLimit
     ),
-    queryFn: () =>
+    queryFn: ({ queryKey: [, org, teamSlug, limit] }) =>
       api.github.listOrganizationTeamMembersWithStatus({
-        org: selectedOrganization!.login,
-        teamSlug: selectedOrganizationTeam!.slug,
-        limit: organizationTeamMemberLimit,
+        org,
+        teamSlug,
+        limit,
         cacheOnly: !githubReady
       }),
-    enabled: enabled && Boolean(selectedOrganization) && Boolean(selectedOrganizationTeam),
+    enabled: teamQueriesEnabled,
     staleTime: 120_000
   });
-  const organizationProjects = useQuery<ProjectListResult>({
-    queryKey: organizationProjectsQueryKey(selectedOrganization?.login ?? "none", organizationProjectLimit),
-    queryFn: () =>
+  const organizationProjects = useQuery<
+    ProjectListResult,
+    Error,
+    ProjectListResult,
+    ReturnType<typeof organizationProjectsQueryKey>
+  >({
+    queryKey: organizationProjectsQueryKey(organizationQueryKeyLogin, organizationProjectLimit),
+    queryFn: ({ queryKey: [, org, limit] }) =>
       api.github.listOrganizationProjectsWithStatus({
-        org: selectedOrganization!.login,
-        limit: organizationProjectLimit,
+        org,
+        limit,
         cacheOnly: !githubReady
       }),
-    enabled: enabled && Boolean(selectedOrganization),
+    enabled: organizationQueriesEnabled,
     staleTime: 120_000
   });
 

@@ -19,6 +19,7 @@ import type {
   PullRequestReviewsResult,
   PullRequestReviewThreadsResult,
   PullRequestTimelineResult,
+  ReleaseDetailResult,
   ReleaseListResult,
   RepositoryListResult,
   RepositorySearchResult,
@@ -26,6 +27,7 @@ import type {
   WorkflowRunDetailResult
 } from "@shared/github";
 import type { ControlApi } from "@shared/ipc";
+import { defaultControlExportScope } from "@shared/sync";
 
 import {
   buildMockWorkflowRunDetail,
@@ -74,7 +76,7 @@ import {
   readMockPullRequests
 } from "./pulls";
 import { mockBranches, listMockCommits, mockTags, mockTree } from "./refs";
-import { mutateMockReleases, readMockReleases } from "./releases";
+import { mockReleaseDetail, mutateMockReleases, readMockReleases } from "./releases";
 import {
   listMockPinnedRepositories,
   listMockRecentItems,
@@ -108,7 +110,13 @@ import { mockRepositoryWiki } from "./wiki";
 export const mockControlApi: ControlApi = {
   getAppState: async () => mockAppState,
   getSettings: async () => mockAppState.settings,
-  updateSettings: async (settings) => ({ ...mockAppState.settings, ...settings }),
+  updateSettings: async (settings) => ({
+    ...mockAppState.settings,
+    ...settings,
+    theme: settings.theme
+      ? { ...mockAppState.settings.theme, ...settings.theme }
+      : mockAppState.settings.theme
+  }),
   signInWithGitHub: async () => mockGitHubSignInSession,
   getGitHubSignIn: async () => mockGitHubSignInSession,
   cancelGitHubSignIn: async () => undefined,
@@ -132,6 +140,33 @@ export const mockControlApi: ControlApi = {
   unpinAreaRepository: async (input) => unpinMockAreaRepository(input),
   listRecentItems: async (input) => listMockRecentItems(input),
   recordRecentItem: async (input) => recordMockRecentItem(input),
+  previewDataExport: async (scope) => ({
+    manifest: {
+      schemaVersion: 1,
+      createdAt: new Date().toISOString(),
+      appVersion: null,
+      includedScopes: { ...defaultControlExportScope, ...scope },
+      redactionSummary: [],
+      cacheIncluded: {
+        githubMetadata: scope.githubMetadataCache,
+        areaCache: scope.areaCache,
+        snapshots: scope.snapshots
+      }
+    },
+    items: [],
+    totals: {
+      includedItems: 0,
+      excludedItems: 0,
+      privateItems: 0,
+      cacheItems: 0
+    },
+    blockers: []
+  }),
+  previewDataImport: async () => ({
+    schemaVersion: null,
+    items: [],
+    blockers: ["Import preview is not available in the mock API."]
+  }),
   onGitHubRepositoriesUpdated: () => () => undefined,
   onGitHubAuthUpdated: () => () => undefined,
   areas: {
@@ -163,10 +198,10 @@ export const mockControlApi: ControlApi = {
         status: "ready",
         version: "0.1.0",
         apiUrl: "http://127.0.0.1:35525",
-        adminUrl: "http://127.0.0.1:35526",
         serviceName: "control-gateway-mock",
         lastStartedAt: new Date().toISOString(),
         lastSeenAt: new Date().toISOString(),
+        failureCode: null,
         message: null
       },
       health: { status: "ready", message: null, checkedAt: new Date().toISOString() },
@@ -195,6 +230,20 @@ export const mockControlApi: ControlApi = {
     listRepositories: async () => [],
     getRepository: async () => null,
     listContents: async () => [],
+    searchFilePaths: async (input) => ({
+      areaId: input.areaId,
+      repositoryId: input.repositoryId,
+      workspaceId: input.workspaceId ?? null,
+      query: input.query.trim(),
+      matches: [],
+      availability: {
+        status: input.query.trim() ? "complete" : "unavailable",
+        message: input.query.trim() ? null : "Enter a file name to search.",
+        scannedEntries: 0,
+        truncated: false,
+        timedOut: false
+      }
+    }),
     getFileContent: async (input) => ({
       path: input.path,
       kind: "unavailable",
@@ -302,6 +351,9 @@ export const mockControlApi: ControlApi = {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     }),
+    repairGateway: async () => ({ success: true, summary: null }),
+    rotateGatewayCredentials: async () => ({ success: true, summary: null }),
+    restartGateway: async () => ({ success: true, summary: null }),
     openLocalFolderPicker: async () => null
   },
   onAreasUpdated: () => () => undefined,
@@ -610,6 +662,7 @@ export const mockControlApi: ControlApi = {
       items: readMockReleases().slice(0, input.limit ?? 20),
       availability: mockAvailable
     }),
+    getReleaseDetailWithStatus: async (input): Promise<ReleaseDetailResult> => mockReleaseDetail(input),
     listContributorsWithStatus: async (input): Promise<ContributorListResult> => ({
       items: mockContributors.slice(0, input.limit ?? 24),
       availability: mockAvailable

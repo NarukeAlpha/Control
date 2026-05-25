@@ -5,6 +5,7 @@ import { useQuery, type QueryClient } from "@tanstack/react-query";
 import type {
   GitHubAction,
   GitHubMutationFields,
+  ReleaseDetailResult,
   ReleaseListResult,
   ReleaseAssetSummary,
   ReleaseSummary,
@@ -40,6 +41,8 @@ export interface ReleasesTabQueryInput {
   limit: number;
   enabled: boolean;
   githubReady: boolean;
+  focusedReleaseId?: number | null;
+  focusedReleaseTagName?: string | null;
 }
 
 export interface ReleasesTabPrefetchInput {
@@ -62,8 +65,26 @@ export function releasesTabQueryKey(
   return ["releases", owner, repo, limit] as const;
 }
 
-export function useReleasesTabQueries({ owner, repo, limit, enabled, githubReady }: ReleasesTabQueryInput) {
+export function releaseDetailQueryKey(
+  owner: string,
+  repo: string,
+  releaseId: number | null,
+  releaseTagName: string | null
+): readonly ["release-detail", string, string, number | null, string | null] {
+  return ["release-detail", owner, repo, releaseId, releaseTagName] as const;
+}
+
+export function useReleasesTabQueries({
+  owner,
+  repo,
+  limit,
+  enabled,
+  githubReady,
+  focusedReleaseId = null,
+  focusedReleaseTagName = null
+}: ReleasesTabQueryInput) {
   const api = useControlApi();
+  const hasFocusedRelease = focusedReleaseId !== null || Boolean(focusedReleaseTagName);
 
   const releases = useQuery<ReleaseListResult>({
     queryKey: releasesTabQueryKey(owner, repo, limit),
@@ -72,7 +93,21 @@ export function useReleasesTabQueries({ owner, repo, limit, enabled, githubReady
     staleTime: 120_000
   });
 
-  return { releases };
+  const releaseDetail = useQuery<ReleaseDetailResult>({
+    queryKey: releaseDetailQueryKey(owner, repo, focusedReleaseId, focusedReleaseTagName),
+    queryFn: () =>
+      api.github.getReleaseDetailWithStatus({
+        owner,
+        repo,
+        releaseId: focusedReleaseId ?? undefined,
+        releaseTagName: focusedReleaseTagName ?? undefined,
+        cacheOnly: !githubReady
+      }),
+    enabled: enabled && hasFocusedRelease,
+    staleTime: 120_000
+  });
+
+  return { releases, releaseDetail };
 }
 
 export async function prefetchReleasesTabData(
@@ -154,12 +189,14 @@ export function ReleasesTab({
   mutationError: Error | null;
   onMutate(action: GitHubAction, dangerous: boolean, payload?: GitHubMutationFields): void;
 }): JSX.Element {
-  const { releases: releasesQuery } = useReleasesTabQueries({
+  const { releases: releasesQuery, releaseDetail: releaseDetailQuery } = useReleasesTabQueries({
     owner: repository.owner,
     repo: repository.name,
     limit: releasesLimit,
     enabled: true,
-    githubReady
+    githubReady,
+    focusedReleaseId,
+    focusedReleaseTagName
   });
   const {
     branchItems: branches,
@@ -171,7 +208,10 @@ export function ReleasesTab({
   const availability = releasesQuery.data?.availability ?? null;
   const loading = releasesQuery.isLoading || releasesQuery.isFetching;
   const error = releasesQuery.error;
+  const directRelease = releaseDetailQuery.data?.item ?? null;
+  const releaseDetailAvailability = releaseDetailQuery.data?.availability ?? null;
   const focusedRelease =
+    directRelease ??
     (focusedReleaseId !== null ? releases.find((release) => release.id === focusedReleaseId) : null) ??
     (focusedReleaseTagName ? releases.find((release) => release.tagName === focusedReleaseTagName) : null);
   const [selectedReleaseId, setSelectedReleaseId] = useState<number | null>(null);
@@ -226,6 +266,10 @@ export function ReleasesTab({
   const releasesLimitHit = releases.length >= releasesLimit;
   const canExpandReleases = releasesLimitHit && releasesLimit < maxReleasesLimit;
   const availabilityMessage = readAvailabilityMessage("Releases", availability);
+  const releaseDetailAvailabilityMessage = readAvailabilityMessage(
+    "Release detail",
+    releaseDetailAvailability
+  );
 
   function resetReleaseForm(): void {
     setTagName("");
@@ -691,7 +735,9 @@ export function ReleasesTab({
             </>
           ) : (
             <div className="empty-state">
-              {loading ? "Loading release detail…" : "Select a release to inspect."}
+              {releaseDetailQuery.isLoading || releaseDetailQuery.isFetching
+                ? "Loading release detail…"
+                : (releaseDetailAvailabilityMessage ?? "Select a release to inspect.")}
             </div>
           )}
         </div>

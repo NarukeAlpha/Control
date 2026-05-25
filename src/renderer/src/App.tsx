@@ -2,6 +2,8 @@ import { useMemo } from "react";
 import type { JSX } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import type { RepositoryTabPreferenceKey } from "@shared/github";
+
 import { MarkdownUrlHandlerContext } from "./components/MarkdownBody";
 import { LocalAreaHome } from "./components/areas/LocalAreaHome";
 import { SetupPanel } from "./components/auth/SetupPanel";
@@ -39,6 +41,7 @@ import { useCollectionSurfaceState } from "./hooks/useCollectionSurfaceState";
 import { useRepositoryRouteState } from "./hooks/useRepositoryRouteState";
 import { useStoredRepositoryRefs } from "./hooks/useStoredRepositoryRefs";
 import { useUiStore, type AppRoute } from "./stores/uiStore";
+import { useResolvedControlTheme } from "./theme/themeSettings";
 
 function routeTitle(route: AppRoute): string {
   switch (route.kind) {
@@ -65,6 +68,7 @@ export function App(): JSX.Element {
   const providerAuth = useProviderAuth();
   const queryClient = useQueryClient();
   const route = useUiStore((state) => state.route);
+  const selectedAreaId = useUiStore((state) => state.selectedAreaId);
   const selectedRepository = useUiStore((state) => state.selectedRepository);
   const goToLocalRepository = useUiStore((state) => state.goToLocalRepository);
   const goHome = useUiStore((state) => state.goHome);
@@ -82,6 +86,7 @@ export function App(): JSX.Element {
   });
   const githubAuthenticated = appState.data?.github.authenticated ?? false;
   const githubReady = appState.isSuccess && githubAuthenticated;
+  const repositoryTabPreferences = appState.data?.settings.repositoryTabPreferences ?? {};
   const authenticatedViewerLogin = appState.data?.github.user ?? appState.data?.viewer?.login ?? null;
   const {
     areaItems,
@@ -118,8 +123,11 @@ export function App(): JSX.Element {
     activeRouteKind: route.kind
   });
 
+  const selectedAreaKind =
+    selectedArea?.kind ??
+    (selectedAreaId?.startsWith("local:") ? "local" : selectedAreaId?.startsWith("ssh:") ? "ssh" : "github");
   const repositories = useRepositoryDirectory(repositoryListLimit, {
-    enabled: appState.isSuccess,
+    enabled: appState.isSuccess && (route.kind !== "repositories" || selectedAreaKind === "github"),
     githubReady
   });
   const repositoryItems = useMemo(() => repositories.data?.items ?? [], [repositories.data]);
@@ -137,9 +145,9 @@ export function App(): JSX.Element {
     repositoryPinError,
     toggleRepositoryPin,
     toggleAreaRepositoryPin
-  } = useRepositoryPins();
+  } = useRepositoryPins({ appReady: appState.isSuccess });
 
-  const recentItems = useRecentItems(recentItemLimit, { enabled: appState.isSuccess });
+  const recentItems = useRecentItems(recentItemLimit, { appReady: appState.isSuccess });
 
   const accountProfile = useAccountProfile({ enabled: appState.isSuccess, githubReady });
   const accountProfileData = accountProfile.data?.profile ?? null;
@@ -182,7 +190,8 @@ export function App(): JSX.Element {
     route,
     selectedRepository,
     repositoryRefs,
-    fileFinderOpen: dialogs.fileFinderOpen
+    fileFinderOpen: dialogs.fileFinderOpen,
+    repositoryTabPreferences
   });
   const {
     isRepositoryRoute,
@@ -224,8 +233,18 @@ export function App(): JSX.Element {
     repositorySecurityAdvisoriesLimit,
     expandActiveRepositoryRefs
   } = repositoryRouteState.limits;
+  const topbarRepository = effectiveRepository || (repositoryItems[0]?.nameWithOwner ?? null);
   const { repositoryTree, repositoryTreeItem, repositoryTreeAvailabilityMessage } = codeBrowserQueries;
   const { refreshRepositorySurface } = refreshActions;
+  async function showRepositoryTab(tab: RepositoryTabPreferenceKey): Promise<void> {
+    await api.updateSettings({
+      repositoryTabPreferences: {
+        ...repositoryTabPreferences,
+        [tab]: "show"
+      }
+    });
+    await queryClient.invalidateQueries({ queryKey: ["app-state"] });
+  }
   const navigationActions = useAppNavigationActions({
     effectiveRepository,
     contentsRef,
@@ -246,6 +265,7 @@ export function App(): JSX.Element {
   const {
     openRepositoryInApp,
     openLocalRepositoryInApp,
+    openLocalFileInApp,
     openRepositoryRouteInApp,
     openCodeBrowserInApp,
     repositoryRefKindForName,
@@ -392,6 +412,7 @@ export function App(): JSX.Element {
     onSelectOrganizationProject: selectOrganizationProjectInApp
   });
 
+  const resolvedTheme = useResolvedControlTheme(appState.data?.settings.theme);
   const shellClass = [
     "app-shell",
     appState.data?.settings.glassMode === "solid" ? "solid-shell" : null,
@@ -402,7 +423,13 @@ export function App(): JSX.Element {
   return (
     <MarkdownUrlHandlerContext.Provider value={openMarkdownUrl}>
       <AppEventBridge activeRepository={activeRepositoryScope} />
-      <div className={shellClass}>
+      <div
+        className={shellClass}
+        data-accent={resolvedTheme.accent}
+        data-color-scheme={resolvedTheme.colorScheme}
+        data-theme-mode={resolvedTheme.requestedMode}
+        data-theme-preset={resolvedTheme.preset}
+      >
         <Sidebar
           appState={appState.data}
           profile={accountProfileData ?? undefined}
@@ -429,8 +456,8 @@ export function App(): JSX.Element {
           viewer={appState.data?.viewer ?? null}
           route={route}
           areas={areaItems}
-          selectedAreaId={selectedArea?.id ?? null}
-          selectedRepository={selectedRepository}
+          selectedAreaId={selectedArea?.id ?? selectedAreaId}
+          selectedRepository={topbarRepository}
           repositories={repositoryItems}
           githubReady={githubReady}
           onSelectArea={(areaId) => void selectArea(areaId)}
@@ -439,12 +466,15 @@ export function App(): JSX.Element {
           onEditArea={dialogs.openAreaEdit}
           onDeleteArea={dialogs.openAreaDelete}
           onGoRepository={() => {
-            if (effectiveRepository) {
-              openRepositoryInApp(effectiveRepository);
+            if (topbarRepository) {
+              openRepositoryInApp(topbarRepository);
             }
           }}
           onOpenRepository={openRepositoryInApp}
           onOpenLocalRepository={openLocalRepositoryInApp}
+          onOpenWorkspace={(workspace) =>
+            goToLocalRepository(workspace.areaId, workspace.repositoryId, "overview", workspace.id)
+          }
           onOpenAddRepository={dialogs.openAddRepository}
           onOpenCommandPalette={commandPalette.openPalette}
           onOpenHome={goHome}
@@ -492,6 +522,7 @@ export function App(): JSX.Element {
                 repositoriesError={repositories.error}
                 repositoriesAvailabilityMessage={repositoriesAvailabilityMessage}
                 pinnedRepositoryNames={pinnedRepositoryNames}
+                recentItems={recentItems.data ?? []}
                 issues={accountIssueItems}
                 issuesLoading={accountIssues.isLoading || accountIssues.isFetching}
                 issuesError={accountIssues.error}
@@ -505,6 +536,7 @@ export function App(): JSX.Element {
                 onOpenRepository={openRepositoryInApp}
                 onLoadMoreRepositories={() => loadMoreHomeRepositoryActivity(repositoryItems.length)}
                 onLoadMoreWork={loadMoreHomeWork}
+                onOpenRecent={openRecentItem}
                 onOpenMailbox={goToMailbox}
                 onOpenIssue={openIssueSummaryInApp}
                 onOpenPullRequest={openPullRequestSummaryInApp}
@@ -526,6 +558,15 @@ export function App(): JSX.Element {
                     route.path ?? null
                   )
                 }
+                onSelectWorkspace={(workspaceId) =>
+                  goToLocalRepository(
+                    route.areaId,
+                    route.repositoryId,
+                    activeLocalRepositoryTab,
+                    workspaceId,
+                    route.path ?? null
+                  )
+                }
                 onOpenPath={(entry) =>
                   goToLocalRepository(
                     route.areaId,
@@ -540,6 +581,7 @@ export function App(): JSX.Element {
                 onTogglePin={toggleAreaRepositoryPin}
                 onOpenGitHub={(nameWithOwner) => openRepositoryInApp(nameWithOwner)}
                 onOpenExternal={(url) => void api.openExternal(url)}
+                githubReady={githubReady}
               />
             )}
 
@@ -554,24 +596,38 @@ export function App(): JSX.Element {
               repositoryPinError={repositoryPinError}
               isRepositoryPinned={isRepositoryPinned}
               toggleRepositoryPin={toggleRepositoryPin}
+              onShowRepositoryTab={(tab) => void showRepositoryTab(tab)}
               onOpenExternal={(url) => void api.openExternal(url)}
             />
 
             {route.kind === "repositories" && (
               <RepositoriesRoute
                 title={routeTitle(route)}
-                appReady={appState.isSuccess}
-                githubReady={githubReady}
                 repositoryListLimit={repositoryListLimit}
+                selectedArea={selectedArea}
+                githubRepositoryItems={repositoryItems}
+                githubRepositoriesLoading={repositories.isLoading}
+                githubRepositoriesFetching={repositories.isFetching}
+                githubRepositoriesError={repositories.error instanceof Error ? repositories.error : null}
+                githubRepositoriesAvailability={repositoriesAvailabilityMessage}
+                localRepositories={localRepositoryItems}
+                localRepositoriesLoading={
+                  selectedAreaRepositories.isLoading || selectedAreaRepositories.isFetching
+                }
+                areaRepositoryPinRecords={repositoryPinRecords}
                 pinnedRepositoryNames={pinnedRepositoryNames}
                 repositoryPinBusy={repositoryPinBusy}
                 repositoryPinError={repositoryPinError}
                 viewerLogin={appState.data?.viewer?.login ?? accountProfileData?.login ?? null}
                 onOpenExternal={(url) => void api.openExternal(url)}
                 onOpenRepository={openRepositoryInApp}
+                onOpenLocalRepository={openLocalRepositoryInApp}
                 onOpenAddRepository={dialogs.openAddRepository}
                 onExpandRepositories={expandRepositoryList}
                 onToggleRepositoryPin={toggleRepositoryPin}
+                onToggleAreaRepositoryPin={toggleAreaRepositoryPin}
+                onRefreshRepositories={refreshRepositoriesNow}
+                onRefreshSelectedArea={refreshSelectedArea}
               />
             )}
 
@@ -605,6 +661,7 @@ export function App(): JSX.Element {
                 onOpenExternal={(url) => void api.openExternal(url)}
                 onOpenRepository={openRepositoryInApp}
                 onToggleRepositoryPin={toggleRepositoryPin}
+                onRefresh={() => void refreshOrganizationsNow()}
               />
             )}
           </main>
@@ -629,7 +686,27 @@ export function App(): JSX.Element {
                   }
                 : null
             }
+            localFileSearch={
+              route.kind === "localRepository"
+                ? {
+                    route,
+                    onOpenEntry: (entry) =>
+                      openLocalFileInApp({
+                        areaId: route.areaId,
+                        repositoryId: route.repositoryId,
+                        workspaceId: route.workspaceId ?? null,
+                        path: entry.path,
+                        entryType: entry.type
+                      })
+                  }
+                : null
+            }
             onOpenRepository={openRepositoryInApp}
+            onOpenArea={(area) => void selectArea(area.id)}
+            onOpenAreaRepository={openLocalRepositoryInApp}
+            onOpenWorkspace={(workspace) =>
+              goToLocalRepository(workspace.areaId, workspace.repositoryId, "overview", workspace.id)
+            }
             onClose={commandPalette.closePalette}
           />
         )}

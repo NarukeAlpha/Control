@@ -6,11 +6,18 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createLocalStore, type AreaGatewayRecord, type LocalStore } from "./storage";
 import type { AreaRepositorySummary, AreaSummary, AreaWorkspaceSummary } from "@shared/areas";
-import type { RepositoryDetail, RepositoryListResult, RepositorySummary } from "@shared/github";
+import type {
+  ControlSettings,
+  RepositoryDetail,
+  RepositoryListResult,
+  RepositorySummary
+} from "@shared/github";
+import { getAreaGateway, migrateLegacyAreaGatewayTokens } from "./storage/areaGatewayStore";
 import { writeCacheEntry } from "./storage/cacheStore";
-import { createStorageDatabaseAdapter, type SqliteDatabase } from "./storage/database";
+import { createStorageDatabaseAdapter, type SqliteDatabase, type StorageDatabase } from "./storage/database";
 import { DatabaseError } from "./storage/errors";
 import { MemoryLocalStore } from "./storage/memoryStore";
+import { defaultSettings, normalizeSettings } from "./storage/localStoreHelpers";
 import { runStorageSync } from "./storage/runtime";
 
 const tempDirs: string[] = [];
@@ -78,6 +85,23 @@ describe("LocalStore repository pins", () => {
     expect(() =>
       runStorageSync("effect.database", () => db.operation("effect.database", () => db.get("SELECT 1")))
     ).toThrow(expect.objectContaining({ operation: "effect.database" }));
+  });
+
+  it("deletes persisted account records by provider", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "control-store-"));
+    tempDirs.push(tempDir);
+    const stores: LocalStore[] = [new MemoryLocalStore(), await createLocalStore(tempDir)];
+
+    for (const store of stores) {
+      store.saveAccount("github-viewer", "octocat", { login: "octocat" });
+      store.saveAccount("github-viewer", "mona", { login: "mona" });
+      store.saveAccount("github", "octocat", { login: "octocat" });
+
+      store.deleteAccount("github-viewer");
+
+      expect(store.getLastAccount("github-viewer")).toBeNull();
+      expect(store.getLastAccount("github")).toEqual({ login: "octocat" });
+    }
   });
 
   it("pins repositories locally and removes them without GitHub data", async () => {
@@ -246,7 +270,9 @@ describe("LocalStore repository pins", () => {
 
     expect(store.updateSettings({ glassMode: "solid" })).toEqual({
       credentialProvider: "github-oauth",
-      glassMode: "solid"
+      glassMode: "solid",
+      theme: defaultSettings.theme,
+      repositoryTabPreferences: {}
     });
 
     store.setGitHubRepositoriesWithStatusCache({
@@ -267,6 +293,57 @@ describe("LocalStore repository pins", () => {
         isExpired: false
       })
     );
+  });
+
+  it("normalizes invalid persisted settings fields independently", () => {
+    expect(
+      normalizeSettings({
+        credentialProvider: "unknown",
+        glassMode: "transparent",
+        theme: {
+          mode: "dark",
+          preset: "unknown-preset",
+          accent: "purple"
+        },
+        repositoryTabPreferences: {
+          agents: "show",
+          releases: "invalid"
+        }
+      })
+    ).toEqual({
+      credentialProvider: "github-oauth",
+      glassMode: "glass-shell",
+      theme: {
+        mode: "dark",
+        preset: "control-light",
+        accent: "purple"
+      },
+      repositoryTabPreferences: {
+        agents: "show"
+      }
+    });
+  });
+
+  it("preserves theme settings when applying partial settings writes", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "control-store-"));
+    tempDirs.push(tempDir);
+    const stores: LocalStore[] = [new MemoryLocalStore(), await createLocalStore(tempDir)];
+    const theme: ControlSettings["theme"] = {
+      mode: "dark",
+      preset: "control-high-contrast-dark",
+      accent: "green"
+    };
+
+    for (const store of stores) {
+      expect(store.updateSettings({ theme })).toEqual(expect.objectContaining({ theme }));
+      expect(store.updateSettings({ glassMode: "solid" })).toEqual(
+        expect.objectContaining({
+          glassMode: "solid",
+          theme
+        })
+      );
+      store.close();
+    }
   });
 
   it("keeps cache and repository-status contracts aligned for SQLite and memory adapters", async () => {
@@ -526,6 +603,7 @@ describe("LocalStore repository pins", () => {
         status: "not-installed",
         pid: null,
         processId: null,
+        failureCode: null,
         message: null,
         lastStartedAt: null,
         lastSeenAt: null
@@ -536,6 +614,112 @@ describe("LocalStore repository pins", () => {
 
     expect(store.getAreaGateway(localArea.id)).toBeNull();
     expect(store.getArea(localArea.id)).toEqual(expect.objectContaining({ gateway: null }));
+  });
+
+  it("migrates legacy gateway tokens to the credential store before stripping SQLite records", async () => {
+    const db = await createTempStorageDatabase();
+    const record = {
+      ...areaGatewayRecord("local:legacy", "/work/legacy"),
+      apiToken: "legacy-api-token",
+      adminToken: "legacy-admin-token"
+    };
+    db.run(
+      `INSERT INTO area_gateways (area_id, summary_json, record_json, updated_at)
+       VALUES (?, ?, ?, CURRENT_TIMESTAMP)`,
+      record.areaId,
+      "{}",
+      JSON.stringify(record)
+    );
+    const migrateCredentials = vi.fn(async () => undefined);
+
+    await migrateLegacyAreaGatewayTokens(db, migrateCredentials);
+
+    expect(migrateCredentials).toHaveBeenCalledWith("local:legacy", {
+      apiToken: "legacy-api-token",
+      adminToken: "legacy-admin-token"
+    });
+    const rawRecord =
+      db.get<{ recordJson: string }>("SELECT record_json AS recordJson FROM area_gateways")?.recordJson ?? "";
+    expect(rawRecord).not.toContain("legacy-api-token");
+    expect(rawRecord).not.toContain("legacy-admin-token");
+    expect(rawRecord).not.toContain("apiToken");
+    expect(rawRecord).not.toContain("adminToken");
+    expect(getAreaGateway(db, "local:legacy")).toEqual(
+      expect.objectContaining({
+        areaId: "local:legacy",
+        failureCode: null
+      })
+    );
+    db.close();
+  });
+
+  it("strips legacy gateway tokens even when credential migration is unavailable", async () => {
+    const db = await createTempStorageDatabase();
+    const record = {
+      ...areaGatewayRecord("local:legacy", "/work/legacy"),
+      apiToken: "legacy-api-token",
+      adminToken: "legacy-admin-token"
+    };
+    db.run(
+      `INSERT INTO area_gateways (area_id, summary_json, record_json, updated_at)
+       VALUES (?, ?, ?, CURRENT_TIMESTAMP)`,
+      record.areaId,
+      "{}",
+      JSON.stringify(record)
+    );
+
+    await migrateLegacyAreaGatewayTokens(db, async () => {
+      throw new Error("keychain unavailable");
+    });
+
+    const row = db.get<{ recordJson: string }>(
+      "SELECT record_json AS recordJson FROM area_gateways WHERE area_id = ?",
+      record.areaId
+    );
+    expect(row?.recordJson).not.toContain("legacy-api-token");
+    expect(row?.recordJson).not.toContain("legacy-admin-token");
+    expect(row?.recordJson).not.toContain("apiToken");
+    expect(row?.recordJson).not.toContain("adminToken");
+    expect(JSON.parse(row?.recordJson ?? "{}")).toEqual(
+      expect.objectContaining({
+        status: "error",
+        failureCode: "gateway-credentials-migration-pending"
+      })
+    );
+    db.close();
+  });
+
+  it("treats partial legacy gateway token rows as secret-bearing migration failures", async () => {
+    const db = await createTempStorageDatabase();
+    const record = {
+      ...areaGatewayRecord("local:partial-legacy", "/work/legacy"),
+      apiToken: "legacy-api-token"
+    };
+    db.run(
+      `INSERT INTO area_gateways (area_id, summary_json, record_json, updated_at)
+       VALUES (?, ?, ?, CURRENT_TIMESTAMP)`,
+      record.areaId,
+      "{}",
+      JSON.stringify(record)
+    );
+    const migrateCredentials = vi.fn(async () => undefined);
+
+    await migrateLegacyAreaGatewayTokens(db, migrateCredentials);
+
+    const row = db.get<{ recordJson: string }>(
+      "SELECT record_json AS recordJson FROM area_gateways WHERE area_id = ?",
+      record.areaId
+    );
+    expect(migrateCredentials).not.toHaveBeenCalled();
+    expect(row?.recordJson).not.toContain("legacy-api-token");
+    expect(row?.recordJson).not.toContain("apiToken");
+    expect(JSON.parse(row?.recordJson ?? "{}")).toEqual(
+      expect.objectContaining({
+        status: "error",
+        failureCode: "gateway-credentials-migration-pending"
+      })
+    );
+    db.close();
   });
 
   it("stores Area repositories, workspaces, and snapshots with summary fallback details", async () => {
@@ -729,19 +913,53 @@ function areaGatewayRecord(areaId: string, rootPath: string): AreaGatewayRecord 
     port: null,
     apiUrl: "http://127.0.0.1:4580",
     adminUrl: "http://127.0.0.1:4581",
-    apiToken: "api-token",
-    adminToken: "admin-token",
     serviceName: "control-area-gateway",
     version: "1.2.3",
     status: "ready",
     pid: 42,
     processId: 42,
+    failureCode: null,
     message: null,
     installedAt: "2026-05-01T00:00:00.000Z",
     lastStartedAt: "2026-05-01T00:01:00.000Z",
     lastSeenAt: "2026-05-01T00:02:00.000Z",
     updatedAt: "2026-05-01T00:03:00.000Z"
   };
+}
+
+async function createTempStorageDatabase(): Promise<StorageDatabase> {
+  const rows = new Map<string, { areaId: string; summaryJson: string; recordJson: string }>();
+  const db: StorageDatabase = {
+    operation: <T>(_operation: string, action: () => T): T => action(),
+    transaction: <T>(_operation: string, action: (db: StorageDatabase) => T): T => action(db),
+    exec: () => undefined,
+    pragma: () => null,
+    run: (_source: string, ...params: unknown[]) => {
+      const objectParams = params[0] as
+        | { areaId?: string; summaryJson?: string; recordJson?: string }
+        | undefined;
+      if (objectParams?.areaId && objectParams.recordJson && objectParams.summaryJson) {
+        rows.set(objectParams.areaId, {
+          areaId: objectParams.areaId,
+          summaryJson: objectParams.summaryJson,
+          recordJson: objectParams.recordJson
+        });
+        return;
+      }
+      const [areaId, summaryJson, recordJson] = params;
+      if (typeof areaId === "string" && typeof summaryJson === "string" && typeof recordJson === "string") {
+        rows.set(areaId, { areaId, summaryJson, recordJson });
+      }
+    },
+    get: <Row>(_source: string, ...params: unknown[]): Row | undefined => {
+      const row = typeof params[0] === "string" ? rows.get(params[0]) : rows.values().next().value;
+      return row ? ({ areaId: row.areaId, recordJson: row.recordJson } as Row) : undefined;
+    },
+    all: <Row>(): Row[] =>
+      [...rows.values()].map((row) => ({ areaId: row.areaId, recordJson: row.recordJson }) as Row),
+    close: () => undefined
+  };
+  return db;
 }
 
 function areaRepositorySummary(

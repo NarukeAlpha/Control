@@ -13,7 +13,13 @@ function defaultGitHubAreaRepositoryId(nameWithOwner: string): string {
   return `github:default:${nameWithOwner.toLowerCase()}`;
 }
 
-export function useRepositoryPins(): {
+function isDefaultGitHubRepositoryPin(
+  pin: RepositoryPinRecord
+): pin is RepositoryPinRecord & { nameWithOwner: string } {
+  return pin.areaId === defaultGitHubAreaId && typeof pin.nameWithOwner === "string";
+}
+
+export function useRepositoryPins({ appReady = true }: { appReady?: boolean } = {}): {
   repositoryPinRecords: RepositoryPinRecord[];
   pinnedRepositoryNames: string[];
   isRepositoryPinned(nameWithOwner: string): boolean;
@@ -33,14 +39,12 @@ export function useRepositoryPins(): {
   const repositoryPins = useQuery({
     queryKey: repositoryPinsQueryKey,
     queryFn: () => api.listRepositoryPins(),
+    enabled: appReady,
     staleTime: Infinity
   });
   const repositoryPinRecords = useMemo(() => repositoryPins.data ?? [], [repositoryPins.data]);
   const pinnedRepositoryNames = useMemo(
-    () =>
-      repositoryPinRecords
-        .filter((pin) => pin.areaId === defaultGitHubAreaId && pin.nameWithOwner)
-        .map((pin) => pin.nameWithOwner as string),
+    () => repositoryPinRecords.filter(isDefaultGitHubRepositoryPin).map((pin) => pin.nameWithOwner),
     [repositoryPinRecords]
   );
   const pinnedRepositoryNameSet = useMemo(

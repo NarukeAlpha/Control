@@ -1,11 +1,14 @@
 import type {
   GitHubReadAvailability,
+  ReleaseDetailInput,
+  ReleaseDetailResult,
   ReleaseListResult,
   ReleaseSummary,
   ReleasesInput
 } from "@shared/github";
 
 export interface OctokitReleaseClient {
+  rest<T>(route: string, params?: Record<string, unknown>): Promise<T>;
   restPaginatedArray<T>(route: string, params: Record<string, unknown>, limit: number): Promise<T[]>;
 }
 
@@ -39,6 +42,45 @@ export class OctokitReleaseDomain {
         availability: this.mapError(error)
       };
     }
+  }
+
+  async getReleaseDetailWithStatus(input: ReleaseDetailInput): Promise<ReleaseDetailResult> {
+    try {
+      return {
+        item: await this.getReleaseDetail(input),
+        availability: { status: "available", message: null }
+      };
+    } catch (error: unknown) {
+      return {
+        item: null,
+        availability: this.mapError(error)
+      };
+    }
+  }
+
+  private async getReleaseDetail(input: ReleaseDetailInput): Promise<ReleaseSummary> {
+    if (typeof input.releaseId === "number") {
+      const release = await this.client.rest<GitHubRelease>(
+        "GET /repos/{owner}/{repo}/releases/{release_id}",
+        {
+          owner: input.owner,
+          repo: input.repo,
+          release_id: input.releaseId
+        }
+      );
+      return mapRelease(release);
+    }
+
+    if (input.releaseTagName) {
+      const release = await this.client.rest<GitHubRelease>("GET /repos/{owner}/{repo}/releases/tags/{tag}", {
+        owner: input.owner,
+        repo: input.repo,
+        tag: input.releaseTagName
+      });
+      return mapRelease(release);
+    }
+
+    throw new Error("Release detail input requires a release id or tag name.");
   }
 }
 

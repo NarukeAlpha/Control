@@ -16,38 +16,30 @@ import type {
   ContributorSummary,
   GitHubReadAvailability,
   ReleaseSummary,
-  RepositoryCommitSummary,
   RepositoryDetail
 } from "@shared/github";
 
 import { formatCompactNumber, formatRelativeDate } from "../../utils/format";
-import { CommitHistoryPanel } from "../repository/CommitHistoryPanel";
 import {
   getRepositoryCounts,
   languageTotalLabel,
   normalizeLanguageStats,
-  readAvailabilityMessage,
-  repositoryPath
+  readAvailabilityMessage
 } from "../repository/repositoryUi";
 
 export function RightRail({
   repository,
-  selectedRef,
-  commits,
-  commitsLimit,
-  commitsLoading,
-  commitsError,
-  commitsAvailability,
   releases,
   releasesLoading,
   releasesAvailability,
   releasesError,
+  showReleases,
   contributors,
   contributorsLoading,
   contributorsAvailability,
   contributorsError,
-  onExpandCommits,
-  onOpenCommit,
+  showContributors,
+  showSettings,
   onOpenReleasesTab,
   onOpenContributorsTab,
   onOpenSettingsTab,
@@ -56,22 +48,17 @@ export function RightRail({
   onOpenExternal
 }: {
   repository?: RepositoryDetail;
-  selectedRef: string | null;
-  commits: RepositoryCommitSummary[];
-  commitsLimit: number;
-  commitsLoading: boolean;
-  commitsError: Error | null;
-  commitsAvailability: GitHubReadAvailability | null;
   releases: ReleaseSummary[];
   releasesLoading: boolean;
   releasesAvailability: GitHubReadAvailability | null;
   releasesError: Error | null;
+  showReleases: boolean;
   contributors: ContributorSummary[];
   contributorsLoading: boolean;
   contributorsAvailability: GitHubReadAvailability | null;
   contributorsError: Error | null;
-  onExpandCommits(): void;
-  onOpenCommit(commit: RepositoryCommitSummary): void;
+  showContributors: boolean;
+  showSettings: boolean;
   onOpenReleasesTab(): void;
   onOpenContributorsTab(): void;
   onOpenSettingsTab(): void;
@@ -87,10 +74,8 @@ export function RightRail({
   const visibleContributors = contributors.slice(0, 12);
   const visibleTopics = repository?.topics.slice(0, 8) ?? [];
   const hiddenTopicCount = Math.max(0, (repository?.topics.length ?? 0) - visibleTopics.length);
-  const commitsAvailabilityMessage = readAvailabilityMessage("Commit history", commitsAvailability);
   const releasesAvailabilityMessage = readAvailabilityMessage("Releases", releasesAvailability);
   const contributorsAvailabilityMessage = readAvailabilityMessage("Contributors", contributorsAvailability);
-  const currentRef = selectedRef ?? repository?.defaultBranch ?? "HEAD";
 
   return (
     <aside className="right-rail">
@@ -106,7 +91,7 @@ export function RightRail({
             {repository.homepageUrl.replace(/^https?:\/\//, "")}
           </button>
         )}
-        {repository && (
+        {repository && showSettings && (
           <button className="rail-inline-action" type="button" onClick={onOpenSettingsTab}>
             Repository settings
           </button>
@@ -162,23 +147,6 @@ export function RightRail({
         </ul>
       </section>
 
-      {repository && (
-        <CommitHistoryPanel
-          title="Recent commits"
-          subtitle={currentRef}
-          commits={commits}
-          loading={commitsLoading}
-          error={commitsError}
-          availabilityMessage={commitsAvailabilityMessage}
-          externalUrl={repositoryPath(repository, `/commits/${encodeURIComponent(currentRef)}`)}
-          currentLimit={commitsLimit}
-          openCommitLabel="Open tree"
-          onExpandCommits={onExpandCommits}
-          onOpenCommit={onOpenCommit}
-          onOpenExternal={onOpenExternal}
-        />
-      )}
-
       <section className="rail-panel language-panel">
         <div className="rail-heading">
           <h3>Languages</h3>
@@ -218,109 +186,115 @@ export function RightRail({
         )}
       </section>
 
-      <section className="rail-panel">
-        <div className="rail-heading">
-          <h3>Releases</h3>
-          <div className="rail-heading-actions">
-            <span>{releasesLoading ? "updating" : releases.length}</span>
-          </div>
-        </div>
-        {releasesLoading && releases.length === 0 && (
-          <small className="rail-muted">Loading releases...</small>
-        )}
-        {releasesError && <small className="rail-error">Releases unavailable: {releasesError.message}</small>}
-        {releasesAvailabilityMessage && <small className="rail-error">{releasesAvailabilityMessage}</small>}
-        {releases.length > 0 && (
-          <button className="rail-inline-action" type="button" onClick={onOpenReleasesTab}>
-            View all releases
-          </button>
-        )}
-        {releases.length > visibleReleases.length && (
-          <small className="rail-muted">
-            Showing first {visibleReleases.length} of {releases.length} releases.
-          </small>
-        )}
-        {visibleReleases.map((release) => (
-          <button
-            className="release-row"
-            key={release.id}
-            type="button"
-            onClick={() => onOpenRelease(release)}
-          >
-            <Tag size={17} />
-            <span>
-              <strong>{release.name ?? release.tagName}</strong>
-              <small>{formatRelativeDate(release.publishedAt)}</small>
-            </span>
-          </button>
-        ))}
-        {!releasesLoading && !releasesError && !releasesAvailabilityMessage && releases.length === 0 && (
-          <small className="rail-muted">GitHub returned no releases for this repository.</small>
-        )}
-      </section>
-
-      <section className="rail-panel">
-        <div className="rail-heading">
-          <h3>Contributors</h3>
-          <div className="rail-heading-actions">
-            <span>{contributorsLoading ? "updating" : contributors.length}</span>
-          </div>
-        </div>
-        {contributorsLoading && contributors.length === 0 && (
-          <small className="rail-muted">Loading contributors...</small>
-        )}
-        {contributorsError && (
-          <small className="rail-error">Contributors unavailable: {contributorsError.message}</small>
-        )}
-        {contributorsAvailabilityMessage && (
-          <small className="rail-error">{contributorsAvailabilityMessage}</small>
-        )}
-        {contributors.length > 0 && (
-          <button className="rail-inline-action" type="button" onClick={onOpenContributorsTab}>
-            View all contributors
-          </button>
-        )}
-        {contributors.length > visibleContributors.length && (
-          <small className="rail-muted">
-            Showing first {visibleContributors.length} of {contributors.length} contributors.
-          </small>
-        )}
-        <div className="contributors">
-          {visibleContributors.map((contributor) => (
-            <div className="contributor-row-shell" key={`${contributor.id}-${contributor.login}`}>
-              <button
-                className="contributor-row"
-                type="button"
-                title={`View ${contributor.login} in Control`}
-                onClick={() => onOpenContributor(contributor)}
-              >
-                {contributor.avatarUrl ? <img src={contributor.avatarUrl} alt="" /> : null}
-                <span>
-                  <strong>{contributor.login}</strong>
-                  <small>{formatCompactNumber(contributor.contributions)} contributions</small>
-                </span>
-              </button>
-              {contributor.htmlUrl && (
-                <button
-                  className="pin-row-button"
-                  type="button"
-                  aria-label={`Open ${contributor.login} on GitHub`}
-                  title={`Open ${contributor.login} on GitHub`}
-                  onClick={() => onOpenExternal(contributor.htmlUrl!)}
-                >
-                  <ExternalLink size={15} />
-                </button>
-              )}
+      {showReleases && (
+        <section className="rail-panel">
+          <div className="rail-heading">
+            <h3>Releases</h3>
+            <div className="rail-heading-actions">
+              <span>{releasesLoading ? "updating" : releases.length}</span>
             </div>
-          ))}
-        </div>
-        {!contributorsLoading &&
-          !contributorsError &&
-          !contributorsAvailabilityMessage &&
-          contributors.length === 0 && (
-            <small className="rail-muted">GitHub returned no contributors for this repository.</small>
+          </div>
+          {releasesLoading && releases.length === 0 && (
+            <small className="rail-muted">Loading releases...</small>
           )}
-      </section>
+          {releasesError && (
+            <small className="rail-error">Releases unavailable: {releasesError.message}</small>
+          )}
+          {releasesAvailabilityMessage && <small className="rail-error">{releasesAvailabilityMessage}</small>}
+          {releases.length > 0 && (
+            <button className="rail-inline-action" type="button" onClick={onOpenReleasesTab}>
+              View all releases
+            </button>
+          )}
+          {releases.length > visibleReleases.length && (
+            <small className="rail-muted">
+              Showing first {visibleReleases.length} of {releases.length} releases.
+            </small>
+          )}
+          {visibleReleases.map((release) => (
+            <button
+              className="release-row"
+              key={release.id}
+              type="button"
+              onClick={() => onOpenRelease(release)}
+            >
+              <Tag size={17} />
+              <span>
+                <strong>{release.name ?? release.tagName}</strong>
+                <small>{formatRelativeDate(release.publishedAt)}</small>
+              </span>
+            </button>
+          ))}
+          {!releasesLoading && !releasesError && !releasesAvailabilityMessage && releases.length === 0 && (
+            <small className="rail-muted">GitHub returned no releases for this repository.</small>
+          )}
+        </section>
+      )}
+
+      {showContributors && (
+        <section className="rail-panel">
+          <div className="rail-heading">
+            <h3>Contributors</h3>
+            <div className="rail-heading-actions">
+              <span>{contributorsLoading ? "updating" : contributors.length}</span>
+            </div>
+          </div>
+          {contributorsLoading && contributors.length === 0 && (
+            <small className="rail-muted">Loading contributors...</small>
+          )}
+          {contributorsError && (
+            <small className="rail-error">Contributors unavailable: {contributorsError.message}</small>
+          )}
+          {contributorsAvailabilityMessage && (
+            <small className="rail-error">{contributorsAvailabilityMessage}</small>
+          )}
+          {contributors.length > 0 && (
+            <button className="rail-inline-action" type="button" onClick={onOpenContributorsTab}>
+              View all contributors
+            </button>
+          )}
+          {contributors.length > visibleContributors.length && (
+            <small className="rail-muted">
+              Showing first {visibleContributors.length} of {contributors.length} contributors.
+            </small>
+          )}
+          <div className="contributors">
+            {visibleContributors.map((contributor) => (
+              <div className="contributor-row-shell" key={`${contributor.id}-${contributor.login}`}>
+                <button
+                  className="contributor-row"
+                  type="button"
+                  title={`View ${contributor.login} in Control`}
+                  onClick={() => onOpenContributor(contributor)}
+                >
+                  {contributor.avatarUrl ? <img src={contributor.avatarUrl} alt="" /> : null}
+                  <span>
+                    <strong>{contributor.login}</strong>
+                    <small>{formatCompactNumber(contributor.contributions)} contributions</small>
+                  </span>
+                </button>
+                {contributor.htmlUrl && (
+                  <button
+                    className="pin-row-button"
+                    type="button"
+                    aria-label={`Open ${contributor.login} on GitHub`}
+                    title={`Open ${contributor.login} on GitHub`}
+                    onClick={() => onOpenExternal(contributor.htmlUrl!)}
+                  >
+                    <ExternalLink size={15} />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+          {!contributorsLoading &&
+            !contributorsError &&
+            !contributorsAvailabilityMessage &&
+            contributors.length === 0 && (
+              <small className="rail-muted">GitHub returned no contributors for this repository.</small>
+            )}
+        </section>
+      )}
     </aside>
   );
 }

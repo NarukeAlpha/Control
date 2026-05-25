@@ -7,10 +7,8 @@ import type {
   AccountRepositoryInput,
   ActionsInput,
   AssignableUserListInput,
-  BranchListInput,
   BranchProtectionInput,
   CodeScanningAlertsInput,
-  ContributorsInput,
   ControlSettings,
   DependabotAlertsInput,
   DiscussionCategoryListInput,
@@ -20,13 +18,6 @@ import type {
   IssueListInput,
   NotificationListInput,
   NotificationThreadInput,
-  OrganizationListInput,
-  OrganizationMembersInput,
-  OrganizationProjectsInput,
-  OrganizationRepositoriesInput,
-  OrganizationTeamMembersInput,
-  OrganizationTeamRepositoriesInput,
-  OrganizationTeamsInput,
   ProjectsInput,
   PullRequestChecksInput,
   PullRequestCommentsInput,
@@ -40,7 +31,7 @@ import type {
   PullRequestReviewsInput,
   PullRequestReviewThreadsInput,
   PullRequestTimelineInput,
-  ReleasesInput,
+  ReleaseDetailInput,
   RepoContentsInput,
   RepoDetailInput,
   RepoFileBlameInput,
@@ -59,7 +50,6 @@ import type {
   RepoTreeInput,
   SearchInput,
   SecretScanningAlertsInput,
-  TagListInput,
   WorkflowJobLogsInput,
   WorkflowListInput,
   WorkflowRunDetailInput
@@ -69,13 +59,18 @@ import type {
   LocalRecentListInput,
   LocalRecentMetadata,
   LocalRecentRecordInput,
-  RepositoryPinInput,
   RepositoryPinRecord
 } from "@shared/local";
+import type { ControlExportScope, ControlImportInput } from "@shared/sync";
 import type { GitHubProviderManager } from "../github/provider";
 import type { LocalStore } from "../storage";
 import { registerEffectPilotIpc, type EffectIpcBridge } from "../effect/ipcBridge";
 import { openExternalHttps } from "../externalLinks";
+import {
+  createControlExportPreview,
+  createControlImportPreview,
+  normalizeControlExportScope
+} from "../storage/exportPreview";
 import { createGithubIpcRoutes } from "./registerGithubIpc";
 import { createIpcInvokeRoute, registerIpcRoutes, type IpcInvokeRoute } from "./ipcRouter";
 
@@ -84,17 +79,25 @@ interface RegisterControlIpcInput {
   store: LocalStore;
   github: GitHubProviderManager;
   effectBridge: EffectIpcBridge;
+  onSettingsUpdated?: (settings: ControlSettings) => void;
 }
 
-export function registerControlIpc({ ipcMain, store, github, effectBridge }: RegisterControlIpcInput): void {
+export function registerControlIpc({
+  ipcMain,
+  store,
+  github,
+  effectBridge,
+  onSettingsUpdated
+}: RegisterControlIpcInput): void {
   registerEffectPilotIpc(ipcMain, effectBridge);
-  registerIpcRoutes(ipcMain, createControlIpcRoutes({ store, github }));
+  registerIpcRoutes(ipcMain, createControlIpcRoutes({ store, github, onSettingsUpdated }));
 }
 
 export function createControlIpcRoutes({
   store,
-  github
-}: Pick<RegisterControlIpcInput, "store" | "github">): IpcInvokeRoute[] {
+  github,
+  onSettingsUpdated
+}: Pick<RegisterControlIpcInput, "store" | "github" | "onSettingsUpdated">): IpcInvokeRoute[] {
   return [
     controlRoute<void, ReturnType<GitHubProviderManager["createAppState"]>>({
       channel: ipcChannels.appState,
@@ -105,7 +108,11 @@ export function createControlIpcRoutes({
       channel: ipcChannels.updateSettings,
       parse: ([settings]) =>
         requireRecordInput<Partial<ControlSettings>>(settings, "Settings update input must be an object."),
-      handle: (settings) => store.updateSettings(settings)
+      handle: (settings) => {
+        const mergedSettings = store.updateSettings(settings);
+        onSettingsUpdated?.(mergedSettings);
+        return mergedSettings;
+      }
     }),
     controlRoute<void, ReturnType<GitHubProviderManager["signInWithBrowser"]>>({
       channel: ipcChannels.signInWithGitHub,
@@ -139,7 +146,7 @@ export function createControlIpcRoutes({
     }),
     controlRoute<string, ReturnType<LocalStore["listPinnedRepositories"]>>({
       channel: ipcChannels.pinRepository,
-      parse: ([input]) => requireRepositoryPinInput(input as RepositoryPinInput),
+      parse: ([input]) => requireRepositoryPinInput(input),
       handle: (nameWithOwner) => {
         store.pinRepository(nameWithOwner);
         return store.listPinnedRepositories();
@@ -147,7 +154,7 @@ export function createControlIpcRoutes({
     }),
     controlRoute<string, ReturnType<LocalStore["listPinnedRepositories"]>>({
       channel: ipcChannels.unpinRepository,
-      parse: ([input]) => requireRepositoryPinInput(input as RepositoryPinInput),
+      parse: ([input]) => requireRepositoryPinInput(input),
       handle: (nameWithOwner) => {
         store.unpinRepository(nameWithOwner);
         return store.listPinnedRepositories();
@@ -160,7 +167,7 @@ export function createControlIpcRoutes({
     }),
     controlRoute<RepositoryPinRecord, ReturnType<LocalStore["listAreaRepositoryPins"]>>({
       channel: ipcChannels.pinAreaRepository,
-      parse: ([input]) => requireAreaRepositoryPinInput(input as RepositoryPinInput),
+      parse: ([input]) => requireAreaRepositoryPinInput(input),
       handle: (pin) => {
         store.pinAreaRepository(pin);
         return store.listAreaRepositoryPins();
@@ -168,7 +175,7 @@ export function createControlIpcRoutes({
     }),
     controlRoute<RepositoryPinRecord, ReturnType<LocalStore["listAreaRepositoryPins"]>>({
       channel: ipcChannels.unpinAreaRepository,
-      parse: ([input]) => requireAreaRepositoryPinInput(input as RepositoryPinInput),
+      parse: ([input]) => requireAreaRepositoryPinInput(input),
       handle: (pin) => {
         store.unpinAreaRepository(pin);
         return store.listAreaRepositoryPins();
@@ -176,16 +183,26 @@ export function createControlIpcRoutes({
     }),
     controlRoute<LocalRecentListInput, ReturnType<LocalStore["listRecentItems"]>>({
       channel: ipcChannels.listRecentItems,
-      parse: ([input]) => requireRecentListInput(input as LocalRecentListInput),
+      parse: ([input]) => requireRecentListInput(input),
       handle: (input) => store.listRecentItems(input)
     }),
     controlRoute<LocalRecentRecordInput, ReturnType<LocalStore["listRecentItems"]>>({
       channel: ipcChannels.recordRecentItem,
-      parse: ([input]) => requireRecentRecordInput(input as LocalRecentRecordInput),
+      parse: ([input]) => requireRecentRecordInput(input),
       handle: (recent) => {
         store.addRecentItem(recent.kind, recent.provider ?? "github", recent.itemKey, recent);
         return store.listRecentItems({ limit: 12 });
       }
+    }),
+    controlRoute<ControlExportScope, ReturnType<typeof createControlExportPreview>>({
+      channel: ipcChannels.previewDataExport,
+      parse: ([input]) => requireControlExportScope(input),
+      handle: (scope) => createControlExportPreview(store, scope)
+    }),
+    controlRoute<ControlImportInput, ReturnType<typeof createControlImportPreview>>({
+      channel: ipcChannels.previewDataImport,
+      parse: ([input]) => requireControlImportInput(input),
+      handle: (input) => createControlImportPreview(input)
     }),
 
     controlRoute<void, ReturnType<GitHubProviderManager["getViewer"]>>({
@@ -199,30 +216,6 @@ export function createControlIpcRoutes({
     ...createGithubIpcRoutes(github),
     githubOptionalRoute<AccountRepositoryInput>(ipcChannels.githubAccountRepositoriesWithStatus, (input) =>
       github.listAccountRepositoriesWithStatus(input)
-    ),
-    githubOptionalRoute<OrganizationListInput>(ipcChannels.githubOrganizationsWithStatus, (input) =>
-      github.listOrganizationsWithStatus(input)
-    ),
-    githubOrgRoute<OrganizationTeamsInput>(ipcChannels.githubOrganizationTeamsWithStatus, (input) =>
-      github.listOrganizationTeamsWithStatus(input)
-    ),
-    githubOrgRoute<OrganizationRepositoriesInput>(
-      ipcChannels.githubOrganizationRepositoriesWithStatus,
-      (input) => github.listOrganizationRepositoriesWithStatus(input)
-    ),
-    githubOrgTeamRoute<OrganizationTeamRepositoriesInput>(
-      ipcChannels.githubOrganizationTeamRepositoriesWithStatus,
-      (input) => github.listOrganizationTeamRepositoriesWithStatus(input)
-    ),
-    githubOrgTeamRoute<OrganizationTeamMembersInput>(
-      ipcChannels.githubOrganizationTeamMembersWithStatus,
-      (input) => github.listOrganizationTeamMembersWithStatus(input)
-    ),
-    githubOrgRoute<OrganizationMembersInput>(ipcChannels.githubOrganizationMembersWithStatus, (input) =>
-      github.listOrganizationMembersWithStatus(input)
-    ),
-    githubOrgRoute<OrganizationProjectsInput>(ipcChannels.githubOrganizationProjectsWithStatus, (input) =>
-      github.listOrganizationProjectsWithStatus(input)
     ),
     githubOptionalRoute<AccountIssueListInput>(ipcChannels.githubAccountIssuesWithStatus, (input) =>
       github.listAccountIssuesWithStatus(input)
@@ -245,12 +238,6 @@ export function createControlIpcRoutes({
     ),
     githubRepoRoute<RepositoryForksInput>(ipcChannels.githubRepositoryForks, (input) =>
       github.listRepositoryForks(input)
-    ),
-    githubRepoRoute<BranchListInput>(ipcChannels.githubBranchesWithStatus, (input) =>
-      github.listBranchesWithStatus(input)
-    ),
-    githubRepoRoute<TagListInput>(ipcChannels.githubTagsWithStatus, (input) =>
-      github.listTagsWithStatus(input)
     ),
     githubRepoRoute<RepoTreeInput>(ipcChannels.githubTreeWithStatus, (input) =>
       github.listTreeWithStatus(input)
@@ -382,11 +369,8 @@ export function createControlIpcRoutes({
     githubRepoRoute<RepositoryCommunityProfileInput>(ipcChannels.githubRepositoryCommunityProfile, (input) =>
       github.getRepositoryCommunityProfile(input)
     ),
-    githubRepoRoute<ReleasesInput>(ipcChannels.githubReleasesWithStatus, (input) =>
-      github.listReleasesWithStatus(input)
-    ),
-    githubRepoRoute<ContributorsInput>(ipcChannels.githubContributorsWithStatus, (input) =>
-      github.listContributorsWithStatus(input)
+    githubReleaseDetailRoute<ReleaseDetailInput>(ipcChannels.githubReleaseDetailWithStatus, (input) =>
+      github.getReleaseDetailWithStatus(input)
     ),
     controlRoute<SearchInput, ReturnType<GitHubProviderManager["searchWithStatus"]>>({
       channel: ipcChannels.githubSearchWithStatus,
@@ -530,6 +514,32 @@ function githubWorkflowJobLogsRoute<TInput extends WorkflowJobLogsInput, TOutput
   });
 }
 
+function githubReleaseDetailRoute<TInput extends ReleaseDetailInput, TOutput = unknown>(
+  channel: string,
+  handle: (input: TInput) => TOutput
+): IpcInvokeRoute {
+  return controlRoute<TInput, TOutput>({
+    channel,
+    parse: ([input]) => {
+      const record = requireRepoScopedInput<ReleaseDetailInput>(input);
+      const releaseId = optionalPositiveInteger(
+        record.releaseId,
+        "GitHub release detail input releaseId must be a positive integer."
+      );
+      const releaseTagName = optionalTrimmedText(record.releaseTagName);
+      if (releaseId === undefined && !releaseTagName) {
+        throw new Error("GitHub release detail input requires a release id or tag name.");
+      }
+      return {
+        ...record,
+        releaseId,
+        releaseTagName
+      } as TInput;
+    },
+    handle
+  });
+}
+
 function githubPullRequestDetailRoute<TInput extends PullRequestDetailReadInput, TOutput = unknown>(
   channel: string,
   handle: (input: TInput) => TOutput
@@ -548,47 +558,6 @@ function githubIssueDetailRoute<TInput extends IssueDetailInput, TOutput = unkno
   return controlRoute<TInput, TOutput>({
     channel,
     parse: ([input]) => requireIssueDetailInput<TInput>(input),
-    handle
-  });
-}
-
-function githubOrgRoute<TInput extends { org: string }, TOutput = unknown>(
-  channel: string,
-  handle: (input: TInput) => TOutput
-): IpcInvokeRoute {
-  return controlRoute<TInput, TOutput>({
-    channel,
-    parse: ([input]) => {
-      const record = requireRecordInput<Record<string, unknown>>(
-        input,
-        "GitHub organization input must be an object."
-      );
-      return normalizeKnownGitHubReadFields({
-        ...record,
-        org: requireTrimmedText(record.org, "GitHub organization input requires an org.")
-      }) as TInput;
-    },
-    handle
-  });
-}
-
-function githubOrgTeamRoute<TInput extends { org: string; teamSlug: string }, TOutput = unknown>(
-  channel: string,
-  handle: (input: TInput) => TOutput
-): IpcInvokeRoute {
-  return controlRoute<TInput, TOutput>({
-    channel,
-    parse: ([input]) => {
-      const record = requireRecordInput<Record<string, unknown>>(
-        input,
-        "GitHub team input must be an object."
-      );
-      return normalizeKnownGitHubReadFields({
-        ...record,
-        org: requireTrimmedText(record.org, "GitHub team input requires an org."),
-        teamSlug: requireTrimmedText(record.teamSlug, "GitHub team input requires a team slug.")
-      }) as TInput;
-    },
     handle
   });
 }
@@ -758,12 +727,16 @@ function requireSearchInput(input: unknown): SearchInput {
   } as SearchInput;
 }
 
-function requireRepositoryPinInput(input: RepositoryPinInput): string {
-  if (!input || typeof input.nameWithOwner !== "string") {
+function requireRepositoryPinInput(input: unknown): string {
+  const record = requireRecordInput<Record<string, unknown>>(
+    input,
+    "Repository pins require an owner/repo name."
+  );
+  if (typeof record.nameWithOwner !== "string") {
     throw new Error("Repository pins require an owner/repo name.");
   }
 
-  const nameWithOwner = input.nameWithOwner.trim();
+  const nameWithOwner = record.nameWithOwner.trim();
   if (!/^[^/\s]+\/[^/\s]+$/.test(nameWithOwner)) {
     throw new Error("Repository pins require an owner/repo name.");
   }
@@ -771,15 +744,16 @@ function requireRepositoryPinInput(input: RepositoryPinInput): string {
   return nameWithOwner;
 }
 
-function requireAreaRepositoryPinInput(input: RepositoryPinInput): RepositoryPinRecord {
-  if (!input || typeof input !== "object") {
-    throw new Error("Area repository pins require a repository payload.");
-  }
+function requireAreaRepositoryPinInput(input: unknown): RepositoryPinRecord {
+  const record = requireRecordInput<Record<string, unknown>>(
+    input,
+    "Area repository pins require a repository payload."
+  );
 
-  const areaId = optionalTrimmedText(input.areaId);
-  const repositoryId = optionalTrimmedText(input.repositoryId);
-  const workspaceId = optionalTrimmedText(input.workspaceId);
-  const nameWithOwner = optionalTrimmedText(input.nameWithOwner);
+  const areaId = optionalTrimmedText(record.areaId);
+  const repositoryId = optionalTrimmedText(record.repositoryId);
+  const workspaceId = optionalTrimmedText(record.workspaceId);
+  const nameWithOwner = optionalTrimmedText(record.nameWithOwner);
   if (!areaId || !repositoryId) {
     throw new Error("Area repository pins require an Area id and repository id.");
   }
@@ -796,28 +770,33 @@ function requireAreaRepositoryPinInput(input: RepositoryPinInput): RepositoryPin
   };
 }
 
-function requireRecentListInput(input: LocalRecentListInput = {}): LocalRecentListInput {
+function requireRecentListInput(input: unknown = {}): LocalRecentListInput {
+  const record = requireRecordInput<Record<string, unknown>>(
+    input,
+    "Recent items list input must be an object."
+  );
   return {
-    kind: input.kind ? requireRecentKind(input.kind) : undefined,
-    limit: normalizeLocalLimit(input.limit)
+    kind: record.kind ? requireRecentKind(record.kind) : undefined,
+    limit: normalizeLocalLimit(record.limit)
   };
 }
 
-function requireRecentRecordInput(input: LocalRecentRecordInput): LocalRecentRecordInput {
-  if (!input || typeof input !== "object") {
-    throw new Error("Recent items require a GitHub item payload.");
-  }
+function requireRecentRecordInput(input: unknown): LocalRecentRecordInput {
+  const record = requireRecordInput<Record<string, unknown>>(
+    input,
+    "Recent items require a GitHub item payload."
+  );
 
-  const kind = requireRecentKind(input.kind);
-  const provider = input.provider === "local" ? "local" : "github";
-  const itemKey = requireTrimmedText(input.itemKey, "Recent items require an item key.");
-  const title = requireTrimmedText(input.title, "Recent items require a title.");
-  const subtitle = optionalTrimmedText(input.subtitle);
-  const repositoryNameWithOwner = optionalTrimmedText(input.repositoryNameWithOwner);
-  const areaId = optionalTrimmedText(input.areaId);
-  const repositoryId = optionalTrimmedText(input.repositoryId);
-  const workspaceId = optionalTrimmedText(input.workspaceId);
-  const url = optionalTrimmedText(input.url);
+  const kind = requireRecentKind(record.kind);
+  const provider = record.provider === "local" ? "local" : "github";
+  const itemKey = requireTrimmedText(record.itemKey, "Recent items require an item key.");
+  const title = requireTrimmedText(record.title, "Recent items require a title.");
+  const subtitle = optionalTrimmedText(record.subtitle);
+  const repositoryNameWithOwner = optionalTrimmedText(record.repositoryNameWithOwner);
+  const areaId = optionalTrimmedText(record.areaId);
+  const repositoryId = optionalTrimmedText(record.repositoryId);
+  const workspaceId = optionalTrimmedText(record.workspaceId);
+  const url = optionalTrimmedText(record.url);
   if (url && !url.startsWith("https://")) {
     throw new Error("Recent item URLs must be HTTPS links.");
   }
@@ -833,7 +812,42 @@ function requireRecentRecordInput(input: LocalRecentRecordInput): LocalRecentRec
     repositoryId,
     workspaceId,
     url,
-    metadata: sanitizeRecentMetadata(input.metadata)
+    metadata: sanitizeRecentMetadata(record.metadata)
+  };
+}
+
+function requireControlExportScope(input: unknown): ControlExportScope {
+  const record = requireRecordInput<Record<string, unknown>>(
+    input,
+    "Control export preview input must be an object."
+  );
+  const booleanFields = [
+    "settings",
+    "areas",
+    "pins",
+    "recents",
+    "githubMetadataCache",
+    "areaCache",
+    "snapshots",
+    "includeLocalPaths",
+    "includePrivateRepositoryMetadata"
+  ] as const satisfies ReadonlyArray<keyof ControlExportScope>;
+  const parsed: Partial<ControlExportScope> = {};
+  for (const field of booleanFields) {
+    if (record[field] !== undefined) {
+      parsed[field] = optionalBoolean(record[field], `Control export ${field} must be a boolean.`);
+    }
+  }
+  return normalizeControlExportScope(parsed);
+}
+
+function requireControlImportInput(input: unknown): ControlImportInput {
+  const record = requireRecordInput<Record<string, unknown>>(
+    input,
+    "Control import preview input must be an object."
+  );
+  return {
+    filePath: requireTrimmedText(record.filePath, "Control import preview requires a file path.")
   };
 }
 

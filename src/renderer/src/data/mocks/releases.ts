@@ -1,4 +1,9 @@
-import type { GitHubMutationInput, ReleaseSummary } from "@shared/github";
+import type {
+  GitHubMutationInput,
+  ReleaseDetailInput,
+  ReleaseDetailResult,
+  ReleaseSummary
+} from "@shared/github";
 
 import { readMockArray, writeMockArray } from "../mockStorage";
 import {
@@ -43,6 +48,20 @@ export function readMockReleases(): ReleaseSummary[] {
 
 export function writeMockReleases(items: ReleaseSummary[]): void {
   writeMockArray(mockReleasesKey, items);
+}
+
+export function mockReleaseDetail(input: ReleaseDetailInput): ReleaseDetailResult {
+  const item =
+    typeof input.releaseId === "number"
+      ? readMockReleases().find((release) => release.id === input.releaseId)
+      : readMockReleases().find((release) => release.tagName === input.releaseTagName);
+
+  return {
+    item: item ?? null,
+    availability: item
+      ? { status: "available", message: null }
+      : { status: "error", message: "Release not found in mock data." }
+  };
 }
 
 export function mutateMockReleases(input: GitHubMutationInput): void {

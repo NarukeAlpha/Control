@@ -15,7 +15,15 @@ import {
 
 import type { RepositoryTab } from "../../stores/uiStore";
 
-export const repoTabs: Array<{ key: RepositoryTab; label: string; icon: typeof Code2 }> = [
+export interface RepositoryTabDescriptor {
+  key: RepositoryTab;
+  label: string;
+  icon: typeof Code2;
+  routeOnly?: boolean;
+  hiddenReason?: string;
+}
+
+export const repoTabs: RepositoryTabDescriptor[] = [
   { key: "code", label: "Code", icon: Code2 },
   { key: "issues", label: "Issues", icon: CircleDot },
   { key: "pulls", label: "Pull requests", icon: GitPullRequest },

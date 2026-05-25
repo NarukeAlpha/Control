@@ -180,10 +180,10 @@ export function MailboxRoute({
           </button>
           <button
             type="button"
-            title="Open GitHub notifications fallback"
+            title="Open GitHub notifications"
             onClick={() => onOpenExternal("https://github.com/notifications")}
           >
-            <ExternalLink size={16} /> GitHub fallback
+            <ExternalLink size={16} /> Open GitHub
           </button>
         </div>
       </header>
@@ -275,15 +275,15 @@ export function MailboxRoute({
                   {notification.unread ? "unread" : "read"}
                 </span>
                 <span className={`state-chip ${notificationTarget ? "success" : ""}`}>
-                  {notificationTarget ? "in-app" : "fallback"}
+                  {notificationTarget ? "in-app" : "external"}
                 </span>
               </span>
               <span className="row-action-stack">
                 <button
                   className="pin-row-button"
                   type="button"
-                  aria-label="Open notification target GitHub fallback"
-                  title="Open notification target GitHub fallback"
+                  aria-label="Open notification target on GitHub"
+                  title="Open notification target on GitHub"
                   onClick={() => onOpenExternal(notificationExternalUrl)}
                 >
                   <ExternalLink size={15} />
@@ -292,8 +292,8 @@ export function MailboxRoute({
                   <button
                     className="pin-row-button"
                     type="button"
-                    aria-label={`Open latest comment for ${notification.subject.title} GitHub fallback`}
-                    title="Open latest comment GitHub fallback"
+                    aria-label={`Open latest comment for ${notification.subject.title} on GitHub`}
+                    title="Open latest comment on GitHub"
                     onClick={() => onOpenExternal(notification.subject.latestCommentHtmlUrl!)}
                   >
                     <MessageSquare size={15} />
@@ -422,8 +422,8 @@ export function MailboxRoute({
                 <button
                   className="pin-row-button"
                   type="button"
-                  aria-label={`Open GitHub fallback for ${row.title}`}
-                  title={`Open GitHub fallback for ${row.kind === "pull" ? "pull request" : "issue"}`}
+                  aria-label={`Open ${row.title} on GitHub`}
+                  title={`Open ${row.kind === "pull" ? "pull request" : "issue"} on GitHub`}
                   onClick={() => onOpenExternal(row.htmlUrl)}
                 >
                   <ExternalLink size={15} />

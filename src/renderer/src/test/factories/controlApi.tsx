@@ -12,7 +12,9 @@ import { useUiStore } from "../../stores/uiStore";
 
 export const defaultUiState = {
   route: { kind: "home" as const },
+  selectedAreaId: null,
   selectedRepository: "apple/swift",
+  selectedLocalRepository: null,
   settingsOpen: false
 };
 

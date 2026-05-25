@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { contextBridge, ipcRenderer } from "electron";
+import { DEFAULT_CONTROL_THEME_SETTINGS } from "@shared/github";
 import { controlIpcEventChannels, githubIpcRouteChannels, ipcChannels, type ControlApi } from "@shared/ipc";
 
 vi.mock("electron", () => ({
@@ -30,10 +31,17 @@ describe("preload control bridge", () => {
   });
 
   it("maps ControlApi calls through the invoke adapter", async () => {
-    invoke.mockResolvedValueOnce({ credentialProvider: "github-oauth", glassMode: "solid" });
+    invoke.mockResolvedValueOnce({
+      credentialProvider: "github-oauth",
+      glassMode: "solid",
+      theme: DEFAULT_CONTROL_THEME_SETTINGS,
+      repositoryTabPreferences: {}
+    });
     await expect(controlApi.getSettings()).resolves.toEqual({
       credentialProvider: "github-oauth",
-      glassMode: "solid"
+      glassMode: "solid",
+      theme: DEFAULT_CONTROL_THEME_SETTINGS,
+      repositoryTabPreferences: {}
     });
     expect(invoke).toHaveBeenCalledWith(ipcChannels.getSettings);
 
@@ -43,6 +51,52 @@ describe("preload control bridge", () => {
       action: "star",
       owner: "owner",
       repo: "repo"
+    });
+
+    invoke.mockResolvedValueOnce({ matches: [] });
+    await controlApi.areas.searchFilePaths({
+      areaId: "local",
+      repositoryId: "repo",
+      query: "readme"
+    });
+    expect(invoke).toHaveBeenLastCalledWith(ipcChannels.areaFilePathSearch, {
+      areaId: "local",
+      repositoryId: "repo",
+      query: "readme"
+    });
+
+    invoke.mockResolvedValueOnce({ success: true, summary: null });
+    await controlApi.areas.restartGateway({ areaId: "local" });
+    expect(invoke).toHaveBeenLastCalledWith(ipcChannels.areaRestartGateway, { areaId: "local" });
+
+    invoke.mockResolvedValueOnce({ blockers: [] });
+    await controlApi.previewDataExport({
+      settings: true,
+      areas: false,
+      pins: false,
+      recents: false,
+      githubMetadataCache: false,
+      areaCache: false,
+      snapshots: false,
+      includeLocalPaths: false,
+      includePrivateRepositoryMetadata: false
+    });
+    expect(invoke).toHaveBeenLastCalledWith(ipcChannels.previewDataExport, {
+      settings: true,
+      areas: false,
+      pins: false,
+      recents: false,
+      githubMetadataCache: false,
+      areaCache: false,
+      snapshots: false,
+      includeLocalPaths: false,
+      includePrivateRepositoryMetadata: false
+    });
+
+    invoke.mockResolvedValueOnce({ blockers: [] });
+    await controlApi.previewDataImport({ filePath: "/tmp/control-export.json" });
+    expect(invoke).toHaveBeenLastCalledWith(ipcChannels.previewDataImport, {
+      filePath: "/tmp/control-export.json"
     });
   });
 

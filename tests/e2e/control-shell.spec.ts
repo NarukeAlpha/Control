@@ -70,7 +70,7 @@ test("navigates app shell surfaces from the sidebar", async ({ page }) => {
   await expect(appleOrg).toContainText("14 teams");
   await expect(appleOrg).toContainText("member");
   await expect(appleOrg).toContainText("Open source projects from Apple.");
-  await expect(page.locator(".collection-section-label")).toContainText("apple teams");
+  await expect(page.getByText("apple teams", { exact: true })).toBeVisible();
   await expect(page.locator(".organization-team-row").first()).toContainText("Compiler");
   await expect(page.locator(".organization-team-row").first()).toContainText("18 members");
   await expect(page.locator(".organization-team-row").filter({ hasText: "Developer Tools" })).toContainText(
@@ -78,7 +78,7 @@ test("navigates app shell surfaces from the sidebar", async ({ page }) => {
   );
 
   await page.locator(".organization-row").filter({ hasText: "Swift" }).getByRole("button").first().click();
-  await expect(page.locator(".collection-section-label")).toContainText("swiftlang teams");
+  await expect(page.getByText("swiftlang teams", { exact: true })).toBeVisible();
   await expect(page.getByText("No visible teams returned for this organization.")).toBeVisible();
 });
 
@@ -95,13 +95,14 @@ test("manages mailbox notifications in-app", async ({ page }) => {
     .locator(".notification-row")
     .filter({ hasText: "Improve Sendable diagnostics for global actors" });
   await expect(notification).toBeVisible();
-  await expect(notification.locator(".state-chip")).toHaveText("unread");
+  await expect(notification.locator(".state-chip").first()).toHaveText("unread");
 
   await page
     .getByRole("button", { name: /Mark Improve Sendable diagnostics for global actors as read/i })
     .click();
-  await expect(notification.locator(".state-chip")).toHaveText("read");
+  await expect(notification.locator(".state-chip").first()).toHaveText("read");
 
+  page.once("dialog", (dialog) => void dialog.accept());
   await page
     .getByRole("button", { name: /Unsubscribe from Improve Sendable diagnostics for global actors/i })
     .click();
@@ -210,7 +211,7 @@ test("opens account work rows in-app from Home and Mailbox", async ({ page }) =>
   await expect(
     recentsPanel.getByRole("button", { name: /#1197 Improve Sendable diagnostics/i })
   ).toBeVisible();
-  await expect(recentsPanel.getByRole("button", { name: /#520 Add Sendable support/i })).toBeVisible();
+  await expect(recentsPanel.getByRole("button", { name: /#518 Add Sendable support/i })).toBeVisible();
 });
 
 test("opens discussion and release notification subjects in-app", async ({ page }) => {
@@ -353,8 +354,8 @@ test("searches and adds repositories from in-app pickers", async ({ page }) => {
   await page.locator(".repo-section").getByRole("button", { name: "Add repository" }).click();
   const dialog = page.getByRole("dialog", { name: "Add repository" });
   await expect(dialog).toBeVisible();
-  await dialog.getByLabel("Repository search").fill("design");
-  await dialog.getByRole("button", { name: /apple\/design-resources/i }).click();
+  await dialog.getByRole("textbox", { name: "Repository search" }).fill("design");
+  await dialog.getByRole("option", { name: /apple\/design-resources/i }).click();
 
   await expect(page.getByRole("heading", { name: /apple \/ design-resources/i })).toBeVisible();
 
@@ -378,7 +379,7 @@ test("supports command palette navigation and local repository pinning", async (
   await expect(palette).toBeVisible();
   const paletteSearch = palette.getByLabel("Command palette search");
   await paletteSearch.fill("repositories");
-  await paletteSearch.press("Enter");
+  await palette.getByRole("option").filter({ hasText: "Browse cached GitHub repositories" }).click();
 
   await expect(page.getByRole("heading", { name: "Repositories" })).toBeVisible();
 
@@ -402,19 +403,19 @@ test("opens repository create workflows from the command palette", async ({ page
   await page.keyboard.press("Control+K");
   let palette = page.getByRole("dialog", { name: "Command palette" });
   await palette.getByLabel("Command palette search").fill("create issue");
-  await palette.getByRole("button", { name: /Create issue in apple\/swift/i }).click();
+  await palette.getByRole("option", { name: /Create issue in apple\/swift/i }).click();
   await expect(page.getByPlaceholder("Issue title")).toBeVisible();
 
   await page.keyboard.press("Control+K");
   palette = page.getByRole("dialog", { name: "Command palette" });
   await palette.getByLabel("Command palette search").fill("create pull request");
-  await palette.getByRole("button", { name: /Create pull request in apple\/swift/i }).click();
+  await palette.getByRole("option", { name: /Create pull request in apple\/swift/i }).click();
   await expect(page.getByPlaceholder("Pull request title")).toBeVisible();
 
   await page.keyboard.press("Control+K");
   palette = page.getByRole("dialog", { name: "Command palette" });
   await palette.getByLabel("Command palette search").fill("run workflow");
-  await palette.getByRole("button", { name: /Run workflow in apple\/swift/i }).click();
+  await palette.getByRole("option", { name: /Run workflow in apple\/swift/i }).click();
   await expect(page.locator(".thread-detail").getByRole("heading", { name: "Run workflow" })).toBeVisible();
 });
 
@@ -428,25 +429,25 @@ test("opens repository utility tabs from the command palette", async ({ page }) 
   await page.keyboard.press("Control+K");
   let palette = page.getByRole("dialog", { name: "Command palette" });
   await palette.getByLabel("Command palette search").fill("actions in");
-  await palette.getByRole("button", { name: /Actions in apple\/swift/i }).click();
-  await expect(page.locator(".thread-detail").getByRole("heading", { name: "Swift CI" })).toBeVisible();
+  await palette.getByRole("option", { name: /Actions in apple\/swift/i }).click();
+  await expect(page.locator(".thread-list .issue-row").first()).toContainText("Swift CI");
 
   await page.keyboard.press("Control+K");
   palette = page.getByRole("dialog", { name: "Command palette" });
   await palette.getByLabel("Command palette search").fill("wiki");
-  await palette.getByRole("button", { name: /Wiki in apple\/swift/i }).click();
+  await palette.getByRole("option", { name: /Wiki in apple\/swift/i }).click();
   await expect(page.getByRole("heading", { name: "Repository wiki" })).toBeVisible();
 
   await page.keyboard.press("Control+K");
   palette = page.getByRole("dialog", { name: "Command palette" });
   await palette.getByLabel("Command palette search").fill("security quality");
-  await palette.getByRole("button", { name: /Security and Quality in apple\/swift/i }).click();
-  await expect(page.getByRole("heading", { name: "Default branch protection" })).toBeVisible();
+  await palette.getByRole("option", { name: /Security and Quality in apple\/swift/i }).click();
+  await expect(page.getByRole("heading", { name: "Branch protection" })).toBeVisible();
 
   await page.keyboard.press("Control+K");
   palette = page.getByRole("dialog", { name: "Command palette" });
   await palette.getByLabel("Command palette search").fill("repository settings");
-  await palette.getByRole("button", { name: /Repository settings in apple\/swift/i }).click();
+  await palette.getByRole("option", { name: /Repository settings in apple\/swift/i }).click();
   await expect(page.getByRole("heading", { name: "Repository settings" })).toBeVisible();
 });
 
@@ -493,7 +494,7 @@ test("tracks issue pull request and workflow recents in the command palette", as
   await page.keyboard.press("Control+K");
   let palette = page.getByRole("dialog", { name: "Command palette" });
   await palette.getByLabel("Command palette search").fill("1199");
-  await palette.getByRole("button", { name: /#1199 Compiler crash in async closure/i }).click();
+  await palette.getByRole("option", { name: /#1199 Compiler crash in async closure/i }).click();
   await expect(
     page.locator(".thread-detail").getByRole("heading", { name: /Compiler crash in async closure/i })
   ).toBeVisible();
@@ -501,7 +502,7 @@ test("tracks issue pull request and workflow recents in the command palette", as
   await page.keyboard.press("Control+K");
   palette = page.getByRole("dialog", { name: "Command palette" });
   await palette.getByLabel("Command palette search").fill("519");
-  await palette.getByRole("button", { name: /#519 Update concurrency runtime tests/i }).click();
+  await palette.getByRole("option", { name: /#519 Update concurrency runtime tests/i }).click();
   await expect(
     page.locator(".thread-detail").getByRole("heading", { name: /Update concurrency runtime tests/i })
   ).toBeVisible();
@@ -509,7 +510,7 @@ test("tracks issue pull request and workflow recents in the command palette", as
   await page.keyboard.press("Control+K");
   palette = page.getByRole("dialog", { name: "Command palette" });
   await palette.getByLabel("Command palette search").fill("docs");
-  await palette.getByRole("button", { name: /^Docs/i }).click();
+  await palette.getByRole("option", { name: /^Docs/i }).click();
   await expect(page.locator(".thread-detail").getByRole("heading", { name: "Docs" })).toBeVisible();
 });
 
@@ -525,7 +526,7 @@ test("opens files through the Go to file finder", async ({ page }) => {
   await page.keyboard.press("Control+K");
   const palette = page.getByRole("dialog", { name: "Command palette" });
   await palette.getByLabel("Command palette search").fill("go to file");
-  await palette.getByRole("button", { name: /Go to file in apple\/swift/i }).click();
+  await palette.getByRole("option", { name: /Go to file in apple\/swift/i }).click();
   const finder = page.getByRole("dialog", { name: "Go to file" });
   await expect(finder).toBeVisible();
   await expect(finder.locator(".finder-meta")).toContainText("release/6.0");
@@ -537,7 +538,7 @@ test("opens files through the Go to file finder", async ({ page }) => {
   await expect(finder.getByRole("option", { name: /README\.md/i })).toHaveAttribute("aria-selected", "true");
   await fileSearch.press("Enter");
 
-  await expect(page.getByRole("heading", { name: "README.md" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "README.md", level: 1 })).toBeVisible();
   await expect(page.locator(".code-viewer-toolbar")).toContainText("release/6.0");
   await expect(page.locator(".code-viewer")).toBeVisible();
 });
@@ -563,23 +564,30 @@ test("creates edits and deletes releases in-app", async ({ page }) => {
   await page.getByPlaceholder("Release tag").fill("swift-e2e");
   await page.getByPlaceholder("Release name").fill("Swift E2E Release");
   await page.getByPlaceholder("Release notes").fill("Release notes from the Playwright smoke.");
+  page.once("dialog", (dialog) => void dialog.accept());
   await page.getByRole("button", { name: /Create release/i }).click();
 
-  await expect(releaseList.getByRole("button", { name: /Swift E2E Release/i })).toBeVisible();
+  const createdRelease = releaseList.locator(".thread-list-row-main").filter({
+    hasText: "Swift E2E Release"
+  });
+  await expect(createdRelease).toBeVisible();
 
-  await releaseList.getByRole("button", { name: /Swift E2E Release/i }).click();
+  await createdRelease.click();
   await page.getByRole("button", { name: "Edit release" }).click();
   await page.getByPlaceholder("Release name").fill("Swift E2E Release Edited");
   await page.getByPlaceholder("Release notes").fill("Edited release notes from the Playwright smoke.");
   await page.getByRole("button", { name: /Save release/i }).click();
 
-  await expect(releaseList.getByRole("button", { name: /Swift E2E Release Edited/i })).toBeVisible();
+  const editedRelease = releaseList.locator(".thread-list-row-main").filter({
+    hasText: "Swift E2E Release Edited"
+  });
+  await expect(editedRelease).toBeVisible();
 
   page.once("dialog", (dialog) => void dialog.accept());
-  await releaseList.getByRole("button", { name: /Swift E2E Release Edited/i }).click();
+  await editedRelease.click();
   await page.getByRole("button", { name: "Delete release" }).click();
 
-  await expect(releaseList.getByRole("button", { name: /Swift E2E Release Edited/i })).toHaveCount(0);
+  await expect(editedRelease).toHaveCount(0);
 });
 
 test("edits issue metadata state and comments in-app", async ({ page }) => {
@@ -705,21 +713,21 @@ test("manages pull request review state and comments in-app", async ({ page }) =
   await expect(
     requestedReviewers.getByRole("button", { name: "Remove team reviewer developer-tools" })
   ).toHaveCount(0);
+  await expect(page.getByRole("status")).toContainText("GitHub action completed: Remove reviewers.");
 
-  const pullActions = pullDetail.locator(".thread-actions");
-  await pullActions.getByRole("button", { name: "Approve", exact: true }).click();
-  await expect(pullDetail.getByText("Approved from Control.")).toBeVisible();
+  await pullDetail.getByRole("button", { name: "Approve", exact: true }).click();
+  await expect(pullDetail).toContainText("Approve pull request completed");
 
   page.once("dialog", (dialog) => void dialog.accept());
-  await pullActions.getByRole("button", { name: "Request changes" }).click();
-  await expect(pullDetail.getByText("Changes requested from Control.")).toBeVisible();
+  await pullDetail.getByRole("button", { name: "Request changes" }).click();
+  await expect(pullDetail).toContainText("Request pull request changes completed");
 
   await page.getByPlaceholder("Leave a comment").fill("E2E pull request comment from Control.");
-  await pullDetail.locator(".comment-composer").getByRole("button", { name: "Comment" }).click();
+  await pullDetail.locator(".comment-composer").getByRole("button", { name: "Comment", exact: true }).click();
   await expect(pullDetail.getByText("E2E pull request comment from Control.")).toBeVisible();
 
   page.once("dialog", (dialog) => void dialog.accept());
-  await pullActions.getByRole("button", { name: "Close pull request" }).click();
+  await pullDetail.getByRole("button", { name: "Close pull request" }).click();
   await expect(page.getByRole("button", { name: "Reopen pull request" })).toBeVisible();
 });
 
@@ -789,7 +797,9 @@ test("navigates repository tabs from the repository route", async ({ page }) => 
     .getByRole("button", { name: /^Pull requests/ })
     .click();
   await expect(page.locator(".table-panel .issue-row").first()).toBeVisible();
-  await expect(page.locator(".timeline-thread").first()).toContainText("This pull request updates");
+  await expect(page.locator(".thread-detail").getByLabel(/Pull request \d+ discussion/)).toContainText(
+    "This pull request updates"
+  );
 
   await page
     .locator(".repo-tabs")
@@ -802,37 +812,37 @@ test("navigates repository tabs from the repository route", async ({ page }) => 
     .getByRole("button", { name: /^Discussions/ })
     .click();
   await expect(page.getByRole("heading", { name: "Swift 6 concurrency migration notes" })).toBeVisible();
-  await expect(page.locator(".thread-detail")).toContainText("Read-only in Control");
+  await expect(page.locator(".thread-detail")).toContainText("Managed in Control");
   await page.getByLabel("Filter discussions").fill("package");
+  await page
+    .locator(".thread-list .issue-row")
+    .filter({ hasText: "Package manager ergonomics" })
+    .first()
+    .click();
   await expect(page.getByRole("heading", { name: "Package manager ergonomics" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Open discussion", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit discussion", exact: true })).toBeVisible();
 
   await page
     .locator(".repo-tabs")
     .getByRole("button", { name: /^Projects/ })
     .click();
   await expect(page.getByRole("heading", { name: "Compiler quality" })).toBeVisible();
-  await expect(page.locator(".thread-detail")).toContainText("Repository project");
-  await expect(page.locator(".thread-detail")).toContainText("Read-only summary");
-  await expect(page.getByRole("button", { name: "Open project", exact: true })).toBeVisible();
-
-  await page
-    .locator(".repo-tabs")
-    .getByRole("button", { name: /^Agents/ })
-    .click();
-  await expect(page.getByRole("button", { name: /Agent issues/i })).toBeVisible();
+  await expect(page.locator(".thread-detail")).toContainText("Managed in Control");
+  await expect(page.locator(".thread-detail")).toContainText("Project items");
+  await expect(page.getByRole("button", { name: "Project GitHub fallback", exact: true })).toBeVisible();
 
   await page.locator(".repo-tabs").getByRole("button", { name: /^Wiki/ }).click();
   await expect(page.getByRole("heading", { name: "Repository wiki" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Open wiki/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /GitHub wiki fallback/i })).toBeVisible();
 
   await page
     .locator(".repo-tabs")
     .getByRole("button", { name: /^Security and Quality/ })
     .click();
-  await expect(page.getByRole("heading", { name: "Default branch protection" })).toBeVisible();
-  await expect(page.getByLabel("Branch protection")).toContainText("2Required checks");
-  await expect(page.getByLabel("Branch protection")).toContainText("macOS build");
+  await expect(page.getByRole("heading", { name: "Branch protection" })).toBeVisible();
+  const branchProtection = page.getByRole("region", { name: "Branch protection" });
+  await expect(branchProtection).toContainText("2Required checks");
+  await expect(branchProtection).toContainText("macOS build");
   await expect(page.getByLabel("Dependabot alerts")).toContainText("swift-nio");
   await expect(page.getByLabel("Dependabot alerts")).toContainText("Improper input validation");
   await expect(page.getByLabel("Code scanning alerts")).toContainText("swift/path-injection");
@@ -843,7 +853,10 @@ test("navigates repository tabs from the repository route", async ({ page }) => 
   await expect(page.getByLabel("Secret scanning alerts")).toContainText("Secret value hidden by Control.");
   await expect(page.getByRole("button", { name: /Code scanning/i })).toBeVisible();
 
-  await page.getByTitle("Repository settings").click();
+  await page
+    .locator(".repo-tabs")
+    .getByRole("button", { name: /^Settings/ })
+    .click();
   await expect(page.getByRole("heading", { name: "Repository settings" })).toBeVisible();
   await expect(page.locator(".repository-settings-panel")).toContainText("default branch main");
   await expect(page.locator(".repository-settings-panel")).toContainText("Merge policy");

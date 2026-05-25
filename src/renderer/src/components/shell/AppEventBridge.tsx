@@ -3,6 +3,8 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import { useControlApi } from "../../hooks/useControlApi";
 import {
+  invalidateAreaRepositoryUpdateQueries,
+  invalidateAreaWorkspaceUpdateQueries,
   invalidateGitHubSessionQueries,
   invalidateRepositoryScopedQueries,
   repositoryQueryScopeFromNameWithOwner,
@@ -81,11 +83,10 @@ export function AppEventBridge({
       void queryClient.invalidateQueries({ queryKey: ["areas"] });
     });
     const unsubscribeRepositories = api.onAreaRepositoryUpdated((event) => {
-      void queryClient.invalidateQueries({ queryKey: ["area-repositories", event.areaId] });
-      void queryClient.invalidateQueries({ queryKey: ["area-repository", event.areaId, event.repositoryId] });
+      void invalidateAreaRepositoryUpdateQueries(queryClient, event);
     });
     const unsubscribeWorkspaces = api.onAreaWorkspaceUpdated((event) => {
-      void queryClient.invalidateQueries({ queryKey: ["area-workspaces", event.areaId, event.repositoryId] });
+      void invalidateAreaWorkspaceUpdateQueries(queryClient, event);
     });
     return () => {
       unsubscribeAreas();

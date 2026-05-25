@@ -2,12 +2,21 @@ import { ChevronDown, Code2, File as FileIcon, Folder, Search, X } from "lucide-
 import { useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 
+import type { AreaFileEntry, AreaRepositorySummary, AreaSummary, AreaWorkspaceSummary } from "@shared/areas";
 import type { RepoTreeEntry, RepositoryDetail } from "@shared/github";
 
 import { fileFinderMatchScore } from "../file-finder/fileFinderSearch";
 import { repositoryNameWithOwnerInput } from "../repository/repositorySearch";
 import { readAvailabilityMessage } from "../repository/repositoryUi";
 import { useControlApi } from "../../hooks/useControlApi";
+import type { AppRoute } from "../../stores/uiStore";
+import {
+  areaHealthLabel,
+  areaKindLabel,
+  areaRepositorySubtitle,
+  localFileSearchSubtitle,
+  workspaceSubtitle
+} from "../areas/areaSearchUi";
 
 type CommandPaletteIcon = typeof Code2;
 
@@ -29,9 +38,18 @@ interface CommandPaletteFileSearchContext {
   onOpenEntry(entry: RepoTreeEntry): void;
 }
 
+interface CommandPaletteLocalFileSearchContext {
+  route: Extract<AppRoute, { kind: "localRepository" }>;
+  onOpenEntry(entry: AreaFileEntry): void;
+}
+
 type CommandPaletteResult =
   | { kind: "command"; item: CommandPaletteItem }
-  | { kind: "file"; entry: RepoTreeEntry };
+  | { kind: "githubFile"; entry: RepoTreeEntry }
+  | { kind: "area"; area: AreaSummary }
+  | { kind: "areaRepository"; repository: AreaRepositorySummary }
+  | { kind: "workspace"; workspace: AreaWorkspaceSummary }
+  | { kind: "localFile"; entry: AreaFileEntry };
 
 const emptyRepoTreeEntries: RepoTreeEntry[] = [];
 const COMMAND_PALETTE_FILE_RESULT_LIMIT = 6;
@@ -104,12 +122,20 @@ function safeCommandPaletteResultIndex(results: CommandPaletteResult[], activeIn
 export function CommandPalette({
   items,
   fileSearch,
+  localFileSearch,
   onOpenRepository,
+  onOpenArea,
+  onOpenAreaRepository,
+  onOpenWorkspace,
   onClose
 }: {
   items: CommandPaletteItem[];
   fileSearch?: CommandPaletteFileSearchContext | null;
+  localFileSearch?: CommandPaletteLocalFileSearchContext | null;
   onOpenRepository?(nameWithOwner: string): void;
+  onOpenArea(area: AreaSummary): void;
+  onOpenAreaRepository(repository: AreaRepositorySummary): void;
+  onOpenWorkspace(workspace: AreaWorkspaceSummary): void;
   onClose(): void;
 }): JSX.Element {
   const [query, setQuery] = useState("");
@@ -157,6 +183,47 @@ export function CommandPalette({
     () => matchingFileEntries.slice(0, visibleFileResultLimit),
     [matchingFileEntries, visibleFileResultLimit]
   );
+  const areaSearch = useQuery({
+    queryKey: ["command-palette-area-search", normalizedQuery],
+    queryFn: () => api.areas.searchAreas({ query: normalizedQuery, limit: 8 }),
+    enabled: normalizedQuery.length > 1
+  });
+  const localFileSearchLimit = 8;
+  const localFileSearchResult = useQuery({
+    queryKey: [
+      "area-file-search",
+      localFileSearch?.route.areaId ?? "none",
+      localFileSearch?.route.repositoryId ?? "none",
+      localFileSearch?.route.workspaceId ?? "none",
+      normalizedQuery,
+      localFileSearchLimit
+    ],
+    queryFn: () =>
+      api.areas.searchFilePaths({
+        areaId: localFileSearch!.route.areaId,
+        repositoryId: localFileSearch!.route.repositoryId,
+        workspaceId: localFileSearch!.route.workspaceId ?? null,
+        query: normalizedQuery,
+        limit: localFileSearchLimit
+      }),
+    enabled: Boolean(localFileSearch && normalizedQuery.length > 1),
+    staleTime: 5_000
+  });
+  const areaResults = useMemo(() => areaSearch.data?.areas ?? [], [areaSearch.data?.areas]);
+  const areaRepositoryResults = useMemo(
+    () => areaSearch.data?.repositories ?? [],
+    [areaSearch.data?.repositories]
+  );
+  const workspaceResults = useMemo(() => areaSearch.data?.workspaces ?? [], [areaSearch.data?.workspaces]);
+  const localFileResults = useMemo(
+    () => localFileSearchResult.data?.matches ?? [],
+    [localFileSearchResult.data?.matches]
+  );
+  const areaById = useMemo(() => new Map(areaResults.map((area) => [area.id, area])), [areaResults]);
+  const areaRepositoryById = useMemo(
+    () => new Map(areaRepositoryResults.map((repository) => [repository.id, repository])),
+    [areaRepositoryResults]
+  );
   const directRepositoryItem = useMemo<CommandPaletteItem | null>(() => {
     const exactRepositoryTarget = repositoryNameWithOwnerInput(normalizedQuery);
     if (!exactRepositoryTarget || !onOpenRepository) {
@@ -200,9 +267,21 @@ export function CommandPalette({
     () => [
       ...(directRepositoryItem ? [{ kind: "command" as const, item: directRepositoryItem }] : []),
       ...commandResults.map((item) => ({ kind: "command" as const, item })),
-      ...fileResults.map((entry) => ({ kind: "file" as const, entry }))
+      ...areaResults.map((area) => ({ kind: "area" as const, area })),
+      ...areaRepositoryResults.map((repository) => ({ kind: "areaRepository" as const, repository })),
+      ...workspaceResults.map((workspace) => ({ kind: "workspace" as const, workspace })),
+      ...fileResults.map((entry) => ({ kind: "githubFile" as const, entry })),
+      ...localFileResults.map((entry) => ({ kind: "localFile" as const, entry }))
     ],
-    [commandResults, directRepositoryItem, fileResults]
+    [
+      areaRepositoryResults,
+      areaResults,
+      commandResults,
+      directRepositoryItem,
+      fileResults,
+      localFileResults,
+      workspaceResults
+    ]
   );
   const fileSearchUnavailableReason =
     fileSearch && normalizedQuery && !fileSearch.githubReady && fileSearchTree.error
@@ -227,6 +306,23 @@ export function CommandPalette({
     fileSearchEntries.length === 0
       ? fileSearchTree.error
       : null;
+  const areaSearchError = normalizedQuery.length > 1 && areaSearch.error ? areaSearch.error : null;
+  const localFileSearchAvailability = localFileSearchResult.data?.availability ?? null;
+  const localFileSearchLoading = Boolean(
+    localFileSearch &&
+    normalizedQuery.length > 1 &&
+    localFileSearchResult.isFetching &&
+    localFileResults.length === 0
+  );
+  const localFileSearchUnavailableReason =
+    localFileSearch && normalizedQuery.length > 1 && localFileSearchAvailability?.status === "unavailable"
+      ? (localFileSearchAvailability.message ?? "Local file search is unavailable.")
+      : null;
+  const localFileSearchPartialReason =
+    localFileSearch && normalizedQuery.length > 1 && localFileSearchAvailability?.status === "partial"
+      ? (localFileSearchAvailability.message ??
+        `Scanned ${localFileSearchAvailability.scannedEntries} entries before stopping.`)
+      : null;
   const showCachedFileResultsNotice = Boolean(
     fileSearch && normalizedQuery && !fileSearch.githubReady && fileSearchEntries.length > 0
   );
@@ -241,7 +337,10 @@ export function CommandPalette({
     !fileSearchLoading &&
     !fileSearchError &&
     !fileSearchUnavailableReason &&
-    !fileSearchTypedUnavailableReason;
+    !fileSearchTypedUnavailableReason &&
+    !areaSearchError &&
+    !localFileSearchLoading &&
+    !localFileSearchUnavailableReason;
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -257,26 +356,86 @@ export function CommandPalette({
       return;
     }
 
-    fileSearch?.onOpenEntry(result.entry);
+    if (result.kind === "githubFile") {
+      fileSearch?.onOpenEntry(result.entry);
+      onClose();
+      return;
+    }
+    if (result.kind === "area") {
+      onOpenArea(result.area);
+      onClose();
+      return;
+    }
+    if (result.kind === "areaRepository") {
+      onOpenAreaRepository(result.repository);
+      onClose();
+      return;
+    }
+    if (result.kind === "workspace") {
+      onOpenWorkspace(result.workspace);
+      onClose();
+      return;
+    }
+    localFileSearch?.onOpenEntry(result.entry);
     onClose();
   }
 
   function resultTitle(result: CommandPaletteResult): string {
-    return result.kind === "command"
-      ? result.item.title
-      : (result.entry.path.split("/").pop() ?? result.entry.path);
+    switch (result.kind) {
+      case "command":
+        return result.item.title;
+      case "githubFile":
+      case "localFile":
+        return result.entry.path.split("/").pop() || result.entry.path;
+      case "area":
+        return result.area.label;
+      case "areaRepository":
+        return result.repository.displayName;
+      case "workspace":
+        return result.workspace.name;
+    }
   }
 
   function resultSubtitle(result: CommandPaletteResult): string {
-    return result.kind === "command"
-      ? result.item.disabledReason
-        ? `Unavailable: ${result.item.disabledReason}`
-        : result.item.subtitle
-      : `${result.entry.path} · ${fileSearchRef}`;
+    switch (result.kind) {
+      case "command":
+        return result.item.disabledReason
+          ? `Unavailable: ${result.item.disabledReason}`
+          : result.item.subtitle;
+      case "githubFile":
+        return `${result.entry.path} · ${fileSearchRef}`;
+      case "localFile":
+        return localFileSearch
+          ? localFileSearchSubtitle(result.entry, localFileSearch.route)
+          : result.entry.path;
+      case "area": {
+        const health = areaHealthLabel(result.area.health);
+        return [areaKindLabel(result.area.kind), result.area.subtitle ?? result.area.rootPath, health]
+          .filter(Boolean)
+          .join(" · ");
+      }
+      case "areaRepository":
+        return areaRepositorySubtitle(result.repository, areaById);
+      case "workspace":
+        return workspaceSubtitle(result.workspace, areaRepositoryById, areaById);
+    }
   }
 
   function resultGroup(result: CommandPaletteResult): string {
-    return result.kind === "command" ? result.item.group : "Go to file";
+    switch (result.kind) {
+      case "command":
+        return result.item.group;
+      case "githubFile":
+        return "GitHub files";
+      case "localFile":
+        return "Local files";
+      case "area":
+        return "Areas";
+      case "areaRepository":
+        return "Area repositories";
+      case "workspace":
+        return "Workspaces";
+    }
   }
 
   function resultDisabled(result: CommandPaletteResult): boolean {
@@ -289,7 +448,28 @@ export function CommandPalette({
       return <Icon size={17} />;
     }
 
-    return result.entry.type === "dir" ? <Folder size={17} /> : <FileIcon size={17} />;
+    if (result.kind === "githubFile" || result.kind === "localFile") {
+      return result.entry.type === "dir" ? <Folder size={17} /> : <FileIcon size={17} />;
+    }
+
+    return <Code2 size={17} />;
+  }
+
+  function resultKey(result: CommandPaletteResult): string {
+    switch (result.kind) {
+      case "command":
+        return result.item.id;
+      case "githubFile":
+        return `github-file-${result.entry.type}-${result.entry.path}`;
+      case "localFile":
+        return `local-file-${result.entry.type}-${result.entry.path}`;
+      case "area":
+        return `area-${result.area.id}`;
+      case "areaRepository":
+        return `area-repository-${result.repository.areaId}-${result.repository.id}`;
+      case "workspace":
+        return `workspace-${result.workspace.areaId}-${result.workspace.repositoryId}-${result.workspace.id}`;
+    }
   }
 
   return (
@@ -371,15 +551,13 @@ export function CommandPalette({
             <button
               className={index === boundedActiveIndex ? "active-finder-row" : ""}
               id={`command-palette-result-${index}`}
-              key={
-                result.kind === "command" ? result.item.id : `file-${result.entry.type}-${result.entry.path}`
-              }
+              key={resultKey(result)}
               role="option"
               aria-selected={index === boundedActiveIndex}
               type="button"
               disabled={resultDisabled(result)}
               title={
-                result.kind === "command" ? (result.item.disabledReason ?? undefined) : result.entry.path
+                result.kind === "command" ? (result.item.disabledReason ?? undefined) : resultSubtitle(result)
               }
               onMouseEnter={() => setActiveIndex(index)}
               onClick={() => runResult(result)}
@@ -430,9 +608,21 @@ export function CommandPalette({
           {fileSearchError && (
             <div className="error-state">Repository file search unavailable: {fileSearchError.message}</div>
           )}
+          {areaSearchError instanceof Error && (
+            <div className="error-state">Area search unavailable: {areaSearchError.message}</div>
+          )}
+          {localFileSearchLoading && <div className="loading-state">Searching local files...</div>}
           {fileSearchUnavailableReason && <div className="empty-state">{fileSearchUnavailableReason}</div>}
           {fileSearchTypedUnavailableReason && (
             <div className="error-state">{fileSearchTypedUnavailableReason}</div>
+          )}
+          {localFileSearchUnavailableReason && (
+            <div className="error-state">{localFileSearchUnavailableReason}</div>
+          )}
+          {localFileSearchPartialReason && localFileSearchAvailability && (
+            <div className="muted-row">
+              {localFileSearchPartialReason} Scanned {localFileSearchAvailability.scannedEntries} entries.
+            </div>
           )}
           {showCachedFileResultsNotice && (
             <div className="muted-row">Showing cached file results while GitHub is unavailable.</div>

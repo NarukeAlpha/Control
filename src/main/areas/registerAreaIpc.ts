@@ -3,6 +3,8 @@ import { dialog, ipcMain } from "electron";
 import type {
   AreaContentsInput,
   AreaFileContentInput,
+  AreaFileSearchInput,
+  AreaGatewayLifecycleInput,
   AreaGatewayOperationInput,
   AreaGatewayRunOperationInput,
   AreaGitHubIssuesInput,
@@ -95,6 +97,11 @@ export function createAreaIpcRoutes(areaManager: AreaManager): IpcInvokeRoute[] 
       ([input]) => requireFileContentInput(input as AreaFileContentInput),
       (input) => areaManager.getFileContent(input)
     ),
+    areaRoute<AreaFileSearchInput, ReturnType<AreaManager["searchFilePaths"]>>(
+      ipcChannels.areaFilePathSearch,
+      ([input]) => requireFileSearchInput(input as AreaFileSearchInput),
+      (input) => areaManager.searchFilePaths(input)
+    ),
     areaRoute<AreaRefInput, ReturnType<AreaManager["listBranches"]>>(
       ipcChannels.areaBranches,
       ([input]) => requireRefInput(input as AreaRefInput),
@@ -175,10 +182,23 @@ export function createAreaIpcRoutes(areaManager: AreaManager): IpcInvokeRoute[] 
     ),
     areaRoute<StopAreaGatewayInput, ReturnType<AreaManager["stopGateway"]>>(
       ipcChannels.areaStopGateway,
-      ([input]) => ({
-        areaId: requireString((input as StopAreaGatewayInput | null | undefined)?.areaId)
-      }),
+      ([input]) => requireGatewayLifecycleInput(input as StopAreaGatewayInput),
       (input) => areaManager.stopGateway(input)
+    ),
+    areaRoute<AreaGatewayLifecycleInput, ReturnType<AreaManager["repairGateway"]>>(
+      ipcChannels.areaRepairGateway,
+      ([input]) => requireGatewayLifecycleInput(input as AreaGatewayLifecycleInput),
+      (input) => areaManager.repairGateway(input)
+    ),
+    areaRoute<AreaGatewayLifecycleInput, ReturnType<AreaManager["rotateGatewayCredentials"]>>(
+      ipcChannels.areaRotateGatewayCredentials,
+      ([input]) => requireGatewayLifecycleInput(input as AreaGatewayLifecycleInput),
+      (input) => areaManager.rotateGatewayCredentials(input)
+    ),
+    areaRoute<AreaGatewayLifecycleInput, ReturnType<AreaManager["restartGateway"]>>(
+      ipcChannels.areaRestartGateway,
+      ([input]) => requireGatewayLifecycleInput(input as AreaGatewayLifecycleInput),
+      (input) => areaManager.restartGateway(input)
     ),
     createIpcInvokeRoute<void, Promise<string | null>>({
       channel: ipcChannels.areaOpenLocalFolderPicker,
@@ -280,6 +300,14 @@ function requireFileContentInput(input: AreaFileContentInput): AreaFileContentIn
   return { ...requireRepositoryInput(input), path: requireString(input?.path) };
 }
 
+function requireFileSearchInput(input: AreaFileSearchInput): AreaFileSearchInput {
+  return {
+    ...requireRepositoryInput(input),
+    query: typeof input?.query === "string" ? input.query.trim() : "",
+    limit: typeof input?.limit === "number" ? input.limit : undefined
+  };
+}
+
 function requireRefInput(input: AreaRefInput): AreaRefInput {
   return { ...requireRepositoryInput(input), limit: input?.limit };
 }
@@ -336,6 +364,12 @@ function requireRunGatewayOperationInput(input: AreaGatewayRunOperationInput): A
     areaId: requireString(input?.areaId),
     operationId: requireString(input?.operationId),
     confirmed: input?.confirmed === true
+  };
+}
+
+function requireGatewayLifecycleInput(input: AreaGatewayLifecycleInput): AreaGatewayLifecycleInput {
+  return {
+    areaId: requireString(input?.areaId)
   };
 }
 

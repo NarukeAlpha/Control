@@ -32,6 +32,8 @@ const controlApi: ControlApi = {
   unpinAreaRepository: (input) => invoke(ipcChannels.unpinAreaRepository, input),
   listRecentItems: (input = {}) => invoke(ipcChannels.listRecentItems, input),
   recordRecentItem: (input) => invoke(ipcChannels.recordRecentItem, input),
+  previewDataExport: (input) => invoke(ipcChannels.previewDataExport, input),
+  previewDataImport: (input) => invoke(ipcChannels.previewDataImport, input),
   areas: {
     listAreas: () => invoke(ipcChannels.areasList),
     getArea: (areaId) => invoke(ipcChannels.areasGet, areaId),
@@ -46,6 +48,7 @@ const controlApi: ControlApi = {
     getRepository: (input) => invoke(ipcChannels.areaRepository, input),
     listContents: (input) => invoke(ipcChannels.areaContents, input),
     getFileContent: (input) => invoke(ipcChannels.areaFileContent, input),
+    searchFilePaths: (input) => invoke(ipcChannels.areaFilePathSearch, input),
     listBranches: (input) => invoke(ipcChannels.areaBranches, input),
     listRemotes: (input) => invoke(ipcChannels.areaRemotes, input),
     getStatus: (input) => invoke(ipcChannels.areaStatus, input),
@@ -62,6 +65,9 @@ const controlApi: ControlApi = {
     prepareGatewayOperation: (input) => invoke(ipcChannels.areaPrepareGatewayOperation, input),
     runGatewayOperation: (input) => invoke(ipcChannels.areaRunGatewayOperation, input),
     stopGateway: (input) => invoke(ipcChannels.areaStopGateway, input),
+    repairGateway: (input) => invoke(ipcChannels.areaRepairGateway, input),
+    rotateGatewayCredentials: (input) => invoke(ipcChannels.areaRotateGatewayCredentials, input),
+    restartGateway: (input) => invoke(ipcChannels.areaRestartGateway, input),
     openLocalFolderPicker: () => invoke(ipcChannels.areaOpenLocalFolderPicker)
   },
   onGitHubRepositoriesUpdated: (callback) => onPayload(ipcChannels.githubRepositoriesUpdated, callback),
@@ -160,6 +166,7 @@ const controlApi: ControlApi = {
     getRepositoryCommunityProfile: (input) =>
       invoke(githubIpcRouteChannels.getRepositoryCommunityProfile, input),
     listReleasesWithStatus: (input) => invoke(githubIpcRouteChannels.listReleasesWithStatus, input),
+    getReleaseDetailWithStatus: (input) => invoke(githubIpcRouteChannels.getReleaseDetailWithStatus, input),
     listContributorsWithStatus: (input) => invoke(githubIpcRouteChannels.listContributorsWithStatus, input),
     searchWithStatus: (input) => invoke(githubIpcRouteChannels.searchWithStatus, input),
     mutate: (input) => invoke(githubIpcRouteChannels.mutate, input)

@@ -10,8 +10,10 @@ import { useIssuesTabQueries } from "../components/repository/issues/IssuesTab";
 import { useProjectsTabQueries } from "../components/repository/projects/ProjectsTab";
 import { usePullRequestsTabQueries } from "../components/repository/pull-requests/PullRequestsTab";
 import { useReleasesTabQueries } from "../components/repository/releases/ReleasesTab";
+import { visibleRepositoryTabs } from "../components/repository/repositoryTabVisibility";
 import { readAvailabilityMessage } from "../components/repository/repositoryUi";
-import type { AppRoute } from "../stores/uiStore";
+import type { RepositoryTabPreference, RepositoryTabPreferenceKey } from "@shared/github";
+import type { AppRoute, RepositoryTab } from "../stores/uiStore";
 import { useCodeBrowserQueries } from "../components/code-browser/codeBrowserQueries";
 import type { RepositoryQueryScope } from "../components/shell/appInvalidations";
 import { useControlApi } from "./useControlApi";
@@ -28,6 +30,7 @@ interface UseRepositoryRouteStateInput {
   selectedRepository: string | null;
   repositoryRefs: Record<string, string | null>;
   fileFinderOpen: boolean;
+  repositoryTabPreferences: Partial<Record<RepositoryTabPreferenceKey, RepositoryTabPreference>>;
 }
 
 export function useRepositoryRouteState({
@@ -36,7 +39,8 @@ export function useRepositoryRouteState({
   route,
   selectedRepository,
   repositoryRefs,
-  fileFinderOpen
+  fileFinderOpen,
+  repositoryTabPreferences
 }: UseRepositoryRouteStateInput) {
   const api = useControlApi();
   const queryClient = useQueryClient();
@@ -75,11 +79,8 @@ export function useRepositoryRouteState({
   const contentsRef = isCodeBrowserRoute ? codeBrowserRef : repositorySelectedRef;
   const limits = useRepositorySurfaceLimits({
     effectiveRepository,
-    owner,
-    repo,
     repositorySelectedRef,
     codeBrowserRef,
-    contentsRef,
     codeBrowserPath
   });
 
@@ -94,6 +95,19 @@ export function useRepositoryRouteState({
     "Repository detail",
     repository.data?.availability ?? null
   );
+  const repositoryTabVisibility = useMemo(
+    () =>
+      visibleRepositoryTabs({
+        repository: repositoryDetail,
+        activeRoute: isRepositoryRoute ? route : null,
+        preferences: repositoryTabPreferences
+      }),
+    [isRepositoryRoute, repositoryDetail, repositoryTabPreferences, route]
+  );
+  const repositoryTabReady = appReady && isRepositoryRoute && hasRepositoryParts;
+  const activeTabQueryEnabled = (tab: RepositoryTab): boolean =>
+    repositoryTabReady && activeRepositoryTab === tab && repositoryTabVisibility.queryGates[tab];
+  const agentsTabQueryEnabled = activeTabQueryEnabled("agents");
 
   const repositoryRefQueries = useRepositoryRefs(
     owner,
@@ -120,7 +134,7 @@ export function useRepositoryRouteState({
     defaultBranch: repositoryDetail?.defaultBranch ?? null,
     commitHistoryLimit: limits.repositoryCommitHistoryLimit,
     selectedRootMarkdownPath: null,
-    enabled: appReady && isRepositoryRoute && activeRepositoryTab === "code" && hasRepositoryParts,
+    enabled: activeTabQueryEnabled("code"),
     githubReady
   });
 
@@ -128,11 +142,7 @@ export function useRepositoryRouteState({
     owner,
     repo,
     issueListLimit: limits.issueListLimit,
-    issuesEnabled:
-      appReady &&
-      isRepositoryRoute &&
-      (activeRepositoryTab === "issues" || activeRepositoryTab === "agents") &&
-      hasRepositoryParts,
+    issuesEnabled: activeTabQueryEnabled("issues") || agentsTabQueryEnabled,
     resourcesEnabled: false,
     githubReady
   });
@@ -141,12 +151,8 @@ export function useRepositoryRouteState({
     owner,
     repo,
     pullRequestListLimit: limits.pullRequestListLimit,
-    pullsEnabled:
-      appReady &&
-      isRepositoryRoute &&
-      (activeRepositoryTab === "pulls" || activeRepositoryTab === "agents") &&
-      hasRepositoryParts,
-    resourcesEnabled: appReady && isRepositoryRoute && activeRepositoryTab === "pulls" && hasRepositoryParts,
+    pullsEnabled: activeTabQueryEnabled("pulls") || agentsTabQueryEnabled,
+    resourcesEnabled: activeTabQueryEnabled("pulls"),
     githubReady
   });
 
@@ -163,7 +169,6 @@ export function useRepositoryRouteState({
     codeBrowserRef,
     contentsRef,
     defaultBranch: repositoryDetail?.defaultBranch ?? null,
-    fileBlameRangeLimit: limits.fileBlameRangeLimit,
     fileCommitHistoryLimit: limits.fileCommitHistoryLimit,
     fileFinderOpen,
     repositoryLoaded: Boolean(repositoryDetail)
@@ -173,18 +178,14 @@ export function useRepositoryRouteState({
     owner,
     repo,
     limit: limits.discussionsLimit,
-    enabled: appReady && isRepositoryRoute && activeRepositoryTab === "discussions" && hasRepositoryParts,
+    enabled: activeTabQueryEnabled("discussions"),
     githubReady
   }).discussions;
   const actions = useActionsTabQueries({
     owner,
     repo,
     limit: limits.actionsLimit,
-    enabled:
-      appReady &&
-      isRepositoryRoute &&
-      (activeRepositoryTab === "actions" || activeRepositoryTab === "agents") &&
-      hasRepositoryParts,
+    enabled: activeTabQueryEnabled("actions") || agentsTabQueryEnabled,
     githubReady
   }).actions;
 
@@ -206,7 +207,7 @@ export function useRepositoryRouteState({
     owner,
     repo,
     limit: limits.projectsLimit,
-    enabled: appReady && isRepositoryRoute && activeRepositoryTab === "projects" && hasRepositoryParts,
+    enabled: activeTabQueryEnabled("projects"),
     githubReady
   }).projects;
   const branchProtectionBranch =
@@ -218,12 +219,7 @@ export function useRepositoryRouteState({
     owner,
     repo,
     limit: limits.releasesLimit,
-    enabled:
-      appReady &&
-      isRepositoryRoute &&
-      activeRepositoryTab === "releases" &&
-      hasRepositoryParts &&
-      repository.isSuccess,
+    enabled: activeTabQueryEnabled("releases") && repository.isSuccess,
     githubReady
   }).releases;
 
@@ -231,12 +227,7 @@ export function useRepositoryRouteState({
     owner,
     repo,
     limit: limits.repositoryContributorLimit,
-    enabled:
-      appReady &&
-      isRepositoryRoute &&
-      activeRepositoryTab === "contributors" &&
-      hasRepositoryParts &&
-      repository.isSuccess,
+    enabled: activeTabQueryEnabled("contributors") && repository.isSuccess,
     githubReady
   }).contributors;
   const releaseItems = releases.data?.items ?? [];
@@ -262,7 +253,6 @@ export function useRepositoryRouteState({
     repositoryContributorLimit: limits.repositoryContributorLimit,
     repositoryCommitHistoryLimit: limits.repositoryCommitHistoryLimit,
     fileCommitHistoryLimit: limits.fileCommitHistoryLimit,
-    fileBlameRangeLimit: limits.fileBlameRangeLimit,
     issueListLimit: limits.issueListLimit,
     pullRequestListLimit: limits.pullRequestListLimit,
     discussionsLimit: limits.discussionsLimit,
@@ -301,6 +291,7 @@ export function useRepositoryRouteState({
     limits,
     repository,
     repositoryDetail,
+    repositoryTabVisibility,
     repositoryAvailabilityMessage,
     repositoryRefQueries,
     branches,

@@ -345,14 +345,14 @@ export function IssuesTab({
     )
   );
   const requestedIssueNumber = selectedIssueNumber ?? focusedIssueNumber;
-  const selectedIssue =
-    (requestedIssueNumber !== null
-      ? filteredIssues.find((issue) => issue.number === requestedIssueNumber)
-      : null) ??
+  const selectedIssueSummary =
+    (requestedIssueNumber !== null ? issues.find((issue) => issue.number === requestedIssueNumber) : null) ??
     filteredIssues[0] ??
     null;
-  const issueDetail = useIssueDetail(selectedIssue?.number ?? null, !creating && Boolean(selectedIssue));
+  const issueDetailNumber = requestedIssueNumber ?? selectedIssueSummary?.number ?? null;
+  const issueDetail = useIssueDetail(issueDetailNumber, !creating && issueDetailNumber !== null);
   const detail = issueDetail.data?.detail ?? null;
+  const selectedIssue = detail ?? selectedIssueSummary;
   const issueDetailAvailabilityMessage = readAvailabilityMessage(
     "Issue detail",
     issueDetail.data?.availability ?? null
@@ -810,6 +810,7 @@ export function IssuesTab({
                       body: editBody.trim(),
                       milestone: editMilestoneNumber ? Number(editMilestoneNumber) : null
                     });
+                    setEditingIssue(false);
                   }}
                 >
                   {editIssueMutationActive && mutationPending && (
@@ -1204,6 +1205,8 @@ export function IssuesTab({
                 )}
               </div>
             </>
+          ) : issueDetail.isLoading && requestedIssueNumber !== null ? (
+            <div className="loading-state">Loading issue #{requestedIssueNumber}…</div>
           ) : (
             <div className="empty-state">No issues found.</div>
           )}

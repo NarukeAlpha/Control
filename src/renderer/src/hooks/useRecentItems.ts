@@ -8,13 +8,13 @@ export function recentItemsQueryKey(limit: number): readonly ["local-recents", n
   return ["local-recents", limit] as const;
 }
 
-export function useRecentItems(limit: number, { enabled }: { enabled: boolean }) {
+export function useRecentItems(limit: number, { appReady }: { appReady: boolean }) {
   const api = useControlApi();
 
   return useQuery({
     queryKey: recentItemsQueryKey(limit),
     queryFn: () => api.listRecentItems({ limit }),
-    enabled,
+    enabled: appReady,
     staleTime: 30_000
   });
 }

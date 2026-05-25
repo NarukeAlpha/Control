@@ -38,6 +38,66 @@ describe("OctokitReleaseDomain", () => {
     );
   });
 
+  it("loads release detail by release id", async () => {
+    const rest = vi.fn(async (_route: string, _params: Record<string, unknown>) =>
+      releaseFixture({ id: 2, tagName: "v2.0.0" })
+    );
+    const domain = new OctokitReleaseDomain(
+      createClient({
+        rest: async <T>(route: string, params: Record<string, unknown> = {}) =>
+          (await rest(route, params)) as T
+      }),
+      mapTestError
+    );
+
+    await expect(
+      domain.getReleaseDetailWithStatus({ owner: "NarukeAlpha", repo: "control", releaseId: 2 })
+    ).resolves.toEqual({
+      item: expect.objectContaining({
+        id: 2,
+        tagName: "v2.0.0"
+      }),
+      availability: { status: "available", message: null }
+    });
+    expect(rest).toHaveBeenCalledWith("GET /repos/{owner}/{repo}/releases/{release_id}", {
+      owner: "NarukeAlpha",
+      repo: "control",
+      release_id: 2
+    });
+  });
+
+  it("loads release detail by tag name when no release id is present", async () => {
+    const rest = vi.fn(async (_route: string, _params: Record<string, unknown>) =>
+      releaseFixture({ id: 3, tagName: "v3.0.0" })
+    );
+    const domain = new OctokitReleaseDomain(
+      createClient({
+        rest: async <T>(route: string, params: Record<string, unknown> = {}) =>
+          (await rest(route, params)) as T
+      }),
+      mapTestError
+    );
+
+    await expect(
+      domain.getReleaseDetailWithStatus({
+        owner: "NarukeAlpha",
+        repo: "control",
+        releaseTagName: "v3.0.0"
+      })
+    ).resolves.toEqual({
+      item: expect.objectContaining({
+        id: 3,
+        tagName: "v3.0.0"
+      }),
+      availability: { status: "available", message: null }
+    });
+    expect(rest).toHaveBeenCalledWith("GET /repos/{owner}/{repo}/releases/tags/{tag}", {
+      owner: "NarukeAlpha",
+      repo: "control",
+      tag: "v3.0.0"
+    });
+  });
+
   it("maps release failures into statusful results", async () => {
     const domain = new OctokitReleaseDomain(
       createClient({
@@ -57,6 +117,9 @@ describe("OctokitReleaseDomain", () => {
 
 function createClient(overrides: Partial<OctokitReleaseClient>): OctokitReleaseClient {
   return {
+    rest: async () => {
+      throw new Error("Unexpected REST request");
+    },
     restPaginatedArray: async () => {
       throw new Error("Unexpected paginated REST request");
     },

@@ -44,7 +44,12 @@ import {
 } from "./mappers";
 import { areaRepoSnapshotKey, areaWorkspaceSnapshotKey } from "./areaSnapshotStore";
 import { stringifyStorageJson } from "./serializers";
-import { cacheExpiresAtIsExpired, defaultSettings, normalizeSettings } from "./localStoreHelpers";
+import {
+  cacheExpiresAtIsExpired,
+  defaultSettings,
+  mergeSettingsPatch,
+  normalizeSettings
+} from "./localStoreHelpers";
 
 export class MemoryLocalStore implements LocalStore {
   private settings = defaultSettings;
@@ -85,7 +90,7 @@ export class MemoryLocalStore implements LocalStore {
   }
 
   updateSettings(settings: Partial<ControlSettings>): ControlSettings {
-    this.settings = { ...this.settings, ...settings };
+    this.settings = mergeSettingsPatch(this.getSettings(), settings);
     return this.getSettings();
   }
 
@@ -93,6 +98,15 @@ export class MemoryLocalStore implements LocalStore {
     const key = `${provider}:${login}`;
     this.accounts.delete(key);
     this.accounts.set(key, payload);
+  }
+
+  deleteAccount(provider: string): void {
+    const prefix = `${provider}:`;
+    for (const key of this.accounts.keys()) {
+      if (key.startsWith(prefix)) {
+        this.accounts.delete(key);
+      }
+    }
   }
 
   getLastAccount<T>(provider: string): T | null {
@@ -346,6 +360,17 @@ export class MemoryLocalStore implements LocalStore {
   upsertAreaWorkspace(summary: AreaWorkspaceSummary, detail: AreaWorkspaceDetail | null = null): void {
     const existing = this.areaWorkspaces.get(summary.id);
     this.areaWorkspaces.set(summary.id, { summary, detail: detail ?? existing?.detail ?? null });
+  }
+
+  replaceAreaReadModels(input: Parameters<LocalStore["replaceAreaReadModels"]>[0]): void {
+    this.clearAreaWorkspaces(input.areaId);
+    this.clearAreaRepositories(input.areaId);
+    for (const repository of input.repositories) {
+      this.upsertAreaRepository(repository.summary, repository.detail);
+    }
+    for (const workspace of input.workspaces) {
+      this.upsertAreaWorkspace(workspace.summary, workspace.detail);
+    }
   }
 
   listAreaWorkspaces(input: ListAreaWorkspacesInput): AreaWorkspaceSummary[] {

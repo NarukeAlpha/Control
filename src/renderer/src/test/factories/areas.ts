@@ -45,10 +45,10 @@ export const sshArea: AreaSummary = {
     status: "ready",
     version: "0.1.0",
     apiUrl: "http://127.0.0.1:35525",
-    adminUrl: "http://127.0.0.1:35526",
     serviceName: "control-gateway-ssh-delta",
     lastStartedAt: "2026-05-01T00:00:00.000Z",
     lastSeenAt: "2026-05-01T00:00:00.000Z",
+    failureCode: null,
     message: null
   },
   health: readyAreaHealth,

@@ -2,11 +2,76 @@ export type CodeHost = "github";
 
 export type CredentialProvider = "github-oauth";
 
-export type GlassMode = "glass-shell" | "reduced" | "solid";
+export const CONTROL_GLASS_MODES = ["glass-shell", "reduced", "solid"] as const;
+
+export type GlassMode = (typeof CONTROL_GLASS_MODES)[number];
+
+export const CONTROL_GLASS_MODE_LABELS: Record<GlassMode, string> = {
+  "glass-shell": "Glass shell",
+  reduced: "Reduced glass",
+  solid: "Solid"
+};
+
+export const CONTROL_THEME_MODES = ["light", "dark", "system"] as const;
+
+export type ControlThemeMode = (typeof CONTROL_THEME_MODES)[number];
+
+export const CONTROL_THEME_PRESETS = [
+  "control-light",
+  "control-dark",
+  "control-dim",
+  "control-high-contrast-dark"
+] as const;
+
+export type ControlThemePreset = (typeof CONTROL_THEME_PRESETS)[number];
+
+export const CONTROL_THEME_PRESET_LABELS: Record<ControlThemePreset, string> = {
+  "control-light": "Control Light",
+  "control-dark": "Control Dark",
+  "control-dim": "Dim",
+  "control-high-contrast-dark": "High Contrast Dark"
+};
+
+export const CONTROL_ACCENT_COLORS = ["blue", "green", "purple", "gray"] as const;
+
+export type ControlAccentColor = (typeof CONTROL_ACCENT_COLORS)[number];
+
+export const CONTROL_ACCENT_COLOR_LABELS: Record<ControlAccentColor, string> = {
+  blue: "Blue",
+  green: "Green",
+  purple: "Purple",
+  gray: "Gray"
+};
+
+export interface ControlThemeSettings {
+  mode: ControlThemeMode;
+  preset: ControlThemePreset;
+  accent: ControlAccentColor;
+}
+
+export const DEFAULT_CONTROL_THEME_SETTINGS: ControlThemeSettings = {
+  mode: "system",
+  preset: "control-light",
+  accent: "blue"
+};
+
+export type RepositoryTabPreference = "auto" | "show" | "hide";
+
+export type RepositoryTabPreferenceKey =
+  | "agents"
+  | "discussions"
+  | "projects"
+  | "releases"
+  | "contributors"
+  | "wiki"
+  | "securityQuality"
+  | "settings";
 
 export interface ControlSettings {
   credentialProvider: CredentialProvider;
   glassMode: GlassMode;
+  theme: ControlThemeSettings;
+  repositoryTabPreferences: Partial<Record<RepositoryTabPreferenceKey, RepositoryTabPreference>>;
 }
 
 export interface GitHubAuthStatus {
@@ -551,13 +616,19 @@ export interface RepoEntry {
   lastCommitAvailability: GitHubReadAvailability;
 }
 
+export type RepoFileContentKind = "text" | "image" | "binary" | "too_large" | "unavailable";
+
 export interface RepoFileContent {
   path: string;
   name: string;
   ref: string | null;
-  content: string;
+  kind: RepoFileContentKind;
+  content: string | null;
+  size: number | null;
+  encoding: "utf-8" | null;
   htmlUrl: string;
   downloadUrl: string | null;
+  message: string | null;
   lastCommitSha: string | null;
   lastCommitMessage: string | null;
   lastCommitAuthorLogin: string | null;
@@ -1634,6 +1705,16 @@ export interface ReleasesInput extends RepoDetailInput {
 
 export type ReleaseListResult = GitHubListResult<ReleaseSummary>;
 
+export interface ReleaseDetailInput extends RepoDetailInput {
+  releaseId?: number;
+  releaseTagName?: string;
+}
+
+export interface ReleaseDetailResult {
+  item: ReleaseSummary | null;
+  availability: GitHubReadAvailability;
+}
+
 export interface ContributorSummary {
   id: number;
   login: string;
@@ -2083,6 +2164,7 @@ export interface GitHubProvider {
   ): Promise<RepositoryCommunityProfileResult>;
   listReleases(input: ReleasesInput): Promise<ReleaseSummary[]>;
   listReleasesWithStatus(input: ReleasesInput): Promise<ReleaseListResult>;
+  getReleaseDetailWithStatus(input: ReleaseDetailInput): Promise<ReleaseDetailResult>;
   listContributors(input: ContributorsInput): Promise<ContributorSummary[]>;
   listContributorsWithStatus(input: ContributorsInput): Promise<ContributorListResult>;
   search(input: SearchInput): Promise<RepositorySummary[]>;

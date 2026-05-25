@@ -47,14 +47,57 @@ export interface UpdateAreaInput {
 
 export type AreaGatewayStatus = "not-installed" | "starting" | "ready" | "stopped" | "error";
 
+export type AreaGatewayFailureCode =
+  | "credential-store-unavailable"
+  | "credential-missing"
+  | "credential-rejected"
+  | "runtime-not-found"
+  | "runtime-integrity-failed"
+  | "runtime-spawn-failed"
+  | "manifest-timeout"
+  | "manifest-invalid"
+  | "ssh-unavailable"
+  | "ssh-deploy-failed"
+  | "ssh-command-failed"
+  | "ssh-tunnel-failed"
+  | "gateway-unauthorized"
+  | "gateway-protocol-error"
+  | "gateway-version-mismatch"
+  | "admin-stop-failed"
+  | "gateway-binary-missing"
+  | "gateway-credentials-unavailable"
+  | "gateway-credentials-migration-pending"
+  | "gateway-manifest-timeout"
+  | "gateway-manifest-invalid"
+  | "gateway-admin-stop-failed"
+  | "gateway-unreachable";
+
+export type AreaGatewayFailurePhase =
+  | "credential"
+  | "resolve"
+  | "install"
+  | "start"
+  | "verify"
+  | "operate"
+  | "stop"
+  | "remove";
+
+export interface AreaGatewayFailure {
+  code: AreaGatewayFailureCode;
+  areaId: string;
+  phase: AreaGatewayFailurePhase;
+  message: string;
+  retryable: boolean;
+}
+
 export interface AreaGatewaySummary {
   status: AreaGatewayStatus;
   version: string | null;
   apiUrl: string | null;
-  adminUrl: string | null;
   serviceName: string | null;
   lastStartedAt: string | null;
   lastSeenAt: string | null;
+  failureCode: AreaGatewayFailureCode | null;
   message: string | null;
 }
 
@@ -144,6 +187,28 @@ export interface AreaContentsInput extends AreaRepositoryInput {
 
 export interface AreaFileContentInput extends AreaRepositoryInput {
   path: string;
+}
+
+export type AreaFileSearchAvailabilityStatus = "complete" | "partial" | "unavailable";
+
+export interface AreaFileSearchInput extends AreaRepositoryInput {
+  query: string;
+  limit?: number;
+}
+
+export interface AreaFileSearchResult {
+  areaId: string;
+  repositoryId: string;
+  workspaceId: string | null;
+  query: string;
+  matches: AreaFileEntry[];
+  availability: {
+    status: AreaFileSearchAvailabilityStatus;
+    message: string | null;
+    scannedEntries: number;
+    truncated: boolean;
+    timedOut: boolean;
+  };
 }
 
 export interface AreaRefInput extends AreaRepositoryInput {
@@ -279,6 +344,20 @@ export interface AreaGatewayOperationEvent {
 export interface StopAreaGatewayInput {
   areaId: string;
 }
+
+export interface AreaGatewayLifecycleInput {
+  areaId: string;
+}
+
+export type AreaGatewayLifecycleResult =
+  | {
+      success: true;
+      summary: AreaSummary | null;
+    }
+  | {
+      success: false;
+      failure: AreaGatewayFailure;
+    };
 
 export interface AreaWorkspaceSummary {
   id: string;

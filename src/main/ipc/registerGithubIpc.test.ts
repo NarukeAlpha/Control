@@ -10,6 +10,65 @@ import {
   requireRepoListInput
 } from "./registerGithubIpc";
 
+function makeGithubIpcDependencies(overrides: Record<string, unknown> = {}) {
+  return {
+    listRepositoriesWithStatus: vi.fn(async () => ({
+      items: [],
+      availability: { status: "available", message: null } as const
+    })),
+    listOrganizationsWithStatus: vi.fn(async () => ({
+      items: [],
+      availability: { status: "available", message: null } as const
+    })),
+    listOrganizationTeamsWithStatus: vi.fn(async () => ({
+      items: [],
+      availability: { status: "available", message: null } as const
+    })),
+    listOrganizationRepositoriesWithStatus: vi.fn(async () => ({
+      items: [],
+      availability: { status: "available", message: null } as const
+    })),
+    listOrganizationTeamRepositoriesWithStatus: vi.fn(async () => ({
+      items: [],
+      availability: { status: "available", message: null } as const
+    })),
+    listOrganizationTeamMembersWithStatus: vi.fn(async () => ({
+      items: [],
+      availability: { status: "available", message: null } as const
+    })),
+    listOrganizationMembersWithStatus: vi.fn(async () => ({
+      items: [],
+      availability: { status: "available", message: null } as const
+    })),
+    listOrganizationProjectsWithStatus: vi.fn(async () => ({
+      items: [],
+      availability: { status: "available", message: null } as const
+    })),
+    listBranchesWithStatus: vi.fn(async () => ({
+      items: [],
+      availability: { status: "available", message: null } as const
+    })),
+    listTagsWithStatus: vi.fn(async () => ({
+      items: [],
+      availability: { status: "available", message: null } as const
+    })),
+    listReleasesWithStatus: vi.fn(async () => ({
+      items: [],
+      availability: { status: "available", message: null } as const
+    })),
+    listContributorsWithStatus: vi.fn(async () => ({
+      items: [],
+      availability: { status: "available", message: null } as const
+    })),
+    mutate: vi.fn(async (input: GitHubMutationInput) => ({
+      ok: true,
+      action: input.action,
+      message: "ok"
+    })),
+    ...overrides
+  };
+}
+
 describe("registerGithubIpc", () => {
   it("registers the first GitHub router slice on the typed route channels", async () => {
     const handlers = new Map<string, (event: unknown, ...args: unknown[]) => unknown>();
@@ -18,25 +77,26 @@ describe("registerGithubIpc", () => {
         handlers.set(channel, listener);
       })
     };
-    const github = {
-      listRepositoriesWithStatus: vi.fn(async () => ({
-        items: [],
-        availability: { status: "available", message: null } as const
-      })),
-      mutate: vi.fn(async (input: GitHubMutationInput) => ({
-        ok: true,
-        action: input.action,
-        message: "ok"
-      }))
-    };
+    const github = makeGithubIpcDependencies();
 
     registerGithubIpc(ipcMain, github);
 
-    expect([...handlers.keys()]).toEqual([
-      githubIpcRouteChannels.listRepositoriesWithStatus,
-      githubIpcRouteChannels.mutate
-    ]);
+    expect([...handlers.keys()]).toEqual(
+      registeredGithubIpcRouteKeys.map((key) => githubIpcRouteChannels[key])
+    );
     await handlers.get(githubIpcRouteChannels.listRepositoriesWithStatus)?.(null, { limit: 10 });
+    await handlers.get(githubIpcRouteChannels.listOrganizationTeamRepositoriesWithStatus)?.(null, {
+      org: " openai ",
+      teamSlug: " core ",
+      limit: 25,
+      cacheOnly: true
+    });
+    await handlers.get(githubIpcRouteChannels.listBranchesWithStatus)?.(null, {
+      owner: " openai ",
+      repo: " codex ",
+      limit: 12,
+      forceRefresh: true
+    });
     await handlers.get(githubIpcRouteChannels.mutate)?.(null, {
       action: "star",
       owner: "NarukeAlpha",
@@ -48,6 +108,20 @@ describe("registerGithubIpc", () => {
       cacheOnly: undefined,
       forceRefresh: undefined
     });
+    expect(github.listOrganizationTeamRepositoriesWithStatus).toHaveBeenCalledWith({
+      org: "openai",
+      teamSlug: "core",
+      limit: 25,
+      cacheOnly: true,
+      forceRefresh: undefined
+    });
+    expect(github.listBranchesWithStatus).toHaveBeenCalledWith({
+      owner: "openai",
+      repo: "codex",
+      limit: 12,
+      cacheOnly: undefined,
+      forceRefresh: true
+    });
     expect(github.mutate).toHaveBeenCalledWith({
       action: "star",
       owner: "NarukeAlpha",
@@ -56,17 +130,7 @@ describe("registerGithubIpc", () => {
   });
 
   it("keeps registered route keys in parity with the shared route map", () => {
-    const routes = createGithubIpcRoutes({
-      listRepositoriesWithStatus: vi.fn(async () => ({
-        items: [],
-        availability: { status: "available", message: null } as const
-      })),
-      mutate: vi.fn(async (input: GitHubMutationInput) => ({
-        ok: true,
-        action: input.action,
-        message: "ok"
-      }))
-    });
+    const routes = createGithubIpcRoutes(makeGithubIpcDependencies());
 
     expect(registeredGithubIpcRouteKeys.map((key) => githubIpcRouteChannels[key])).toEqual(
       routes.map((route) => route.channel)

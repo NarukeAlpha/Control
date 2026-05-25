@@ -588,12 +588,10 @@ export function ActionsTab({
     );
   });
   const requestedRunId = selectedRunId ?? focusedWorkflowRunId;
-  const selectedRunMatchesFilter =
-    requestedRunId !== null && filteredActions.some((run) => run.id === requestedRunId);
-  const effectiveSelectedRunId = selectedRunMatchesFilter ? requestedRunId : (filteredActions[0]?.id ?? null);
+  const effectiveSelectedRunId = requestedRunId ?? filteredActions[0]?.id ?? null;
   const selectedRunFromList =
     effectiveSelectedRunId !== null
-      ? (filteredActions.find((run) => run.id === effectiveSelectedRunId) ?? null)
+      ? (actions.find((run) => run.id === effectiveSelectedRunId) ?? null)
       : null;
   const initialExpandedWorkflowDetailItems = {
     jobStepIds: new Set<number>(),

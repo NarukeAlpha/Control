@@ -91,6 +91,8 @@ import type {
   PullRequestTimelineInput,
   PullRequestTimelineResult,
   PullRequestSummary,
+  ReleaseDetailInput,
+  ReleaseDetailResult,
   ReleaseSummary,
   ReleaseListResult,
   ReleasesInput,
@@ -269,6 +271,7 @@ export class OctokitProvider implements GitHubProvider {
     );
     this.releaseDomain = new OctokitReleaseDomain(
       {
+        rest: (route, params) => this.rest(route, params),
         restPaginatedArray: (route, params, limit) => this.restPaginatedArray(route, params, limit)
       },
       mapGitHubFeatureError
@@ -938,6 +941,10 @@ export class OctokitProvider implements GitHubProvider {
 
   async listReleasesWithStatus(input: ReleasesInput): Promise<ReleaseListResult> {
     return this.releaseDomain.listReleasesWithStatus(input);
+  }
+
+  async getReleaseDetailWithStatus(input: ReleaseDetailInput): Promise<ReleaseDetailResult> {
+    return this.releaseDomain.getReleaseDetailWithStatus(input);
   }
 
   async listContributors(input: ContributorsInput): Promise<ContributorSummary[]> {

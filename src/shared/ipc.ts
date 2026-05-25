@@ -4,6 +4,10 @@ import type {
   AreaFileContent,
   AreaFileContentInput,
   AreaFileEntry,
+  AreaFileSearchInput,
+  AreaFileSearchResult,
+  AreaGatewayLifecycleInput,
+  AreaGatewayLifecycleResult,
   AreaGatewayOperationInput,
   AreaGatewayOperationPreview,
   AreaGatewayOperationResult,
@@ -56,6 +60,12 @@ import type {
   RepositoryPinInput,
   RepositoryPinRecord
 } from "./local";
+import type {
+  ControlExportPreview,
+  ControlExportScope,
+  ControlImportInput,
+  ControlImportPreview
+} from "./sync";
 
 type JsonSerializableObject<T extends object> = {
   [K in keyof T]: JsonSerializable<T[K]>;
@@ -108,6 +118,8 @@ type GitHubIpcOptionalInputKeys =
 
 type GitHubIpcRepositoryDetailKeys = "getRepositoryWithStatus";
 type GitHubIpcConcreteMutationKey = "mutate";
+// Raw read twins remain on the main-process provider for cache/read-model internals, but stay hidden from
+// renderer IPC until each call site has a status-bearing replacement with explicit availability semantics.
 type GitHubIpcRawReadTwinKeys =
   | "getAccountProfile"
   | "listRepositories"
@@ -175,6 +187,8 @@ export interface ControlApi {
   unpinAreaRepository(input: RepositoryPinInput): Promise<RepositoryPinRecord[]>;
   listRecentItems(input?: LocalRecentListInput): Promise<LocalRecentItem[]>;
   recordRecentItem(input: LocalRecentRecordInput): Promise<LocalRecentItem[]>;
+  previewDataExport(input: ControlExportScope): Promise<ControlExportPreview>;
+  previewDataImport(input: ControlImportInput): Promise<ControlImportPreview>;
   onGitHubRepositoriesUpdated(callback: (event: GitHubRepositoriesUpdatedEvent) => void): () => void;
   onGitHubAuthUpdated(callback: (event: GitHubAuthUpdatedEvent) => void): () => void;
   areas: {
@@ -191,6 +205,7 @@ export interface ControlApi {
     getRepository(input: AreaRepositoryInput): Promise<AreaRepositoryDetail | null>;
     listContents(input: AreaContentsInput): Promise<AreaFileEntry[]>;
     getFileContent(input: AreaFileContentInput): Promise<AreaFileContent>;
+    searchFilePaths(input: AreaFileSearchInput): Promise<AreaFileSearchResult>;
     listBranches(input: AreaRefInput): Promise<AreaRepositoryDetail["branches"]>;
     listRemotes(input: AreaRepositoryInput): Promise<AreaRepositoryDetail["remotes"]>;
     getStatus(input: AreaRepositoryInput): Promise<AreaRepositoryDetail["status"]>;
@@ -207,6 +222,9 @@ export interface ControlApi {
     prepareGatewayOperation(input: AreaGatewayOperationInput): Promise<AreaGatewayOperationPreview>;
     runGatewayOperation(input: AreaGatewayRunOperationInput): Promise<AreaGatewayOperationResult>;
     stopGateway(input: StopAreaGatewayInput): Promise<AreaSummary | null>;
+    repairGateway(input: AreaGatewayLifecycleInput): Promise<AreaGatewayLifecycleResult>;
+    rotateGatewayCredentials(input: AreaGatewayLifecycleInput): Promise<AreaGatewayLifecycleResult>;
+    restartGateway(input: AreaGatewayLifecycleInput): Promise<AreaGatewayLifecycleResult>;
     openLocalFolderPicker(): Promise<string | null>;
   };
   onAreasUpdated(callback: (event: AreaUpdatedEvent) => void): () => void;
@@ -240,6 +258,8 @@ export const ipcChannels = {
   unpinAreaRepository: "control:unpin-area-repository",
   listRecentItems: "control:list-recent-items",
   recordRecentItem: "control:record-recent-item",
+  previewDataExport: "control:preview-data-export",
+  previewDataImport: "control:preview-data-import",
   githubRepositoriesUpdated: "github:repositories-updated",
   githubAuthUpdated: "github:auth-updated",
   areasList: "areas:list",
@@ -255,6 +275,7 @@ export const ipcChannels = {
   areaRepository: "areas:repository",
   areaContents: "areas:contents",
   areaFileContent: "areas:file-content",
+  areaFilePathSearch: "areas:file-path-search",
   areaBranches: "areas:branches",
   areaRemotes: "areas:remotes",
   areaStatus: "areas:status",
@@ -271,6 +292,9 @@ export const ipcChannels = {
   areaPrepareGatewayOperation: "areas:prepare-gateway-operation",
   areaRunGatewayOperation: "areas:run-gateway-operation",
   areaStopGateway: "areas:stop-gateway",
+  areaRepairGateway: "areas:repair-gateway",
+  areaRotateGatewayCredentials: "areas:rotate-gateway-credentials",
+  areaRestartGateway: "areas:restart-gateway",
   areaOpenLocalFolderPicker: "areas:open-local-folder-picker",
   areasUpdated: "areas:updated",
   areaRepositoryUpdated: "areas:repository-updated",
@@ -364,6 +388,7 @@ export const ipcChannels = {
   githubRepositoryCommunityProfile: "github:repository-community-profile",
   githubReleases: "github:releases",
   githubReleasesWithStatus: "github:releases-with-status",
+  githubReleaseDetailWithStatus: "github:release-detail-with-status",
   githubContributors: "github:contributors",
   githubContributorsWithStatus: "github:contributors-with-status",
   githubSearch: "github:search",
@@ -435,6 +460,7 @@ export const githubIpcRouteChannels = {
   getRepositorySecurityPolicy: ipcChannels.githubRepositorySecurityPolicy,
   getRepositoryCommunityProfile: ipcChannels.githubRepositoryCommunityProfile,
   listReleasesWithStatus: ipcChannels.githubReleasesWithStatus,
+  getReleaseDetailWithStatus: ipcChannels.githubReleaseDetailWithStatus,
   listContributorsWithStatus: ipcChannels.githubContributorsWithStatus,
   searchWithStatus: ipcChannels.githubSearchWithStatus,
   mutate: ipcChannels.githubMutate

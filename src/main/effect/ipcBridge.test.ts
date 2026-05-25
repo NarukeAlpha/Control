@@ -1,7 +1,7 @@
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import type { ControlSettings } from "@shared/github";
+import { DEFAULT_CONTROL_THEME_SETTINGS, type ControlSettings } from "@shared/github";
 import { ipcChannels } from "@shared/ipc";
 import type { GitHubProviderManager } from "../github/provider";
 import type { LocalStore } from "../storage";
@@ -25,7 +25,9 @@ import {
 
 const settings: ControlSettings = {
   credentialProvider: "github-oauth",
-  glassMode: "glass-shell"
+  glassMode: "glass-shell",
+  theme: DEFAULT_CONTROL_THEME_SETTINGS,
+  repositoryTabPreferences: {}
 };
 
 function createRuntime(overrides: Partial<LocalStore> = {}, openExternal = vi.fn(async () => undefined)) {

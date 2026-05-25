@@ -36,7 +36,8 @@ export function OrganizationsRoute({
   repositoryPinError,
   onOpenExternal,
   onOpenRepository,
-  onToggleRepositoryPin
+  onToggleRepositoryPin,
+  onRefresh
 }: {
   title: string;
   githubReady: boolean;
@@ -47,6 +48,7 @@ export function OrganizationsRoute({
   onOpenExternal(url: string): void;
   onOpenRepository(nameWithOwner: string): void;
   onToggleRepositoryPin(nameWithOwner: string): void;
+  onRefresh(): Promise<void> | void;
 }): JSX.Element {
   const {
     organizations,
@@ -331,6 +333,15 @@ export function OrganizationsRoute({
       <header>
         <h2>{title}</h2>
         <div className="collection-actions">
+          <button
+            type="button"
+            title="Updated organization data"
+            disabled={routeState.refreshInFlight}
+            onClick={() => void onRefresh()}
+          >
+            <RefreshCw size={16} />{" "}
+            {routeState.refreshInFlight ? "Refreshing organizations" : "Refresh organizations"}
+          </button>
           <button type="button" onClick={() => onOpenExternal(actionUrl)}>
             <RefreshCw size={16} /> GitHub fallback
           </button>

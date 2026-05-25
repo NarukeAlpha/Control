@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { ControlApi } from "@shared/ipc";
 import type { AreaFileContent, AreaRepositorySummary } from "@shared/areas";
-import type { RepositoryDetail } from "@shared/github";
+import type { RepositoryDetail, RepositoryTabPreference, RepositoryTabPreferenceKey } from "@shared/github";
 import type { LocalRecentItem } from "@shared/local";
 import {
   mockActions,
@@ -59,6 +59,21 @@ import {
 } from "./test/factories/commandPalette";
 
 installControlTestCleanup();
+
+function appStateWithRepositoryTabPreferences(
+  preferences: Partial<Record<RepositoryTabPreferenceKey, RepositoryTabPreference>>
+) {
+  return {
+    ...mockAppState,
+    settings: {
+      ...mockAppState.settings,
+      repositoryTabPreferences: {
+        ...mockAppState.settings.repositoryTabPreferences,
+        ...preferences
+      }
+    }
+  };
+}
 
 describe("Control renderer routing", () => {
   it("opens repositories from the sidebar pinned list", async () => {
@@ -149,6 +164,52 @@ describe("Control renderer routing", () => {
         tab: "code"
       });
     });
+  });
+
+  it("renders selected local Area repositories without starting the GitHub directory query", async () => {
+    const listRepositoriesWithStatus = vi.fn<ControlApi["github"]["listRepositoriesWithStatus"]>(
+      async () => ({
+        items: mockRepositories,
+        availability: { status: "available", message: null }
+      })
+    );
+    const listAreaRepositories = vi.fn<ControlApi["areas"]["listRepositories"]>(async () => [
+      localGitRepository
+    ]);
+
+    useUiStore.setState({
+      ...defaultUiState,
+      selectedAreaId: localArea.id,
+      route: { kind: "repositories" }
+    });
+    renderControl({
+      ...makeApi(),
+      areas: {
+        ...mockControlApi.areas,
+        listAreas: async () => [
+          { ...githubArea, selected: false },
+          { ...localArea, selected: true }
+        ],
+        listRepositories: listAreaRepositories
+      },
+      github: {
+        ...mockControlApi.github,
+        listRepositoriesWithStatus
+      }
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: "Laptop Projects Local repositories" })
+    ).toBeInTheDocument();
+    const collection = document.querySelector(".collection-view");
+    expect(collection).not.toBeNull();
+    await waitFor(() =>
+      expect(
+        within(collection as HTMLElement).getAllByRole("button", { name: /Control App/i }).length
+      ).toBeGreaterThan(0)
+    );
+    expect(listAreaRepositories).toHaveBeenCalledWith({ areaId: localArea.id });
+    expect(listRepositoriesWithStatus).not.toHaveBeenCalled();
   });
 
   it("refreshes the repository list from the repositories surface", async () => {
@@ -343,9 +404,9 @@ describe("Control renderer routing", () => {
       }
     });
 
-    expect(await screen.findByRole("button", { name: "Select Area" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Select Area/ })).toBeInTheDocument();
     expect(screen.queryByText(/^Area$/)).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Select Area" }));
+    await userEvent.click(screen.getByRole("button", { name: /Select Area/ }));
     await userEvent.click(await screen.findByRole("menuitem", { name: /Laptop Projects/i }));
 
     await waitFor(() => expect(selectArea).toHaveBeenCalledWith(localArea.id));
@@ -354,7 +415,7 @@ describe("Control renderer routing", () => {
     expect(screen.getByRole("button", { name: /Open Control App/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Open Control JJ/i })).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Select Area" }));
+    await userEvent.click(screen.getByRole("button", { name: /Select Area/ }));
     await userEvent.click(screen.getByRole("menuitem", { name: "Add local folder Area" }));
 
     await waitFor(() => {
@@ -378,10 +439,10 @@ describe("Control renderer routing", () => {
         status: "starting",
         version: null,
         apiUrl: null,
-        adminUrl: null,
         serviceName: null,
         lastStartedAt: null,
         lastSeenAt: null,
+        failureCode: null,
         message: "Starting remote gateway."
       }
     }));
@@ -396,7 +457,7 @@ describe("Control renderer routing", () => {
       }
     });
 
-    await userEvent.click(await screen.findByRole("button", { name: "Select Area" }));
+    await userEvent.click(await screen.findByRole("button", { name: /Select Area/ }));
     await userEvent.click(screen.getByRole("menuitem", { name: "Add SSH Area" }));
 
     expect(await screen.findByRole("heading", { name: "Add SSH Area" })).toBeInTheDocument();
@@ -435,7 +496,7 @@ describe("Control renderer routing", () => {
       }
     });
 
-    fireEvent.click(await screen.findByRole("button", { name: "Select Area" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Select Area/ }));
     expect(await screen.findByRole("menuitem", { name: /Delta WSL/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Area actions for Delta WSL" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Edit Area" }));
@@ -480,7 +541,7 @@ describe("Control renderer routing", () => {
       }
     });
 
-    fireEvent.click(await screen.findByRole("button", { name: "Select Area" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Select Area/ }));
     expect(await screen.findByRole("menuitem", { name: /Laptop Projects/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Area actions for Laptop Projects" }));
     const deleteAction = screen.getByRole("menuitem", { name: "Delete Area" });
@@ -617,7 +678,7 @@ describe("Control renderer routing", () => {
         areaId: localArea.id,
         repositoryId: localJjRepository.id,
         tab: "overview",
-        workspaceId: null,
+        workspaceId: localWorkspace.id,
         path: null
       });
     });
@@ -644,7 +705,7 @@ describe("Control renderer routing", () => {
         areaId: localArea.id,
         repositoryId: localJjRepository.id,
         tab: "code",
-        workspaceId: null,
+        workspaceId: localWorkspace.id,
         path: null
       })
     );
@@ -654,7 +715,7 @@ describe("Control renderer routing", () => {
       expect(getFileContent).toHaveBeenCalledWith({
         areaId: localArea.id,
         repositoryId: localJjRepository.id,
-        workspaceId: null,
+        workspaceId: localWorkspace.id,
         path: "logo.png"
       })
     );
@@ -664,7 +725,7 @@ describe("Control renderer routing", () => {
         areaId: localArea.id,
         repositoryId: localJjRepository.id,
         tab: "code",
-        workspaceId: null,
+        workspaceId: localWorkspace.id,
         path: "logo.png"
       })
     );
@@ -677,7 +738,7 @@ describe("Control renderer routing", () => {
         areaId: localArea.id,
         repositoryId: localJjRepository.id,
         tab: "overview",
-        workspaceId: null,
+        workspaceId: localWorkspace.id,
         path: "logo.png"
       })
     );
@@ -688,7 +749,7 @@ describe("Control renderer routing", () => {
         areaId: localArea.id,
         repositoryId: localJjRepository.id,
         tab: "code",
-        workspaceId: null,
+        workspaceId: localWorkspace.id,
         path: "logo.png"
       })
     );
@@ -861,7 +922,8 @@ describe("Control renderer routing", () => {
         repositoryId: localGitRepository.id,
         workspaceId: null,
         state: "open",
-        limit: 20
+        limit: 20,
+        cacheOnly: false
       })
     );
 
@@ -873,7 +935,8 @@ describe("Control renderer routing", () => {
         repositoryId: localGitRepository.id,
         workspaceId: null,
         state: "open",
-        limit: 20
+        limit: 20,
+        cacheOnly: false
       })
     );
 
@@ -884,12 +947,70 @@ describe("Control renderer routing", () => {
         areaId: localArea.id,
         repositoryId: localGitRepository.id,
         workspaceId: null,
-        limit: 20
+        limit: 20,
+        cacheOnly: false
       })
     );
     expect(githubListIssues).not.toHaveBeenCalled();
     expect(githubListPullRequests).not.toHaveBeenCalled();
     expect(githubListActions).not.toHaveBeenCalled();
+  });
+
+  it("uses cache-only reads for connected local repository GitHub tabs before authentication", async () => {
+    const listGitHubIssues = vi.fn<ControlApi["areas"]["listGitHubIssues"]>(async () => ({
+      items: mockIssues,
+      availability: { status: "available", message: null }
+    }));
+
+    useUiStore.setState({
+      ...defaultUiState,
+      selectedAreaId: localArea.id,
+      route: {
+        kind: "localRepository",
+        areaId: localArea.id,
+        repositoryId: localGitRepository.id,
+        workspaceId: null,
+        tab: "issues",
+        path: null
+      }
+    });
+    renderControl({
+      ...makeApi(),
+      getAppState: async () => ({
+        ...mockAppState,
+        github: {
+          available: true,
+          authenticated: false,
+          signInConfigured: true,
+          user: null,
+          error: null
+        },
+        viewer: null
+      }),
+      areas: {
+        ...mockControlApi.areas,
+        listAreas: async () => [
+          { ...githubArea, selected: false },
+          { ...localArea, selected: true }
+        ],
+        listRepositories: async () => [localGitRepository],
+        getRepository: async () => makeLocalRepositoryDetail(localGitRepository),
+        listWorkspaces: async () => [],
+        listGitHubIssues
+      }
+    });
+
+    expect(await screen.findByText("#1199 Compiler crash in async closure")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(listGitHubIssues).toHaveBeenCalledWith({
+        areaId: localArea.id,
+        repositoryId: localGitRepository.id,
+        workspaceId: null,
+        state: "open",
+        limit: 20,
+        cacheOnly: true
+      })
+    );
   });
 
   it("pins the current repository from repository detail without using a GitHub mutation", async () => {
@@ -1033,6 +1154,93 @@ describe("Control renderer routing", () => {
         line: null
       });
     });
+  });
+
+  it("opens local file-path command palette results in the active workspace", async () => {
+    const recordRecentItem = vi.fn<ControlApi["recordRecentItem"]>(async () => []);
+    const searchFilePaths = vi.fn<ControlApi["areas"]["searchFilePaths"]>(async (input) => ({
+      areaId: input.areaId,
+      repositoryId: input.repositoryId,
+      workspaceId: input.workspaceId ?? null,
+      query: input.query,
+      matches: [
+        {
+          name: "README.md",
+          path: "docs/README.md",
+          type: "file",
+          size: 128,
+          updatedAt: null
+        }
+      ],
+      availability: {
+        status: "partial",
+        message: "Scan cap reached.",
+        scannedEntries: 200,
+        truncated: true,
+        timedOut: false
+      }
+    }));
+
+    useUiStore.setState({
+      ...defaultUiState,
+      selectedAreaId: localArea.id,
+      route: {
+        kind: "localRepository",
+        areaId: localArea.id,
+        repositoryId: localJjRepository.id,
+        workspaceId: localWorkspace.id,
+        tab: "overview",
+        path: null
+      }
+    });
+    renderControl({
+      ...makeApi(),
+      recordRecentItem,
+      areas: {
+        ...mockControlApi.areas,
+        listAreas: async () => [
+          { ...githubArea, selected: false },
+          { ...localArea, selected: true }
+        ],
+        listRepositories: async () => [localJjRepository],
+        getRepository: async () => makeLocalRepositoryDetail(localJjRepository),
+        listWorkspaces: async () => [localWorkspace],
+        searchFilePaths
+      }
+    });
+
+    const palette = await openCommandPalette();
+    await userEvent.type(within(palette).getByLabelText("Command palette search"), "read");
+
+    expect(await within(palette).findByText("Scan cap reached. Scanned 200 entries.")).toBeInTheDocument();
+    await userEvent.click(within(palette).getByRole("option", { name: /README\.md.*docs\/README\.md/i }));
+
+    await waitFor(() => {
+      expect(searchFilePaths).toHaveBeenLastCalledWith({
+        areaId: localArea.id,
+        repositoryId: localJjRepository.id,
+        workspaceId: localWorkspace.id,
+        query: "read",
+        limit: 8
+      });
+      expect(useUiStore.getState().route).toEqual({
+        kind: "localRepository",
+        areaId: localArea.id,
+        repositoryId: localJjRepository.id,
+        workspaceId: localWorkspace.id,
+        tab: "code",
+        path: "docs/README.md"
+      });
+    });
+    expect(recordRecentItem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "file",
+        provider: "local",
+        itemKey: `${localArea.id}:${localJjRepository.id}:${localWorkspace.id}:docs/README.md`,
+        metadata: { path: "docs/README.md", entryType: "file" }
+      }),
+      expect.anything()
+    );
   });
 
   it("records local recents when issues pull requests and workflow runs are selected", async () => {
@@ -1437,7 +1645,10 @@ describe("Control renderer routing", () => {
       ...defaultUiState,
       route: { kind: "repository", nameWithOwner: "apple/swift", tab: "code" }
     });
-    renderControl({ ...makeApi(), openExternal });
+    renderControl({
+      ...makeApi(),
+      openExternal
+    });
 
     await openCommandPalette();
     let palette = await screen.findByRole("dialog", { name: "Command palette" });
@@ -1607,7 +1818,10 @@ describe("Control renderer routing", () => {
       route: { kind: "repository", nameWithOwner: "apple/swift", tab: "code" }
     });
 
-    renderControl({ ...makeApi(), openExternal });
+    renderControl({
+      ...makeApi(),
+      openExternal
+    });
 
     await userEvent.click(await screen.findByRole("button", { name: "Repository settings" }));
 
@@ -1650,7 +1864,11 @@ describe("Control renderer routing", () => {
       route: { kind: "repository", nameWithOwner: "apple/swift", tab: "agents" }
     });
 
-    renderControl({ ...makeApi(), openExternal });
+    renderControl({
+      ...makeApi(),
+      getAppState: async () => appStateWithRepositoryTabPreferences({ agents: "show" }),
+      openExternal
+    });
 
     expect(
       await screen.findByRole("heading", { name: "Agent workflows open in Control" })
@@ -1704,7 +1922,10 @@ describe("Control renderer routing", () => {
       route: { kind: "repository", nameWithOwner: "apple/swift", tab: "wiki" }
     });
 
-    renderControl(makeApi({ getRepository }));
+    renderControl({
+      ...makeApi({ getRepository }),
+      getAppState: async () => appStateWithRepositoryTabPreferences({ wiki: "show" })
+    });
 
     expect((await screen.findAllByText("Wiki is disabled for this repository.")).length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: /New wiki page/i })).toBeDisabled();
@@ -1787,6 +2008,36 @@ describe("Control renderer routing", () => {
     expect(screen.queryByLabelText("GitHub OAuth client ID")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("GitHub OAuth client secret")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign in with GitHub" })).toBeInTheDocument();
+  });
+
+  it("applies resolved theme attributes to the app shell", async () => {
+    useUiStore.setState(defaultUiState);
+    renderControl({
+      ...makeApi(),
+      getAppState: async () => ({
+        ...mockAppState,
+        settings: {
+          ...mockAppState.settings,
+          theme: {
+            mode: "dark",
+            preset: "control-high-contrast-dark",
+            accent: "purple"
+          }
+        }
+      })
+    });
+
+    expect(await screen.findByRole("heading", { name: "Latest repository activity" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(document.querySelector(".app-shell")).toMatchObject({
+        dataset: {
+          themeMode: "dark",
+          colorScheme: "dark",
+          themePreset: "control-high-contrast-dark",
+          accent: "purple"
+        }
+      });
+    });
   });
 
   it("shows app setup state when GitHub sign-in is not configured", async () => {
@@ -2422,9 +2673,13 @@ describe("Control renderer routing", () => {
       path: input.path,
       name: input.path.split("/").pop() ?? input.path,
       ref: input.ref ?? "main",
+      kind: "text",
       content: "# README.md\n\nLoaded in Control.",
+      size: 29,
+      encoding: "utf-8",
       htmlUrl: `https://github.com/apple/swift/blob/main/${input.path}`,
       downloadUrl: `https://raw.githubusercontent.com/apple/swift/main/${input.path}`,
+      message: null,
       lastCommitSha: null,
       lastCommitMessage: null,
       lastCommitAuthorLogin: null,
@@ -2656,6 +2911,7 @@ describe("Control renderer routing", () => {
     );
 
     await userEvent.click(screen.getByRole("button", { name: /^Pull requests/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /#516 by slightbug/i }));
     expect(await screen.findByText("Merge unavailable: Pull request is already merged.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Merge pull request" })).toBeDisabled();
 
@@ -3279,6 +3535,92 @@ describe("Control renderer routing", () => {
     expect(confirm).toHaveBeenCalledWith("Run Rerun workflow job on apple/swift?");
   });
 
+  it("loads focused workflow run detail when the run is absent from the loaded list", async () => {
+    const listActionsWithStatus = vi.fn<GitHubTestApi["listActionsWithStatus"]>(async () => ({
+      items: [],
+      availability: { status: "available", message: null }
+    }));
+    const getWorkflowRunDetailWithStatus = vi.fn<GitHubTestApi["getWorkflowRunDetailWithStatus"]>(
+      async (input) => ({
+        detail: {
+          ...mockWorkflowRunDetail,
+          id: input.runId,
+          displayTitle: "Direct workflow run"
+        },
+        availability: { status: "available", message: null }
+      })
+    );
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "actions", workflowRunId: 99123 }
+    });
+    renderControl(makeApi({ listActionsWithStatus, getWorkflowRunDetailWithStatus }));
+
+    expect(await screen.findByRole("heading", { name: "Direct workflow run" })).toBeInTheDocument();
+    expect(getWorkflowRunDetailWithStatus).toHaveBeenCalledWith({
+      owner: "apple",
+      repo: "swift",
+      runId: 99123,
+      cacheOnly: false
+    });
+  });
+
+  it("shows hidden repository route tabs without fetching the hidden surface until the tab is shown", async () => {
+    const updateSettings = vi.fn<ControlApi["updateSettings"]>(async (settings) => ({
+      ...mockAppState.settings,
+      ...settings
+    }));
+    const listDiscussionsWithStatus = vi.fn<GitHubTestApi["listDiscussionsWithStatus"]>(async () => ({
+      items: mockDiscussions,
+      availability: { status: "available", message: null }
+    }));
+    const repositoryWithoutDiscussions: RepositoryDetail = {
+      ...mockRepository,
+      counts: {
+        ...mockRepository.counts,
+        discussions: 0
+      },
+      administration: {
+        ...mockRepository.administration,
+        features: {
+          ...mockRepository.administration.features,
+          discussions: false
+        }
+      }
+    };
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: {
+        kind: "repository",
+        nameWithOwner: "apple/swift",
+        tab: "discussions",
+        discussionNumber: 42
+      }
+    });
+    renderControl({
+      ...makeApi({
+        getRepository: async () => repositoryWithoutDiscussions,
+        listDiscussionsWithStatus
+      }),
+      updateSettings
+    });
+
+    expect(await screen.findByRole("heading", { name: "Discussions is hidden" })).toBeInTheDocument();
+    expect(listDiscussionsWithStatus).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Show this tab" }));
+
+    await waitFor(() =>
+      expect(updateSettings).toHaveBeenCalledWith({
+        repositoryTabPreferences: {
+          discussions: "show"
+        }
+      })
+    );
+  });
+
   it("renders repository discussions in-app with filtering and external fallback", async () => {
     const listDiscussionsWithStatus = vi.fn<GitHubTestApi["listDiscussionsWithStatus"]>(async () => ({
       items: mockDiscussions,
@@ -3421,6 +3763,7 @@ describe("Control renderer routing", () => {
         listCodeScanningAlerts,
         listSecretScanningAlerts
       }),
+      getAppState: async () => appStateWithRepositoryTabPreferences({ securityQuality: "show" }),
       openExternal
     });
 
@@ -3504,7 +3847,10 @@ describe("Control renderer routing", () => {
       ...defaultUiState,
       route: { kind: "repository", nameWithOwner: "apple/swift", tab: "securityQuality" }
     });
-    renderControl(makeApi({ listDependabotAlerts }));
+    renderControl({
+      ...makeApi({ listDependabotAlerts }),
+      getAppState: async () => appStateWithRepositoryTabPreferences({ securityQuality: "show" })
+    });
 
     expect(
       await screen.findByText(
@@ -3524,7 +3870,10 @@ describe("Control renderer routing", () => {
       ...defaultUiState,
       route: { kind: "repository", nameWithOwner: "apple/swift", tab: "securityQuality" }
     });
-    renderControl(makeApi({ listCodeScanningAlerts }));
+    renderControl({
+      ...makeApi({ listCodeScanningAlerts }),
+      getAppState: async () => appStateWithRepositoryTabPreferences({ securityQuality: "show" })
+    });
 
     expect(
       await screen.findByText(
@@ -3544,7 +3893,10 @@ describe("Control renderer routing", () => {
       ...defaultUiState,
       route: { kind: "repository", nameWithOwner: "apple/swift", tab: "securityQuality" }
     });
-    renderControl(makeApi({ listSecretScanningAlerts }));
+    renderControl({
+      ...makeApi({ listSecretScanningAlerts }),
+      getAppState: async () => appStateWithRepositoryTabPreferences({ securityQuality: "show" })
+    });
 
     expect(
       await screen.findByText(
@@ -3698,7 +4050,7 @@ describe("Control renderer routing", () => {
 
     expect(await within(popover).findByText("Local repositories")).toBeInTheDocument();
     expect(within(popover).getByText("GitHub search")).toBeInTheDocument();
-    expect(within(popover).getByText("Areas")).toBeInTheDocument();
+    expect(within(popover).getByText("Area repositories")).toBeInTheDocument();
     expect(within(popover).getByRole("button", { name: /control\/control/i })).toBeInTheDocument();
     expect(within(popover).getAllByRole("button", { name: /NarukeAlpha\/control/i })).toHaveLength(3);
     const duplicateAreaResults = within(popover).getAllByRole("button", {

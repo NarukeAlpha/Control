@@ -1,6 +1,11 @@
 import type { JSX } from "react";
 
-import type { GitHubAction, GitHubMutationFields, GitHubMutationInput } from "@shared/github";
+import type {
+  GitHubAction,
+  GitHubMutationFields,
+  GitHubMutationInput,
+  RepositoryTabPreferenceKey
+} from "@shared/github";
 import { CodeBrowserPage } from "../code-browser/CodeBrowserPage";
 import { RepositoryContextProvider } from "../repository/RepositoryContext";
 import { RepositoryPage } from "../repository/RepositoryPage";
@@ -32,6 +37,7 @@ interface RepositoryRouteSectionProps {
   repositoryPinError: Error | null;
   isRepositoryPinned(nameWithOwner: string): boolean;
   toggleRepositoryPin(nameWithOwner: string): void;
+  onShowRepositoryTab(tab: RepositoryTabPreferenceKey): void;
   onOpenExternal(url: string): void;
 }
 
@@ -46,6 +52,7 @@ export function RepositoryRouteSection({
   repositoryPinError,
   isRepositoryPinned,
   toggleRepositoryPin,
+  onShowRepositoryTab,
   onOpenExternal
 }: RepositoryRouteSectionProps): JSX.Element | null {
   const {
@@ -58,6 +65,7 @@ export function RepositoryRouteSection({
     contentsRef,
     repository,
     repositoryDetail,
+    repositoryTabVisibility,
     repositoryAvailabilityMessage,
     branches,
     tags,
@@ -65,7 +73,6 @@ export function RepositoryRouteSection({
     tagItems,
     refsAvailabilityMessage,
     refsError,
-    codeTabQueries,
     codeBrowserQueries,
     releases,
     releaseItems,
@@ -93,11 +100,8 @@ export function RepositoryRouteSection({
     repositorySecurityAdvisoriesLimit,
     repositoryCommitHistoryLimit,
     fileCommitHistoryLimit,
-    fileBlameRangeLimit,
     expandActiveRepositoryRefs,
-    expandRepositoryCommitHistory,
     expandFileCommitHistory,
-    expandFileBlamePreview,
     expandActiveRepositoryContributors,
     expandActiveRepositoryForks,
     expandActiveRepositoryAccess,
@@ -110,11 +114,9 @@ export function RepositoryRouteSection({
     expandActiveRepositoryPullRequests,
     expandActiveRepositorySecurityList
   } = routeState.limits;
-  const { repositoryCommits, repositoryCommitItems, repositoryCommitsAvailability } = codeTabQueries;
   const {
     codeBrowserContents,
     fileContent,
-    fileBlame,
     fileCommits,
     contentItems,
     contentsAvailability,
@@ -129,29 +131,17 @@ export function RepositoryRouteSection({
   const repositoryRightRail = isRepositoryRoute ? (
     <RightRail
       repository={repositoryDetail ?? undefined}
-      selectedRef={contentsRef}
-      commits={repositoryCommitItems}
-      commitsLimit={repositoryCommitHistoryLimit}
-      commitsLoading={repositoryCommits.isLoading || repositoryCommits.isFetching}
-      commitsError={repositoryCommits.error}
-      commitsAvailability={repositoryCommitsAvailability}
       releases={releaseItems}
       releasesLoading={releases.isLoading || releases.isFetching}
       releasesAvailability={releasesAvailability}
       releasesError={releases.error}
+      showReleases={repositoryTabVisibility.queryGates.releases}
       contributors={contributorItems}
       contributorsLoading={contributors.isLoading || contributors.isFetching}
       contributorsAvailability={contributorsAvailability}
       contributorsError={contributors.error}
-      onExpandCommits={expandRepositoryCommitHistory}
-      onOpenCommit={(commit) =>
-        navigation.openCommitInApp({
-          nameWithOwner: effectiveRepository,
-          commit,
-          path: "",
-          entryType: "dir"
-        })
-      }
+      showContributors={repositoryTabVisibility.queryGates.contributors}
+      showSettings={repositoryTabVisibility.queryGates.settings}
       onOpenReleasesTab={() => navigation.selectRepositoryTabInApp(effectiveRepository, "releases")}
       onOpenContributorsTab={() => navigation.selectRepositoryTabInApp(effectiveRepository, "contributors")}
       onOpenSettingsTab={() => navigation.selectRepositoryTabInApp(effectiveRepository, "settings")}
@@ -211,6 +201,7 @@ export function RepositoryRouteSection({
             pinBusy={repositoryPinBusy}
             pinError={repositoryPinError}
             error={repository.error}
+            tabVisibility={repositoryTabVisibility}
             onOpenCodeBrowser={(entry) =>
               navigation.openCodeBrowserInApp(
                 effectiveRepository,
@@ -244,6 +235,7 @@ export function RepositoryRouteSection({
             onRefresh={() => refreshRepositorySurface()}
             onOpenFileFinder={dialogs.openFileFinder}
             onSelectTab={(tab) => navigation.selectRepositoryTabInApp(effectiveRepository, tab)}
+            onShowHiddenTab={onShowRepositoryTab}
             onOpenFilteredSurface={(tab, filter) =>
               navigation.openFilteredRepositorySurfaceInApp(effectiveRepository, tab, filter)
             }
@@ -337,22 +329,12 @@ export function RepositoryRouteSection({
             fileLoading={fileContent.isLoading || fileContent.isFetching}
             fileError={fileContent.error}
             fileAvailabilityMessage={fileContentAvailabilityMessage}
-            fileBlame={fileBlame.data}
-            fileBlameRangeLimit={fileBlameRangeLimit}
-            fileBlameLoading={fileBlame.isLoading || fileBlame.isFetching}
-            fileBlameError={fileBlame.error}
             commits={fileCommitItems}
             commitsLimit={fileCommitHistoryLimit}
             commitsLoading={fileCommits.isLoading || fileCommits.isFetching}
             commitsError={fileCommits.error}
             commitsAvailability={fileCommitsAvailability}
-            error={
-              repository.error ??
-              codeBrowserContents.error ??
-              fileContent.error ??
-              fileBlame.error ??
-              fileCommits.error
-            }
+            error={repository.error ?? codeBrowserContents.error ?? fileContent.error ?? fileCommits.error}
             onRefresh={() => {
               return Promise.all([refreshRepositoryDetailNow(), refreshCodeBrowserNow()]);
             }}
@@ -397,7 +379,6 @@ export function RepositoryRouteSection({
                 }
               )
             }
-            onExpandFileBlamePreview={expandFileBlamePreview}
             onExpandCommits={expandFileCommitHistory}
             onOpenExternal={onOpenExternal}
           />

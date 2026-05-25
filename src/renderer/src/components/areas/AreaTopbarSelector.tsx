@@ -44,7 +44,7 @@ export function AreaTopbarSelector({
       <button
         className="titlebar-provider-button area-topbar-button"
         type="button"
-        aria-label="Select Area"
+        aria-label={`Select Area: ${label}`}
         aria-expanded={open}
         aria-haspopup="menu"
         onClick={() => setOpen((current) => !current)}

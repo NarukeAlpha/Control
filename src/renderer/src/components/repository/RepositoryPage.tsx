@@ -18,6 +18,7 @@ import type {
   RepoEntry,
   RepositoryCollaboratorSummary,
   RepositoryDetail,
+  RepositoryTabPreferenceKey,
   RepositoryRef,
   TeamSummary,
   WorkflowRunArtifactSummary,
@@ -42,7 +43,8 @@ import { ReleasesTab } from "./releases/ReleasesTab";
 import { SecurityQualityTab } from "./security/SecurityQualityTab";
 import { RepositorySettingsTab } from "./settings/RepositorySettingsTab";
 import { WikiTab } from "./wiki/WikiTab";
-import { repoTabs } from "./repositoryTabs";
+import type { RepositoryTabDescriptor } from "./repositoryTabs";
+import { isRepositoryTabPreferenceKey, type RepositoryTabVisibilityResult } from "./repositoryTabVisibility";
 import { getRepositoryCounts, githubActionLabel } from "./repositoryUi";
 
 type PullRequestLinkedIssue =
@@ -238,6 +240,7 @@ export function RepositoryPage({
   pinBusy,
   pinError,
   error,
+  tabVisibility,
   onOpenCodeBrowser,
   onOpenReleaseTarget,
   onOpenPullRequestCommit,
@@ -252,6 +255,7 @@ export function RepositoryPage({
   onRefresh,
   onOpenFileFinder,
   onSelectTab,
+  onShowHiddenTab,
   onOpenFilteredSurface,
   onSelectIssue,
   onSelectPullRequest,
@@ -285,6 +289,7 @@ export function RepositoryPage({
   pinBusy: boolean;
   pinError: Error | null;
   error: Error | null;
+  tabVisibility: RepositoryTabVisibilityResult;
   onOpenCodeBrowser(entry: RepoEntry): void;
   onOpenReleaseTarget(ref: string): void;
   onOpenPullRequestCommit(
@@ -321,6 +326,7 @@ export function RepositoryPage({
   onRefresh(): Promise<void> | void;
   onOpenFileFinder(): void;
   onSelectTab(tab: RepositoryTab): void;
+  onShowHiddenTab(tab: RepositoryTabPreferenceKey): void;
   onOpenFilteredSurface(tab: "issues" | "pulls" | "actions", filter: string): void;
   onSelectIssue(issue: IssueSummary): void;
   onSelectPullRequest(pullRequest: PullRequestSummary): void;
@@ -392,6 +398,11 @@ export function RepositoryPage({
   } = mutation;
   const route = useUiStore((state) => state.route);
   const tab = route.kind === "repository" ? route.tab : "code";
+  const routeOnlyTab = tabVisibility.routeOnlyTab;
+  const navigationTabs: RepositoryTabDescriptor[] = routeOnlyTab
+    ? [...tabVisibility.tabs, routeOnlyTab]
+    : tabVisibility.tabs;
+  const showingHiddenRouteOnlyTab = Boolean(routeOnlyTab && routeOnlyTab.key === tab);
   const focusedIssueNumber = route.kind === "repository" ? (route.issueNumber ?? null) : null;
   const focusedPullNumber = route.kind === "repository" ? (route.pullNumber ?? null) : null;
   const focusedDiscussionNumber = route.kind === "repository" ? (route.discussionNumber ?? null) : null;
@@ -496,7 +507,6 @@ export function RepositoryPage({
             </h1>
             <span className="visibility-pill">{repo.visibility.toLowerCase()}</span>
           </div>
-          <p>{repo.description ?? "No repository description."}</p>
           {repo.isFork && (
             <div className="fork-banner">
               <GitFork size={15} />
@@ -573,6 +583,9 @@ export function RepositoryPage({
           )}
         </div>
         <div className="repo-action-row">
+          <button type="button" title="Updated repository data" onClick={() => void onRefresh()}>
+            <RefreshCw size={16} /> Refresh {repo.nameWithOwner}
+          </button>
           <button
             className={pinned ? "selected-action" : ""}
             type="button"
@@ -612,8 +625,8 @@ export function RepositoryPage({
             <Star size={17} /> {viewerState.isStarred ? "Starred" : "Star"}{" "}
             <span>{formatCompactNumber(counts.stars)}</span>
           </button>
-          <button type="button" onClick={() => onOpenExternal(repo.htmlUrl)} title="Open on GitHub fallback">
-            <ExternalLink size={16} /> GitHub fallback
+          <button type="button" onClick={() => onOpenExternal(repo.htmlUrl)} title="Open on GitHub">
+            <ExternalLink size={16} /> GitHub
           </button>
         </div>
         {(pinDisabledReason || watchDisabledReason || forkDisabledReason || starDisabledReason) && (
@@ -660,17 +673,25 @@ export function RepositoryPage({
       )}
 
       <nav className="repo-tabs">
-        {repoTabs.map((item) => {
+        {navigationTabs.map((item) => {
           const Icon = item.icon;
           return (
             <button
-              className={tab === item.key ? "active" : ""}
+              className={[tab === item.key ? "active" : "", item.routeOnly ? "route-only" : ""]
+                .filter(Boolean)
+                .join(" ")}
               key={item.key}
               type="button"
               onClick={() => onSelectTab(item.key)}
+              title={
+                item.routeOnly
+                  ? (item.hiddenReason ?? "This tab is hidden by repository tab settings.")
+                  : undefined
+              }
             >
               <Icon size={16} />
               {item.label}
+              {item.routeOnly && <span>hidden</span>}
               {tabCounts[item.key] !== undefined && (
                 <span>{formatCompactNumber(tabCounts[item.key] ?? 0)}</span>
               )}
@@ -679,7 +700,31 @@ export function RepositoryPage({
         })}
       </nav>
 
-      {tab === "code" && (
+      {showingHiddenRouteOnlyTab && routeOnlyTab && (
+        <section className="table-panel github-surface hidden-repository-tab-panel">
+          <div>
+            <h2>{routeOnlyTab.label} is hidden</h2>
+            <p>{routeOnlyTab.hiddenReason ?? "This repository tab is hidden by your tab preferences."}</p>
+          </div>
+          <div className="table-action-row">
+            <button
+              type="button"
+              onClick={() => {
+                if (isRepositoryTabPreferenceKey(routeOnlyTab.key)) {
+                  onShowHiddenTab(routeOnlyTab.key);
+                }
+              }}
+            >
+              Show this tab
+            </button>
+            <button type="button" onClick={() => onSelectTab("code")}>
+              Back to Code
+            </button>
+          </div>
+        </section>
+      )}
+
+      {!showingHiddenRouteOnlyTab && tab === "code" && (
         <CodeTab
           repository={repo}
           githubReady={githubReady}
@@ -693,7 +738,7 @@ export function RepositoryPage({
           onExpandRefs={onExpandRefs}
         />
       )}
-      {tab === "issues" && (
+      {!showingHiddenRouteOnlyTab && tab === "issues" && (
         <IssuesTab
           key={`issues-${focusedIssueNumber ?? issueComposer ?? (issueFilter || "default")}`}
           repository={repo}
@@ -712,7 +757,7 @@ export function RepositoryPage({
           onExpandIssues={onExpandIssues}
         />
       )}
-      {tab === "pulls" && (
+      {!showingHiddenRouteOnlyTab && tab === "pulls" && (
         <PullRequestsTab
           key={`pulls-${focusedPullNumber ?? pullComposer ?? (pullFilter || "default")}`}
           repository={repo}
@@ -741,7 +786,7 @@ export function RepositoryPage({
           onExpandPullRequests={onExpandPullRequests}
         />
       )}
-      {tab === "discussions" && (
+      {!showingHiddenRouteOnlyTab && tab === "discussions" && (
         <DiscussionsTab
           key={`discussions-${focusedDiscussionNumber ?? "default"}`}
           repository={repo}
@@ -758,7 +803,7 @@ export function RepositoryPage({
           onMutate={onMutate}
         />
       )}
-      {tab === "projects" && (
+      {!showingHiddenRouteOnlyTab && tab === "projects" && (
         <ProjectsTab
           key={`projects-${focusedProjectId ?? "default"}`}
           repository={repo}
@@ -775,7 +820,7 @@ export function RepositoryPage({
           onMutate={onMutate}
         />
       )}
-      {tab === "releases" && (
+      {!showingHiddenRouteOnlyTab && tab === "releases" && (
         <ReleasesTab
           key={`releases-${
             focusedReleaseId ?? focusedReleaseTagName ?? releaseComposer ?? "default"
@@ -801,7 +846,7 @@ export function RepositoryPage({
           onExpandReleases={onExpandReleases}
         />
       )}
-      {tab === "actions" && (
+      {!showingHiddenRouteOnlyTab && tab === "actions" && (
         <ActionsTab
           key={`actions-${focusedWorkflowRunId ?? workflowComposer ?? (workflowFilter || "default")}-${
             focusedWorkflowArtifactId ?? "artifact-default"
@@ -833,7 +878,7 @@ export function RepositoryPage({
           onExpandWorkflowDefinitions={onExpandWorkflowDefinitions}
         />
       )}
-      {tab === "contributors" && (
+      {!showingHiddenRouteOnlyTab && tab === "contributors" && (
         <ContributorsTab
           key={`contributors-${focusedContributorLogin ?? "default"}`}
           repository={repo}
@@ -846,7 +891,7 @@ export function RepositoryPage({
           onExpandContributors={onExpandContributors}
         />
       )}
-      {tab === "agents" && (
+      {!showingHiddenRouteOnlyTab && tab === "agents" && (
         <AgentsTab
           repository={repo}
           githubReady={githubReady}
@@ -860,7 +905,7 @@ export function RepositoryPage({
           onSelectWorkflowRun={onSelectWorkflowRun}
         />
       )}
-      {tab === "wiki" && (
+      {!showingHiddenRouteOnlyTab && tab === "wiki" && (
         <WikiTab
           key={`wiki-${focusedWikiPagePath ?? "default"}`}
           repository={repo}
@@ -875,7 +920,7 @@ export function RepositoryPage({
           onSelectWikiPage={onSelectWikiPage}
         />
       )}
-      {tab === "securityQuality" && (
+      {!showingHiddenRouteOnlyTab && tab === "securityQuality" && (
         <SecurityQualityTab
           key={`security-quality-${focusedSecurityItemKind ?? "default"}-${focusedSecurityItemId ?? "default"}`}
           repository={repo}
@@ -905,7 +950,7 @@ export function RepositoryPage({
           onMutate={onMutate}
         />
       )}
-      {tab === "settings" && (
+      {!showingHiddenRouteOnlyTab && tab === "settings" && (
         <RepositorySettingsTab
           key={`settings-${repo.id}-${repo.description ?? ""}-${repo.homepageUrl ?? ""}-${JSON.stringify(
             repo.administration.features

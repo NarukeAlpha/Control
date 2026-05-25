@@ -408,6 +408,7 @@ export const mockRepository: RepositoryDetail = {
     isArchived: false,
     isDisabled: false
   },
+  administrationAvailability: { status: "available", message: null },
   administration: {
     visibility: "PUBLIC",
     defaultBranch: "main",

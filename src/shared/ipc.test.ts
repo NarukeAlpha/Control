@@ -14,7 +14,13 @@ import {
   type PullRequestOverviewResult,
   type PullRequestReviewThreadsResult
 } from "./github";
-import { githubIpcRouteChannels, ipcChannels, type GitHubIpcApi, type JsonSerializable } from "./ipc";
+import {
+  githubIpcRouteChannels,
+  ipcChannels,
+  type ControlApi,
+  type GitHubIpcApi,
+  type JsonSerializable
+} from "./ipc";
 
 type Equal<TLeft, TRight> =
   (<T>() => T extends TLeft ? 1 : 2) extends <T>() => T extends TRight ? 1 : 2 ? true : false;
@@ -89,6 +95,32 @@ type _PullRequestSubresourceResultsAreJsonSerializable = Expect<
     true
   >
 >;
+type _AreaFilePathSearchResultIsJsonSerializable = Expect<
+  Equal<
+    JsonSerializable<Awaited<ReturnType<ControlApi["areas"]["searchFilePaths"]>>> extends never
+      ? false
+      : true,
+    true
+  >
+>;
+type _AreaGatewayLifecycleResultIsJsonSerializable = Expect<
+  Equal<
+    JsonSerializable<Awaited<ReturnType<ControlApi["areas"]["restartGateway"]>>> extends never ? false : true,
+    true
+  >
+>;
+type _ControlExportPreviewIsJsonSerializable = Expect<
+  Equal<
+    JsonSerializable<Awaited<ReturnType<ControlApi["previewDataExport"]>>> extends never ? false : true,
+    true
+  >
+>;
+type _ControlImportPreviewIsJsonSerializable = Expect<
+  Equal<
+    JsonSerializable<Awaited<ReturnType<ControlApi["previewDataImport"]>>> extends never ? false : true,
+    true
+  >
+>;
 
 const githubIpcRouteKeys = {
   getViewer: true,
@@ -152,12 +184,23 @@ const githubIpcRouteKeys = {
   getRepositorySecurityPolicy: true,
   getRepositoryCommunityProfile: true,
   listReleasesWithStatus: true,
+  getReleaseDetailWithStatus: true,
   listContributorsWithStatus: true,
   searchWithStatus: true,
   mutate: true
 } satisfies Record<keyof GitHubIpcApi, true>;
 
 describe("GitHubIpcApi route map", () => {
+  it("preserves area file path search channel name", () => {
+    expect(ipcChannels.areaFilePathSearch).toBe("areas:file-path-search");
+  });
+
+  it("preserves explicit gateway lifecycle channel names", () => {
+    expect(ipcChannels.areaRepairGateway).toBe("areas:repair-gateway");
+    expect(ipcChannels.areaRotateGatewayCredentials).toBe("areas:rotate-gateway-credentials");
+    expect(ipcChannels.areaRestartGateway).toBe("areas:restart-gateway");
+  });
+
   it("keeps runtime keys in parity with GitHubIpcApi", () => {
     expect(Object.keys(githubIpcRouteChannels).sort()).toEqual(Object.keys(githubIpcRouteKeys).sort());
   });
@@ -225,6 +268,7 @@ describe("GitHubIpcApi route map", () => {
       getRepositorySecurityPolicy: ipcChannels.githubRepositorySecurityPolicy,
       getRepositoryCommunityProfile: ipcChannels.githubRepositoryCommunityProfile,
       listReleasesWithStatus: ipcChannels.githubReleasesWithStatus,
+      getReleaseDetailWithStatus: ipcChannels.githubReleaseDetailWithStatus,
       listContributorsWithStatus: ipcChannels.githubContributorsWithStatus,
       searchWithStatus: ipcChannels.githubSearchWithStatus,
       mutate: ipcChannels.githubMutate

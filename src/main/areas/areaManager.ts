@@ -6,6 +6,11 @@ import type {
   AreaFileContent,
   AreaFileContentInput,
   AreaFileEntry,
+  AreaFileSearchInput,
+  AreaFileSearchResult,
+  AreaGatewayFailurePhase,
+  AreaGatewayLifecycleInput,
+  AreaGatewayLifecycleResult,
   AreaGatewayOperationInput,
   AreaGatewayOperationPreview,
   AreaGatewayOperationResult,
@@ -43,10 +48,16 @@ import type {
 } from "@shared/github";
 
 import type { GitHubProviderManager } from "../github/provider";
-import type { AreaGatewayRecord, LocalStore } from "../storage";
-import type { GatewayManager } from "./gatewayManager";
+import type {
+  AreaGatewayRecord,
+  AreaRepositoryReadModelReplacement,
+  AreaWorkspaceReadModelReplacement,
+  LocalStore
+} from "../storage";
+import { areaGatewayFailureFromError, type GatewayManager } from "./gatewayManager";
 import { defaultGitHubAreaId } from "./areaIds";
 import { discoverLocalRepositories } from "./localDiscovery";
+import { searchLocalFilePaths } from "./localFileSearch";
 import { readLocalFileContent, listLocalDirectory } from "./localFiles";
 import { readGitRepository } from "./localGit";
 import { readJjRepository } from "./jjAdapter";
@@ -55,6 +66,11 @@ export interface AreaManagerEvents {
   onAreasUpdated(event: { areaId: string | null }): void;
   onAreaRepositoryUpdated(event: { areaId: string; repositoryId: string | null }): void;
   onAreaWorkspaceUpdated(event: { areaId: string; repositoryId: string; workspaceId: string | null }): void;
+}
+
+interface AreaReadModelReplacements {
+  repositories: AreaRepositoryReadModelReplacement[];
+  workspaces: AreaWorkspaceReadModelReplacement[];
 }
 
 export class AreaManager {
@@ -145,7 +161,7 @@ export class AreaManager {
         : input;
     const gatewayChanged = areaUpdateChangesGateway(existing, gateway, normalizedInput);
     if (gatewayChanged && this.gateway) {
-      await this.gateway.stopGateway({ areaId: input.areaId }).catch(() => null);
+      await this.gateway.stopGateway({ areaId: input.areaId });
     }
 
     const area = this.store.updateArea(normalizedInput);
@@ -173,8 +189,11 @@ export class AreaManager {
     return area;
   }
 
-  removeArea(areaId: string): AreaSummary[] {
+  async removeArea(areaId: string): Promise<AreaSummary[]> {
     const existing = this.store.getArea(areaId);
+    if (existing && isGatewayAreaKind(existing.kind) && this.gateway) {
+      await this.gateway.clearAreaGateway(areaId);
+    }
     this.store.removeArea(areaId);
     if (existing?.selected && existing.kind !== "github") {
       const areas = this.store.listAreas();
@@ -220,10 +239,9 @@ export class AreaManager {
       .flatMap((area) => this.store.listAreaRepositories({ areaId: area.id, limit: 500 }))
       .filter((repository) => repositoryMatches(repository, query))
       .slice(0, limit);
-    const workspaces = repositories
-      .flatMap((repository) =>
-        this.store.listAreaWorkspaces({ areaId: repository.areaId, repositoryId: repository.id })
-      )
+    const workspaces = this.store
+      .listAreas()
+      .flatMap((area) => this.store.listAreaWorkspaces({ areaId: area.id }))
       .filter((workspace) => workspaceMatches(workspace, query))
       .slice(0, limit);
     return { areas, repositories, workspaces };
@@ -245,7 +263,7 @@ export class AreaManager {
   }
 
   async listContents(input: AreaContentsInput): Promise<AreaFileEntry[]> {
-    const gatewayClient = this.gatewayClientForArea(input.areaId);
+    const gatewayClient = await this.gatewayClientForArea(input.areaId);
     if (gatewayClient) {
       return gatewayClient.listContents({
         repositoryId: input.repositoryId,
@@ -258,7 +276,7 @@ export class AreaManager {
   }
 
   async getFileContent(input: AreaFileContentInput): Promise<AreaFileContent> {
-    const gatewayClient = this.gatewayClientForArea(input.areaId);
+    const gatewayClient = await this.gatewayClientForArea(input.areaId);
     if (gatewayClient) {
       return gatewayClient.getFileContent({
         repositoryId: input.repositoryId,
@@ -268,6 +286,46 @@ export class AreaManager {
     }
     const rootPath = this.resolveLocalRoot(input);
     return readLocalFileContent(rootPath, input.path);
+  }
+
+  async searchFilePaths(input: AreaFileSearchInput): Promise<AreaFileSearchResult> {
+    const query = input.query.trim();
+    if (!query) {
+      return unavailableFileSearch(input, query, "Enter a file name to search.");
+    }
+
+    const area = this.store.getArea(input.areaId);
+    if (!area) {
+      return unavailableFileSearch(input, query, "Area was not found.");
+    }
+    if (area.kind !== "local") {
+      return unavailableFileSearch(input, query, "Gateway file search is not available yet.");
+    }
+
+    const repository = this.store.getAreaRepository(input);
+    if (!repository?.path) {
+      return unavailableFileSearch(input, query, "Local repository was not found.");
+    }
+
+    let rootPath: string;
+    try {
+      rootPath = this.resolveLocalRoot(input);
+    } catch (error) {
+      return unavailableFileSearch(
+        input,
+        query,
+        error instanceof Error ? error.message : "Local root is unavailable."
+      );
+    }
+
+    return searchLocalFilePaths({
+      areaId: input.areaId,
+      repositoryId: input.repositoryId,
+      workspaceId: input.workspaceId ?? null,
+      rootPath,
+      query,
+      limit: clampFileSearchLimit(input.limit)
+    });
   }
 
   listBranches(input: AreaRefInput): AreaRepositoryDetail["branches"] {
@@ -380,7 +438,7 @@ export class AreaManager {
   }
 
   async getSyncStatus(input: AreaSyncStatusInput): Promise<AreaSyncStatus> {
-    const gatewayClient = this.gatewayClientForArea(input.areaId);
+    const gatewayClient = await this.gatewayClientForArea(input.areaId);
     if (!gatewayClient) {
       return fallbackSyncStatus(input, this.store.getAreaRepository(input));
     }
@@ -391,7 +449,7 @@ export class AreaManager {
   }
 
   async prepareGatewayOperation(input: AreaGatewayOperationInput): Promise<AreaGatewayOperationPreview> {
-    const gatewayClient = this.gatewayClientForArea(input.areaId);
+    const gatewayClient = await this.gatewayClientForArea(input.areaId);
     if (!gatewayClient) {
       throw new Error("This Area does not have a running gateway.");
     }
@@ -399,7 +457,7 @@ export class AreaManager {
   }
 
   async runGatewayOperation(input: AreaGatewayRunOperationInput): Promise<AreaGatewayOperationResult> {
-    const gatewayClient = this.gatewayClientForArea(input.areaId);
+    const gatewayClient = await this.gatewayClientForArea(input.areaId);
     if (!gatewayClient) {
       throw new Error("This Area does not have a running gateway.");
     }
@@ -417,6 +475,33 @@ export class AreaManager {
     return area;
   }
 
+  async repairGateway(input: AreaGatewayLifecycleInput): Promise<AreaGatewayLifecycleResult> {
+    return this.runGatewayLifecycle(input, "verify", async (area) => {
+      if (!this.gateway) {
+        throw new Error("Gateway manager is unavailable.");
+      }
+      await this.gateway.repairGateway(area);
+    });
+  }
+
+  async rotateGatewayCredentials(input: AreaGatewayLifecycleInput): Promise<AreaGatewayLifecycleResult> {
+    return this.runGatewayLifecycle(input, "credential", async (area) => {
+      if (!this.gateway) {
+        throw new Error("Gateway manager is unavailable.");
+      }
+      await this.gateway.rotateGatewayCredentials(area);
+    });
+  }
+
+  async restartGateway(input: AreaGatewayLifecycleInput): Promise<AreaGatewayLifecycleResult> {
+    return this.runGatewayLifecycle(input, "start", async (area) => {
+      if (!this.gateway) {
+        throw new Error("Gateway manager is unavailable.");
+      }
+      await this.gateway.restartGateway(area);
+    });
+  }
+
   private async refreshLocalArea(area: AreaSummary): Promise<AreaSummary> {
     if (!area.rootPath) {
       return area;
@@ -428,57 +513,41 @@ export class AreaManager {
       updatedAt: startedAt
     });
     this.events.onAreasUpdated({ areaId: area.id });
-    this.store.clearAreaWorkspaces(area.id);
-    this.store.clearAreaRepositories(area.id);
 
-    const candidates = await discoverLocalRepositories(area.rootPath);
-    const matchedGitHubAreaId = this.store.getArea(defaultGitHubAreaId) ? defaultGitHubAreaId : null;
-    for (const candidate of candidates) {
-      if (candidate.kind === "jj") {
-        const result = await readJjRepository({
-          areaId: area.id,
-          areaRootPath: area.rootPath,
-          rootPath: candidate.rootPath,
-          matchedGitHubAreaId
-        });
-        this.store.upsertAreaRepository(result.detail, result.detail);
-        for (const workspace of result.workspaces) {
-          this.store.upsertAreaWorkspace(workspace, {
-            ...workspace,
-            fileTree: [],
-            readme: result.detail.readme,
-            status: result.detail.status
-          });
-          this.events.onAreaWorkspaceUpdated({
-            areaId: area.id,
-            repositoryId: result.detail.id,
-            workspaceId: workspace.id
-          });
-        }
-        this.events.onAreaRepositoryUpdated({ areaId: area.id, repositoryId: result.detail.id });
-        continue;
-      }
-
-      const detail = await readGitRepository({
+    try {
+      const replacements = await this.collectLocalAreaReadModels(area);
+      this.store.replaceAreaReadModels({
         areaId: area.id,
-        areaRootPath: area.rootPath,
-        rootPath: candidate.rootPath,
-        matchedGitHubAreaId
+        repositories: replacements.repositories,
+        workspaces: replacements.workspaces
       });
-      this.store.upsertAreaRepository(detail, detail);
-      this.events.onAreaRepositoryUpdated({ areaId: area.id, repositoryId: detail.id });
-    }
+      this.events.onAreaRepositoryUpdated({ areaId: area.id, repositoryId: null });
 
-    const finishedAt = new Date().toISOString();
-    const refreshed = {
-      ...area,
-      health: { status: "ready" as const, message: null, checkedAt: finishedAt },
-      repositoryCount: candidates.length,
-      updatedAt: finishedAt
-    };
-    this.store.upsertArea(refreshed);
-    this.events.onAreasUpdated({ areaId: area.id });
-    return this.store.getArea(area.id) ?? refreshed;
+      const finishedAt = new Date().toISOString();
+      const refreshed = {
+        ...area,
+        health: { status: "ready" as const, message: null, checkedAt: finishedAt },
+        repositoryCount: replacements.repositories.length,
+        updatedAt: finishedAt
+      };
+      this.store.upsertArea(refreshed);
+      this.events.onAreasUpdated({ areaId: area.id });
+      return this.store.getArea(area.id) ?? refreshed;
+    } catch (error) {
+      const failedAt = new Date().toISOString();
+      const failed = {
+        ...area,
+        health: {
+          status: "error" as const,
+          message: error instanceof Error ? error.message : "Local Area refresh failed.",
+          checkedAt: failedAt
+        },
+        updatedAt: failedAt
+      };
+      this.store.upsertArea(failed);
+      this.events.onAreasUpdated({ areaId: area.id });
+      return this.store.getArea(area.id) ?? failed;
+    }
   }
 
   private async refreshGatewayArea(area: AreaSummary): Promise<AreaSummary> {
@@ -492,32 +561,33 @@ export class AreaManager {
 
     try {
       const record = await this.gateway?.ensureAreaGateway(area);
-      const client = record ? this.gateway?.getClient(area.id) : null;
+      const client = record ? await this.gateway?.getClient(area.id) : null;
       if (!client) {
         throw new Error("Gateway client is unavailable.");
       }
-      const repositories = await client.listRepositories();
-      this.store.clearAreaWorkspaces(area.id);
-      this.store.clearAreaRepositories(area.id);
-      for (const repository of repositories) {
-        const detail = await client.getRepository(repository.id).catch(() => null);
-        this.store.upsertAreaRepository(repository, detail ?? null);
-        this.events.onAreaRepositoryUpdated({ areaId: area.id, repositoryId: repository.id });
-      }
+      const replacements = await this.collectGatewayAreaReadModels(area.id, client);
+      this.store.replaceAreaReadModels({
+        areaId: area.id,
+        repositories: replacements.repositories,
+        workspaces: replacements.workspaces
+      });
+      this.events.onAreaRepositoryUpdated({ areaId: area.id, repositoryId: null });
       const finishedAt = new Date().toISOString();
       const refreshed = {
         ...area,
         health: { status: "ready" as const, message: null, checkedAt: finishedAt },
-        repositoryCount: repositories.length,
+        repositoryCount: replacements.repositories.length,
         updatedAt: finishedAt
       };
       this.store.upsertArea(refreshed);
       this.events.onAreasUpdated({ areaId: area.id });
       return this.store.getArea(area.id) ?? refreshed;
     } catch (error) {
-      if (area.kind === "local") {
-        return this.refreshLocalArea(area);
+      this.persistGatewayRefreshFailure(area.id, error);
+      if (area.kind === "local" && area.rootPath) {
+        return this.refreshLocalArea(this.store.getArea(area.id) ?? area);
       }
+
       const failedAt = new Date().toISOString();
       const refreshed = {
         ...area,
@@ -532,6 +602,87 @@ export class AreaManager {
       this.events.onAreasUpdated({ areaId: area.id });
       return this.store.getArea(area.id) ?? refreshed;
     }
+  }
+
+  private async collectLocalAreaReadModels(area: AreaSummary): Promise<AreaReadModelReplacements> {
+    if (!area.rootPath) {
+      throw new Error("Local Area requires a root path.");
+    }
+    const candidates = await discoverLocalRepositories(area.rootPath);
+    const matchedGitHubAreaId = this.store.getArea(defaultGitHubAreaId) ? defaultGitHubAreaId : null;
+    const repositories: AreaRepositoryReadModelReplacement[] = [];
+    const workspaces: AreaWorkspaceReadModelReplacement[] = [];
+
+    for (const candidate of candidates) {
+      if (candidate.kind === "jj") {
+        const result = await readJjRepository({
+          areaId: area.id,
+          areaRootPath: area.rootPath,
+          rootPath: candidate.rootPath,
+          matchedGitHubAreaId
+        });
+        repositories.push({ summary: result.detail, detail: result.detail });
+        for (const workspace of result.workspaces) {
+          workspaces.push({
+            summary: workspace,
+            detail: {
+              ...workspace,
+              fileTree: [],
+              readme: result.detail.readme,
+              status: result.detail.status
+            }
+          });
+        }
+        continue;
+      }
+
+      const detail = await readGitRepository({
+        areaId: area.id,
+        areaRootPath: area.rootPath,
+        rootPath: candidate.rootPath,
+        matchedGitHubAreaId
+      });
+      repositories.push({ summary: detail, detail });
+    }
+
+    return { repositories, workspaces };
+  }
+
+  private async collectGatewayAreaReadModels(
+    areaId: string,
+    client: Awaited<ReturnType<GatewayManager["getClient"]>>
+  ): Promise<AreaReadModelReplacements> {
+    if (!client) {
+      throw new Error("Gateway client is unavailable.");
+    }
+    const repositorySummaries = await client.listRepositories();
+    const repositories = await Promise.all(
+      repositorySummaries.map(async (summary) => ({
+        summary,
+        detail: await client.getRepository(summary.id)
+      }))
+    );
+    const workspaces: AreaWorkspaceReadModelReplacement[] = repositories.flatMap((repository) =>
+      (repository.detail?.workspaces ?? []).map((workspace) => ({ summary: workspace, detail: null }))
+    );
+    return {
+      repositories,
+      workspaces: workspaces.filter((workspace) => workspace.summary.areaId === areaId)
+    };
+  }
+
+  private persistGatewayRefreshFailure(areaId: string, error: unknown): void {
+    const record = this.store.getAreaGateway(areaId);
+    if (!record) {
+      return;
+    }
+    this.store.setAreaGateway({
+      ...record,
+      status: "error",
+      failureCode: record.failureCode ?? "gateway-unreachable",
+      message: error instanceof Error ? error.message : "Gateway refresh failed.",
+      updatedAt: new Date().toISOString()
+    });
   }
 
   private resolveLocalRoot(input: AreaRepositoryInput): string {
@@ -565,12 +716,44 @@ export class AreaManager {
     };
   }
 
-  private gatewayClientForArea(areaId: string) {
+  private async gatewayClientForArea(areaId: string) {
     const area = this.store.getArea(areaId);
     if (!area || (area.kind !== "local" && area.kind !== "ssh")) {
       return null;
     }
-    return this.gateway?.getClient(areaId) ?? null;
+    return (await this.gateway?.getClient(areaId)) ?? null;
+  }
+
+  private async runGatewayLifecycle(
+    input: AreaGatewayLifecycleInput,
+    phase: AreaGatewayFailurePhase,
+    action: (area: AreaSummary) => Promise<void>
+  ): Promise<AreaGatewayLifecycleResult> {
+    const area = this.store.getArea(input.areaId);
+    if (!area || (area.kind !== "local" && area.kind !== "ssh")) {
+      return {
+        success: false,
+        failure: areaGatewayFailureFromError(
+          input.areaId,
+          phase,
+          new Error("This Area does not support gateway lifecycle operations.")
+        )
+      };
+    }
+
+    try {
+      await action(area);
+      this.events.onAreasUpdated({ areaId: area.id });
+      return {
+        success: true,
+        summary: this.store.getArea(area.id) ?? area
+      };
+    } catch (error) {
+      return {
+        success: false,
+        failure: areaGatewayFailureFromError(input.areaId, phase, error)
+      };
+    }
   }
 }
 
@@ -579,6 +762,34 @@ function unavailableGitHubEnrichment(): GitHubReadAvailability {
     status: "not_loaded",
     message: "This local repository is not connected to a GitHub Area."
   };
+}
+
+function unavailableFileSearch(
+  input: AreaFileSearchInput,
+  query: string,
+  message: string
+): AreaFileSearchResult {
+  return {
+    areaId: input.areaId,
+    repositoryId: input.repositoryId,
+    workspaceId: input.workspaceId ?? null,
+    query,
+    matches: [],
+    availability: {
+      status: "unavailable",
+      message,
+      scannedEntries: 0,
+      truncated: false,
+      timedOut: false
+    }
+  };
+}
+
+function clampFileSearchLimit(limit: number | undefined): number {
+  if (typeof limit !== "number" || !Number.isFinite(limit) || limit <= 0) {
+    return 30;
+  }
+  return Math.min(50, Math.max(1, Math.trunc(limit)));
 }
 
 function areaMatches(area: AreaSummary, query: string): boolean {

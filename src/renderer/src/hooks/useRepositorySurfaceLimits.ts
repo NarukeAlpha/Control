@@ -1,10 +1,8 @@
 import { useState, type Dispatch, type SetStateAction } from "react";
 
-import { expandedFileBlameRangeLimit } from "../components/repository/FileBlamePanel";
 import { maxCommitHistoryLimit } from "../components/repository/CommitHistoryPanel";
 import { defaultContributorLimit, maxContributorLimit } from "../components/repository/repositoryUi";
 
-const defaultFileBlameRangeLimit = 20;
 const defaultCommitHistoryLimit = 12;
 const defaultRightRailCommitHistoryLimit = 3;
 const defaultRefListLimit = 50;
@@ -51,19 +49,13 @@ function expandLimitForKey(
 
 export function useRepositorySurfaceLimits({
   effectiveRepository,
-  owner,
-  repo,
   repositorySelectedRef,
   codeBrowserRef,
-  contentsRef,
   codeBrowserPath
 }: {
   effectiveRepository: string;
-  owner: string;
-  repo: string;
   repositorySelectedRef: string | null;
   codeBrowserRef: string | null;
-  contentsRef: string | null;
   codeBrowserPath: string;
 }) {
   const [commitHistoryLimits, setCommitHistoryLimits] = useState<Record<string, number>>({});
@@ -85,11 +77,6 @@ export function useRepositorySurfaceLimits({
   const [repositorySecurityListLimits, setRepositorySecurityListLimits] = useState<Record<string, number>>(
     {}
   );
-  const [expandedFileBlameRange, setExpandedFileBlameRange] = useState<{
-    key: string;
-    limit: number;
-  } | null>(null);
-
   const repositoryRefListLimit = repositoryRefListLimits[effectiveRepository] ?? defaultRefListLimit;
   const repositoryContributorLimit =
     repositoryContributorLimits[effectiveRepository] ?? defaultContributorLimit;
@@ -124,12 +111,6 @@ export function useRepositorySurfaceLimits({
   const repositoryCommitHistoryLimit =
     commitHistoryLimits[repositoryCommitHistoryKey] ?? defaultRightRailCommitHistoryLimit;
   const fileCommitHistoryLimit = commitHistoryLimits[fileCommitHistoryKey] ?? defaultCommitHistoryLimit;
-  const fileBlameRangeKey = `${owner}/${repo}:${contentsRef ?? "default"}:${codeBrowserPath}`;
-  const fileBlameRangeLimit =
-    expandedFileBlameRange?.key === fileBlameRangeKey
-      ? expandedFileBlameRange.limit
-      : defaultFileBlameRangeLimit;
-
   const expandActiveRepositoryRefs = (): void => {
     setRepositoryRefListLimits((limits) => {
       if ((limits[effectiveRepository] ?? defaultRefListLimit) >= expandedRefListLimit) {
@@ -160,7 +141,6 @@ export function useRepositorySurfaceLimits({
     repositorySecurityAdvisoriesLimit,
     repositoryCommitHistoryLimit,
     fileCommitHistoryLimit,
-    fileBlameRangeLimit,
     expandActiveRepositoryRefs,
     expandRepositoryCommitHistory: () =>
       expandLimitForKey(
@@ -176,11 +156,6 @@ export function useRepositorySurfaceLimits({
         defaultCommitHistoryLimit,
         maxCommitHistoryLimit
       ),
-    expandFileBlamePreview: () =>
-      setExpandedFileBlameRange({
-        key: fileBlameRangeKey,
-        limit: expandedFileBlameRangeLimit
-      }),
     expandActiveRepositoryContributors: () =>
       expandLimitForKey(
         setRepositoryContributorLimits,

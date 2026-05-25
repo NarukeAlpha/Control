@@ -575,6 +575,13 @@ export function CodeTab({
   const contentsError = contents.error;
   const refsLoading = branches.isLoading || branches.isFetching || tags.isLoading || tags.isFetching;
   const rootMarkdownData = rootMarkdownContent.data ?? null;
+  const rootMarkdownItem = rootMarkdownData?.item ?? null;
+  const rootMarkdownText =
+    rootMarkdownItem?.kind === "text" && rootMarkdownItem.content !== null ? rootMarkdownItem.content : null;
+  const rootMarkdownStateMessage =
+    rootMarkdownItem && rootMarkdownItem.kind !== "text"
+      ? (rootMarkdownItem.message ?? "Root markdown content is unavailable.")
+      : null;
   const rootMarkdownLoading = rootMarkdownContent.isLoading || rootMarkdownContent.isFetching;
   const rootMarkdownError = rootMarkdownContent.error;
   const repositoryUpdatedAt = repositoryActivityDate(repository);
@@ -785,12 +792,14 @@ export function CodeTab({
             ))}
           </div>
           <div className="readme-content root-markdown-preview">
-            {rootMarkdownError && !rootMarkdownData?.item ? (
+            {rootMarkdownError && !rootMarkdownItem ? (
               <div className="error-state">Markdown unavailable: {rootMarkdownError.message}</div>
-            ) : rootMarkdownLoading && !rootMarkdownData?.item ? (
+            ) : rootMarkdownLoading && !rootMarkdownItem ? (
               <div className="loading-state">Loading {selectedRootMarkdownName ?? "markdown"}…</div>
-            ) : rootMarkdownAvailabilityMessage && !rootMarkdownData?.item ? (
+            ) : rootMarkdownAvailabilityMessage && !rootMarkdownItem ? (
               <div className="error-state">{rootMarkdownAvailabilityMessage}</div>
+            ) : rootMarkdownStateMessage ? (
+              <div className="empty-state">{rootMarkdownStateMessage}</div>
             ) : (
               <>
                 {rootMarkdownError && (
@@ -802,7 +811,7 @@ export function CodeTab({
                   </div>
                 )}
                 <MarkdownBody
-                  markdown={rootMarkdownData?.item?.content ?? null}
+                  markdown={rootMarkdownText}
                   emptyText={
                     selectedRootMarkdownName
                       ? `${selectedRootMarkdownName} is empty or could not be rendered.`

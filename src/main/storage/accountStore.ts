@@ -29,3 +29,9 @@ export function readLastAccount<T>(db: StorageDatabase, provider: string): T | n
     return row ? parseStorageJson<T>("accounts.payload", row.payload) : null;
   });
 }
+
+export function deleteAccountRecords(db: StorageDatabase, provider: string): void {
+  db.operation("accounts.delete", () => {
+    db.run("DELETE FROM accounts WHERE provider = ?", provider);
+  });
+}

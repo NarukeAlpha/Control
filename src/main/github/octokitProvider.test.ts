@@ -500,7 +500,32 @@ describe("OctokitProvider query scopes", () => {
   });
 
   it("pins the GitHub REST API version without replacing raw content accepts", async () => {
-    requestMock.mockResolvedValue({ data: "# README" });
+    requestMock.mockImplementation(async (route: string, params: Record<string, unknown>) => {
+      const headers = params.headers as Record<string, string> | undefined;
+      if (
+        route === "GET /repos/{owner}/{repo}/contents/{path}" &&
+        headers?.accept === "application/vnd.github.raw"
+      ) {
+        return { data: "# README" };
+      }
+      if (route === "GET /repos/{owner}/{repo}/contents/{path}") {
+        return {
+          data: {
+            name: "list.md",
+            path: "list.md",
+            type: "file",
+            sha: "blob_sha",
+            size: 8,
+            html_url: "https://github.com/NarukeAlpha/dots/blob/main/list.md",
+            download_url: "https://raw.githubusercontent.com/NarukeAlpha/dots/main/list.md"
+          }
+        };
+      }
+      if (route === "GET /repos/{owner}/{repo}/commits") {
+        return { data: [] };
+      }
+      throw new Error(`Unexpected route ${route}`);
+    });
 
     const provider = new OctokitProvider("gho_test");
     const fileContent = await provider.getFileContent({
@@ -513,12 +538,26 @@ describe("OctokitProvider query scopes", () => {
     expect(requestMock).toHaveBeenCalledWith(
       "GET /repos/{owner}/{repo}/contents/{path}",
       expect.objectContaining({
+        owner: "NarukeAlpha",
+        repo: "dots",
+        path: "list.md",
+        ref: "main",
+        headers: {
+          accept: "application/vnd.github+json",
+          "X-GitHub-Api-Version": "2022-11-28"
+        }
+      })
+    );
+    expect(requestMock).toHaveBeenCalledWith(
+      "GET /repos/{owner}/{repo}/contents/{path}",
+      expect.objectContaining({
         headers: {
           accept: "application/vnd.github.raw",
           "X-GitHub-Api-Version": "2022-11-28"
         }
       })
     );
+    expect(fileContent.kind).toBe("text");
     expect(fileContent.downloadUrl).toBe("https://raw.githubusercontent.com/NarukeAlpha/dots/main/list.md");
   });
 

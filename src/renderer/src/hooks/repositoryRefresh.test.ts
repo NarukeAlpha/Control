@@ -1,11 +1,11 @@
 import { QueryClient } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { GitHubReadAvailability, RepoFileContent, RepoFileContentResult } from "@shared/github";
 import type { ControlApi } from "@shared/ipc";
 
 import {
   codeBrowserCommitsQueryKey,
-  codeBrowserFileBlameQueryKey,
   codeBrowserFileContentQueryKey,
   refreshCodeBrowserData
 } from "../components/code-browser/codeBrowserQueries";
@@ -46,6 +46,44 @@ function makeApi(githubOverrides: Partial<ControlApi["github"]>): ControlApi {
       ...mockControlApi.github,
       ...githubOverrides
     }
+  };
+}
+
+const available: GitHubReadAvailability = { status: "available", message: null };
+
+function makeFileContent(overrides: Partial<RepoFileContent> = {}): RepoFileContent {
+  return {
+    path: "src/App.tsx",
+    name: "App.tsx",
+    ref: "main",
+    kind: "text",
+    content: "export function App() {}",
+    size: 24,
+    encoding: "utf-8",
+    htmlUrl: "https://github.com/NarukeAlpha/control/blob/main/src/App.tsx",
+    downloadUrl: "https://raw.githubusercontent.com/NarukeAlpha/control/main/src/App.tsx",
+    message: null,
+    lastCommitSha: "abc1234",
+    lastCommitMessage: "Update app",
+    lastCommitAuthorLogin: "octocat",
+    lastCommitAuthorName: "Octo Cat",
+    lastCommitAuthorAvatarUrl: null,
+    lastAuthoredDate: "2026-05-24T00:00:00.000Z",
+    lastCommittedDate: "2026-05-24T00:00:00.000Z",
+    lastCommitDate: "2026-05-24T00:00:00.000Z",
+    lastCommitHtmlUrl: "https://github.com/NarukeAlpha/control/commit/abc1234",
+    lastCommitAdditions: 1,
+    lastCommitDeletions: 0,
+    lastCommitChanges: 1,
+    lastCommitAvailability: available,
+    ...overrides
+  };
+}
+
+function makeFileContentResult(item: RepoFileContent | null): RepoFileContentResult {
+  return {
+    item,
+    availability: item ? available : { status: "offline", message: "Network unavailable." }
   };
 }
 
@@ -209,7 +247,6 @@ describe("route refresh helpers", () => {
       path: "src/App.tsx",
       entryType: "file",
       refListLimit: 25,
-      fileBlameRangeLimit: 5,
       fileCommitHistoryLimit: 8,
       githubReady: true
     });
@@ -236,15 +273,7 @@ describe("route refresh helpers", () => {
       cacheOnly: false,
       forceRefresh: true
     });
-    expect(getFileBlame).toHaveBeenCalledWith({
-      owner: "NarukeAlpha",
-      repo: "control",
-      path: "src/App.tsx",
-      ref: "main",
-      maxRanges: 5,
-      cacheOnly: false,
-      forceRefresh: true
-    });
+    expect(getFileBlame).not.toHaveBeenCalled();
     expect(listCommitsWithStatus).toHaveBeenCalledWith({
       owner: "NarukeAlpha",
       repo: "control",
@@ -260,11 +289,149 @@ describe("route refresh helpers", () => {
       queryClient.getQueryData(codeBrowserFileContentQueryKey("NarukeAlpha", "control", null, "src/App.tsx"))
     ).toBeDefined();
     expect(
-      queryClient.getQueryData(codeBrowserFileBlameQueryKey("NarukeAlpha", "control", null, "src/App.tsx", 5))
-    ).toBeDefined();
-    expect(
       queryClient.getQueryData(codeBrowserCommitsQueryKey("NarukeAlpha", "control", null, "src/App.tsx", 8))
     ).toBeDefined();
+  });
+
+  it.each([
+    makeFileContent({
+      kind: "binary",
+      content: null,
+      encoding: null,
+      message: "Binary files are not previewed as text.",
+      size: 256
+    }),
+    makeFileContent({
+      kind: "too_large",
+      content: null,
+      encoding: null,
+      message: "File preview was skipped because the file exceeds the preview size limit.",
+      size: 2_097_153
+    }),
+    makeFileContent({
+      path: "assets/logo.png",
+      name: "logo.png",
+      kind: "image",
+      content: null,
+      encoding: null,
+      message: null,
+      size: 1024
+    }),
+    makeFileContent({
+      kind: "unavailable",
+      content: null,
+      encoding: null,
+      message: "GitHub did not return previewable file content."
+    })
+  ])("replaces stale code browser text with successful $kind file content states", async (replacement) => {
+    const queryClient = makeQueryClient();
+    const fileContentKey = codeBrowserFileContentQueryKey("NarukeAlpha", "control", null, "src/App.tsx");
+    const staleText = makeFileContentResult(makeFileContent({ content: "stale text" }));
+    queryClient.setQueryData(fileContentKey, staleText);
+    const getFileContentWithStatus = vi.fn<ControlApi["github"]["getFileContentWithStatus"]>(async () =>
+      makeFileContentResult(replacement)
+    );
+    const api = makeApi({ getFileContentWithStatus });
+
+    await refreshCodeBrowserData(queryClient, {
+      api,
+      owner: "NarukeAlpha",
+      repo: "control",
+      selectedRef: null,
+      defaultBranch: "main",
+      path: "src/App.tsx",
+      entryType: "file",
+      refListLimit: 25,
+      fileCommitHistoryLimit: 8,
+      githubReady: true
+    });
+
+    expect(queryClient.getQueryData<RepoFileContentResult>(fileContentKey)?.item).toEqual(replacement);
+  });
+
+  it.each([
+    makeFileContent({
+      kind: "binary",
+      content: null,
+      encoding: null,
+      message: "Binary files are not previewed as text.",
+      size: 256
+    }),
+    makeFileContent({
+      kind: "too_large",
+      content: null,
+      encoding: null,
+      message: "File preview was skipped because the file exceeds the preview size limit.",
+      size: 2_097_153
+    }),
+    makeFileContent({
+      path: "assets/logo.png",
+      name: "logo.png",
+      kind: "image",
+      content: null,
+      encoding: null,
+      message: null,
+      size: 1024
+    }),
+    makeFileContent({
+      kind: "unavailable",
+      content: null,
+      encoding: null,
+      message: "GitHub did not return previewable file content."
+    })
+  ])("replaces stale $kind file content states with successful fresh text", async (staleState) => {
+    const queryClient = makeQueryClient();
+    const fileContentKey = codeBrowserFileContentQueryKey("NarukeAlpha", "control", null, "src/App.tsx");
+    queryClient.setQueryData(fileContentKey, makeFileContentResult(staleState));
+    const freshText = makeFileContent({ content: "fresh text" });
+    const getFileContentWithStatus = vi.fn<ControlApi["github"]["getFileContentWithStatus"]>(async () =>
+      makeFileContentResult(freshText)
+    );
+    const api = makeApi({ getFileContentWithStatus });
+
+    await refreshCodeBrowserData(queryClient, {
+      api,
+      owner: "NarukeAlpha",
+      repo: "control",
+      selectedRef: null,
+      defaultBranch: "main",
+      path: "src/App.tsx",
+      entryType: "file",
+      refListLimit: 25,
+      fileCommitHistoryLimit: 8,
+      githubReady: true
+    });
+
+    expect(queryClient.getQueryData<RepoFileContentResult>(fileContentKey)?.item).toEqual(freshText);
+  });
+
+  it("preserves stale code browser text when a background file refresh fails", async () => {
+    const queryClient = makeQueryClient();
+    const fileContentKey = codeBrowserFileContentQueryKey("NarukeAlpha", "control", null, "src/App.tsx");
+    const staleText = makeFileContentResult(makeFileContent({ content: "stale text" }));
+    queryClient.setQueryData(fileContentKey, staleText);
+    const getFileContentWithStatus = vi.fn<ControlApi["github"]["getFileContentWithStatus"]>(async () =>
+      makeFileContentResult(null)
+    );
+    const api = makeApi({ getFileContentWithStatus });
+
+    await refreshCodeBrowserData(queryClient, {
+      api,
+      owner: "NarukeAlpha",
+      repo: "control",
+      selectedRef: null,
+      defaultBranch: "main",
+      path: "src/App.tsx",
+      entryType: "file",
+      refListLimit: 25,
+      fileCommitHistoryLimit: 8,
+      githubReady: true
+    });
+
+    expect(queryClient.getQueryData(fileContentKey)).toBe(staleText);
+    expect(queryClient.getQueryState(fileContentKey)?.error).toEqual(
+      expect.objectContaining({ message: "File content could not be loaded. Network unavailable." })
+    );
   });
 
   it("refreshes organization route data through route-owned query keys", async () => {

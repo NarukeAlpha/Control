@@ -1,3 +1,6 @@
+import { Buffer } from "node:buffer";
+import { TextDecoder } from "node:util";
+
 import type {
   BranchListInput,
   BranchListResult,
@@ -31,6 +34,13 @@ import type {
   ViewerRepositoryState,
   RepositorySummary
 } from "@shared/github";
+import {
+  contentHasNullByte,
+  fileNameFromPath,
+  isNonImageBinaryPath,
+  isPreviewableImagePath,
+  maxPreviewBytes
+} from "@shared/filePreviewPolicy";
 
 const contentCommitMetadataLimit = 25;
 const contentCommitFileStatsLimit = 8;
@@ -404,27 +414,106 @@ export class OctokitRepositoryDomain {
   }
 
   async getFileContent(input: RepoFileContentInput): Promise<RepoFileContent> {
-    const [content, metadata] = await Promise.all([
-      this.client.restText("GET /repos/{owner}/{repo}/contents/{path}", {
+    const [item, lastCommit] = await Promise.all([
+      this.client.rest<GitHubContentItem>("GET /repos/{owner}/{repo}/contents/{path}", {
+        owner: input.owner,
+        repo: input.repo,
+        path: input.path,
+        ref: input.ref ?? undefined
+      }),
+      this.getContentLastCommit(input, input.path, true)
+    ]);
+    const baseContent = repoFileContentBase(input, item, lastCommit);
+
+    if (item.type !== "file") {
+      return {
+        ...baseContent,
+        kind: "unavailable",
+        content: null,
+        encoding: null,
+        message: `${item.type} entries are not regular files and cannot be previewed.`
+      };
+    }
+
+    const size = typeof item.size === "number" ? item.size : null;
+    if (size !== null && size > maxPreviewBytes) {
+      return {
+        ...baseContent,
+        kind: "too_large",
+        content: null,
+        encoding: null,
+        message: "File preview was skipped because the file exceeds the preview size limit."
+      };
+    }
+
+    if (isPreviewableImagePath(item.path)) {
+      return {
+        ...baseContent,
+        kind: "image",
+        content: null,
+        encoding: null,
+        message: item.download_url ? null : "Image preview URL is unavailable."
+      };
+    }
+
+    if (isNonImageBinaryPath(item.path)) {
+      return {
+        ...baseContent,
+        kind: "binary",
+        content: null,
+        encoding: null,
+        message: "Binary files are not previewed as text."
+      };
+    }
+
+    try {
+      const content = await this.client.restText("GET /repos/{owner}/{repo}/contents/{path}", {
         owner: input.owner,
         repo: input.repo,
         path: input.path,
         ref: input.ref ?? undefined,
         headers: { accept: "application/vnd.github.raw" }
-      }),
-      this.getContentLastCommit(input, input.path, true)
-    ]);
-    const branch = encodeURIComponent(input.ref ?? "HEAD");
-    return {
-      path: input.path,
-      name: input.path.split("/").pop() ?? input.path,
-      ref: input.ref ?? null,
-      content,
-      htmlUrl: `https://github.com/${input.owner}/${input.repo}/blob/${branch}/${encodePath(input.path)}`,
-      downloadUrl: `https://raw.githubusercontent.com/${input.owner}/${input.repo}/${branch}/${encodePath(input.path)}`,
-      ...(metadata.metadata ?? emptyRepoEntryCommitMetadata()),
-      lastCommitAvailability: metadata.availability
-    };
+      });
+
+      if (contentHasNullByte(content)) {
+        return {
+          ...baseContent,
+          kind: "binary",
+          content: null,
+          encoding: null,
+          message: "Binary-looking content is not previewed as text."
+        };
+      }
+
+      return {
+        ...baseContent,
+        kind: "text",
+        content,
+        encoding: "utf-8",
+        message: null
+      };
+    } catch (error) {
+      const fallbackContent = decodeGitHubBase64Text(item);
+      if (fallbackContent.ok) {
+        return {
+          ...baseContent,
+          kind: "text",
+          content: fallbackContent.content,
+          encoding: "utf-8",
+          message: null
+        };
+      }
+
+      return {
+        ...baseContent,
+        kind: "unavailable",
+        content: null,
+        encoding: null,
+        message:
+          fallbackContent.message ??
+          (error instanceof Error ? error.message : "File content could not be loaded.")
+      };
+    }
   }
 
   async getFileContentWithStatus(input: RepoFileContentInput): Promise<RepoFileContentResult> {
@@ -935,6 +1024,57 @@ interface RepoEntryCommitResult {
   availability: GitHubReadAvailability;
 }
 
+function repoFileContentBase(
+  input: RepoFileContentInput,
+  item: GitHubContentItem,
+  lastCommit: RepoEntryCommitResult
+): Omit<RepoFileContent, "kind" | "content" | "encoding" | "message"> {
+  const branch = encodeURIComponent(input.ref ?? "HEAD");
+  return {
+    path: item.path || input.path,
+    name: item.name || fileNameFromPath(input.path),
+    ref: input.ref ?? null,
+    size: typeof item.size === "number" ? item.size : null,
+    htmlUrl:
+      item.html_url ??
+      `https://github.com/${input.owner}/${input.repo}/blob/${branch}/${encodePath(item.path || input.path)}`,
+    downloadUrl: item.download_url ?? null,
+    ...(lastCommit.metadata ?? emptyRepoEntryCommitMetadata()),
+    lastCommitAvailability: lastCommit.availability
+  };
+}
+
+function decodeGitHubBase64Text(
+  item: GitHubContentItem
+): { ok: true; content: string } | { ok: false; message: string | null } {
+  if (item.encoding !== "base64" || !item.content) {
+    return {
+      ok: false,
+      message: item.encoding ? `Unsupported GitHub content encoding: ${item.encoding}.` : null
+    };
+  }
+
+  const encoded = item.content.replace(/\s/g, "");
+  if (encoded.length === 0 || encoded.length % 4 === 1 || /[^A-Za-z0-9+/=]/.test(encoded)) {
+    return { ok: false, message: "GitHub returned invalid base64 file content." };
+  }
+
+  try {
+    const bytes = Buffer.from(encoded, "base64");
+    if (bytes.toString("base64").replace(/=+$/u, "") !== encoded.replace(/=+$/u, "")) {
+      return { ok: false, message: "GitHub returned invalid base64 file content." };
+    }
+
+    const content = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    if (contentHasNullByte(content)) {
+      return { ok: false, message: "Binary-looking content is not previewed as text." };
+    }
+    return { ok: true, content };
+  } catch {
+    return { ok: false, message: "GitHub file content could not be decoded as UTF-8." };
+  }
+}
+
 function mapRepoEntryCommit(commit: GitHubCommit | null): RepoEntryCommitMetadata | null {
   if (!commit) {
     return null;
@@ -1135,6 +1275,8 @@ interface GitHubContentItem {
   size?: number;
   html_url?: string;
   download_url?: string | null;
+  content?: string | null;
+  encoding?: string | null;
 }
 
 interface GitHubCommit {

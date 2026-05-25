@@ -1,7 +1,7 @@
 import { useQuery, type QueryClient } from "@tanstack/react-query";
 
 import type { ControlApi } from "@shared/ipc";
-import type { RepoEntry, RepoFileBlameResult } from "@shared/github";
+import type { RepoEntry } from "@shared/github";
 
 import { refreshRepositoryRefsData } from "../../hooks/useRepositoryRefs";
 import { readAvailabilityMessage } from "../repository/repositoryUi";
@@ -27,16 +27,6 @@ export function codeBrowserFileContentQueryKey(
   return ["file-content", owner, repo, selectedRef ?? "default", path] as const;
 }
 
-export function codeBrowserFileBlameQueryKey(
-  owner: string,
-  repo: string,
-  selectedRef: string | null,
-  path: string,
-  rangeLimit: number
-): readonly ["file-blame", string, string, string, string, number] {
-  return ["file-blame", owner, repo, selectedRef ?? "default", path, rangeLimit] as const;
-}
-
 export function codeBrowserCommitsQueryKey(
   owner: string,
   repo: string,
@@ -56,7 +46,6 @@ export interface CodeBrowserRefreshInput {
   path: string;
   entryType: "file" | "dir";
   refListLimit: number;
-  fileBlameRangeLimit: number;
   fileCommitHistoryLimit: number;
   githubReady: boolean;
 }
@@ -74,7 +63,6 @@ export interface CodeBrowserQueriesInput {
   codeBrowserRef: string | null;
   contentsRef: string | null;
   defaultBranch: string | null;
-  fileBlameRangeLimit: number;
   fileCommitHistoryLimit: number;
   fileFinderOpen: boolean;
   repositoryLoaded: boolean;
@@ -93,7 +81,6 @@ export function useCodeBrowserQueries({
   codeBrowserRef,
   contentsRef,
   defaultBranch,
-  fileBlameRangeLimit,
   fileCommitHistoryLimit,
   fileFinderOpen,
   repositoryLoaded
@@ -115,31 +102,11 @@ export function useCodeBrowserQueries({
   const fileContent = useQuery({
     queryKey: codeBrowserFileContentQueryKey(owner, repo, contentsRef, codeBrowserPath),
     queryFn: () =>
-      api.github.getFileContentWithStatus({
+      getCodeBrowserFileContentWithStatus(api, {
         owner,
         repo,
         path: codeBrowserPath,
         ref: contentsRef ?? undefined,
-        cacheOnly: !githubReady
-      }),
-    enabled:
-      appReady &&
-      isCodeBrowserRoute &&
-      codeBrowserEntryType === "file" &&
-      hasRepositoryParts &&
-      Boolean(codeBrowserPath),
-    staleTime: 120_000
-  });
-
-  const fileBlame = useQuery<RepoFileBlameResult>({
-    queryKey: codeBrowserFileBlameQueryKey(owner, repo, contentsRef, codeBrowserPath, fileBlameRangeLimit),
-    queryFn: () =>
-      api.github.getFileBlame({
-        owner,
-        repo,
-        path: codeBrowserPath,
-        ref: contentsRef ?? undefined,
-        maxRanges: fileBlameRangeLimit,
         cacheOnly: !githubReady
       }),
     enabled:
@@ -197,7 +164,6 @@ export function useCodeBrowserQueries({
   return {
     codeBrowserContents,
     fileContent,
-    fileBlame,
     fileCommits,
     repositoryTree,
     contentItems: codeBrowserContents.data?.items ?? emptyRepoEntries,
@@ -224,7 +190,6 @@ export async function refreshCodeBrowserData(
     path,
     entryType,
     refListLimit,
-    fileBlameRangeLimit,
     fileCommitHistoryLimit,
     githubReady
   }: CodeBrowserRefreshInput
@@ -265,25 +230,11 @@ export async function refreshCodeBrowserData(
         queryKey: codeBrowserFileContentQueryKey(owner, repo, selectedRef, path),
         staleTime: 0,
         queryFn: () =>
-          api.github.getFileContentWithStatus({
+          getCodeBrowserFileContentWithStatus(api, {
             owner,
             repo,
             path,
             ref: requestRef,
-            cacheOnly: cachedRead,
-            forceRefresh: !cachedRead
-          })
-      }),
-      queryClient.fetchQuery({
-        queryKey: codeBrowserFileBlameQueryKey(owner, repo, selectedRef, path, fileBlameRangeLimit),
-        staleTime: 0,
-        queryFn: () =>
-          api.github.getFileBlame({
-            owner,
-            repo,
-            path,
-            ref: requestRef,
-            maxRanges: fileBlameRangeLimit,
             cacheOnly: cachedRead,
             forceRefresh: !cachedRead
           })
@@ -310,4 +261,18 @@ export async function refreshCodeBrowserData(
   } catch {
     // React Query owns the visible error state for this refresh.
   }
+}
+
+async function getCodeBrowserFileContentWithStatus(
+  api: ControlApi,
+  input: Parameters<ControlApi["github"]["getFileContentWithStatus"]>[0]
+): ReturnType<ControlApi["github"]["getFileContentWithStatus"]> {
+  const result = await api.github.getFileContentWithStatus(input);
+  if (result.item) {
+    return result;
+  }
+
+  throw new Error(
+    readAvailabilityMessage("File content", result.availability) ?? "File content was not returned."
+  );
 }

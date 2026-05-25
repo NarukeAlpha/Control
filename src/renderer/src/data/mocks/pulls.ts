@@ -61,35 +61,40 @@ export const mockTeams: TeamSummary[] = [
   }
 ];
 
-export const mockPullRequests: PullRequestSummary[] = Array.from({ length: 12 }, (_, index) => ({
-  id: index + 1,
-  nodeId: `PR_mock_pull_${index + 1}`,
-  number: 520 - index,
-  title: index % 2 === 0 ? "Add Sendable support for @MainActor types" : "Update concurrency runtime tests",
-  state: index % 4 === 0 ? "closed" : "open",
-  merged: index % 4 === 0,
-  mergedAt: index % 4 === 0 ? new Date(Date.now() - index * 7_000_000).toISOString() : null,
-  isDraft: index === 3,
-  authorLogin: index % 2 === 0 ? "slightbug" : "applebot",
-  authorAvatarUrl: mockAvatarUrl,
-  comments: 4 + index,
-  reviewComments: 2 + index,
-  additions: 125 + index * 3,
-  deletions: 40 + index,
-  changedFiles: 5 + index,
-  mergeableState: index % 2 === 0 ? "clean" : "unstable",
-  reviewDecision: index % 3 === 0 ? "APPROVED" : index % 3 === 1 ? "REVIEW_REQUIRED" : null,
-  mergeCommitSha: index % 4 === 0 ? `abc1234${index}def5678${index}` : null,
-  maintainerCanModify: index % 5 === 0 ? false : true,
-  isCrossRepository: index % 4 === 1,
-  headRefName: `feature/sendable-${index}`,
-  baseRefName: "main",
-  headRepositoryNameWithOwner: index % 4 === 1 ? `slightbug/swift` : mockPrimaryRepository.nameWithOwner,
-  baseRepositoryNameWithOwner: mockPrimaryRepository.nameWithOwner,
-  createdAt: new Date(Date.now() - index * 86_400_000).toISOString(),
-  updatedAt: new Date(Date.now() - index * 7_200_000).toISOString(),
-  htmlUrl: `${mockPrimaryRepository.htmlUrl}/pull/${520 - index}`
-}));
+export const mockPullRequests: PullRequestSummary[] = Array.from({ length: 12 }, (_, index) => {
+  const closed = index % 4 === 0;
+  const merged = closed && index !== 0;
+
+  return {
+    id: index + 1,
+    nodeId: `PR_mock_pull_${index + 1}`,
+    number: 520 - index,
+    title: index % 2 === 0 ? "Add Sendable support for @MainActor types" : "Update concurrency runtime tests",
+    state: closed ? "closed" : "open",
+    merged,
+    mergedAt: merged ? new Date(Date.now() - index * 7_000_000).toISOString() : null,
+    isDraft: index === 3,
+    authorLogin: index % 2 === 0 ? "slightbug" : "applebot",
+    authorAvatarUrl: mockAvatarUrl,
+    comments: 4 + index,
+    reviewComments: 2 + index,
+    additions: 125 + index * 3,
+    deletions: 40 + index,
+    changedFiles: 5 + index,
+    mergeableState: index % 2 === 0 ? "clean" : "unstable",
+    reviewDecision: index % 3 === 0 ? "APPROVED" : index % 3 === 1 ? "REVIEW_REQUIRED" : null,
+    mergeCommitSha: merged ? `abc1234${index}def5678${index}` : null,
+    maintainerCanModify: index % 5 === 0 ? false : true,
+    isCrossRepository: index % 4 === 1,
+    headRefName: `feature/sendable-${index}`,
+    baseRefName: "main",
+    headRepositoryNameWithOwner: index % 4 === 1 ? `slightbug/swift` : mockPrimaryRepository.nameWithOwner,
+    baseRepositoryNameWithOwner: mockPrimaryRepository.nameWithOwner,
+    createdAt: new Date(Date.now() - index * 86_400_000).toISOString(),
+    updatedAt: new Date(Date.now() - index * 7_200_000).toISOString(),
+    htmlUrl: `${mockPrimaryRepository.htmlUrl}/pull/${520 - index}`
+  };
+});
 
 export function mockTeamForSlug(slug: string): PullRequestRequestedTeamSummary {
   const team = mockTeams.find((item) => item.slug.toLowerCase() === slug.toLowerCase());

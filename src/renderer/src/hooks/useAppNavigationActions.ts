@@ -23,8 +23,8 @@ import type {
   WikiPageContent,
   WikiPageSummary
 } from "@shared/github";
-import type { AreaRepositorySummary } from "@shared/areas";
-import type { LocalRecentItem } from "@shared/local";
+import type { AreaFileEntry, AreaRepositorySummary } from "@shared/areas";
+import type { LocalRecentItem, LocalRecentRecordInput } from "@shared/local";
 import { notificationInAppTarget, notificationTargetUrl } from "../components/collection/notificationUi";
 import { normalizeCodeLineNumber } from "../components/code-browser/codeBrowserUi";
 import {
@@ -158,6 +158,17 @@ export function useAppNavigationActions({
       url: repository.connection?.url ?? null,
       metadata: { vcs: repository.kind }
     });
+  }
+
+  function openLocalFileInApp(input: {
+    areaId: string;
+    repositoryId: string;
+    workspaceId: string | null;
+    path: string;
+    entryType: AreaFileEntry["type"];
+  }): void {
+    goToLocalRepository(input.areaId, input.repositoryId, "code", input.workspaceId, input.path);
+    recordRecent(localFileRecentInput(input));
   }
 
   function openRepositoryRouteInApp(route: Extract<AppRoute, { kind: "repository" }>): void {
@@ -592,6 +603,7 @@ export function useAppNavigationActions({
     repositoryRefs,
     openRepositoryInApp,
     openLocalRepositoryInApp,
+    openLocalFileInApp,
     openRepositoryRouteInApp,
     selectRepositoryTabInApp,
     openFilteredRepositorySurfaceInApp,
@@ -627,5 +639,25 @@ export function useAppNavigationActions({
     openNotificationInApp,
     openRecentItem,
     openMarkdownUrl
+  };
+}
+
+function localFileRecentInput(input: {
+  areaId: string;
+  repositoryId: string;
+  workspaceId: string | null;
+  path: string;
+  entryType: AreaFileEntry["type"];
+}): LocalRecentRecordInput {
+  return {
+    kind: "file",
+    provider: "local",
+    itemKey: `${input.areaId}:${input.repositoryId}:${input.workspaceId ?? "none"}:${input.path}`,
+    title: input.path.split("/").pop() || input.path,
+    subtitle: input.path,
+    areaId: input.areaId,
+    repositoryId: input.repositoryId,
+    workspaceId: input.workspaceId,
+    metadata: { path: input.path, entryType: input.entryType }
   };
 }

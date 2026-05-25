@@ -5,7 +5,6 @@ import {
   Copy,
   Download,
   ExternalLink,
-  Eye,
   File as FileIcon,
   Folder,
   GitBranch,
@@ -18,7 +17,6 @@ import type {
   BranchSummary,
   GitHubReadAvailability,
   RepoEntry,
-  RepoFileBlameResult,
   RepoFileContent,
   RepositoryCommitSummary,
   RepositoryDetail,
@@ -27,17 +25,16 @@ import type {
 
 import { MarkdownBody, markdownRepositoryUrlContext } from "../MarkdownBody";
 import { CommitHistoryPanel } from "../repository/CommitHistoryPanel";
-import { FileBlamePanel } from "../repository/FileBlamePanel";
 import { repoFileContentRecentCommit, type CommitRecentCommit } from "../repository/commitRecent";
 import { readAvailabilityMessage, repositoryPath } from "../repository/repositoryUi";
 import { repositoryActivityDate } from "../repository/repositorySearch";
+import { CodeSourceView } from "./CodeSourceView";
 import {
   encodeRepositoryPath,
   EntryIcon,
   entryBrowseTitle,
   entryLastChangeLabel,
   fileCommitChangeSummary,
-  isLikelyBinaryFile,
   isMarkdownPath,
   isPreviewableImagePath,
   normalizeCodeLineNumber,
@@ -66,10 +63,6 @@ export function CodeBrowserPage({
   fileLoading,
   fileError,
   fileAvailabilityMessage,
-  fileBlame,
-  fileBlameRangeLimit,
-  fileBlameLoading,
-  fileBlameError,
   commits,
   commitsLimit,
   commitsLoading,
@@ -81,7 +74,6 @@ export function CodeBrowserPage({
   onOpenCodeBrowser,
   onOpenCommit,
   onSelectRef,
-  onExpandFileBlamePreview,
   onExpandCommits,
   onOpenExternal
 }: {
@@ -102,10 +94,6 @@ export function CodeBrowserPage({
   fileLoading: boolean;
   fileError: Error | null;
   fileAvailabilityMessage: string | null;
-  fileBlame?: RepoFileBlameResult;
-  fileBlameRangeLimit: number;
-  fileBlameLoading: boolean;
-  fileBlameError: Error | null;
   commits: RepositoryCommitSummary[];
   commitsLimit: number;
   commitsLoading: boolean;
@@ -122,12 +110,10 @@ export function CodeBrowserPage({
     line?: number | null
   ): void;
   onSelectRef(ref: string): void;
-  onExpandFileBlamePreview(): void;
   onExpandCommits(): void;
   onOpenExternal(url: string): void;
 }): JSX.Element {
   const [copyStatus, setCopyStatus] = useState<{ key: string; label: string } | null>(null);
-  const blamePanelRef = useRef<HTMLDivElement | null>(null);
   const historyPanelRef = useRef<HTMLDivElement | null>(null);
 
   if (!repository && (error || availabilityMessage)) {
@@ -175,16 +161,13 @@ export function CodeBrowserPage({
   const visibleCopyStatus = copyStatus?.key === fileStatusKey ? copyStatus.label : null;
   const hasFileContent = Boolean(fileContent) && !fileLoading;
   const canOpenRaw = Boolean(fileContent?.downloadUrl) && !fileLoading;
-  const previewAsImage =
-    Boolean(fileContent?.downloadUrl) && isPreviewableImagePath(fileContent?.path ?? route.path);
-  const previewAsMarkdown =
-    !previewAsImage && !fileLoading && isMarkdownPath(fileContent?.path ?? route.path);
-  const renderBinaryFallback =
-    !previewAsImage &&
-    !fileLoading &&
-    isLikelyBinaryFile(fileContent?.path ?? route.path, fileContent?.content);
-  const canCopyRaw = hasFileContent && !previewAsImage && !renderBinaryFallback;
   const filePath = fileContent?.path ?? route.path;
+  const fileKind = fileContent?.kind ?? null;
+  const canCopyRaw = hasFileContent && fileKind === "text" && fileContent?.content !== null;
+  const previewAsImage =
+    fileKind === "image" && Boolean(fileContent?.downloadUrl) && isPreviewableImagePath(filePath);
+  const previewAsMarkdown =
+    fileKind === "text" && fileContent?.content !== null && !previewAsImage && isMarkdownPath(filePath);
   const markdownUrlContext = markdownRepositoryUrlContext(repository, currentRef, parentDirectory(filePath));
   const historyUrl = filePath
     ? repositoryPath(
@@ -192,11 +175,7 @@ export function CodeBrowserPage({
         `/commits/${encodeURIComponent(currentRef)}/${encodeRepositoryPath(filePath)}`
       )
     : null;
-  const blameUrl = filePath
-    ? repositoryPath(repository, `/blame/${encodeURIComponent(currentRef)}/${encodeRepositoryPath(filePath)}`)
-    : null;
   const fileChangeSummary = fileCommitChangeSummary(fileContent);
-  const sourceLines = (fileContent?.content ?? "").split("\n");
   const fileLastCommit = fileContent ? repoFileContentRecentCommit(fileContent) : null;
   const fileLastCommitUnavailableMessage =
     fileContent && !fileContent.lastCommitSha
@@ -215,7 +194,7 @@ export function CodeBrowserPage({
     }
 
     try {
-      await navigator.clipboard.writeText(fileContent.content);
+      await navigator.clipboard.writeText(fileContent.content ?? "");
       setCopyStatus({ key: fileStatusKey, label: "Copied" });
     } catch {
       setCopyStatus({ key: fileStatusKey, label: "Copy failed" });
@@ -292,8 +271,7 @@ export function CodeBrowserPage({
         <div className="cached-mode-banner" role="status">
           <Lock size={16} />
           <span>
-            Cached mode. File content, blame, commits, and tree data are loaded from local cache when
-            available.
+            Cached mode. File content, commits, and tree data are loaded from local cache when available.
           </span>
         </div>
       )}
@@ -350,17 +328,10 @@ export function CodeBrowserPage({
                 type="button"
                 title="Jump to in-app file history"
                 onClick={() =>
-                  historyPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+                  historyPanelRef.current?.scrollIntoView({ behavior: "instant", block: "start" })
                 }
               >
                 <GitBranch size={14} /> History
-              </button>
-              <button
-                type="button"
-                title="Jump to in-app file blame"
-                onClick={() => blamePanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
-              >
-                <Eye size={14} /> Blame
               </button>
             </div>
           </div>
@@ -402,38 +373,53 @@ export function CodeBrowserPage({
             <div className="code-image-preview">
               <img src={fileContent.downloadUrl} alt={fileContent.name} />
             </div>
+          ) : fileKind === "image" ? (
+            <div className="binary-file-fallback">
+              <FileIcon size={28} />
+              <strong>Image preview unavailable</strong>
+              <span>{fileContent?.message ?? "Raw image URL is unavailable for this file."}</span>
+            </div>
           ) : previewAsMarkdown ? (
             <div className="code-markdown-preview">
               <MarkdownBody
-                markdown={fileContent?.content}
+                markdown={fileContent?.content ?? ""}
                 emptyText="This markdown file has no rendered content."
                 onOpenExternal={onOpenExternal}
                 urlContext={markdownUrlContext}
               />
             </div>
-          ) : renderBinaryFallback ? (
+          ) : fileKind === "binary" ? (
             <div className="binary-file-fallback">
               <FileIcon size={28} />
               <strong>Binary preview unavailable</strong>
-              <span>Open the raw file to inspect or download it from GitHub.</span>
+              <span>
+                {fileContent?.message ?? "Open the raw file to inspect or download it from GitHub."}
+              </span>
             </div>
+          ) : fileKind === "too_large" ? (
+            <div className="binary-file-fallback">
+              <FileIcon size={28} />
+              <strong>Large file preview skipped</strong>
+              <span>
+                {fileContent?.message ?? "Preview was skipped for this large file."}
+                {typeof fileContent?.size === "number" ? ` Size: ${formatFileSize(fileContent.size)}.` : ""}
+              </span>
+            </div>
+          ) : fileKind === "unavailable" ? (
+            <div className="binary-file-fallback">
+              <FileIcon size={28} />
+              <strong>File preview unavailable</strong>
+              <span>{fileContent?.message ?? "GitHub did not return previewable file content."}</span>
+            </div>
+          ) : fileContent && fileKind === "text" && fileContent.content !== null ? (
+            <CodeSourceView
+              content={fileContent.content}
+              fileSize={fileContent.size}
+              highlightedLine={highlightedLine}
+              path={filePath}
+            />
           ) : (
-            <pre className="code-line-viewer">
-              <code>
-                {sourceLines.map((line, index) => {
-                  const lineNumber = index + 1;
-                  return (
-                    <span
-                      className={`code-source-line ${lineNumber === highlightedLine ? "highlighted" : ""}`}
-                      key={`${filePath}-${lineNumber}`}
-                    >
-                      <span className="code-source-line-number">{lineNumber}</span>
-                      <span className="code-source-line-text">{line || " "}</span>
-                    </span>
-                  );
-                })}
-              </code>
-            </pre>
+            <div className="empty-state">No file preview is available.</div>
           )}
         </section>
       ) : (
@@ -498,21 +484,6 @@ export function CodeBrowserPage({
         </section>
       )}
       {isFile && (
-        <div ref={blamePanelRef}>
-          <FileBlamePanel
-            blame={fileBlame}
-            rangeLimit={fileBlameRangeLimit}
-            loading={fileBlameLoading}
-            error={fileBlameError}
-            externalUrl={blameUrl}
-            onExpandPreview={onExpandFileBlamePreview}
-            onOpenRange={(range) => onOpenCommit(range.commit, filePath, "file", range.startingLine)}
-            onOpenCommit={(commit) => onOpenCommit(commit, "", "dir")}
-            onOpenExternal={onOpenExternal}
-          />
-        </div>
-      )}
-      {isFile && (
         <div ref={historyPanelRef}>
           <CommitHistoryPanel
             title="File history"
@@ -532,4 +503,15 @@ export function CodeBrowserPage({
       )}
     </article>
   );
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  const kib = bytes / 1024;
+  if (kib < 1024) {
+    return `${kib.toFixed(1)} KiB`;
+  }
+  return `${(kib / 1024).toFixed(1)} MiB`;
 }

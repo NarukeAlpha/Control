@@ -38,7 +38,6 @@ interface UseRepositoryRefreshActionsInput {
   repositoryContributorLimit: number;
   repositoryCommitHistoryLimit: number;
   fileCommitHistoryLimit: number;
-  fileBlameRangeLimit: number;
   issueListLimit: number;
   pullRequestListLimit: number;
   discussionsLimit: number;
@@ -79,7 +78,6 @@ export function useRepositoryRefreshActions({
   repositoryContributorLimit,
   repositoryCommitHistoryLimit,
   fileCommitHistoryLimit,
-  fileBlameRangeLimit,
   issueListLimit,
   pullRequestListLimit,
   discussionsLimit,
@@ -155,7 +153,6 @@ export function useRepositoryRefreshActions({
       path: codeBrowserPath,
       entryType: codeBrowserEntryType,
       refListLimit: repositoryRefListLimit,
-      fileBlameRangeLimit,
       fileCommitHistoryLimit,
       githubReady
     });

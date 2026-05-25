@@ -1,10 +1,33 @@
 import {
   githubActions,
   type GitHubAction,
+  BranchListInput,
+  BranchListResult,
+  ContributorsInput,
+  ContributorListResult,
   GitHubMutationInput,
   GitHubMutationResult,
+  OrganizationListInput,
+  OrganizationListResult,
+  OrganizationMembersInput,
+  OrganizationMembersResult,
+  OrganizationProjectsInput,
+  OrganizationRepositoriesInput,
+  OrganizationRepositoriesResult,
+  OrganizationTeamMembersInput,
+  OrganizationTeamMembersResult,
+  OrganizationTeamRepositoriesInput,
+  OrganizationTeamRepositoriesResult,
+  OrganizationTeamsInput,
+  OrganizationTeamsResult,
+  ProjectListResult,
+  ReleaseListResult,
+  ReleasesInput,
+  RepoDetailInput,
   RepoListInput,
-  RepositoryListResult
+  RepositoryListResult,
+  TagListInput,
+  TagListResult
 } from "@shared/github";
 import { githubIpcRouteChannels } from "@shared/ipc";
 
@@ -17,10 +40,41 @@ import {
 
 interface GitHubIpcDependencies {
   listRepositoriesWithStatus(input: RepoListInput): Promise<RepositoryListResult>;
+  listOrganizationsWithStatus(input: OrganizationListInput): Promise<OrganizationListResult>;
+  listOrganizationTeamsWithStatus(input: OrganizationTeamsInput): Promise<OrganizationTeamsResult>;
+  listOrganizationRepositoriesWithStatus(
+    input: OrganizationRepositoriesInput
+  ): Promise<OrganizationRepositoriesResult>;
+  listOrganizationTeamRepositoriesWithStatus(
+    input: OrganizationTeamRepositoriesInput
+  ): Promise<OrganizationTeamRepositoriesResult>;
+  listOrganizationTeamMembersWithStatus(
+    input: OrganizationTeamMembersInput
+  ): Promise<OrganizationTeamMembersResult>;
+  listOrganizationMembersWithStatus(input: OrganizationMembersInput): Promise<OrganizationMembersResult>;
+  listOrganizationProjectsWithStatus(input: OrganizationProjectsInput): Promise<ProjectListResult>;
+  listBranchesWithStatus(input: BranchListInput): Promise<BranchListResult>;
+  listTagsWithStatus(input: TagListInput): Promise<TagListResult>;
+  listReleasesWithStatus(input: ReleasesInput): Promise<ReleaseListResult>;
+  listContributorsWithStatus(input: ContributorsInput): Promise<ContributorListResult>;
   mutate(input: GitHubMutationInput): Promise<GitHubMutationResult>;
 }
 
-export const registeredGithubIpcRouteKeys = ["listRepositoriesWithStatus", "mutate"] as const;
+export const registeredGithubIpcRouteKeys = [
+  "listRepositoriesWithStatus",
+  "listOrganizationsWithStatus",
+  "listOrganizationTeamsWithStatus",
+  "listOrganizationRepositoriesWithStatus",
+  "listOrganizationTeamRepositoriesWithStatus",
+  "listOrganizationTeamMembersWithStatus",
+  "listOrganizationMembersWithStatus",
+  "listOrganizationProjectsWithStatus",
+  "listBranchesWithStatus",
+  "listTagsWithStatus",
+  "listReleasesWithStatus",
+  "listContributorsWithStatus",
+  "mutate"
+] as const;
 
 const githubActionSet = new Set<string>(githubActions);
 const maxMutationPayloadBytes = 128_000;
@@ -106,6 +160,61 @@ export function createGithubIpcRoutes(github: GitHubIpcDependencies): IpcInvokeR
       parse: ([input]) => requireRepoListInput(input),
       handle: (input) => github.listRepositoriesWithStatus(input)
     }),
+    createIpcInvokeRoute<OrganizationListInput, OrganizationListResult>({
+      channel: githubIpcRouteChannels.listOrganizationsWithStatus,
+      parse: ([input]) => requireOrganizationListInput(input),
+      handle: (input) => github.listOrganizationsWithStatus(input)
+    }),
+    createIpcInvokeRoute<OrganizationTeamsInput, OrganizationTeamsResult>({
+      channel: githubIpcRouteChannels.listOrganizationTeamsWithStatus,
+      parse: ([input]) => requireOrganizationInput<OrganizationTeamsInput>(input),
+      handle: (input) => github.listOrganizationTeamsWithStatus(input)
+    }),
+    createIpcInvokeRoute<OrganizationRepositoriesInput, OrganizationRepositoriesResult>({
+      channel: githubIpcRouteChannels.listOrganizationRepositoriesWithStatus,
+      parse: ([input]) => requireOrganizationInput<OrganizationRepositoriesInput>(input),
+      handle: (input) => github.listOrganizationRepositoriesWithStatus(input)
+    }),
+    createIpcInvokeRoute<OrganizationTeamRepositoriesInput, OrganizationTeamRepositoriesResult>({
+      channel: githubIpcRouteChannels.listOrganizationTeamRepositoriesWithStatus,
+      parse: ([input]) => requireOrganizationTeamInput<OrganizationTeamRepositoriesInput>(input),
+      handle: (input) => github.listOrganizationTeamRepositoriesWithStatus(input)
+    }),
+    createIpcInvokeRoute<OrganizationTeamMembersInput, OrganizationTeamMembersResult>({
+      channel: githubIpcRouteChannels.listOrganizationTeamMembersWithStatus,
+      parse: ([input]) => requireOrganizationTeamInput<OrganizationTeamMembersInput>(input),
+      handle: (input) => github.listOrganizationTeamMembersWithStatus(input)
+    }),
+    createIpcInvokeRoute<OrganizationMembersInput, OrganizationMembersResult>({
+      channel: githubIpcRouteChannels.listOrganizationMembersWithStatus,
+      parse: ([input]) => requireOrganizationInput<OrganizationMembersInput>(input),
+      handle: (input) => github.listOrganizationMembersWithStatus(input)
+    }),
+    createIpcInvokeRoute<OrganizationProjectsInput, ProjectListResult>({
+      channel: githubIpcRouteChannels.listOrganizationProjectsWithStatus,
+      parse: ([input]) => requireOrganizationInput<OrganizationProjectsInput>(input),
+      handle: (input) => github.listOrganizationProjectsWithStatus(input)
+    }),
+    createIpcInvokeRoute<BranchListInput, BranchListResult>({
+      channel: githubIpcRouteChannels.listBranchesWithStatus,
+      parse: ([input]) => requireRepositoryInput<BranchListInput>(input),
+      handle: (input) => github.listBranchesWithStatus(input)
+    }),
+    createIpcInvokeRoute<TagListInput, TagListResult>({
+      channel: githubIpcRouteChannels.listTagsWithStatus,
+      parse: ([input]) => requireRepositoryInput<TagListInput>(input),
+      handle: (input) => github.listTagsWithStatus(input)
+    }),
+    createIpcInvokeRoute<ReleasesInput, ReleaseListResult>({
+      channel: githubIpcRouteChannels.listReleasesWithStatus,
+      parse: ([input]) => requireRepositoryInput<ReleasesInput>(input),
+      handle: (input) => github.listReleasesWithStatus(input)
+    }),
+    createIpcInvokeRoute<ContributorsInput, ContributorListResult>({
+      channel: githubIpcRouteChannels.listContributorsWithStatus,
+      parse: ([input]) => requireRepositoryInput<ContributorsInput>(input),
+      handle: (input) => github.listContributorsWithStatus(input)
+    }),
     createIpcInvokeRoute<GitHubMutationInput, GitHubMutationResult>({
       channel: githubIpcRouteChannels.mutate,
       parse: ([input]) => requireGitHubMutationInput(input),
@@ -126,6 +235,54 @@ export function requireRepoListInput(input: unknown = {}): RepoListInput {
     limit: optionalInteger(input.limit, "Repository list limit must be a positive integer."),
     cacheOnly: optionalBoolean(input.cacheOnly, "Repository list cacheOnly must be a boolean."),
     forceRefresh: optionalBoolean(input.forceRefresh, "Repository list forceRefresh must be a boolean.")
+  };
+}
+
+export function requireOrganizationListInput(input: unknown = {}): OrganizationListInput {
+  if (input === undefined) {
+    return {};
+  }
+  if (!isRecord(input)) {
+    throw new Error("Organization list input must be an object.");
+  }
+
+  return normalizeGitHubReadFields(input, "Organization list");
+}
+
+export function requireOrganizationInput<TInput extends { org: string }>(input: unknown): TInput {
+  if (!isRecord(input)) {
+    throw new Error("GitHub organization input must be an object.");
+  }
+
+  return {
+    ...normalizeGitHubReadFields(input, "GitHub organization"),
+    org: requireTrimmedString(input.org, "GitHub organization input requires an org.")
+  } as TInput;
+}
+
+export function requireOrganizationTeamInput<TInput extends { org: string; teamSlug: string }>(
+  input: unknown
+): TInput {
+  if (!isRecord(input)) {
+    throw new Error("GitHub team input must be an object.");
+  }
+
+  return {
+    ...normalizeGitHubReadFields(input, "GitHub team"),
+    org: requireTrimmedString(input.org, "GitHub team input requires an org."),
+    teamSlug: requireTrimmedString(input.teamSlug, "GitHub team input requires a team slug.")
+  } as TInput;
+}
+
+export function requireRepositoryInput<TInput extends RepoDetailInput>(input: unknown): TInput {
+  if (!isRecord(input)) {
+    throw new Error("GitHub repository input must be an object.");
+  }
+
+  return {
+    ...normalizeGitHubReadFields(input, "GitHub repository"),
+    owner: requireTrimmedString(input.owner, "GitHub repository input requires an owner."),
+    repo: requireTrimmedString(input.repo, "GitHub repository input requires a repo.")
   };
 }
 
@@ -621,6 +778,18 @@ function requireTrimmedString(value: unknown, message: string): string {
     throw new Error(message);
   }
   return value.trim();
+}
+
+function normalizeGitHubReadFields<TInput extends object>(
+  input: Record<string, unknown>,
+  label: string
+): TInput {
+  return {
+    ...input,
+    limit: optionalInteger(input.limit, `${label} limit must be a positive integer.`),
+    cacheOnly: optionalBoolean(input.cacheOnly, `${label} cacheOnly must be a boolean.`),
+    forceRefresh: optionalBoolean(input.forceRefresh, `${label} forceRefresh must be a boolean.`)
+  } as TInput;
 }
 
 function requirePositiveInteger(value: unknown, message: string): number {

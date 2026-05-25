@@ -1,5 +1,5 @@
 import { ChevronDown, ExternalLink, Plus, Search, SquareKanban, X } from "lucide-react";
-import { useMemo, useState, type JSX } from "react";
+import { useEffect, useMemo, useRef, useState, type JSX } from "react";
 import { useQuery, type QueryClient } from "@tanstack/react-query";
 
 import type {
@@ -136,11 +136,12 @@ export function ProjectsTab({
     enabled: true,
     githubReady
   });
+  const [projectItemOptionsRequested, setProjectItemOptionsRequested] = useState(false);
   const { issues } = useIssuesTabQueries({
     owner: repository.owner,
     repo: repository.name,
     issueListLimit: 100,
-    issuesEnabled: true,
+    issuesEnabled: projectItemOptionsRequested,
     resourcesEnabled: false,
     githubReady
   });
@@ -148,7 +149,7 @@ export function ProjectsTab({
     owner: repository.owner,
     repo: repository.name,
     pullRequestListLimit: 100,
-    pullsEnabled: true,
+    pullsEnabled: projectItemOptionsRequested,
     resourcesEnabled: false,
     githubReady
   });
@@ -169,6 +170,7 @@ export function ProjectsTab({
   const [projectFieldEditKey, setProjectFieldEditKey] = useState<string | null>(null);
   const [projectFieldEditValue, setProjectFieldEditValue] = useState("");
   const [submittedProjectAction, setSubmittedProjectAction] = useState<GitHubAction | null>(null);
+  const expandedFocusedProjectId = useRef<string | null>(null);
   const normalizedFilter = filter.trim().toLowerCase();
   const filteredProjects = normalizedFilter
     ? projects.filter((project) =>
@@ -189,8 +191,10 @@ export function ProjectsTab({
           .some((value) => String(value).toLowerCase().includes(normalizedFilter))
       )
     : projects;
-  const selectedProject =
-    filteredProjects.find((project) => project.id === selectedProjectId) ?? filteredProjects[0] ?? null;
+  const requestedProjectId = selectedProjectId ?? focusedProjectId;
+  const selectedProject = requestedProjectId
+    ? (filteredProjects.find((project) => project.id === requestedProjectId) ?? null)
+    : (filteredProjects[0] ?? null);
   const projectExternalReason = selectedProject?.htmlUrl ? null : "External project URL unavailable.";
   const ownerExternalReason = selectedProject?.ownerHtmlUrl ? null : "Project owner URL unavailable.";
   const availabilityMessage = readAvailabilityMessage("Projects", availability);
@@ -200,6 +204,20 @@ export function ProjectsTab({
       : null;
   const projectsLimitHit = projects.length >= projectsLimit;
   const canExpandProjects = !disabledFeatureMessage && projectsLimitHit && projectsLimit < maxProjectsLimit;
+  const focusedProjectLoaded = focusedProjectId
+    ? projects.some((project) => project.id === focusedProjectId)
+    : true;
+  useEffect(() => {
+    if (!focusedProjectId || focusedProjectLoaded || loading || !canExpandProjects) {
+      return;
+    }
+    if (expandedFocusedProjectId.current === focusedProjectId) {
+      return;
+    }
+
+    expandedFocusedProjectId.current = focusedProjectId;
+    onExpandProjects();
+  }, [canExpandProjects, focusedProjectId, focusedProjectLoaded, loading, onExpandProjects]);
   const projectItemOptions = useMemo(() => {
     const issueItems = issues.data?.items ?? [];
     const pullItems = pulls.data?.items ?? [];
@@ -260,6 +278,7 @@ export function ProjectsTab({
     projectActionPendingReason ??
     selectedProjectMutationDisabledReason ??
     (!selectedProject ? "Select a project first." : null) ??
+    (!projectItemOptionsRequested ? "Load issue and pull request options before adding an item." : null) ??
     (!selectedProjectItem ? "No loaded issue or pull request has a GitHub node ID." : null);
   const projectDeleteItemDisabledReason =
     projectActionPendingReason ??
@@ -894,22 +913,28 @@ export function ProjectsTab({
                   mutationError && (
                     <div className="error-state">Add project item failed: {mutationError.message}</div>
                   )}
-                <select
-                  disabled={Boolean(projectAddItemDisabledReason)}
-                  title={projectAddItemDisabledReason ?? undefined}
-                  value={selectedProjectItem?.id ?? ""}
-                  onChange={(event) => setProjectItemContentId(event.target.value)}
-                >
-                  {projectItemOptions.length === 0 ? (
-                    <option value="">No loaded issue or pull request node IDs</option>
-                  ) : (
-                    projectItemOptions.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.label} · {item.state}
-                      </option>
-                    ))
-                  )}
-                </select>
+                {!projectItemOptionsRequested ? (
+                  <button type="button" onClick={() => setProjectItemOptionsRequested(true)}>
+                    Load issue and pull request options
+                  </button>
+                ) : (
+                  <select
+                    disabled={Boolean(projectAddItemDisabledReason)}
+                    title={projectAddItemDisabledReason ?? undefined}
+                    value={selectedProjectItem?.id ?? ""}
+                    onChange={(event) => setProjectItemContentId(event.target.value)}
+                  >
+                    {projectItemOptions.length === 0 ? (
+                      <option value="">No loaded issue or pull request node IDs</option>
+                    ) : (
+                      projectItemOptions.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.label} · {item.state}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                )}
                 <div className="thread-actions">
                   <button
                     type="submit"
@@ -956,7 +981,11 @@ export function ProjectsTab({
             </>
           ) : (
             <div className="empty-state">
-              {loading ? "Loading project detail…" : "Select a project to inspect."}
+              {loading
+                ? "Loading project detail…"
+                : focusedProjectId
+                  ? "Focused project is not loaded in this repository page yet."
+                  : "Select a project to inspect."}
             </div>
           )}
         </div>

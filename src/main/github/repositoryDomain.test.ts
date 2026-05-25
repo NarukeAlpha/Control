@@ -1,6 +1,9 @@
+import { Buffer } from "node:buffer";
+
 import { describe, expect, it, vi } from "vitest";
 
 import type { GitHubReadAvailability } from "@shared/github";
+import { maxPreviewBytes } from "@shared/filePreviewPolicy";
 import {
   mapLanguages,
   mapRepositorySummary,
@@ -122,6 +125,17 @@ describe("OctokitRepositoryDomain", () => {
           ]
         };
       }
+      if (route === "GET /repos/{owner}/{repo}/contents/{path}") {
+        return {
+          name: "main.ts",
+          path: "src/main.ts",
+          type: "file",
+          sha: "file-sha",
+          size: 23,
+          html_url: "https://github.com/NarukeAlpha/control/blob/main/src/main.ts",
+          download_url: "https://raw.githubusercontent.com/NarukeAlpha/control/main/src/main.ts"
+        };
+      }
       if (route.includes("/contents")) {
         return [
           {
@@ -215,7 +229,10 @@ describe("OctokitRepositoryDomain", () => {
     await expect(domain.getFileContent({ ...repo, path: "src/main.ts", ref: "main" })).resolves.toEqual(
       expect.objectContaining({
         path: "src/main.ts",
+        kind: "text",
         content: "export const value = 1;",
+        size: 23,
+        encoding: "utf-8",
         lastCommitSha: "commit-sha"
       })
     );
@@ -223,6 +240,134 @@ describe("OctokitRepositoryDomain", () => {
       items: [expect.objectContaining({ owner: "Other", name: "control-fork" })],
       availability: { status: "available", message: null }
     });
+  });
+
+  it("classifies file content from metadata before fetching raw text", async () => {
+    const rawText = vi.fn(async () => "raw should not be fetched");
+    const domain = domainForFileContent({
+      item: contentItem({ path: "dist/archive.zip", size: 1024, download_url: null }),
+      restText: rawText
+    });
+
+    await expect(
+      domain.getFileContent({ owner: "NarukeAlpha", repo: "control", path: "dist/archive.zip", ref: "main" })
+    ).resolves.toEqual(
+      expect.objectContaining({
+        kind: "binary",
+        content: null,
+        encoding: null,
+        downloadUrl: null,
+        message: "Binary files are not previewed as text."
+      })
+    );
+    expect(rawText).not.toHaveBeenCalled();
+  });
+
+  it("skips too-large files and previewable images without downloading raw content", async () => {
+    const rawText = vi.fn(async () => "raw should not be fetched");
+    const largeDomain = domainForFileContent({
+      item: contentItem({ path: "src/huge.ts", size: maxPreviewBytes + 1 }),
+      restText: rawText
+    });
+    await expect(
+      largeDomain.getFileContent({ owner: "NarukeAlpha", repo: "control", path: "src/huge.ts", ref: "main" })
+    ).resolves.toEqual(expect.objectContaining({ kind: "too_large", content: null, encoding: null }));
+
+    const imageDomain = domainForFileContent({
+      item: contentItem({
+        path: "assets/logo.png",
+        download_url: "https://raw.githubusercontent.com/NarukeAlpha/control/main/assets/logo.png"
+      }),
+      restText: rawText
+    });
+    await expect(
+      imageDomain.getFileContent({
+        owner: "NarukeAlpha",
+        repo: "control",
+        path: "assets/logo.png",
+        ref: "main"
+      })
+    ).resolves.toEqual(
+      expect.objectContaining({
+        kind: "image",
+        content: null,
+        downloadUrl: "https://raw.githubusercontent.com/NarukeAlpha/control/main/assets/logo.png"
+      })
+    );
+    expect(rawText).not.toHaveBeenCalled();
+  });
+
+  it("preserves metadata for raw body failures and non-file content items", async () => {
+    const unavailableDomain = domainForFileContent({
+      item: contentItem({ path: "src/main.ts", size: 10 }),
+      restText: async () => {
+        throw new Error("raw failed");
+      }
+    });
+    await expect(
+      unavailableDomain.getFileContent({
+        owner: "NarukeAlpha",
+        repo: "control",
+        path: "src/main.ts",
+        ref: "main"
+      })
+    ).resolves.toEqual(
+      expect.objectContaining({
+        kind: "unavailable",
+        content: null,
+        htmlUrl: "https://github.com/NarukeAlpha/control/blob/main/src/main.ts",
+        size: 10,
+        message: "raw failed"
+      })
+    );
+
+    const directoryDomain = domainForFileContent({
+      item: contentItem({ path: "src", type: "dir", size: undefined, download_url: null })
+    });
+    await expect(
+      directoryDomain.getFileContent({ owner: "NarukeAlpha", repo: "control", path: "src", ref: "main" })
+    ).resolves.toEqual(
+      expect.objectContaining({
+        kind: "unavailable",
+        content: null,
+        message: "dir entries are not regular files and cannot be previewed."
+      })
+    );
+  });
+
+  it("rejects null-byte raw content and can strictly decode base64 metadata fallback", async () => {
+    const binaryDomain = domainForFileContent({
+      item: contentItem({ path: "src/main.ts", size: 10 }),
+      restText: async () => "a\u0000b"
+    });
+    await expect(
+      binaryDomain.getFileContent({ owner: "NarukeAlpha", repo: "control", path: "src/main.ts", ref: "main" })
+    ).resolves.toEqual(expect.objectContaining({ kind: "binary", content: null, encoding: null }));
+
+    const fallbackDomain = domainForFileContent({
+      item: contentItem({
+        path: "src/fallback.ts",
+        content: Buffer.from("export const ok = true;\n", "utf8").toString("base64"),
+        encoding: "base64"
+      }),
+      restText: async () => {
+        throw new Error("raw unavailable");
+      }
+    });
+    await expect(
+      fallbackDomain.getFileContent({
+        owner: "NarukeAlpha",
+        repo: "control",
+        path: "src/fallback.ts",
+        ref: "main"
+      })
+    ).resolves.toEqual(
+      expect.objectContaining({
+        kind: "text",
+        content: "export const ok = true;\n",
+        encoding: "utf-8"
+      })
+    );
   });
 
   it("maps README 404s to an available empty README result", async () => {
@@ -282,6 +427,46 @@ function createClient(overrides: Partial<OctokitRepositoryClient>): OctokitRepos
     restPaginatedArray: async () => {
       throw new Error("Unexpected paginated REST request");
     },
+    ...overrides
+  };
+}
+
+function domainForFileContent({
+  item,
+  restText = async () => "export const value = 1;"
+}: {
+  item: Record<string, unknown>;
+  restText?: OctokitRepositoryClient["restText"];
+}): OctokitRepositoryDomain {
+  const client = createClient({
+    rest: async <T>(route: string) => {
+      if (route === "GET /repos/{owner}/{repo}/contents/{path}") {
+        return item as T;
+      }
+      throw new Error(`Unexpected route ${route}`);
+    },
+    restText,
+    restPaginatedArray: async <T>(route: string) => {
+      if (route === "GET /repos/{owner}/{repo}/commits") {
+        return [] as T[];
+      }
+      throw new Error(`Unexpected route ${route}`);
+    }
+  });
+  return new OctokitRepositoryDomain(client, mapTestError);
+}
+
+function contentItem(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  const path = String(overrides.path ?? "src/main.ts");
+  const name = path.split("/").pop() ?? path;
+  return {
+    name,
+    path,
+    type: "file",
+    sha: "file-sha",
+    size: 20,
+    html_url: `https://github.com/NarukeAlpha/control/blob/main/${path}`,
+    download_url: `https://raw.githubusercontent.com/NarukeAlpha/control/main/${path}`,
     ...overrides
   };
 }

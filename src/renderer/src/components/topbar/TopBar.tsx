@@ -1,13 +1,19 @@
 import { Bell, Code2, Home, Plus, Search } from "lucide-react";
-import { useMemo, useState, type JSX } from "react";
+import { Fragment, useMemo, useState, type JSX } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import type { AreaRepositorySummary, AreaSummary } from "@shared/areas";
+import type { AreaRepositorySummary, AreaSummary, AreaWorkspaceSummary } from "@shared/areas";
 import type { AppState, RepositorySummary } from "@shared/github";
 
 import { useControlApi } from "../../hooks/useControlApi";
 import type { AppRoute } from "../../stores/uiStore";
 import { AreaTopbarSelector } from "../areas/AreaTopbarSelector";
+import {
+  areaHealthLabel,
+  areaRepositorySubtitle,
+  areaKindLabel,
+  workspaceSubtitle
+} from "../areas/areaSearchUi";
 import {
   defaultRepositorySearchLocalLimit,
   defaultRepositorySearchRemoteLimit,
@@ -17,6 +23,13 @@ import {
   repositorySearchMetadataLabel
 } from "../repository/repositorySearch";
 import { readAvailabilityMessage } from "../repository/repositoryUi";
+
+type TopbarSearchResult =
+  | { kind: "directRepository"; nameWithOwner: string }
+  | { kind: "githubRepository"; repository: RepositorySummary; source: "Local" | "GitHub" }
+  | { kind: "area"; area: AreaSummary }
+  | { kind: "areaRepository"; repository: AreaRepositorySummary }
+  | { kind: "workspace"; workspace: AreaWorkspaceSummary };
 
 export function TopBar({
   viewer,
@@ -34,6 +47,7 @@ export function TopBar({
   onGoRepository,
   onOpenRepository,
   onOpenLocalRepository,
+  onOpenWorkspace,
   onOpenAddRepository,
   onOpenCommandPalette,
   onOpenHome,
@@ -55,6 +69,7 @@ export function TopBar({
   onGoRepository(): void;
   onOpenRepository(nameWithOwner: string): void;
   onOpenLocalRepository(repository: AreaRepositorySummary): void;
+  onOpenWorkspace(workspace: AreaWorkspaceSummary): void;
   onOpenAddRepository(): void;
   onOpenCommandPalette(): void;
   onOpenHome(): void;
@@ -91,7 +106,17 @@ export function TopBar({
     queryFn: () => api.areas.searchAreas({ query: normalizedQuery, limit: 8 }),
     enabled: normalizedQuery.length > 1
   });
-  const areaRepositoryResults = areaSearch.data?.repositories ?? [];
+  const areaById = useMemo(() => new Map(areas.map((area) => [area.id, area])), [areas]);
+  const areaRepositoryResults = useMemo(
+    () => areaSearch.data?.repositories ?? [],
+    [areaSearch.data?.repositories]
+  );
+  const areaResults = useMemo(() => areaSearch.data?.areas ?? [], [areaSearch.data?.areas]);
+  const workspaceResults = useMemo(() => areaSearch.data?.workspaces ?? [], [areaSearch.data?.workspaces]);
+  const repositoryById = useMemo(
+    () => new Map(areaRepositoryResults.map((repository) => [repository.id, repository])),
+    [areaRepositoryResults]
+  );
   const searchAvailabilityMessage = readAvailabilityMessage(
     "Repository search",
     search.data?.availability ?? null
@@ -109,44 +134,71 @@ export function TopBar({
       (repository) => repository.nameWithOwner.toLowerCase() === exactRepositoryTarget.toLowerCase()
     );
   const directRepositoryVisible = exactRepositoryTarget !== null && !exactRepositoryResultVisible;
-  const searchResults = useMemo(
+  const searchResults = useMemo<TopbarSearchResult[]>(
     () => [
-      ...localResults.map((repository) => ({ repository, source: "Local" as const })),
-      ...remoteResults.map((repository) => ({ repository, source: "GitHub" as const }))
+      ...(directRepositoryVisible && exactRepositoryTarget
+        ? [{ kind: "directRepository" as const, nameWithOwner: exactRepositoryTarget }]
+        : []),
+      ...localResults.map((repository) => ({
+        kind: "githubRepository" as const,
+        repository,
+        source: "Local" as const
+      })),
+      ...remoteResults.map((repository) => ({
+        kind: "githubRepository" as const,
+        repository,
+        source: "GitHub" as const
+      })),
+      ...areaResults.map((area) => ({ kind: "area" as const, area })),
+      ...areaRepositoryResults.map((repository) => ({ kind: "areaRepository" as const, repository })),
+      ...workspaceResults.map((workspace) => ({ kind: "workspace" as const, workspace }))
     ],
-    [localResults, remoteResults]
+    [
+      areaRepositoryResults,
+      areaResults,
+      directRepositoryVisible,
+      exactRepositoryTarget,
+      localResults,
+      remoteResults,
+      workspaceResults
+    ]
   );
-  const directSearchResultCount = directRepositoryVisible ? 1 : 0;
-  const searchResultCount = directSearchResultCount + searchResults.length;
+  const searchResultCount = searchResults.length;
   const boundedSearchIndex = Math.max(0, Math.min(activeSearchIndex, Math.max(searchResultCount - 1, 0)));
-  const directSearchResultActive = directRepositoryVisible && boundedSearchIndex === 0;
-  const activeSearchResult = searchResults[boundedSearchIndex - directSearchResultCount] ?? null;
+  const activeSearchResult = searchResults[boundedSearchIndex] ?? null;
   const viewerLoading = githubReady && !viewer;
   const repositoryContext =
     route.kind === "repository" || route.kind === "codeBrowser" ? route.nameWithOwner : null;
-  const contextButton =
-    route.kind === "home"
+  const contextButton = repositoryContext
+    ? {
+        label: repositoryContext.split("/")[1] ?? "Repo",
+        title: `Open ${repositoryContext}`,
+        ariaLabel: `Open ${repositoryContext}`,
+        icon: <Code2 size={16} />,
+        onClick: onGoRepository
+      }
+    : selectedRepository
       ? {
-          label: "Home",
-          title: "Open Home",
-          ariaLabel: "Open Home",
-          icon: <Home size={16} />,
-          onClick: onOpenHome
+          label: selectedRepository.split("/")[1] ?? "Repo",
+          title: `Open ${selectedRepository}`,
+          ariaLabel: `Open ${selectedRepository}`,
+          icon: <Code2 size={16} />,
+          onClick: onGoRepository
         }
-      : repositoryContext
+      : route.kind === "home"
         ? {
-            label: repositoryContext.split("/")[1] ?? "Repo",
-            title: `Open ${repositoryContext}`,
-            ariaLabel: `Open ${repositoryContext}`,
-            icon: <Code2 size={16} />,
-            onClick: onGoRepository
+            label: "Home",
+            title: "Open Home",
+            ariaLabel: "Open Home",
+            icon: <Home size={16} />,
+            onClick: onOpenHome
           }
         : {
             label: null,
-            title: selectedRepository ? `Open ${selectedRepository}` : "Select repository",
-            ariaLabel: selectedRepository ? `Open ${selectedRepository}` : "Select repository",
+            title: "Select repository",
+            ariaLabel: "Select repository",
             icon: <Code2 size={16} />,
-            onClick: selectedRepository ? onGoRepository : onOpenCommandPalette
+            onClick: onOpenCommandPalette
           };
 
   function openSearchResult(nameWithOwner: string): void {
@@ -155,10 +207,94 @@ export function TopBar({
     setActiveSearchIndex(0);
   }
 
-  function openAreaRepositoryResult(repository: AreaRepositorySummary): void {
-    onOpenLocalRepository(repository);
+  function openTopbarSearchResult(result: TopbarSearchResult): void {
+    if (result.kind === "directRepository") {
+      openSearchResult(result.nameWithOwner);
+      return;
+    }
+    if (result.kind === "githubRepository") {
+      openSearchResult(result.repository.nameWithOwner);
+      return;
+    }
+    if (result.kind === "area") {
+      onSelectArea(result.area.id);
+      setQuery("");
+      setActiveSearchIndex(0);
+      return;
+    }
+    if (result.kind === "areaRepository") {
+      onOpenLocalRepository(result.repository);
+      setQuery("");
+      setActiveSearchIndex(0);
+      return;
+    }
+    onOpenWorkspace(result.workspace);
     setQuery("");
     setActiveSearchIndex(0);
+  }
+
+  function topbarResultKey(result: TopbarSearchResult): string {
+    switch (result.kind) {
+      case "directRepository":
+        return `direct-${result.nameWithOwner}`;
+      case "githubRepository":
+        return `github-${result.source}-${result.repository.id}`;
+      case "area":
+        return `area-${result.area.id}`;
+      case "areaRepository":
+        return `area-repository-${result.repository.areaId}-${result.repository.id}`;
+      case "workspace":
+        return `workspace-${result.workspace.areaId}-${result.workspace.repositoryId}-${result.workspace.id}`;
+    }
+  }
+
+  function topbarResultTitle(result: TopbarSearchResult): string {
+    switch (result.kind) {
+      case "directRepository":
+        return result.nameWithOwner;
+      case "githubRepository":
+        return result.repository.nameWithOwner;
+      case "area":
+        return result.area.label;
+      case "areaRepository":
+        return result.repository.displayName;
+      case "workspace":
+        return result.workspace.name;
+    }
+  }
+
+  function topbarResultSubtitle(result: TopbarSearchResult): string {
+    switch (result.kind) {
+      case "directRepository":
+        return "Open directly · Direct";
+      case "githubRepository":
+        return `${repositorySearchMetadataLabel(result.repository)} · ${result.source}`;
+      case "area": {
+        const health = areaHealthLabel(result.area.health);
+        return [areaKindLabel(result.area.kind), result.area.subtitle ?? result.area.rootPath, health]
+          .filter(Boolean)
+          .join(" · ");
+      }
+      case "areaRepository":
+        return areaRepositorySubtitle(result.repository, areaById);
+      case "workspace":
+        return workspaceSubtitle(result.workspace, repositoryById, areaById);
+    }
+  }
+
+  function topbarResultGroup(result: TopbarSearchResult): string {
+    switch (result.kind) {
+      case "directRepository":
+        return "Direct";
+      case "githubRepository":
+        return result.source === "Local" ? "Local repositories" : "GitHub search";
+      case "area":
+        return "Areas";
+      case "areaRepository":
+        return "Area repositories";
+      case "workspace":
+        return "Workspaces";
+    }
   }
 
   return (
@@ -203,14 +339,9 @@ export function TopBar({
               setActiveSearchIndex(Math.max(boundedSearchIndex - 1, 0));
               return;
             }
-            if (event.key === "Enter" && directSearchResultActive && exactRepositoryTarget) {
-              event.preventDefault();
-              openSearchResult(exactRepositoryTarget);
-              return;
-            }
             if (event.key === "Enter" && activeSearchResult) {
               event.preventDefault();
-              openSearchResult(activeSearchResult.repository.nameWithOwner);
+              openTopbarSearchResult(activeSearchResult);
             }
           }}
           placeholder="Search or jump to..."
@@ -226,59 +357,24 @@ export function TopBar({
         </button>
         {normalizedQuery.length > 1 && (
           <div className="search-popover">
-            {directRepositoryVisible && (
-              <button
-                className={directSearchResultActive ? "active-finder-row" : ""}
-                type="button"
-                onMouseEnter={() => setActiveSearchIndex(0)}
-                onClick={() => openSearchResult(exactRepositoryTarget)}
-              >
-                <span>{exactRepositoryTarget}</span>
-                <small>Open directly · Direct</small>
-              </button>
-            )}
-            {localResults.length > 0 && <div className="palette-section-title">Local repositories</div>}
-            {localResults.map((result, index) => (
-              <button
-                className={boundedSearchIndex === directSearchResultCount + index ? "active-finder-row" : ""}
-                key={result.id}
-                type="button"
-                onMouseEnter={() => setActiveSearchIndex(directSearchResultCount + index)}
-                onClick={() => openSearchResult(result.nameWithOwner)}
-              >
-                <span>{result.nameWithOwner}</span>
-                <small>{repositorySearchMetadataLabel(result)} · Local</small>
-              </button>
-            ))}
-            {remoteResults.length > 0 && <div className="palette-section-title">GitHub search</div>}
-            {remoteResults.map((result, index) => (
-              <button
-                className={
-                  boundedSearchIndex === directSearchResultCount + localResults.length + index
-                    ? "active-finder-row"
-                    : ""
-                }
-                key={result.id}
-                type="button"
-                onMouseEnter={() =>
-                  setActiveSearchIndex(directSearchResultCount + localResults.length + index)
-                }
-                onClick={() => openSearchResult(result.nameWithOwner)}
-              >
-                <span>{result.nameWithOwner}</span>
-                <small>{repositorySearchMetadataLabel(result)} · GitHub</small>
-              </button>
-            ))}
-            {areaRepositoryResults.length > 0 && <div className="palette-section-title">Areas</div>}
-            {areaRepositoryResults.map((result) => (
-              <button key={result.id} type="button" onClick={() => openAreaRepositoryResult(result)}>
-                <span>{result.displayName}</span>
-                <small>
-                  {result.kind.toUpperCase()} ·{" "}
-                  {result.connection?.nameWithOwner ?? result.path ?? "Local Area"}
-                </small>
-              </button>
-            ))}
+            {searchResults.map((result, index) => {
+              const group = topbarResultGroup(result);
+              const previousGroup = index > 0 ? topbarResultGroup(searchResults[index - 1]) : null;
+              return (
+                <Fragment key={topbarResultKey(result)}>
+                  {group !== previousGroup && <div className="palette-section-title">{group}</div>}
+                  <button
+                    className={boundedSearchIndex === index ? "active-finder-row" : ""}
+                    type="button"
+                    onMouseEnter={() => setActiveSearchIndex(index)}
+                    onClick={() => openTopbarSearchResult(result)}
+                  >
+                    <span>{topbarResultTitle(result)}</span>
+                    <small>{topbarResultSubtitle(result)}</small>
+                  </button>
+                </Fragment>
+              );
+            })}
             {canLoadMoreLocalResults && (
               <button
                 className="show-more"
@@ -316,7 +412,10 @@ export function TopBar({
               !searchUnavailable &&
               !directRepositoryVisible &&
               localResults.length === 0 &&
-              remoteResults.length === 0 && <div className="muted-row">No repositories found.</div>}
+              remoteResults.length === 0 &&
+              areaResults.length === 0 &&
+              areaRepositoryResults.length === 0 &&
+              workspaceResults.length === 0 && <div className="muted-row">No repositories found.</div>}
           </div>
         )}
       </div>
@@ -325,8 +424,8 @@ export function TopBar({
         <button
           className="icon-button glass"
           type="button"
-          title="Add repository"
-          aria-label="Add repository"
+          title="Create"
+          aria-label="Create"
           onClick={onOpenAddRepository}
         >
           <Plus size={19} />

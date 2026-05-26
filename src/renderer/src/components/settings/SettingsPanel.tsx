@@ -25,6 +25,7 @@ import {
   repositoryTabPreferenceKeys,
   repositoryTabPreferenceLabels
 } from "../repository/repositoryTabVisibility";
+import { DataSyncPanel } from "./DataSyncPanel";
 
 export function SettingsPanel({
   appState,
@@ -326,6 +327,8 @@ export function SettingsPanel({
             </label>
           ))}
         </div>
+
+        <DataSyncPanel />
 
         <footer>
           <button type="button" onClick={handleClose}>

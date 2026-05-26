@@ -80,10 +80,11 @@ export interface ControlExportResult {
 }
 
 export interface ControlImportInput {
-  filePath: string;
+  filePath?: string | null;
 }
 
 export interface ControlImportPreview {
+  filePath: string | null;
   schemaVersion: number | null;
   items: Array<{
     id: string;
@@ -103,9 +104,22 @@ export interface ControlImportApplyInput extends ControlImportInput {
 export interface ControlImportResult {
   applied: boolean;
   importedItems: number;
+  insertedItems: number;
+  updatedItems: number;
   skippedItems: number;
   remappedItems: number;
+  blockedItems: number;
   emittedEvents: string[];
+}
+
+export type ControlAppDataSyncState = "idle" | "checking" | "syncing" | "conflicted" | "offline" | "error";
+
+export interface ControlAppDataSyncStatus {
+  state: ControlAppDataSyncState;
+  lastSyncedAt: string | null;
+  pendingRecords: number;
+  conflictRecords: number;
+  message: string | null;
 }
 
 export const defaultControlExportScope: ControlExportScope = {

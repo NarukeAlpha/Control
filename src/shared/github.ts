@@ -2058,15 +2058,10 @@ export interface GitHubMutationResult {
 
 export interface GitHubProvider {
   getViewer(): Promise<Viewer>;
-  getAccountProfile(input?: AccountProfileInput): Promise<GitHubAccountProfile>;
   getAccountProfileWithStatus(input?: AccountProfileInput): Promise<AccountProfileResult>;
-  listRepositories(input: RepoListInput): Promise<RepositorySummary[]>;
   listRepositoriesWithStatus(input: RepoListInput): Promise<RepositoryListResult>;
-  listAccountRepositories(input: AccountRepositoryInput): Promise<RepositorySummary[]>;
   listAccountRepositoriesWithStatus(input: AccountRepositoryInput): Promise<AccountRepositoryListResult>;
-  listOrganizations(input: OrganizationListInput): Promise<OrganizationSummary[]>;
   listOrganizationsWithStatus(input?: OrganizationListInput): Promise<OrganizationListResult>;
-  listOrganizationTeams(input: OrganizationTeamsInput): Promise<TeamSummary[]>;
   listOrganizationTeamsWithStatus(input: OrganizationTeamsInput): Promise<OrganizationTeamsResult>;
   listOrganizationRepositoriesWithStatus(
     input: OrganizationRepositoriesInput
@@ -2079,48 +2074,31 @@ export interface GitHubProvider {
   ): Promise<OrganizationTeamMembersResult>;
   listOrganizationMembersWithStatus(input: OrganizationMembersInput): Promise<OrganizationMembersResult>;
   listOrganizationProjectsWithStatus(input: OrganizationProjectsInput): Promise<ProjectListResult>;
-  listAccountIssues(input: AccountIssueListInput): Promise<IssueSummary[]>;
   listAccountIssuesWithStatus(input?: AccountIssueListInput): Promise<AccountIssueListResult>;
-  listAccountPullRequests(input: AccountPullRequestListInput): Promise<PullRequestSummary[]>;
   listAccountPullRequestsWithStatus(
     input?: AccountPullRequestListInput
   ): Promise<AccountPullRequestListResult>;
-  listNotifications(input: NotificationListInput): Promise<NotificationSummary[]>;
   listNotificationsWithStatus(input?: NotificationListInput): Promise<NotificationListResult>;
   markNotificationThreadRead(input: NotificationThreadInput): Promise<NotificationThreadMutationResult>;
   unsubscribeNotificationThread(input: NotificationThreadInput): Promise<NotificationThreadMutationResult>;
-  getRepository(owner: string, repo: string): Promise<RepositoryDetail>;
   getRepositoryWithStatus(owner: string, repo: string): Promise<RepositoryDetailResult>;
   listRepositoryForks(input: RepositoryForksInput): Promise<RepositoryForksResult>;
-  listBranches(input: BranchListInput): Promise<BranchSummary[]>;
   listBranchesWithStatus(input: BranchListInput): Promise<BranchListResult>;
-  listTags(input: TagListInput): Promise<TagSummary[]>;
   listTagsWithStatus(input: TagListInput): Promise<TagListResult>;
-  listTree(input: RepoTreeInput): Promise<RepoTreeResult>;
   listTreeWithStatus(input: RepoTreeInput): Promise<RepoTreeReadResult>;
   getReadme(input: RepoReadmeInput): Promise<RepoReadmeResult>;
-  listContents(input: RepoContentsInput): Promise<RepoEntry[]>;
   listContentsWithStatus(input: RepoContentsInput): Promise<RepoContentsResult>;
-  getFileContent(input: RepoFileContentInput): Promise<RepoFileContent>;
   getFileContentWithStatus(input: RepoFileContentInput): Promise<RepoFileContentResult>;
   getFileBlame(input: RepoFileBlameInput): Promise<RepoFileBlameResult>;
   getRepositoryWiki(input: RepositoryWikiInput): Promise<RepositoryWikiResult>;
-  listCommits(input: RepositoryCommitListInput): Promise<RepositoryCommitSummary[]>;
   listCommitsWithStatus(input: RepositoryCommitListInput): Promise<RepositoryCommitListResult>;
-  listLabels(input: RepositoryLabelListInput): Promise<LabelSummary[]>;
   listLabelsWithStatus(input: RepositoryLabelListInput): Promise<RepositoryLabelListResult>;
-  listAssignableUsers(input: AssignableUserListInput): Promise<AssignableUserSummary[]>;
   listAssignableUsersWithStatus(input: AssignableUserListInput): Promise<AssignableUserListResult>;
   getRepositoryAccess(input: RepositoryAccessInput): Promise<RepositoryAccessResult>;
-  listMilestones(input: RepositoryMilestoneListInput): Promise<MilestoneSummary[]>;
   listMilestonesWithStatus(input: RepositoryMilestoneListInput): Promise<RepositoryMilestoneListResult>;
-  listIssues(input: IssueListInput): Promise<IssueSummary[]>;
   listIssuesWithStatus(input: IssueListInput): Promise<IssueListResult>;
-  getIssueDetail(input: IssueDetailInput): Promise<IssueDetail>;
   getIssueDetailWithStatus(input: IssueDetailInput): Promise<IssueDetailResult>;
-  listPullRequests(input: PullRequestListInput): Promise<PullRequestSummary[]>;
   listPullRequestsWithStatus(input: PullRequestListInput): Promise<PullRequestListResult>;
-  getPullRequestDetail(input: PullRequestDetailInput): Promise<PullRequestDetail>;
   getPullRequestDetailWithStatus(input: PullRequestDetailInput): Promise<PullRequestDetailResult>;
   getPullRequestOverviewWithStatus(input: PullRequestOverviewInput): Promise<PullRequestOverviewResult>;
   listPullRequestCommentsWithStatus(input: PullRequestCommentsInput): Promise<PullRequestCommentsResult>;
@@ -2135,20 +2113,15 @@ export interface GitHubProvider {
   listPullRequestLinkedIssuesWithStatus(
     input: PullRequestLinkedIssuesInput
   ): Promise<PullRequestLinkedIssuesResult>;
-  listDiscussions(input: DiscussionListInput): Promise<DiscussionSummary[]>;
   listDiscussionsWithStatus(input: DiscussionListInput): Promise<DiscussionListResult>;
   listDiscussionCategoriesWithStatus(
     input: DiscussionCategoryListInput
   ): Promise<DiscussionCategoryListResult>;
   getDiscussionDetail(input: DiscussionDetailInput): Promise<DiscussionDetailResult>;
-  listActions(input: ActionsInput): Promise<WorkflowRunSummary[]>;
   listActionsWithStatus(input: ActionsInput): Promise<WorkflowRunListResult>;
-  listWorkflows(input: WorkflowListInput): Promise<WorkflowDefinitionSummary[]>;
   listWorkflowsWithStatus(input: WorkflowListInput): Promise<WorkflowDefinitionListResult>;
-  getWorkflowRunDetail(input: WorkflowRunDetailInput): Promise<WorkflowRunDetail>;
   getWorkflowRunDetailWithStatus(input: WorkflowRunDetailInput): Promise<WorkflowRunDetailResult>;
   getWorkflowJobLogs(input: WorkflowJobLogsInput): Promise<WorkflowJobLogsResult>;
-  listProjects(input: ProjectsInput): Promise<ProjectSummary[]>;
   listProjectsWithStatus(input: ProjectsInput): Promise<ProjectListResult>;
   getBranchProtection(input: BranchProtectionInput): Promise<BranchProtectionResult>;
   listDependabotAlerts(input: DependabotAlertsInput): Promise<DependabotAlertsResult>;
@@ -2162,12 +2135,9 @@ export interface GitHubProvider {
   getRepositoryCommunityProfile(
     input: RepositoryCommunityProfileInput
   ): Promise<RepositoryCommunityProfileResult>;
-  listReleases(input: ReleasesInput): Promise<ReleaseSummary[]>;
   listReleasesWithStatus(input: ReleasesInput): Promise<ReleaseListResult>;
   getReleaseDetailWithStatus(input: ReleaseDetailInput): Promise<ReleaseDetailResult>;
-  listContributors(input: ContributorsInput): Promise<ContributorSummary[]>;
   listContributorsWithStatus(input: ContributorsInput): Promise<ContributorListResult>;
-  search(input: SearchInput): Promise<RepositorySummary[]>;
   searchWithStatus(input: SearchInput): Promise<RepositorySearchResult>;
   mutate<TInput extends GitHubMutationInput, TResult extends GitHubMutationResult>(
     input: TInput

@@ -1,12 +1,8 @@
-import { readFile } from "node:fs/promises";
-
 import {
   defaultControlExportScope,
   type ControlExportPreview,
   type ControlExportPreviewItem,
   type ControlExportScope,
-  type ControlImportInput,
-  type ControlImportPreview,
   type ControlRedactionSummary
 } from "@shared/sync";
 import type { LocalStore } from "./localStoreAdapter";
@@ -142,43 +138,6 @@ export function createControlExportPreview(
         .reduce((total, item) => total + item.estimatedCount, 0)
     },
     blockers
-  };
-}
-
-export async function createControlImportPreview(input: ControlImportInput): Promise<ControlImportPreview> {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(await readFile(input.filePath, "utf8"));
-  } catch (error) {
-    return {
-      schemaVersion: null,
-      items: [],
-      blockers: [error instanceof Error ? error.message : "Import preview file could not be read."]
-    };
-  }
-
-  const schemaVersion = importSchemaVersion(parsed);
-  if (schemaVersion !== 1) {
-    return {
-      schemaVersion,
-      items: [],
-      blockers: ["Control import preview requires export schema version 1."]
-    };
-  }
-
-  return {
-    schemaVersion,
-    items: [
-      {
-        id: "control-export-manifest",
-        label: "Control export manifest",
-        action: "skip",
-        dataClass: "durable",
-        estimatedCount: 1,
-        message: "Import apply is not implemented in pass 1."
-      }
-    ],
-    blockers: ["Import apply is not implemented in pass 1."]
   };
 }
 
@@ -355,17 +314,4 @@ function redaction(
   reason: string
 ): ControlRedactionSummary {
   return { field, dataClass, category, action, reason };
-}
-
-function importSchemaVersion(value: unknown): number | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  const record = value as Record<string, unknown>;
-  const manifest = record.manifest;
-  if (manifest && typeof manifest === "object" && !Array.isArray(manifest)) {
-    const version = (manifest as Record<string, unknown>).schemaVersion;
-    return typeof version === "number" ? version : null;
-  }
-  return typeof record.schemaVersion === "number" ? record.schemaVersion : null;
 }

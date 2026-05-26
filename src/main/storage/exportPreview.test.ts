@@ -1,15 +1,17 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
 import { defaultControlExportScope } from "@shared/sync";
+import { createControlExportPreview, controlExportRedactionSummary } from "./exportPreview";
 import {
-  createControlExportPreview,
+  applyControlImport,
+  createControlExportArchive,
   createControlImportPreview,
-  controlExportRedactionSummary
-} from "./exportPreview";
+  writeControlExportArchive
+} from "./exportArchive";
 import { MemoryLocalStore } from "./memoryStore";
 
 describe("Control export preview", () => {
@@ -90,25 +92,154 @@ describe("Control export preview", () => {
     expect(preview.blockers).toEqual(["Gateway credentials are pending keychain migration for Control."]);
   });
 
-  it("previews import manifests without applying data", async () => {
+  it("writes versioned JSON archives atomically with redacted local paths", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "control-import-preview-"));
     try {
       const filePath = join(tempDir, "control-export.json");
-      writeFileSync(filePath, JSON.stringify({ manifest: { schemaVersion: 1 } }));
+      const store = new MemoryLocalStore();
+      store.updateSettings({ glassMode: "solid" });
+      store.createLocalArea({ rootPath: "/private/work/control", label: "Control" });
+      store.pinRepository("owner/repo");
 
-      await expect(createControlImportPreview({ filePath })).resolves.toEqual({
+      const result = await writeControlExportArchive(store, {
+        scope: {
+          ...defaultControlExportScope,
+          areas: true,
+          pins: true,
+          snapshots: true,
+          includeLocalPaths: false
+        },
+        destinationPath: filePath
+      });
+      const parsed = JSON.parse(readFileSync(filePath, "utf8")) as ReturnType<
+        typeof createControlExportArchive
+      >;
+
+      expect(result.filePath).toBe(filePath);
+      expect(result.bytesWritten).toBeGreaterThan(0);
+      expect(existsSync(filePath)).toBe(true);
+      expect(parsed.manifest.schemaVersion).toBe(1);
+      expect(parsed.data.settings?.glassMode).toBe("solid");
+      expect(parsed.data.areas?.[0]).toMatchObject({
+        label: "Control",
+        rootPath: null,
+        subtitle: null
+      });
+      expect(parsed.data.pins?.repositories).toEqual(["owner/repo"]);
+      expect(parsed.data.snapshots).toEqual({ areaRepoSnapshots: [], areaWorkspaceSnapshots: [] });
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("previews and applies durable import sections without importing cache data or secrets", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "control-import-preview-"));
+    try {
+      const filePath = join(tempDir, "control-export.json");
+      const source = new MemoryLocalStore();
+      source.updateSettings({ glassMode: "solid" });
+      source.createLocalArea({ rootPath: "/private/work/control", label: "Control" });
+      source.pinRepository("owner/repo");
+      source.addRecentItem("repository", "github", "owner/repo", {
+        kind: "repository",
+        provider: "github",
+        itemKey: "owner/repo",
+        title: "owner/repo",
+        subtitle: null,
+        repositoryNameWithOwner: "owner/repo",
+        url: "https://github.com/owner/repo",
+        metadata: { path: "/private/work/control", ref: "main" }
+      });
+      await writeControlExportArchive(source, {
+        scope: {
+          ...defaultControlExportScope,
+          areas: true,
+          pins: true,
+          recents: true,
+          includeLocalPaths: false
+        },
+        destinationPath: filePath
+      });
+
+      await expect(createControlImportPreview({ filePath })).resolves.toMatchObject({
+        filePath,
         schemaVersion: 1,
         items: [
-          {
-            id: "control-export-manifest",
-            label: "Control export manifest",
-            action: "skip",
-            dataClass: "durable",
-            estimatedCount: 1,
-            message: "Import apply is not implemented in pass 1."
-          }
+          expect.objectContaining({ id: "settings", action: "update" }),
+          expect.objectContaining({ id: "areas", action: "remap" }),
+          expect.objectContaining({ id: "pins", action: "insert" }),
+          expect.objectContaining({ id: "recents", action: "insert" })
         ],
-        blockers: ["Import apply is not implemented in pass 1."]
+        blockers: []
+      });
+
+      const target = new MemoryLocalStore();
+      const result = await applyControlImport(target, { filePath, confirmed: true });
+
+      expect(result).toMatchObject({
+        applied: true,
+        importedItems: 4,
+        insertedItems: 2,
+        updatedItems: 2,
+        skippedItems: 1,
+        remappedItems: 1,
+        blockedItems: 0,
+        emittedEvents: ["recents-updated", "repository-pins-updated", "settings-updated"]
+      });
+      expect(target.getSettings().glassMode).toBe("solid");
+      expect(target.listPinnedRepositories()).toEqual(["owner/repo"]);
+      expect(target.listRecentItems({ limit: 5 })).toHaveLength(1);
+      expect(target.listAreas().some((area) => area.label === "Control")).toBe(false);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects unsupported import schema versions before applying data", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "control-import-preview-"));
+    try {
+      const filePath = join(tempDir, "control-export.json");
+      writeFileSync(filePath, JSON.stringify({ manifest: { schemaVersion: 2 }, data: {} }));
+
+      await expect(createControlImportPreview({ filePath })).resolves.toMatchObject({
+        filePath,
+        schemaVersion: null,
+        items: [],
+        blockers: ["Control import requires export schema version 1."]
+      });
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects malformed import sections before applying data", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "control-import-preview-"));
+    try {
+      const filePath = join(tempDir, "control-export.json");
+      writeFileSync(
+        filePath,
+        JSON.stringify({
+          manifest: { schemaVersion: 1 },
+          data: { pins: { repositories: ["owner/repo", "not-a-repository-name"] } }
+        })
+      );
+
+      await expect(createControlImportPreview({ filePath })).resolves.toMatchObject({
+        filePath,
+        schemaVersion: null,
+        items: [],
+        blockers: ["Control import repository pins section is malformed."]
+      });
+      await expect(
+        applyControlImport(new MemoryLocalStore(), { filePath, confirmed: true })
+      ).resolves.toMatchObject({
+        applied: false,
+        importedItems: 0,
+        insertedItems: 0,
+        updatedItems: 0,
+        skippedItems: 0,
+        remappedItems: 0,
+        blockedItems: 1
       });
     } finally {
       rmSync(tempDir, { recursive: true, force: true });

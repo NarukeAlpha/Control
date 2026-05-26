@@ -1,3 +1,7 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 
 import { githubIpcRouteChannels, ipcChannels } from "@shared/ipc";
@@ -7,6 +11,10 @@ import type { LocalStore } from "../storage";
 import { createControlIpcRoutes, registerControlIpc } from "./registerControlIpc";
 
 vi.mock("electron", () => ({
+  dialog: {
+    showOpenDialog: vi.fn(),
+    showSaveDialog: vi.fn()
+  },
   shell: {
     openExternal: vi.fn()
   }
@@ -25,6 +33,7 @@ const settings: ControlSettings = {
 
 function createStore(): LocalStore {
   return {
+    getSettings: vi.fn(() => settings),
     updateSettings: vi.fn((settingsPatch) => ({
       ...settings,
       ...settingsPatch,
@@ -34,6 +43,8 @@ function createStore(): LocalStore {
       }
     })),
     listAreas: vi.fn(() => []),
+    getArea: vi.fn(() => null),
+    upsertArea: vi.fn(),
     listAreaRepositories: vi.fn(() => []),
     listAreaWorkspaces: vi.fn(() => []),
     listGitHubRepositoriesWithMetadata: vi.fn(() => ({ items: [], syncedAt: null })),
@@ -105,11 +116,13 @@ describe("registerControlIpc", () => {
     expect(channels).toContain(ipcChannels.appState);
     expect(channels).toContain(ipcChannels.updateSettings);
     expect(channels).toContain(ipcChannels.previewDataExport);
+    expect(channels).toContain(ipcChannels.exportData);
     expect(channels).toContain(ipcChannels.previewDataImport);
+    expect(channels).toContain(ipcChannels.importData);
     expect(channels).toContain(ipcChannels.githubRepositoryWithStatus);
     expect(channels).toContain(ipcChannels.githubRepositoriesWithStatus);
     expect(channels).toContain(ipcChannels.githubMutate);
-    expect(channels).not.toContain(ipcChannels.githubRepository);
+    expect(channels).not.toContain("github:repository");
     expect(channels).not.toContain(ipcChannels.getSettings);
     expect(channels).not.toContain(ipcChannels.openExternal);
     expect(new Set(channels).size).toBe(channels.length);
@@ -170,6 +183,80 @@ describe("registerControlIpc", () => {
     expect(onSettingsUpdated).toHaveBeenCalledWith(result);
   });
 
+  it("emits settings and Area invalidation callbacks after durable import apply", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "control-import-ipc-"));
+    try {
+      const filePath = join(tempDir, "control-export.json");
+      writeFileSync(
+        filePath,
+        JSON.stringify({
+          manifest: {
+            schemaVersion: 1,
+            createdAt: "2026-05-25T00:00:00.000Z",
+            appVersion: null,
+            includedScopes: {
+              settings: true,
+              areas: true,
+              pins: false,
+              recents: false,
+              githubMetadataCache: false,
+              areaCache: false,
+              snapshots: false,
+              includeLocalPaths: false,
+              includePrivateRepositoryMetadata: false
+            },
+            redactionSummary: [],
+            cacheIncluded: {
+              githubMetadata: false,
+              areaCache: false,
+              snapshots: false
+            }
+          },
+          data: {
+            settings: { glassMode: "solid" },
+            areas: [
+              {
+                id: "github:default",
+                kind: "github",
+                label: "GitHub",
+                subtitle: null,
+                rootPath: null,
+                accountLogin: null,
+                gateway: null,
+                health: { status: "ready", message: null, checkedAt: null },
+                repositoryCount: 0,
+                selected: true,
+                createdAt: "2026-05-25T00:00:00.000Z",
+                updatedAt: "2026-05-25T00:00:00.000Z"
+              }
+            ]
+          }
+        })
+      );
+      const store = createStore();
+      const github = createGitHub();
+      const onSettingsUpdated = vi.fn();
+      const onAreasUpdated = vi.fn();
+      const { ipcMain, handlers } = createIpcMain();
+
+      registerControlIpc({
+        ipcMain,
+        store,
+        github,
+        effectBridge: { run: vi.fn() },
+        onSettingsUpdated,
+        onAreasUpdated
+      });
+
+      await handlers.get(ipcChannels.importData)?.(null, { filePath, confirmed: true });
+
+      expect(onSettingsUpdated).toHaveBeenCalledWith(settings);
+      expect(onAreasUpdated).toHaveBeenCalledWith({ areaId: null });
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("normalizes export preview scope and rejects malformed values", async () => {
     const store = createStore();
     const github = createGitHub();
@@ -207,6 +294,21 @@ describe("registerControlIpc", () => {
     await expect(handlers.get(ipcChannels.previewDataImport)?.(null, { filePath: " " })).rejects.toThrow(
       "Control import preview requires a file path."
     );
+    await expect(handlers.get(ipcChannels.previewDataImport)?.(null, { filePath: 42 })).rejects.toThrow(
+      "Control import file path must be a string."
+    );
+    await expect(
+      handlers.get(ipcChannels.exportData)?.(null, {
+        scope: { settings: true },
+        destinationPath: 42
+      })
+    ).rejects.toThrow("Control export destination path must be a string.");
+    await expect(
+      handlers.get(ipcChannels.exportData)?.(null, {
+        scope: { settings: true },
+        destinationPath: " "
+      })
+    ).rejects.toThrow("Control export destination path must not be blank.");
   });
 
   it("validates GitHub repository input at the router seam before calling the provider", async () => {

@@ -33,7 +33,9 @@ const controlApi: ControlApi = {
   listRecentItems: (input = {}) => invoke(ipcChannels.listRecentItems, input),
   recordRecentItem: (input) => invoke(ipcChannels.recordRecentItem, input),
   previewDataExport: (input) => invoke(ipcChannels.previewDataExport, input),
+  exportData: (input) => invoke(ipcChannels.exportData, input),
   previewDataImport: (input) => invoke(ipcChannels.previewDataImport, input),
+  importData: (input) => invoke(ipcChannels.importData, input),
   areas: {
     listAreas: () => invoke(ipcChannels.areasList),
     getArea: (areaId) => invoke(ipcChannels.areasGet, areaId),

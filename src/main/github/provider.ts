@@ -245,8 +245,43 @@ interface DeviceSignInRecord {
   error: string | null;
 }
 
+// Main-process cache hydration and status-bearing read wrappers still compose a small set of raw reads.
+// Keep this interface private to the provider manager; renderer/preload contracts must expose status results.
+interface GitHubRawReadProvider extends GitHubProvider {
+  getAccountProfile(input?: AccountProfileInput): Promise<GitHubAccountProfile>;
+  listRepositories(input: RepoListInput): Promise<RepositorySummary[]>;
+  listAccountRepositories(input: AccountRepositoryInput): Promise<RepositorySummary[]>;
+  listOrganizations(input: OrganizationListInput): Promise<OrganizationSummary[]>;
+  listOrganizationTeams(input: OrganizationTeamsInput): Promise<TeamSummary[]>;
+  listAccountIssues(input: AccountIssueListInput): Promise<IssueSummary[]>;
+  listAccountPullRequests(input: AccountPullRequestListInput): Promise<PullRequestSummary[]>;
+  listNotifications(input: NotificationListInput): Promise<NotificationSummary[]>;
+  getRepository(owner: string, repo: string): Promise<RepositoryDetail>;
+  listBranches(input: BranchListInput): Promise<BranchSummary[]>;
+  listTags(input: TagListInput): Promise<TagSummary[]>;
+  listTree(input: RepoTreeInput): Promise<RepoTreeResult>;
+  listContents(input: RepoContentsInput): Promise<RepoEntry[]>;
+  getFileContent(input: RepoFileContentInput): Promise<RepoFileContent>;
+  listCommits(input: RepositoryCommitListInput): Promise<RepositoryCommitSummary[]>;
+  listLabels(input: RepositoryLabelListInput): Promise<LabelSummary[]>;
+  listAssignableUsers(input: AssignableUserListInput): Promise<AssignableUserSummary[]>;
+  listMilestones(input: RepositoryMilestoneListInput): Promise<MilestoneSummary[]>;
+  listIssues(input: IssueListInput): Promise<IssueSummary[]>;
+  getIssueDetail(input: IssueDetailInput): Promise<IssueDetail>;
+  listPullRequests(input: PullRequestListInput): Promise<PullRequestSummary[]>;
+  getPullRequestDetail(input: PullRequestDetailInput): Promise<PullRequestDetail>;
+  listDiscussions(input: DiscussionListInput): Promise<DiscussionSummary[]>;
+  listActions(input: ActionsInput): Promise<WorkflowRunSummary[]>;
+  listWorkflows(input: WorkflowListInput): Promise<WorkflowDefinitionSummary[]>;
+  getWorkflowRunDetail(input: WorkflowRunDetailInput): Promise<WorkflowRunDetail>;
+  listProjects(input: ProjectsInput): Promise<ProjectSummary[]>;
+  listReleases(input: ReleasesInput): Promise<ReleaseSummary[]>;
+  listContributors(input: ContributorsInput): Promise<ContributorSummary[]>;
+  search(input: SearchInput): Promise<RepositorySummary[]>;
+}
+
 export class GitHubProviderManager implements GitHubProvider {
-  private providerPromise: Promise<GitHubProvider> | null = null;
+  private providerPromise: Promise<GitHubRawReadProvider> | null = null;
   private readonly requestDedupe = new GitHubRequestDedupe();
   private readonly readCache = new GitHubReadCache();
   private readonly deviceSignInScheduler = new DeviceSignInPollScheduler<DeviceSignInRecord>(
@@ -462,7 +497,7 @@ export class GitHubProviderManager implements GitHubProvider {
     const statusDedupeKey = `account-profile-status:${input.login ?? "viewer"}`;
     const dedupeKey = input.forceRefresh ? `force:${statusDedupeKey}` : statusDedupeKey;
     return this.dedupe(dedupeKey, async () => {
-      let provider: GitHubProvider;
+      let provider: GitHubRawReadProvider;
       try {
         provider = await this.provider();
       } catch (error) {
@@ -1736,7 +1771,7 @@ export class GitHubProviderManager implements GitHubProvider {
   }
 
   async search(input: SearchInput): Promise<RepositorySummary[]> {
-    let provider: GitHubProvider;
+    let provider: GitHubRawReadProvider;
     try {
       provider = await this.provider();
     } catch (error) {
@@ -1751,7 +1786,7 @@ export class GitHubProviderManager implements GitHubProvider {
   }
 
   async searchWithStatus(input: SearchInput): Promise<RepositorySearchResult> {
-    let provider: GitHubProvider;
+    let provider: GitHubRawReadProvider;
     try {
       provider = await this.provider();
     } catch (error) {
@@ -2110,7 +2145,7 @@ export class GitHubProviderManager implements GitHubProvider {
     });
   }
 
-  private async provider(): Promise<GitHubProvider> {
+  private async provider(): Promise<GitHubRawReadProvider> {
     if (this.providerPromise) {
       return this.providerPromise;
     }

@@ -31,6 +31,9 @@ jobs:
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
 
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Install dependencies
         run: npm ci
 
@@ -45,6 +48,15 @@ jobs:
 
       - name: Unit tests
         run: bun run test
+
+      - name: Gateway tests
+        run: cargo test --workspace
+
+      - name: Build gateway bundle
+        run: bun run build:gateway
+
+      - name: Verify gateway bundle
+        run: bun run verify:gateway-bundle
 
       - name: Production build
         run: bun run build

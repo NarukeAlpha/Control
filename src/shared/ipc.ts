@@ -62,9 +62,13 @@ import type {
 } from "./local";
 import type {
   ControlExportPreview,
+  ControlExportInput,
+  ControlExportResult,
   ControlExportScope,
+  ControlImportApplyInput,
   ControlImportInput,
-  ControlImportPreview
+  ControlImportPreview,
+  ControlImportResult
 } from "./sync";
 
 type JsonSerializableObject<T extends object> = {
@@ -116,49 +120,65 @@ type GitHubIpcOptionalInputKeys =
   | "listAccountPullRequestsWithStatus"
   | "listNotificationsWithStatus";
 
-type GitHubIpcRepositoryDetailKeys = "getRepositoryWithStatus";
-type GitHubIpcConcreteMutationKey = "mutate";
-// Raw read twins remain on the main-process provider for cache/read-model internals, but stay hidden from
-// renderer IPC until each call site has a status-bearing replacement with explicit availability semantics.
-type GitHubIpcRawReadTwinKeys =
-  | "getAccountProfile"
-  | "listRepositories"
-  | "listAccountRepositories"
-  | "listOrganizations"
-  | "listOrganizationTeams"
-  | "listAccountIssues"
-  | "listAccountPullRequests"
-  | "listNotifications"
-  | "getRepository"
-  | "listBranches"
-  | "listTags"
-  | "listTree"
-  | "listContents"
-  | "getFileContent"
-  | "listCommits"
-  | "listLabels"
-  | "listAssignableUsers"
-  | "listMilestones"
-  | "listIssues"
-  | "getIssueDetail"
-  | "listPullRequests"
-  | "getPullRequestDetail"
-  | "listDiscussions"
-  | "listActions"
-  | "listWorkflows"
-  | "getWorkflowRunDetail"
-  | "listProjects"
-  | "listReleases"
-  | "listContributors"
-  | "search";
+type GitHubIpcProviderKeys =
+  | "getViewer"
+  | "listOrganizationTeamsWithStatus"
+  | "listOrganizationRepositoriesWithStatus"
+  | "listOrganizationTeamRepositoriesWithStatus"
+  | "listOrganizationTeamMembersWithStatus"
+  | "listOrganizationMembersWithStatus"
+  | "listOrganizationProjectsWithStatus"
+  | "markNotificationThreadRead"
+  | "unsubscribeNotificationThread"
+  | "listRepositoryForks"
+  | "listBranchesWithStatus"
+  | "listTagsWithStatus"
+  | "listTreeWithStatus"
+  | "getReadme"
+  | "listContentsWithStatus"
+  | "getFileContentWithStatus"
+  | "getFileBlame"
+  | "getRepositoryWiki"
+  | "listCommitsWithStatus"
+  | "listLabelsWithStatus"
+  | "listAssignableUsersWithStatus"
+  | "getRepositoryAccess"
+  | "listMilestonesWithStatus"
+  | "listIssuesWithStatus"
+  | "getIssueDetailWithStatus"
+  | "listPullRequestsWithStatus"
+  | "getPullRequestDetailWithStatus"
+  | "getPullRequestOverviewWithStatus"
+  | "listPullRequestCommentsWithStatus"
+  | "listPullRequestFilesWithStatus"
+  | "listPullRequestCommitsWithStatus"
+  | "listPullRequestReviewsWithStatus"
+  | "listPullRequestChecksWithStatus"
+  | "listPullRequestReviewThreadsWithStatus"
+  | "listPullRequestTimelineWithStatus"
+  | "listPullRequestLinkedIssuesWithStatus"
+  | "listDiscussionsWithStatus"
+  | "listDiscussionCategoriesWithStatus"
+  | "getDiscussionDetail"
+  | "listActionsWithStatus"
+  | "listWorkflowsWithStatus"
+  | "getWorkflowRunDetailWithStatus"
+  | "getWorkflowJobLogs"
+  | "listProjectsWithStatus"
+  | "getBranchProtection"
+  | "listDependabotAlerts"
+  | "listCodeScanningAlerts"
+  | "listSecretScanningAlerts"
+  | "listRepositoryRulesets"
+  | "listRepositorySecurityAdvisories"
+  | "getRepositorySecurityPolicy"
+  | "getRepositoryCommunityProfile"
+  | "listReleasesWithStatus"
+  | "getReleaseDetailWithStatus"
+  | "listContributorsWithStatus"
+  | "searchWithStatus";
 
-type GitHubIpcAdapterKeys =
-  | GitHubIpcOptionalInputKeys
-  | GitHubIpcRepositoryDetailKeys
-  | GitHubIpcConcreteMutationKey
-  | GitHubIpcRawReadTwinKeys;
-
-type GitHubIpcProviderBase = JsonIpcApi<Omit<GitHubProvider, GitHubIpcAdapterKeys>>;
+type GitHubIpcProviderBase = JsonIpcApi<Pick<GitHubProvider, GitHubIpcProviderKeys>>;
 
 type GitHubIpcOptionalInputOverrides = {
   [K in GitHubIpcOptionalInputKeys]: GitHubOptionalInputAdapter<GitHubProvider[K]>;
@@ -188,7 +208,9 @@ export interface ControlApi {
   listRecentItems(input?: LocalRecentListInput): Promise<LocalRecentItem[]>;
   recordRecentItem(input: LocalRecentRecordInput): Promise<LocalRecentItem[]>;
   previewDataExport(input: ControlExportScope): Promise<ControlExportPreview>;
+  exportData(input: ControlExportInput): Promise<ControlExportResult>;
   previewDataImport(input: ControlImportInput): Promise<ControlImportPreview>;
+  importData(input: ControlImportApplyInput): Promise<ControlImportResult>;
   onGitHubRepositoriesUpdated(callback: (event: GitHubRepositoriesUpdatedEvent) => void): () => void;
   onGitHubAuthUpdated(callback: (event: GitHubAuthUpdatedEvent) => void): () => void;
   areas: {
@@ -259,7 +281,9 @@ export const ipcChannels = {
   listRecentItems: "control:list-recent-items",
   recordRecentItem: "control:record-recent-item",
   previewDataExport: "control:preview-data-export",
+  exportData: "control:export-data",
   previewDataImport: "control:preview-data-import",
+  importData: "control:import-data",
   githubRepositoriesUpdated: "github:repositories-updated",
   githubAuthUpdated: "github:auth-updated",
   areasList: "areas:list",
@@ -300,61 +324,39 @@ export const ipcChannels = {
   areaRepositoryUpdated: "areas:repository-updated",
   areaWorkspaceUpdated: "areas:workspace-updated",
   githubViewer: "github:viewer",
-  githubAccountProfile: "github:account-profile",
   githubAccountProfileWithStatus: "github:account-profile-with-status",
-  githubRepositories: "github:repositories",
   githubRepositoriesWithStatus: "github:repositories-with-status",
-  githubAccountRepositories: "github:account-repositories",
   githubAccountRepositoriesWithStatus: "github:account-repositories-with-status",
-  githubOrganizations: "github:organizations",
   githubOrganizationsWithStatus: "github:organizations-with-status",
-  githubOrganizationTeams: "github:organization-teams",
   githubOrganizationTeamsWithStatus: "github:organization-teams-with-status",
   githubOrganizationRepositoriesWithStatus: "github:organization-repositories-with-status",
   githubOrganizationTeamRepositoriesWithStatus: "github:organization-team-repositories-with-status",
   githubOrganizationTeamMembersWithStatus: "github:organization-team-members-with-status",
   githubOrganizationMembersWithStatus: "github:organization-members-with-status",
   githubOrganizationProjectsWithStatus: "github:organization-projects-with-status",
-  githubAccountIssues: "github:account-issues",
   githubAccountIssuesWithStatus: "github:account-issues-with-status",
-  githubAccountPullRequests: "github:account-pull-requests",
   githubAccountPullRequestsWithStatus: "github:account-pull-requests-with-status",
-  githubNotifications: "github:notifications",
   githubNotificationsWithStatus: "github:notifications-with-status",
   githubNotificationThreadRead: "github:notification-thread-read",
   githubNotificationThreadUnsubscribe: "github:notification-thread-unsubscribe",
-  githubRepository: "github:repository",
   githubRepositoryWithStatus: "github:repository-with-status",
   githubRepositoryForks: "github:repository-forks",
-  githubBranches: "github:branches",
   githubBranchesWithStatus: "github:branches-with-status",
-  githubTags: "github:tags",
   githubTagsWithStatus: "github:tags-with-status",
-  githubTree: "github:tree",
   githubTreeWithStatus: "github:tree-with-status",
   githubReadme: "github:readme",
-  githubContents: "github:contents",
   githubContentsWithStatus: "github:contents-with-status",
-  githubFileContent: "github:file-content",
   githubFileContentWithStatus: "github:file-content-with-status",
   githubFileBlame: "github:file-blame",
   githubRepositoryWiki: "github:repository-wiki",
-  githubCommits: "github:commits",
   githubCommitsWithStatus: "github:commits-with-status",
-  githubLabels: "github:labels",
   githubLabelsWithStatus: "github:labels-with-status",
-  githubAssignableUsers: "github:assignable-users",
   githubAssignableUsersWithStatus: "github:assignable-users-with-status",
   githubRepositoryAccess: "github:repository-access",
-  githubMilestones: "github:milestones",
   githubMilestonesWithStatus: "github:milestones-with-status",
-  githubIssues: "github:issues",
   githubIssuesWithStatus: "github:issues-with-status",
-  githubIssueDetail: "github:issue-detail",
   githubIssueDetailWithStatus: "github:issue-detail-with-status",
-  githubPullRequests: "github:pull-requests",
   githubPullRequestsWithStatus: "github:pull-requests-with-status",
-  githubPullRequestDetail: "github:pull-request-detail",
   githubPullRequestDetailWithStatus: "github:pull-request-detail-with-status",
   githubPullRequestOverviewWithStatus: "github:pull-request-overview-with-status",
   githubPullRequestCommentsWithStatus: "github:pull-request-comments-with-status",
@@ -365,18 +367,13 @@ export const ipcChannels = {
   githubPullRequestReviewThreadsWithStatus: "github:pull-request-review-threads-with-status",
   githubPullRequestTimelineWithStatus: "github:pull-request-timeline-with-status",
   githubPullRequestLinkedIssuesWithStatus: "github:pull-request-linked-issues-with-status",
-  githubDiscussions: "github:discussions",
   githubDiscussionsWithStatus: "github:discussions-with-status",
   githubDiscussionCategoriesWithStatus: "github:discussion-categories-with-status",
   githubDiscussionDetail: "github:discussion-detail",
-  githubActions: "github:actions",
   githubActionsWithStatus: "github:actions-with-status",
-  githubWorkflows: "github:workflows",
   githubWorkflowsWithStatus: "github:workflows-with-status",
-  githubWorkflowRunDetail: "github:workflow-run-detail",
   githubWorkflowRunDetailWithStatus: "github:workflow-run-detail-with-status",
   githubWorkflowJobLogs: "github:workflow-job-logs",
-  githubProjects: "github:projects",
   githubProjectsWithStatus: "github:projects-with-status",
   githubBranchProtection: "github:branch-protection",
   githubDependabotAlerts: "github:dependabot-alerts",
@@ -386,12 +383,9 @@ export const ipcChannels = {
   githubRepositorySecurityAdvisories: "github:repository-security-advisories",
   githubRepositorySecurityPolicy: "github:repository-security-policy",
   githubRepositoryCommunityProfile: "github:repository-community-profile",
-  githubReleases: "github:releases",
   githubReleasesWithStatus: "github:releases-with-status",
   githubReleaseDetailWithStatus: "github:release-detail-with-status",
-  githubContributors: "github:contributors",
   githubContributorsWithStatus: "github:contributors-with-status",
-  githubSearch: "github:search",
   githubSearchWithStatus: "github:search-with-status",
   githubMutate: "github:mutate"
 } as const;

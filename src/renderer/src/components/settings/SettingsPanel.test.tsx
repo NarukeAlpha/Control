@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 
 import { mockAppState } from "../../data/mock";
@@ -18,19 +19,25 @@ const authController: ProviderAuthController = {
   clearError: vi.fn()
 };
 
+function renderSettingsPanel(
+  props: Omit<Parameters<typeof SettingsPanel>[0], "appState" | "authController">
+): void {
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <SettingsPanel appState={mockAppState} authController={authController} {...props} />
+    </QueryClientProvider>
+  );
+}
+
 describe("SettingsPanel", () => {
   it("saves typed glass and theme settings", async () => {
     const onSave = vi.fn<Parameters<typeof SettingsPanel>[0]["onSave"]>(async () => undefined);
 
-    render(
-      <SettingsPanel
-        appState={mockAppState}
-        authController={authController}
-        onClose={vi.fn()}
-        onOpenExternal={vi.fn()}
-        onSave={onSave}
-      />
-    );
+    renderSettingsPanel({
+      onClose: vi.fn(),
+      onOpenExternal: vi.fn(),
+      onSave
+    });
 
     await userEvent.selectOptions(screen.getByLabelText("Glass mode"), "solid");
     await userEvent.selectOptions(screen.getByLabelText("Theme mode"), "dark");
@@ -58,15 +65,11 @@ describe("SettingsPanel", () => {
       throw new Error("settings store unavailable");
     });
 
-    render(
-      <SettingsPanel
-        appState={mockAppState}
-        authController={authController}
-        onClose={vi.fn()}
-        onOpenExternal={vi.fn()}
-        onSave={onSave}
-      />
-    );
+    renderSettingsPanel({
+      onClose: vi.fn(),
+      onOpenExternal: vi.fn(),
+      onSave
+    });
 
     await userEvent.selectOptions(screen.getByLabelText("Glass mode"), "reduced");
     await userEvent.selectOptions(screen.getByLabelText("Theme mode"), "light");

@@ -93,10 +93,55 @@ describe("preload control bridge", () => {
       includePrivateRepositoryMetadata: false
     });
 
+    invoke.mockResolvedValueOnce({ filePath: "/tmp/control-export.json", bytesWritten: 2 });
+    await controlApi.exportData({
+      scope: {
+        settings: true,
+        areas: false,
+        pins: false,
+        recents: false,
+        githubMetadataCache: false,
+        areaCache: false,
+        snapshots: false,
+        includeLocalPaths: false,
+        includePrivateRepositoryMetadata: false
+      },
+      destinationPath: "/tmp/control-export.json"
+    });
+    expect(invoke).toHaveBeenLastCalledWith(ipcChannels.exportData, {
+      scope: {
+        settings: true,
+        areas: false,
+        pins: false,
+        recents: false,
+        githubMetadataCache: false,
+        areaCache: false,
+        snapshots: false,
+        includeLocalPaths: false,
+        includePrivateRepositoryMetadata: false
+      },
+      destinationPath: "/tmp/control-export.json"
+    });
+
     invoke.mockResolvedValueOnce({ blockers: [] });
     await controlApi.previewDataImport({ filePath: "/tmp/control-export.json" });
     expect(invoke).toHaveBeenLastCalledWith(ipcChannels.previewDataImport, {
       filePath: "/tmp/control-export.json"
+    });
+
+    invoke.mockResolvedValueOnce({
+      applied: true,
+      importedItems: 1,
+      insertedItems: 1,
+      updatedItems: 0,
+      skippedItems: 0,
+      remappedItems: 0,
+      blockedItems: 0
+    });
+    await controlApi.importData({ filePath: "/tmp/control-export.json", confirmed: true });
+    expect(invoke).toHaveBeenLastCalledWith(ipcChannels.importData, {
+      filePath: "/tmp/control-export.json",
+      confirmed: true
     });
   });
 

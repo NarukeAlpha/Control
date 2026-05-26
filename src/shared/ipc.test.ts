@@ -115,11 +115,17 @@ type _ControlExportPreviewIsJsonSerializable = Expect<
     true
   >
 >;
+type _ControlExportResultIsJsonSerializable = Expect<
+  Equal<JsonSerializable<Awaited<ReturnType<ControlApi["exportData"]>>> extends never ? false : true, true>
+>;
 type _ControlImportPreviewIsJsonSerializable = Expect<
   Equal<
     JsonSerializable<Awaited<ReturnType<ControlApi["previewDataImport"]>>> extends never ? false : true,
     true
   >
+>;
+type _ControlImportResultIsJsonSerializable = Expect<
+  Equal<JsonSerializable<Awaited<ReturnType<ControlApi["importData"]>>> extends never ? false : true, true>
 >;
 
 const githubIpcRouteKeys = {
@@ -203,6 +209,16 @@ describe("GitHubIpcApi route map", () => {
 
   it("keeps runtime keys in parity with GitHubIpcApi", () => {
     expect(Object.keys(githubIpcRouteChannels).sort()).toEqual(Object.keys(githubIpcRouteKeys).sort());
+  });
+
+  it("does not expose raw GitHub read channel constants", () => {
+    expect(ipcChannels).not.toHaveProperty("githubRepositories");
+    expect(ipcChannels).not.toHaveProperty("githubOrganizations");
+    expect(ipcChannels).not.toHaveProperty("githubOrganizationTeams");
+    expect(ipcChannels).not.toHaveProperty("githubBranches");
+    expect(ipcChannels).not.toHaveProperty("githubTags");
+    expect(ipcChannels).not.toHaveProperty("githubReleases");
+    expect(ipcChannels).not.toHaveProperty("githubSearch");
   });
 
   it("preserves existing GitHub IPC channel names", () => {

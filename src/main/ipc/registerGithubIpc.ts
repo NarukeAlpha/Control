@@ -1,35 +1,73 @@
 import {
+  AccountIssueListInput,
+  AccountProfileInput,
+  AccountPullRequestListInput,
+  AccountRepositoryInput,
   githubActions,
   type GitHubAction,
+  ActionsInput,
+  AssignableUserListInput,
   BranchListInput,
-  BranchListResult,
+  BranchProtectionInput,
+  CodeScanningAlertsInput,
   ContributorsInput,
-  ContributorListResult,
+  DependabotAlertsInput,
+  DiscussionCategoryListInput,
+  DiscussionDetailInput,
+  DiscussionListInput,
   GitHubMutationInput,
-  GitHubMutationResult,
+  IssueDetailInput,
+  IssueListInput,
+  NotificationListInput,
+  NotificationThreadInput,
   OrganizationListInput,
-  OrganizationListResult,
   OrganizationMembersInput,
-  OrganizationMembersResult,
   OrganizationProjectsInput,
   OrganizationRepositoriesInput,
-  OrganizationRepositoriesResult,
   OrganizationTeamMembersInput,
-  OrganizationTeamMembersResult,
   OrganizationTeamRepositoriesInput,
-  OrganizationTeamRepositoriesResult,
   OrganizationTeamsInput,
-  OrganizationTeamsResult,
-  ProjectListResult,
-  ReleaseListResult,
+  ProjectsInput,
+  PullRequestChecksInput,
+  PullRequestCommentsInput,
+  PullRequestCommitsInput,
+  PullRequestDetailInput,
+  PullRequestDetailReadInput,
+  PullRequestFilesInput,
+  PullRequestLinkedIssuesInput,
+  PullRequestListInput,
+  PullRequestOverviewInput,
+  PullRequestReviewsInput,
+  PullRequestReviewThreadsInput,
+  PullRequestTimelineInput,
+  ReleaseDetailInput,
   ReleasesInput,
+  RepoContentsInput,
   RepoDetailInput,
+  RepoFileBlameInput,
+  RepoFileContentInput,
+  RepoReadmeInput,
   RepoListInput,
-  RepositoryListResult,
+  RepositoryAccessInput,
+  RepositoryCommitListInput,
+  RepositoryCommunityProfileInput,
+  RepositoryForksInput,
+  RepositoryLabelListInput,
+  RepositoryMilestoneListInput,
+  RepositoryRulesetsInput,
+  RepositorySecurityAdvisoriesInput,
+  RepositorySecurityPolicyInput,
+  RepositoryWikiInput,
+  RepoTreeInput,
+  SearchInput,
+  SecretScanningAlertsInput,
   TagListInput,
-  TagListResult
+  WorkflowJobLogsInput,
+  WorkflowListInput,
+  WorkflowRunDetailInput
 } from "@shared/github";
 import { githubIpcRouteChannels } from "@shared/ipc";
+import type { GitHubProviderManager } from "../github/provider";
 
 import {
   createIpcInvokeRoute,
@@ -38,30 +76,80 @@ import {
   type IpcMainHandleTarget
 } from "./ipcRouter";
 
-interface GitHubIpcDependencies {
-  listRepositoriesWithStatus(input: RepoListInput): Promise<RepositoryListResult>;
-  listOrganizationsWithStatus(input: OrganizationListInput): Promise<OrganizationListResult>;
-  listOrganizationTeamsWithStatus(input: OrganizationTeamsInput): Promise<OrganizationTeamsResult>;
-  listOrganizationRepositoriesWithStatus(
-    input: OrganizationRepositoriesInput
-  ): Promise<OrganizationRepositoriesResult>;
-  listOrganizationTeamRepositoriesWithStatus(
-    input: OrganizationTeamRepositoriesInput
-  ): Promise<OrganizationTeamRepositoriesResult>;
-  listOrganizationTeamMembersWithStatus(
-    input: OrganizationTeamMembersInput
-  ): Promise<OrganizationTeamMembersResult>;
-  listOrganizationMembersWithStatus(input: OrganizationMembersInput): Promise<OrganizationMembersResult>;
-  listOrganizationProjectsWithStatus(input: OrganizationProjectsInput): Promise<ProjectListResult>;
-  listBranchesWithStatus(input: BranchListInput): Promise<BranchListResult>;
-  listTagsWithStatus(input: TagListInput): Promise<TagListResult>;
-  listReleasesWithStatus(input: ReleasesInput): Promise<ReleaseListResult>;
-  listContributorsWithStatus(input: ContributorsInput): Promise<ContributorListResult>;
-  mutate(input: GitHubMutationInput): Promise<GitHubMutationResult>;
-}
+type GitHubIpcDependencies = Pick<
+  GitHubProviderManager,
+  | "getViewer"
+  | "getAccountProfileWithStatus"
+  | "listRepositoriesWithStatus"
+  | "listAccountRepositoriesWithStatus"
+  | "listOrganizationsWithStatus"
+  | "listOrganizationTeamsWithStatus"
+  | "listOrganizationRepositoriesWithStatus"
+  | "listOrganizationTeamRepositoriesWithStatus"
+  | "listOrganizationTeamMembersWithStatus"
+  | "listOrganizationMembersWithStatus"
+  | "listOrganizationProjectsWithStatus"
+  | "listAccountIssuesWithStatus"
+  | "listAccountPullRequestsWithStatus"
+  | "listNotificationsWithStatus"
+  | "markNotificationThreadRead"
+  | "unsubscribeNotificationThread"
+  | "getRepositoryWithStatus"
+  | "listRepositoryForks"
+  | "listBranchesWithStatus"
+  | "listTagsWithStatus"
+  | "listTreeWithStatus"
+  | "getReadme"
+  | "listContentsWithStatus"
+  | "getFileContentWithStatus"
+  | "getFileBlame"
+  | "getRepositoryWiki"
+  | "listCommitsWithStatus"
+  | "listLabelsWithStatus"
+  | "listAssignableUsersWithStatus"
+  | "getRepositoryAccess"
+  | "listMilestonesWithStatus"
+  | "listIssuesWithStatus"
+  | "getIssueDetailWithStatus"
+  | "listPullRequestsWithStatus"
+  | "getPullRequestDetailWithStatus"
+  | "getPullRequestOverviewWithStatus"
+  | "listPullRequestCommentsWithStatus"
+  | "listPullRequestFilesWithStatus"
+  | "listPullRequestCommitsWithStatus"
+  | "listPullRequestReviewsWithStatus"
+  | "listPullRequestChecksWithStatus"
+  | "listPullRequestReviewThreadsWithStatus"
+  | "listPullRequestTimelineWithStatus"
+  | "listPullRequestLinkedIssuesWithStatus"
+  | "listDiscussionsWithStatus"
+  | "listDiscussionCategoriesWithStatus"
+  | "getDiscussionDetail"
+  | "listActionsWithStatus"
+  | "listWorkflowsWithStatus"
+  | "getWorkflowRunDetailWithStatus"
+  | "getWorkflowJobLogs"
+  | "listProjectsWithStatus"
+  | "getBranchProtection"
+  | "listDependabotAlerts"
+  | "listCodeScanningAlerts"
+  | "listSecretScanningAlerts"
+  | "listRepositoryRulesets"
+  | "listRepositorySecurityAdvisories"
+  | "getRepositorySecurityPolicy"
+  | "getRepositoryCommunityProfile"
+  | "listReleasesWithStatus"
+  | "getReleaseDetailWithStatus"
+  | "listContributorsWithStatus"
+  | "searchWithStatus"
+  | "mutate"
+>;
 
 export const registeredGithubIpcRouteKeys = [
+  "getViewer",
+  "getAccountProfileWithStatus",
   "listRepositoriesWithStatus",
+  "listAccountRepositoriesWithStatus",
   "listOrganizationsWithStatus",
   "listOrganizationTeamsWithStatus",
   "listOrganizationRepositoriesWithStatus",
@@ -69,10 +157,59 @@ export const registeredGithubIpcRouteKeys = [
   "listOrganizationTeamMembersWithStatus",
   "listOrganizationMembersWithStatus",
   "listOrganizationProjectsWithStatus",
+  "listAccountIssuesWithStatus",
+  "listAccountPullRequestsWithStatus",
+  "listNotificationsWithStatus",
+  "markNotificationThreadRead",
+  "unsubscribeNotificationThread",
+  "getRepositoryWithStatus",
+  "listRepositoryForks",
   "listBranchesWithStatus",
   "listTagsWithStatus",
+  "listTreeWithStatus",
+  "getReadme",
+  "listContentsWithStatus",
+  "getFileContentWithStatus",
+  "getFileBlame",
+  "getRepositoryWiki",
+  "listCommitsWithStatus",
+  "listLabelsWithStatus",
+  "listAssignableUsersWithStatus",
+  "getRepositoryAccess",
+  "listMilestonesWithStatus",
+  "listIssuesWithStatus",
+  "getIssueDetailWithStatus",
+  "listPullRequestsWithStatus",
+  "getPullRequestDetailWithStatus",
+  "getPullRequestOverviewWithStatus",
+  "listPullRequestCommentsWithStatus",
+  "listPullRequestFilesWithStatus",
+  "listPullRequestCommitsWithStatus",
+  "listPullRequestReviewsWithStatus",
+  "listPullRequestChecksWithStatus",
+  "listPullRequestReviewThreadsWithStatus",
+  "listPullRequestTimelineWithStatus",
+  "listPullRequestLinkedIssuesWithStatus",
+  "listDiscussionsWithStatus",
+  "listDiscussionCategoriesWithStatus",
+  "getDiscussionDetail",
+  "listActionsWithStatus",
+  "listWorkflowsWithStatus",
+  "getWorkflowRunDetailWithStatus",
+  "getWorkflowJobLogs",
+  "listProjectsWithStatus",
+  "getBranchProtection",
+  "listDependabotAlerts",
+  "listCodeScanningAlerts",
+  "listSecretScanningAlerts",
+  "listRepositoryRulesets",
+  "listRepositorySecurityAdvisories",
+  "getRepositorySecurityPolicy",
+  "getRepositoryCommunityProfile",
   "listReleasesWithStatus",
+  "getReleaseDetailWithStatus",
   "listContributorsWithStatus",
+  "searchWithStatus",
   "mutate"
 ] as const;
 
@@ -155,67 +292,342 @@ export function registerGithubIpc(ipcMain: IpcMainHandleTarget, github: GitHubIp
 
 export function createGithubIpcRoutes(github: GitHubIpcDependencies): IpcInvokeRoute[] {
   return [
-    createIpcInvokeRoute<RepoListInput, RepositoryListResult>({
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.getViewer,
+      parse: () => undefined,
+      handle: () => github.getViewer()
+    }),
+    createIpcInvokeRoute<
+      AccountProfileInput,
+      ReturnType<GitHubIpcDependencies["getAccountProfileWithStatus"]>
+    >({
+      channel: githubIpcRouteChannels.getAccountProfileWithStatus,
+      parse: ([input]) => requireOptionalReadInput<AccountProfileInput>(input),
+      handle: (input) => github.getAccountProfileWithStatus(input)
+    }),
+    createIpcInvokeRoute({
       channel: githubIpcRouteChannels.listRepositoriesWithStatus,
       parse: ([input]) => requireRepoListInput(input),
       handle: (input) => github.listRepositoriesWithStatus(input)
     }),
-    createIpcInvokeRoute<OrganizationListInput, OrganizationListResult>({
+    createIpcInvokeRoute<
+      AccountRepositoryInput,
+      ReturnType<GitHubIpcDependencies["listAccountRepositoriesWithStatus"]>
+    >({
+      channel: githubIpcRouteChannels.listAccountRepositoriesWithStatus,
+      parse: ([input]) => requireOptionalReadInput<AccountRepositoryInput>(input),
+      handle: (input) => github.listAccountRepositoriesWithStatus(input)
+    }),
+    createIpcInvokeRoute({
       channel: githubIpcRouteChannels.listOrganizationsWithStatus,
       parse: ([input]) => requireOrganizationListInput(input),
       handle: (input) => github.listOrganizationsWithStatus(input)
     }),
-    createIpcInvokeRoute<OrganizationTeamsInput, OrganizationTeamsResult>({
+    createIpcInvokeRoute({
       channel: githubIpcRouteChannels.listOrganizationTeamsWithStatus,
       parse: ([input]) => requireOrganizationInput<OrganizationTeamsInput>(input),
       handle: (input) => github.listOrganizationTeamsWithStatus(input)
     }),
-    createIpcInvokeRoute<OrganizationRepositoriesInput, OrganizationRepositoriesResult>({
+    createIpcInvokeRoute({
       channel: githubIpcRouteChannels.listOrganizationRepositoriesWithStatus,
       parse: ([input]) => requireOrganizationInput<OrganizationRepositoriesInput>(input),
       handle: (input) => github.listOrganizationRepositoriesWithStatus(input)
     }),
-    createIpcInvokeRoute<OrganizationTeamRepositoriesInput, OrganizationTeamRepositoriesResult>({
+    createIpcInvokeRoute({
       channel: githubIpcRouteChannels.listOrganizationTeamRepositoriesWithStatus,
       parse: ([input]) => requireOrganizationTeamInput<OrganizationTeamRepositoriesInput>(input),
       handle: (input) => github.listOrganizationTeamRepositoriesWithStatus(input)
     }),
-    createIpcInvokeRoute<OrganizationTeamMembersInput, OrganizationTeamMembersResult>({
+    createIpcInvokeRoute({
       channel: githubIpcRouteChannels.listOrganizationTeamMembersWithStatus,
       parse: ([input]) => requireOrganizationTeamInput<OrganizationTeamMembersInput>(input),
       handle: (input) => github.listOrganizationTeamMembersWithStatus(input)
     }),
-    createIpcInvokeRoute<OrganizationMembersInput, OrganizationMembersResult>({
+    createIpcInvokeRoute({
       channel: githubIpcRouteChannels.listOrganizationMembersWithStatus,
       parse: ([input]) => requireOrganizationInput<OrganizationMembersInput>(input),
       handle: (input) => github.listOrganizationMembersWithStatus(input)
     }),
-    createIpcInvokeRoute<OrganizationProjectsInput, ProjectListResult>({
+    createIpcInvokeRoute({
       channel: githubIpcRouteChannels.listOrganizationProjectsWithStatus,
       parse: ([input]) => requireOrganizationInput<OrganizationProjectsInput>(input),
       handle: (input) => github.listOrganizationProjectsWithStatus(input)
     }),
-    createIpcInvokeRoute<BranchListInput, BranchListResult>({
+    createIpcInvokeRoute<
+      AccountIssueListInput,
+      ReturnType<GitHubIpcDependencies["listAccountIssuesWithStatus"]>
+    >({
+      channel: githubIpcRouteChannels.listAccountIssuesWithStatus,
+      parse: ([input]) => requireOptionalReadInput<AccountIssueListInput>(input),
+      handle: (input) => github.listAccountIssuesWithStatus(input)
+    }),
+    createIpcInvokeRoute<
+      AccountPullRequestListInput,
+      ReturnType<GitHubIpcDependencies["listAccountPullRequestsWithStatus"]>
+    >({
+      channel: githubIpcRouteChannels.listAccountPullRequestsWithStatus,
+      parse: ([input]) => requireOptionalReadInput<AccountPullRequestListInput>(input),
+      handle: (input) => github.listAccountPullRequestsWithStatus(input)
+    }),
+    createIpcInvokeRoute<
+      NotificationListInput,
+      ReturnType<GitHubIpcDependencies["listNotificationsWithStatus"]>
+    >({
+      channel: githubIpcRouteChannels.listNotificationsWithStatus,
+      parse: ([input]) => requireOptionalReadInput<NotificationListInput>(input),
+      handle: (input) => github.listNotificationsWithStatus(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.markNotificationThreadRead,
+      parse: ([input]) => requireNotificationThreadInput(input),
+      handle: (input) => github.markNotificationThreadRead(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.unsubscribeNotificationThread,
+      parse: ([input]) => requireNotificationThreadInput(input),
+      handle: (input) => github.unsubscribeNotificationThread(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.getRepositoryWithStatus,
+      parse: ([input]) => requireRepositoryInput<RepoDetailInput>(input),
+      handle: (input) => github.getRepositoryWithStatus(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.listRepositoryForks,
+      parse: ([input]) => requireRepositoryInput<RepositoryForksInput>(input),
+      handle: (input) => github.listRepositoryForks(input)
+    }),
+    createIpcInvokeRoute({
       channel: githubIpcRouteChannels.listBranchesWithStatus,
       parse: ([input]) => requireRepositoryInput<BranchListInput>(input),
       handle: (input) => github.listBranchesWithStatus(input)
     }),
-    createIpcInvokeRoute<TagListInput, TagListResult>({
+    createIpcInvokeRoute({
       channel: githubIpcRouteChannels.listTagsWithStatus,
       parse: ([input]) => requireRepositoryInput<TagListInput>(input),
       handle: (input) => github.listTagsWithStatus(input)
     }),
-    createIpcInvokeRoute<ReleasesInput, ReleaseListResult>({
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.listTreeWithStatus,
+      parse: ([input]) => requireRepositoryInput<RepoTreeInput>(input),
+      handle: (input) => github.listTreeWithStatus(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.getReadme,
+      parse: ([input]) => requireRepositoryInput<RepoReadmeInput>(input),
+      handle: (input) => github.getReadme(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.listContentsWithStatus,
+      parse: ([input]) => requireRepositoryInput<RepoContentsInput>(input),
+      handle: (input) => github.listContentsWithStatus(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.getFileContentWithStatus,
+      parse: ([input]) => requireFileContentInput(input),
+      handle: (input) => github.getFileContentWithStatus(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.getFileBlame,
+      parse: ([input]) => requireFileBlameInput(input),
+      handle: (input) => github.getFileBlame(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.getRepositoryWiki,
+      parse: ([input]) => requireRepositoryInput<RepositoryWikiInput>(input),
+      handle: (input) => github.getRepositoryWiki(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.listCommitsWithStatus,
+      parse: ([input]) => requireRepositoryInput<RepositoryCommitListInput>(input),
+      handle: (input) => github.listCommitsWithStatus(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.listLabelsWithStatus,
+      parse: ([input]) => requireRepositoryInput<RepositoryLabelListInput>(input),
+      handle: (input) => github.listLabelsWithStatus(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.listAssignableUsersWithStatus,
+      parse: ([input]) => requireRepositoryInput<AssignableUserListInput>(input),
+      handle: (input) => github.listAssignableUsersWithStatus(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.getRepositoryAccess,
+      parse: ([input]) => requireRepositoryInput<RepositoryAccessInput>(input),
+      handle: (input) => github.getRepositoryAccess(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.listMilestonesWithStatus,
+      parse: ([input]) => requireRepositoryInput<RepositoryMilestoneListInput>(input),
+      handle: (input) => github.listMilestonesWithStatus(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.listIssuesWithStatus,
+      parse: ([input]) => requireRepositoryInput<IssueListInput>(input),
+      handle: (input) => github.listIssuesWithStatus(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.getIssueDetailWithStatus,
+      parse: ([input]) => requireIssueDetailInput(input),
+      handle: (input) => github.getIssueDetailWithStatus(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.listPullRequestsWithStatus,
+      parse: ([input]) => requireRepositoryInput<PullRequestListInput>(input),
+      handle: (input) => github.listPullRequestsWithStatus(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.getPullRequestDetailWithStatus,
+      parse: ([input]) => requirePullRequestDetailInput(input),
+      handle: (input: PullRequestDetailInput) => github.getPullRequestDetailWithStatus(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.getPullRequestOverviewWithStatus,
+      parse: ([input]) => requirePullRequestDetailInput(input),
+      handle: (input: PullRequestOverviewInput) => github.getPullRequestOverviewWithStatus(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.listPullRequestCommentsWithStatus,
+      parse: ([input]) => requirePullRequestPageInput(input),
+      handle: (input: PullRequestCommentsInput) => github.listPullRequestCommentsWithStatus(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.listPullRequestFilesWithStatus,
+      parse: ([input]) => requirePullRequestPageInput(input),
+      handle: (input: PullRequestFilesInput) => github.listPullRequestFilesWithStatus(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.listPullRequestCommitsWithStatus,
+      parse: ([input]) => requirePullRequestPageInput(input),
+      handle: (input: PullRequestCommitsInput) => github.listPullRequestCommitsWithStatus(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.listPullRequestReviewsWithStatus,
+      parse: ([input]) => requirePullRequestPageInput(input),
+      handle: (input: PullRequestReviewsInput) => github.listPullRequestReviewsWithStatus(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.listPullRequestChecksWithStatus,
+      parse: ([input]) => requirePullRequestDetailInput(input),
+      handle: (input: PullRequestChecksInput) => github.listPullRequestChecksWithStatus(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.listPullRequestReviewThreadsWithStatus,
+      parse: ([input]) => requirePullRequestPageInput(input),
+      handle: (input: PullRequestReviewThreadsInput) => github.listPullRequestReviewThreadsWithStatus(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.listPullRequestTimelineWithStatus,
+      parse: ([input]) => requirePullRequestPageInput(input),
+      handle: (input: PullRequestTimelineInput) => github.listPullRequestTimelineWithStatus(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.listPullRequestLinkedIssuesWithStatus,
+      parse: ([input]) => requirePullRequestDetailInput(input),
+      handle: (input: PullRequestLinkedIssuesInput) => github.listPullRequestLinkedIssuesWithStatus(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.listDiscussionsWithStatus,
+      parse: ([input]) => requireRepositoryInput<DiscussionListInput>(input),
+      handle: (input) => github.listDiscussionsWithStatus(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.listDiscussionCategoriesWithStatus,
+      parse: ([input]) => requireRepositoryInput<DiscussionCategoryListInput>(input),
+      handle: (input) => github.listDiscussionCategoriesWithStatus(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.getDiscussionDetail,
+      parse: ([input]) => requireDiscussionDetailInput(input),
+      handle: (input) => github.getDiscussionDetail(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.listActionsWithStatus,
+      parse: ([input]) => requireRepositoryInput<ActionsInput>(input),
+      handle: (input) => github.listActionsWithStatus(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.listWorkflowsWithStatus,
+      parse: ([input]) => requireRepositoryInput<WorkflowListInput>(input),
+      handle: (input) => github.listWorkflowsWithStatus(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.getWorkflowRunDetailWithStatus,
+      parse: ([input]) => requireWorkflowRunDetailInput(input),
+      handle: (input) => github.getWorkflowRunDetailWithStatus(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.getWorkflowJobLogs,
+      parse: ([input]) => requireWorkflowJobLogsInput(input),
+      handle: (input) => github.getWorkflowJobLogs(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.listProjectsWithStatus,
+      parse: ([input]) => requireRepositoryInput<ProjectsInput>(input),
+      handle: (input) => github.listProjectsWithStatus(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.getBranchProtection,
+      parse: ([input]) => requireBranchProtectionInput(input),
+      handle: (input) => github.getBranchProtection(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.listDependabotAlerts,
+      parse: ([input]) => requireRepositoryInput<DependabotAlertsInput>(input),
+      handle: (input) => github.listDependabotAlerts(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.listCodeScanningAlerts,
+      parse: ([input]) => requireRepositoryInput<CodeScanningAlertsInput>(input),
+      handle: (input) => github.listCodeScanningAlerts(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.listSecretScanningAlerts,
+      parse: ([input]) => requireRepositoryInput<SecretScanningAlertsInput>(input),
+      handle: (input) => github.listSecretScanningAlerts(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.listRepositoryRulesets,
+      parse: ([input]) => requireRepositoryInput<RepositoryRulesetsInput>(input),
+      handle: (input) => github.listRepositoryRulesets(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.listRepositorySecurityAdvisories,
+      parse: ([input]) => requireRepositoryInput<RepositorySecurityAdvisoriesInput>(input),
+      handle: (input) => github.listRepositorySecurityAdvisories(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.getRepositorySecurityPolicy,
+      parse: ([input]) => requireRepositoryInput<RepositorySecurityPolicyInput>(input),
+      handle: (input) => github.getRepositorySecurityPolicy(input)
+    }),
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.getRepositoryCommunityProfile,
+      parse: ([input]) => requireRepositoryInput<RepositoryCommunityProfileInput>(input),
+      handle: (input) => github.getRepositoryCommunityProfile(input)
+    }),
+    createIpcInvokeRoute({
       channel: githubIpcRouteChannels.listReleasesWithStatus,
       parse: ([input]) => requireRepositoryInput<ReleasesInput>(input),
       handle: (input) => github.listReleasesWithStatus(input)
     }),
-    createIpcInvokeRoute<ContributorsInput, ContributorListResult>({
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.getReleaseDetailWithStatus,
+      parse: ([input]) => requireReleaseDetailInput(input),
+      handle: (input) => github.getReleaseDetailWithStatus(input)
+    }),
+    createIpcInvokeRoute({
       channel: githubIpcRouteChannels.listContributorsWithStatus,
       parse: ([input]) => requireRepositoryInput<ContributorsInput>(input),
       handle: (input) => github.listContributorsWithStatus(input)
     }),
-    createIpcInvokeRoute<GitHubMutationInput, GitHubMutationResult>({
+    createIpcInvokeRoute({
+      channel: githubIpcRouteChannels.searchWithStatus,
+      parse: ([input]) => requireSearchInput(input),
+      handle: (input) => github.searchWithStatus(input)
+    }),
+    createIpcInvokeRoute<GitHubMutationInput, ReturnType<GitHubIpcDependencies["mutate"]>>({
       channel: githubIpcRouteChannels.mutate,
       parse: ([input]) => requireGitHubMutationInput(input),
       handle: (input) => github.mutate(input)
@@ -283,6 +695,141 @@ export function requireRepositoryInput<TInput extends RepoDetailInput>(input: un
     ...normalizeGitHubReadFields(input, "GitHub repository"),
     owner: requireTrimmedString(input.owner, "GitHub repository input requires an owner."),
     repo: requireTrimmedString(input.repo, "GitHub repository input requires a repo.")
+  };
+}
+
+export function requireOptionalReadInput<TInput extends object>(input: unknown = {}): TInput {
+  if (input === undefined) {
+    return normalizeGitHubReadFields({}, "GitHub");
+  }
+  if (!isRecord(input)) {
+    throw new Error("IPC input must be an object.");
+  }
+  return normalizeGitHubReadFields(input, "GitHub");
+}
+
+export function requireNotificationThreadInput(input: unknown): NotificationThreadInput {
+  if (!isRecord(input)) {
+    throw new Error("GitHub notification thread input must be an object.");
+  }
+  return {
+    threadId: requireTrimmedString(input.threadId, "GitHub notification thread input requires a thread id.")
+  };
+}
+
+export function requireFileContentInput(input: unknown): RepoFileContentInput {
+  const record = requireRepositoryInput<RepoFileContentInput>(input);
+  return {
+    ...record,
+    path: requireTrimmedString(record.path, "GitHub file input requires a path.")
+  };
+}
+
+export function requireFileBlameInput(input: unknown): RepoFileBlameInput {
+  const record = requireRepositoryInput<RepoFileBlameInput>(input);
+  return {
+    ...record,
+    path: requireTrimmedString(record.path, "GitHub file input requires a path."),
+    maxRanges: optionalInteger(record.maxRanges, "GitHub file blame range limit must be positive.")
+  };
+}
+
+export function requireIssueDetailInput(input: unknown): IssueDetailInput {
+  const record = requireRepositoryInput<IssueDetailInput>(input);
+  return {
+    ...record,
+    issueNumber: requirePositiveInteger(record.issueNumber, "GitHub issue input requires a number.")
+  };
+}
+
+export function requirePullRequestDetailInput(input: unknown): PullRequestDetailReadInput {
+  const record = requireRepositoryInput<PullRequestDetailReadInput>(input);
+  return {
+    ...record,
+    pullNumber: requirePositiveInteger(record.pullNumber, "GitHub pull request input requires a number.")
+  };
+}
+
+export function requirePullRequestPageInput(input: unknown): PullRequestCommentsInput {
+  const record = requirePullRequestDetailInput(input);
+  if (!isRecord(input)) {
+    throw new Error("GitHub pull request input must be an object.");
+  }
+  return {
+    ...record,
+    limit: optionalInteger(input.limit, "GitHub pull request limit must be a positive integer."),
+    cursor: optionalCursor(input.cursor)
+  };
+}
+
+export function requireDiscussionDetailInput(input: unknown): DiscussionDetailInput {
+  const record = requireRepositoryInput<DiscussionDetailInput>(input);
+  return {
+    ...record,
+    discussionNumber: requirePositiveInteger(
+      record.discussionNumber,
+      "GitHub discussion input requires a number."
+    ),
+    commentsLimit: optionalInteger(
+      record.commentsLimit,
+      "GitHub discussion comments limit must be positive."
+    ),
+    repliesLimit: optionalInteger(record.repliesLimit, "GitHub discussion replies limit must be positive.")
+  };
+}
+
+export function requireWorkflowRunDetailInput(input: unknown): WorkflowRunDetailInput {
+  const record = requireRepositoryInput<WorkflowRunDetailInput>(input);
+  return {
+    ...record,
+    runId: requirePositiveInteger(record.runId, "GitHub workflow run input requires a run id.")
+  };
+}
+
+export function requireWorkflowJobLogsInput(input: unknown): WorkflowJobLogsInput {
+  const record = requireRepositoryInput<WorkflowJobLogsInput>(input);
+  return {
+    ...record,
+    jobId: requirePositiveInteger(record.jobId, "GitHub workflow job logs input requires a job id."),
+    maxCharacters: optionalInteger(
+      record.maxCharacters,
+      "GitHub workflow job logs maxCharacters must be positive."
+    )
+  };
+}
+
+export function requireBranchProtectionInput(input: unknown): BranchProtectionInput {
+  const record = requireRepositoryInput<BranchProtectionInput>(input);
+  return {
+    ...record,
+    branch: requireTrimmedString(record.branch, "GitHub branch protection input requires a branch.")
+  };
+}
+
+export function requireReleaseDetailInput(input: unknown): ReleaseDetailInput {
+  const record = requireRepositoryInput<ReleaseDetailInput>(input);
+  const releaseId = optionalInteger(
+    record.releaseId,
+    "GitHub release detail input releaseId must be a positive integer."
+  );
+  const releaseTagName = optionalTrimmedString(record.releaseTagName);
+  if (releaseId === undefined && !releaseTagName) {
+    throw new Error("GitHub release detail input requires a release id or tag name.");
+  }
+  return {
+    ...record,
+    releaseId,
+    releaseTagName
+  };
+}
+
+export function requireSearchInput(input: unknown): SearchInput {
+  if (!isRecord(input)) {
+    throw new Error("GitHub search input must be an object.");
+  }
+  return {
+    ...normalizeGitHubReadFields<SearchInput>(input, "GitHub search"),
+    query: requireTrimmedString(input.query, "GitHub search input requires a query.")
   };
 }
 
@@ -784,12 +1331,80 @@ function normalizeGitHubReadFields<TInput extends object>(
   input: Record<string, unknown>,
   label: string
 ): TInput {
-  return {
+  const normalized: Record<string, unknown> = {
     ...input,
     limit: optionalInteger(input.limit, `${label} limit must be a positive integer.`),
     cacheOnly: optionalBoolean(input.cacheOnly, `${label} cacheOnly must be a boolean.`),
     forceRefresh: optionalBoolean(input.forceRefresh, `${label} forceRefresh must be a boolean.`)
-  } as TInput;
+  };
+
+  setOptional(normalized, input, "commentsLimit", (value) =>
+    optionalInteger(value, "GitHub comments limit must be a positive integer.")
+  );
+  setOptional(normalized, input, "repliesLimit", (value) =>
+    optionalInteger(value, "GitHub replies limit must be a positive integer.")
+  );
+  setOptional(normalized, input, "maxRanges", (value) =>
+    optionalInteger(value, "GitHub maxRanges must be a positive integer.")
+  );
+  setOptional(normalized, input, "maxCharacters", (value) =>
+    optionalInteger(value, "GitHub maxCharacters must be a positive integer.")
+  );
+  setOptional(normalized, input, "ref", (value) =>
+    optionalNullableStringValue(value, "GitHub ref must be a string or null.")
+  );
+  setOptional(normalized, input, "path", (value) =>
+    optionalStringValue(value, "GitHub path must be a string.")
+  );
+  setOptional(normalized, input, "pagePath", (value) =>
+    optionalNullableStringValue(value, "GitHub wiki page path must be a string or null.")
+  );
+  setOptional(normalized, input, "since", (value) =>
+    optionalNullableStringValue(value, "GitHub since cursor must be a string or null.")
+  );
+  setOptional(normalized, input, "before", (value) =>
+    optionalNullableStringValue(value, "GitHub before cursor must be a string or null.")
+  );
+  setOptional(normalized, input, "recursive", (value) =>
+    optionalBoolean(value, "GitHub recursive flag must be a boolean.")
+  );
+  setOptional(normalized, input, "all", (value) =>
+    optionalBoolean(value, "GitHub notification all flag must be a boolean.")
+  );
+  setOptional(normalized, input, "participating", (value) =>
+    optionalBoolean(value, "GitHub notification participating flag must be a boolean.")
+  );
+  setOptional(normalized, input, "includesParents", (value) =>
+    optionalBoolean(value, "GitHub ruleset includesParents flag must be a boolean.")
+  );
+  setOptional(normalized, input, "state", (value) =>
+    optionalKnownValue(value, "GitHub state is not supported.", [
+      "open",
+      "closed",
+      "all",
+      "dismissed",
+      "fixed",
+      "auto_dismissed",
+      "resolved"
+    ])
+  );
+  setOptional(normalized, input, "sort", (value) =>
+    optionalKnownValue(value, "GitHub sort is not supported.", ["newest", "oldest", "stargazers"])
+  );
+  setOptional(normalized, input, "affiliation", (value) =>
+    optionalKnownValue(value, "GitHub affiliation is not supported.", ["all", "direct", "outside"])
+  );
+  setOptional(normalized, input, "permission", (value) =>
+    optionalKnownValue(value, "GitHub permission is not supported.", [
+      "admin",
+      "maintain",
+      "push",
+      "triage",
+      "pull"
+    ])
+  );
+
+  return normalized as TInput;
 }
 
 function requirePositiveInteger(value: unknown, message: string): number {
@@ -971,4 +1586,69 @@ function optionalInteger(value: unknown, message: string): number | undefined {
     throw new Error(message);
   }
   return value;
+}
+
+function optionalStringValue(value: unknown, message: string): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "string") {
+    throw new Error(message);
+  }
+  return value;
+}
+
+function optionalNullableStringValue(value: unknown, message: string): string | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return null;
+  }
+  if (typeof value !== "string") {
+    throw new Error(message);
+  }
+  return value;
+}
+
+function optionalTrimmedString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function optionalCursor(value: unknown): string | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return null;
+  }
+  if (typeof value !== "string") {
+    throw new Error("GitHub pull request cursor must be a string or null.");
+  }
+  return value;
+}
+
+function optionalKnownValue<TValue extends string>(
+  value: unknown,
+  message: string,
+  supportedValues: readonly TValue[]
+): TValue | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "string" || !supportedValues.includes(value as TValue)) {
+    throw new Error(message);
+  }
+  return value as TValue;
+}
+
+function setOptional(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>,
+  key: string,
+  parse: (value: unknown) => unknown
+): void {
+  if (source[key] !== undefined) {
+    target[key] = parse(source[key]);
+  }
 }

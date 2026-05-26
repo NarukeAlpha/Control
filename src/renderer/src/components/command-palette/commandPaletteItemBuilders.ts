@@ -653,19 +653,20 @@ export function appendOrganizationCommandPaletteItems(
     }
   }
 
-  if (input.selectedOrganization) {
+  const selectedOrganization = input.selectedOrganization;
+  if (selectedOrganization) {
     for (const project of input.organizationProjects.slice(0, input.generalSourceLimit)) {
       items.push({
-        id: `organization-project-${input.selectedOrganization.login}-${project.id}`,
+        id: `organization-project-${selectedOrganization.login}-${project.id}`,
         title: project.number ? `#${project.number} ${project.title}` : project.title,
-        subtitle: `${input.selectedOrganization.login} project · ${project.closed ? "closed" : "open"} · ${
+        subtitle: `${selectedOrganization.login} project · ${project.closed ? "closed" : "open"} · ${
           project.isPublic === null ? "visibility unknown" : project.isPublic ? "public" : "private"
         }`,
         group: "Organization projects",
         icon: SquareKanban,
         keywords: [
-          input.selectedOrganization.login,
-          input.selectedOrganization.name ?? "",
+          selectedOrganization.login,
+          selectedOrganization.name ?? "",
           project.id,
           project.number ? String(project.number) : "",
           project.number ? `#${project.number}` : "",
@@ -686,61 +687,56 @@ export function appendOrganizationCommandPaletteItems(
           project.htmlUrl ?? "",
           ...project.fields.flatMap((field) => [field.id, field.name, field.dataType ?? ""])
         ],
-        run: () =>
-          input.onSelectOrganizationProject(input.selectedOrganization as OrganizationSummary, project)
+        run: () => input.onSelectOrganizationProject(selectedOrganization, project)
       });
     }
   }
 
-  if (input.selectedOrganization) {
+  if (selectedOrganization) {
     for (const member of input.organizationMembers.slice(0, input.denseSourceLimit)) {
       items.push({
-        id: `organization-member-${input.selectedOrganization.login}-${member.id}`,
+        id: `organization-member-${selectedOrganization.login}-${member.id}`,
         title: member.login,
-        subtitle: `${input.selectedOrganization.login} member${member.siteAdmin ? " · site admin" : ""}`,
+        subtitle: `${selectedOrganization.login} member${member.siteAdmin ? " · site admin" : ""}`,
         group: "Organization members",
         icon: Users,
         keywords: [
-          input.selectedOrganization.login,
-          input.selectedOrganization.name ?? "",
+          selectedOrganization.login,
+          selectedOrganization.name ?? "",
           member.id,
           member.login,
           member.htmlUrl ?? "",
           member.avatarUrl ?? "",
           member.siteAdmin === null ? "" : member.siteAdmin ? "site admin" : "member"
         ],
-        run: () => input.onOpenOrganizationMember(input.selectedOrganization as OrganizationSummary, member)
+        run: () => input.onOpenOrganizationMember(selectedOrganization, member)
       });
     }
   }
 
-  if (input.selectedOrganization && input.selectedOrganizationTeam) {
+  const selectedOrganizationTeam = input.selectedOrganizationTeam;
+  if (selectedOrganization && selectedOrganizationTeam) {
     for (const member of input.organizationTeamMembers.slice(0, input.denseSourceLimit)) {
       items.push({
-        id: `organization-team-member-${input.selectedOrganization.login}-${input.selectedOrganizationTeam.slug}-${member.id}`,
+        id: `organization-team-member-${selectedOrganization.login}-${selectedOrganizationTeam.slug}-${member.id}`,
         title: member.login,
-        subtitle: `${input.selectedOrganizationTeam.name} member${member.siteAdmin ? " · site admin" : ""}`,
+        subtitle: `${selectedOrganizationTeam.name} member${member.siteAdmin ? " · site admin" : ""}`,
         group: "Organization members",
         icon: Users,
         keywords: [
-          input.selectedOrganization.login,
-          input.selectedOrganization.name ?? "",
-          input.selectedOrganizationTeam.name,
-          input.selectedOrganizationTeam.slug,
-          input.selectedOrganizationTeam.privacy ?? "",
-          input.selectedOrganizationTeam.permission ?? "",
+          selectedOrganization.login,
+          selectedOrganization.name ?? "",
+          selectedOrganizationTeam.name,
+          selectedOrganizationTeam.slug,
+          selectedOrganizationTeam.privacy ?? "",
+          selectedOrganizationTeam.permission ?? "",
           member.id,
           member.login,
           member.htmlUrl ?? "",
           member.avatarUrl ?? "",
           member.siteAdmin === null ? "" : member.siteAdmin ? "site admin" : "member"
         ],
-        run: () =>
-          input.onOpenOrganizationTeamMember(
-            input.selectedOrganization as OrganizationSummary,
-            input.selectedOrganizationTeam as TeamSummary,
-            member
-          )
+        run: () => input.onOpenOrganizationTeamMember(selectedOrganization, selectedOrganizationTeam, member)
       });
     }
   }

@@ -32,6 +32,8 @@
 
 - `done/github-cleanup-foundation.md` - completed GitHub cleanup, auth, IPC,
   App decomposition, pagination, cache TTL, and mock-data split work.
+- `done/last-frontier.md` - completed final provider IPC, export/import,
+  app-data sync primitive, and packaged gateway delivery work.
 - `done/multi-area-local-jj-foundation.md` - completed Area model, local
   repository, and JJ foundation.
 - `done/markdown-rendering-baseline.md` - shipped markdown rendering baseline.

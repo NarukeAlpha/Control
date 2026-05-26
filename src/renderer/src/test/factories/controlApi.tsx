@@ -4,7 +4,7 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
 
 import type { ControlApi } from "@shared/ipc";
-import type { GitHubProvider, RepoDetailInput, RepositoryDetail } from "@shared/github";
+import type { RepoDetailInput, RepositoryDetail } from "@shared/github";
 import { App } from "../../App";
 import { AuthProvider } from "../../components/auth/AuthProvider";
 import { mockControlApi } from "../../data/mock";
@@ -18,39 +18,104 @@ export const defaultUiState = {
   settingsOpen: false
 };
 
+// Test-only shortcuts let older renderer tests provide item arrays while the factory adapts them to
+// status-bearing IPC methods. They are not part of the renderer/preload API surface.
 type GitHubRawReadTestApi = Omit<
-  Pick<
-    GitHubProvider,
-    | "getAccountProfile"
-    | "listRepositories"
-    | "listAccountRepositories"
-    | "listOrganizations"
-    | "listOrganizationTeams"
-    | "listAccountIssues"
-    | "listAccountPullRequests"
-    | "listNotifications"
-    | "listBranches"
-    | "listTags"
-    | "listTree"
-    | "listContents"
-    | "getFileContent"
-    | "listCommits"
-    | "listLabels"
-    | "listAssignableUsers"
-    | "listMilestones"
-    | "listIssues"
-    | "getIssueDetail"
-    | "listPullRequests"
-    | "getPullRequestDetail"
-    | "listDiscussions"
-    | "listActions"
-    | "listWorkflows"
-    | "getWorkflowRunDetail"
-    | "listProjects"
-    | "listReleases"
-    | "listContributors"
-    | "search"
-  >,
+  {
+    getAccountProfile(
+      input?: Parameters<ControlApi["github"]["getAccountProfileWithStatus"]>[0]
+    ): Promise<
+      NonNullable<Awaited<ReturnType<ControlApi["github"]["getAccountProfileWithStatus"]>>["profile"]>
+    >;
+    listRepositories(
+      input?: Parameters<ControlApi["github"]["listRepositoriesWithStatus"]>[0]
+    ): Promise<Awaited<ReturnType<ControlApi["github"]["listRepositoriesWithStatus"]>>["items"]>;
+    listAccountRepositories(
+      input?: Parameters<ControlApi["github"]["listAccountRepositoriesWithStatus"]>[0]
+    ): Promise<Awaited<ReturnType<ControlApi["github"]["listAccountRepositoriesWithStatus"]>>["items"]>;
+    listOrganizations(
+      input?: Parameters<ControlApi["github"]["listOrganizationsWithStatus"]>[0]
+    ): Promise<Awaited<ReturnType<ControlApi["github"]["listOrganizationsWithStatus"]>>["items"]>;
+    listOrganizationTeams(
+      input: Parameters<ControlApi["github"]["listOrganizationTeamsWithStatus"]>[0]
+    ): Promise<Awaited<ReturnType<ControlApi["github"]["listOrganizationTeamsWithStatus"]>>["items"]>;
+    listAccountIssues(
+      input?: Parameters<ControlApi["github"]["listAccountIssuesWithStatus"]>[0]
+    ): Promise<Awaited<ReturnType<ControlApi["github"]["listAccountIssuesWithStatus"]>>["items"]>;
+    listAccountPullRequests(
+      input?: Parameters<ControlApi["github"]["listAccountPullRequestsWithStatus"]>[0]
+    ): Promise<Awaited<ReturnType<ControlApi["github"]["listAccountPullRequestsWithStatus"]>>["items"]>;
+    listNotifications(
+      input?: Parameters<ControlApi["github"]["listNotificationsWithStatus"]>[0]
+    ): Promise<Awaited<ReturnType<ControlApi["github"]["listNotificationsWithStatus"]>>["items"]>;
+    listBranches(
+      input: Parameters<ControlApi["github"]["listBranchesWithStatus"]>[0]
+    ): Promise<Awaited<ReturnType<ControlApi["github"]["listBranchesWithStatus"]>>["items"]>;
+    listTags(
+      input: Parameters<ControlApi["github"]["listTagsWithStatus"]>[0]
+    ): Promise<Awaited<ReturnType<ControlApi["github"]["listTagsWithStatus"]>>["items"]>;
+    listTree(
+      input: Parameters<ControlApi["github"]["listTreeWithStatus"]>[0]
+    ): Promise<Awaited<ReturnType<ControlApi["github"]["listTreeWithStatus"]>>["tree"]>;
+    listContents(
+      input: Parameters<ControlApi["github"]["listContentsWithStatus"]>[0]
+    ): Promise<Awaited<ReturnType<ControlApi["github"]["listContentsWithStatus"]>>["items"]>;
+    getFileContent(
+      input: Parameters<ControlApi["github"]["getFileContentWithStatus"]>[0]
+    ): Promise<Awaited<ReturnType<ControlApi["github"]["getFileContentWithStatus"]>>["item"]>;
+    listCommits(
+      input: Parameters<ControlApi["github"]["listCommitsWithStatus"]>[0]
+    ): Promise<Awaited<ReturnType<ControlApi["github"]["listCommitsWithStatus"]>>["items"]>;
+    listLabels(
+      input: Parameters<ControlApi["github"]["listLabelsWithStatus"]>[0]
+    ): Promise<Awaited<ReturnType<ControlApi["github"]["listLabelsWithStatus"]>>["items"]>;
+    listAssignableUsers(
+      input: Parameters<ControlApi["github"]["listAssignableUsersWithStatus"]>[0]
+    ): Promise<Awaited<ReturnType<ControlApi["github"]["listAssignableUsersWithStatus"]>>["items"]>;
+    listMilestones(
+      input: Parameters<ControlApi["github"]["listMilestonesWithStatus"]>[0]
+    ): Promise<Awaited<ReturnType<ControlApi["github"]["listMilestonesWithStatus"]>>["items"]>;
+    listIssues(
+      input: Parameters<ControlApi["github"]["listIssuesWithStatus"]>[0]
+    ): Promise<Awaited<ReturnType<ControlApi["github"]["listIssuesWithStatus"]>>["items"]>;
+    getIssueDetail(
+      input: Parameters<ControlApi["github"]["getIssueDetailWithStatus"]>[0]
+    ): Promise<NonNullable<Awaited<ReturnType<ControlApi["github"]["getIssueDetailWithStatus"]>>["detail"]>>;
+    listPullRequests(
+      input: Parameters<ControlApi["github"]["listPullRequestsWithStatus"]>[0]
+    ): Promise<Awaited<ReturnType<ControlApi["github"]["listPullRequestsWithStatus"]>>["items"]>;
+    getPullRequestDetail(
+      input: Parameters<ControlApi["github"]["getPullRequestDetailWithStatus"]>[0]
+    ): Promise<
+      NonNullable<Awaited<ReturnType<ControlApi["github"]["getPullRequestDetailWithStatus"]>>["detail"]>
+    >;
+    listDiscussions(
+      input: Parameters<ControlApi["github"]["listDiscussionsWithStatus"]>[0]
+    ): Promise<Awaited<ReturnType<ControlApi["github"]["listDiscussionsWithStatus"]>>["items"]>;
+    listActions(
+      input: Parameters<ControlApi["github"]["listActionsWithStatus"]>[0]
+    ): Promise<Awaited<ReturnType<ControlApi["github"]["listActionsWithStatus"]>>["items"]>;
+    listWorkflows(
+      input: Parameters<ControlApi["github"]["listWorkflowsWithStatus"]>[0]
+    ): Promise<Awaited<ReturnType<ControlApi["github"]["listWorkflowsWithStatus"]>>["items"]>;
+    getWorkflowRunDetail(
+      input: Parameters<ControlApi["github"]["getWorkflowRunDetailWithStatus"]>[0]
+    ): Promise<
+      NonNullable<Awaited<ReturnType<ControlApi["github"]["getWorkflowRunDetailWithStatus"]>>["detail"]>
+    >;
+    listProjects(
+      input: Parameters<ControlApi["github"]["listProjectsWithStatus"]>[0]
+    ): Promise<Awaited<ReturnType<ControlApi["github"]["listProjectsWithStatus"]>>["items"]>;
+    listReleases(
+      input: Parameters<ControlApi["github"]["listReleasesWithStatus"]>[0]
+    ): Promise<Awaited<ReturnType<ControlApi["github"]["listReleasesWithStatus"]>>["items"]>;
+    listContributors(
+      input: Parameters<ControlApi["github"]["listContributorsWithStatus"]>[0]
+    ): Promise<Awaited<ReturnType<ControlApi["github"]["listContributorsWithStatus"]>>["items"]>;
+    search(
+      input: Parameters<ControlApi["github"]["searchWithStatus"]>[0]
+    ): Promise<Awaited<ReturnType<ControlApi["github"]["searchWithStatus"]>>["items"]>;
+  },
   "getRepository"
 > & {
   getRepository(input: RepoDetailInput): Promise<RepositoryDetail>;

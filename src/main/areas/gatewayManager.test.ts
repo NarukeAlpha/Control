@@ -132,10 +132,52 @@ describe("resolveGatewayBinaryArtifact", () => {
     ).rejects.toMatchObject({ failureCode: "runtime-integrity-failed" });
   });
 
+  it("uses platform-specific packaged gateway names for Windows and Linux", async () => {
+    await expect(resolvePackagedNameForPlatform("win32", "x64", "control-gateway.exe")).resolves.toBe(
+      "control-gateway.exe"
+    );
+    await expect(resolvePackagedNameForPlatform("linux", "x64", "control-gateway")).resolves.toBe(
+      "control-gateway"
+    );
+  });
+
   async function tempRoot(): Promise<string> {
     const path = await mkdtemp(join(tmpdir(), "control-gateway-manager-"));
     tempPaths.push(path);
     return path;
+  }
+
+  async function resolvePackagedNameForPlatform(
+    platform: NodeJS.Platform,
+    arch: string,
+    filename: string
+  ): Promise<string> {
+    const root = await tempRoot();
+    const resourcesPath = join(root, "Resources");
+    const binaryPath = join(resourcesPath, "control-gateway", filename);
+    await mkdir(join(resourcesPath, "control-gateway"), { recursive: true });
+    await writeFile(binaryPath, "gateway-binary");
+    await chmod(binaryPath, 0o755);
+    await writeFile(
+      join(resourcesPath, "control-gateway", "manifest.json"),
+      JSON.stringify({
+        filename,
+        platform,
+        arch,
+        version: "0.1.0",
+        sha256: sha256("gateway-binary")
+      })
+    );
+
+    const resolved = await resolveGatewayBinaryArtifact({
+      cwd: root,
+      envBinary: null,
+      execPath: join(root, "Control"),
+      resourcesPath,
+      platform,
+      arch
+    });
+    return resolved.split(/[\\/]/u).at(-1) ?? "";
   }
 });
 

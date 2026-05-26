@@ -11,7 +11,7 @@ import {
 } from "./registerGithubIpc";
 
 function makeGithubIpcDependencies(overrides: Record<string, unknown> = {}) {
-  return {
+  const dependencies: Record<string, unknown> = {
     listRepositoriesWithStatus: vi.fn(async () => ({
       items: [],
       availability: { status: "available", message: null } as const
@@ -67,10 +67,20 @@ function makeGithubIpcDependencies(overrides: Record<string, unknown> = {}) {
     })),
     ...overrides
   };
+
+  for (const key of registeredGithubIpcRouteKeys) {
+    dependencies[key] ??= vi.fn(async (input: GitHubMutationInput | undefined) =>
+      key === "mutate"
+        ? { ok: true, action: input?.action ?? "star", message: "ok" }
+        : { items: [], availability: { status: "available", message: null } as const }
+    );
+  }
+
+  return dependencies as Parameters<typeof registerGithubIpc>[1] & Record<string, ReturnType<typeof vi.fn>>;
 }
 
 describe("registerGithubIpc", () => {
-  it("registers the first GitHub router slice on the typed route channels", async () => {
+  it("registers every GitHub route on the typed route channels", async () => {
     const handlers = new Map<string, (event: unknown, ...args: unknown[]) => unknown>();
     const ipcMain = {
       handle: vi.fn((channel: string, listener: (event: unknown, ...args: unknown[]) => unknown) => {
@@ -135,6 +145,46 @@ describe("registerGithubIpc", () => {
     expect(registeredGithubIpcRouteKeys.map((key) => githubIpcRouteChannels[key])).toEqual(
       routes.map((route) => route.channel)
     );
+  });
+
+  it("rejects malformed moved GitHub route payloads before calling providers", async () => {
+    const handlers = new Map<string, (event: unknown, ...args: unknown[]) => unknown>();
+    registerGithubIpc(
+      {
+        handle: vi.fn((channel: string, listener: (event: unknown, ...args: unknown[]) => unknown) => {
+          handlers.set(channel, listener);
+        })
+      },
+      makeGithubIpcDependencies()
+    );
+
+    await expect(
+      handlers.get(githubIpcRouteChannels.getFileContentWithStatus)?.(null, {
+        owner: "openai",
+        repo: "codex"
+      })
+    ).rejects.toThrow("GitHub file input requires a path.");
+    await expect(
+      handlers.get(githubIpcRouteChannels.getIssueDetailWithStatus)?.(null, {
+        owner: "openai",
+        repo: "codex",
+        issueNumber: 0
+      })
+    ).rejects.toThrow("GitHub issue input requires a number.");
+    await expect(
+      handlers.get(githubIpcRouteChannels.getPullRequestDetailWithStatus)?.(null, {
+        owner: "openai",
+        repo: "codex",
+        pullNumber: "1"
+      })
+    ).rejects.toThrow("GitHub pull request input requires a number.");
+    await expect(
+      handlers.get(githubIpcRouteChannels.getWorkflowRunDetailWithStatus)?.(null, {
+        owner: "openai",
+        repo: "codex",
+        runId: -1
+      })
+    ).rejects.toThrow("GitHub workflow run input requires a run id.");
   });
 
   it("validates repository list inputs before calling the provider", () => {

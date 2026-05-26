@@ -162,10 +162,37 @@ export const mockControlApi: ControlApi = {
     },
     blockers: []
   }),
+  exportData: async (input) => ({
+    manifest: {
+      schemaVersion: 1,
+      createdAt: new Date().toISOString(),
+      appVersion: null,
+      includedScopes: { ...defaultControlExportScope, ...input.scope },
+      redactionSummary: [],
+      cacheIncluded: {
+        githubMetadata: input.scope.githubMetadataCache,
+        areaCache: input.scope.areaCache,
+        snapshots: input.scope.snapshots
+      }
+    },
+    filePath: input.destinationPath ?? null,
+    bytesWritten: input.destinationPath ? 2 : null
+  }),
   previewDataImport: async () => ({
+    filePath: null,
     schemaVersion: null,
     items: [],
     blockers: ["Import preview is not available in the mock API."]
+  }),
+  importData: async () => ({
+    applied: false,
+    importedItems: 0,
+    insertedItems: 0,
+    updatedItems: 0,
+    skippedItems: 0,
+    remappedItems: 0,
+    blockedItems: 0,
+    emittedEvents: []
   }),
   onGitHubRepositoriesUpdated: () => () => undefined,
   onGitHubAuthUpdated: () => () => undefined,

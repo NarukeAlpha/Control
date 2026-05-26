@@ -164,7 +164,8 @@ async function bootstrap(): Promise<void> {
     store,
     github,
     effectBridge,
-    onSettingsUpdated: (settings) => applyNativeThemeSource(settings, nativeTheme)
+    onSettingsUpdated: (settings) => applyNativeThemeSource(settings, nativeTheme),
+    onAreasUpdated: (event) => sendMainToRendererEvent(mainWindow?.webContents, "areasUpdated", event)
   });
   registerAreaIpc(areaManager);
   createWindow();

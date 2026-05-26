@@ -4135,6 +4135,8 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 .settings-panel {
   display: grid;
   width: min(520px, calc(100vw - 40px));
+  max-height: min(780px, calc(100vh - 40px));
+  overflow: auto;
   gap: 18px;
   border-radius: 22px;
   padding: 20px;
@@ -4918,6 +4920,85 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
   background: var(--color-surface-control);
   color: var(--color-text);
   padding: 0 12px;
+}
+
+.data-sync-panel {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 14px;
+}
+
+.data-sync-panel h3 {
+  margin: 0;
+  color: var(--color-heading);
+  font-size: 15px;
+}
+
+.data-sync-scope-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 8px;
+}
+
+.settings-panel .data-sync-checkbox {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface-row);
+  color: var(--color-text);
+  font-size: 12px;
+  font-weight: 650;
+  padding: 0 9px;
+}
+
+.settings-panel .data-sync-checkbox input {
+  width: 16px;
+  min-height: 16px;
+  padding: 0;
+}
+
+.data-sync-preview {
+  display: grid;
+  gap: 6px;
+}
+
+.data-sync-preview div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface-row);
+  padding: 6px 9px;
+}
+
+.data-sync-preview span,
+.data-sync-preview small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-sync-preview span {
+  color: var(--color-text);
+  font-size: 13px;
+}
+
+.data-sync-preview strong {
+  color: var(--color-heading);
+  font-size: 13px;
+}
+
+.data-sync-preview small {
+  grid-column: 1 / -1;
+  color: var(--color-text-muted);
+  font-size: 12px;
 }
 
 .ssh-area-dialog,

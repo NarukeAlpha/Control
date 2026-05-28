@@ -941,14 +941,74 @@ body:not(.no-liquid-glass) .workspace-repository {
   display: grid;
   align-content: start;
   gap: 12px;
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.5);
   padding: 14px;
 }
 
+.home-panel > header,
+.home-panel > .surface-header,
+.home-panel > .home-repo-grid,
+.home-panel > .shortcut-list,
+.home-panel > .table-panel {
+  min-width: 0;
+}
+
 .home-panel header h2 {
   font-size: 18px;
+}
+
+.shortcut-list {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.shortcut-item {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  border: 1px solid rgba(74, 94, 124, 0.14);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.64);
+  color: var(--ink);
+  padding: 8px 10px;
+  text-align: left;
+}
+
+button.shortcut-item {
+  appearance: none;
+}
+
+button.shortcut-item:hover,
+button.shortcut-item:focus-visible {
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.shortcut-item > span:not(.repo-avatar) {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.shortcut-item strong,
+.shortcut-item small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shortcut-item small {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .home-repo-grid {
@@ -960,10 +1020,20 @@ body:not(.no-liquid-glass) .workspace-repository {
 
 .home-repo-grid button {
   display: grid;
+  width: 100%;
+  min-width: 0;
   min-height: 118px;
   align-content: start;
   justify-items: start;
   text-align: left;
+}
+
+.home-repo-grid strong {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .home-repo-grid small,

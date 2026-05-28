@@ -4107,7 +4107,6 @@ export function App(): JSX.Element {
   const [homeRepositoryActivityLimit, setHomeRepositoryActivityLimit] = useState(
     defaultHomeRepositoryActivityLimit
   );
-  const [homeWorkLimit, setHomeWorkLimit] = useState(8);
   const [mailboxWorkLimit, setMailboxWorkLimit] = useState(defaultMailboxListLimit);
   const [mailboxNotificationLimits, setMailboxNotificationLimits] = useState<
     Partial<Record<MailboxNotificationFilter, number>>
@@ -4779,9 +4778,6 @@ export function App(): JSX.Element {
 
       return currentLimit < 50 ? 50 : maxMailboxListLimit;
     });
-  };
-  const loadMoreHomeWork = (): void => {
-    setHomeWorkLimit(defaultMailboxListLimit);
   };
   const loadMoreHomeRepositoryActivity = (): void => {
     setHomeRepositoryActivityLimit((currentLimit) => {
@@ -9375,12 +9371,8 @@ export function App(): JSX.Element {
                 pullsLoading={accountPulls.isLoading || accountPulls.isFetching}
                 pullsError={accountPulls.error}
                 pullsAvailability={accountPullsAvailability}
-                workLimit={homeWorkLimit}
-                maxWorkLimit={defaultMailboxListLimit}
                 onOpenRepository={openRepositoryInApp}
                 onLoadMoreRepositories={loadMoreHomeRepositoryActivity}
-                onLoadMoreWork={loadMoreHomeWork}
-                onOpenMailbox={goToMailbox}
                 onOpenIssue={openIssueSummaryInApp}
                 onOpenPullRequest={openPullRequestSummaryInApp}
                 onOpenExternal={(url) => void api.openExternal(url)}
@@ -13367,6 +13359,270 @@ function SetupPanel({ appState }: { appState?: AppState }): JSX.Element {
   );
 }
 
+const homeContributionWeekCount = 53;
+const homeContributionColors = ["#ebedf0", "#9be9a8", "#40c463", "#30a14e", "#216e39"] as const;
+const homeContributionDateFormatter = new Intl.DateTimeFormat("en", {
+  month: "short",
+  day: "numeric"
+});
+const homeContributionMonthFormatter = new Intl.DateTimeFormat("en", {
+  month: "short"
+});
+const homeActivityMonthFormatter = new Intl.DateTimeFormat("en", {
+  month: "long",
+  year: "numeric"
+});
+
+interface HomeContributionCell {
+  key: string;
+  date: string;
+  weekday: number;
+  label: string;
+  count: number;
+  level: number;
+  color: string | null;
+}
+
+interface HomeContributionMonthLabel {
+  key: string;
+  label: string;
+  column: number;
+}
+
+interface HomeContributionCalendarView {
+  cells: HomeContributionCell[];
+  monthLabels: HomeContributionMonthLabel[];
+  activeDays: number;
+  totalContributions: number;
+  exact: boolean;
+}
+
+interface HomeActivityRepositoryStat {
+  nameWithOwner: string;
+  displayName: string;
+  count: number;
+  latestAt: string | null;
+}
+
+type HomeTimelineItem =
+  | {
+      kind: "repository";
+      id: string;
+      title: string;
+      subtitle: string;
+      date: string | null;
+      repository: RepositorySummary;
+    }
+  | {
+      kind: "pull";
+      id: string;
+      title: string;
+      subtitle: string;
+      date: string;
+      pull: PullRequestSummary;
+    }
+  | {
+      kind: "issue";
+      id: string;
+      title: string;
+      subtitle: string;
+      date: string;
+      issue: IssueSummary;
+    };
+
+function homeActivityTime(value: string | null | undefined): number {
+  if (!value) {
+    return 0;
+  }
+
+  const time = Date.parse(value);
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function homeActivityDayKey(date: Date): string {
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+function homeDateFromDayKey(dayKey: string): Date {
+  const [year, month, day] = dayKey.split("-").map(Number);
+
+  return new Date(year, month - 1, day);
+}
+
+function homeDayKeyAfter(dayKey: string, days: number): string {
+  const date = homeDateFromDayKey(dayKey);
+  date.setDate(date.getDate() + days);
+
+  return homeActivityDayKey(date);
+}
+
+function homeContributionLevel(count: number): number {
+  if (count >= 4) {
+    return 4;
+  }
+
+  return count;
+}
+
+function homeContributionLabel(count: number, date: string, label: "contribution" | "update"): string {
+  const formattedDate = homeContributionDateFormatter.format(homeDateFromDayKey(date));
+
+  if (count === 0) {
+    return label === "contribution"
+      ? `No contributions on ${formattedDate}`
+      : `No updates on ${formattedDate}`;
+  }
+
+  const countLabel = count === 1 ? `1 ${label}` : `${count} ${label}s`;
+
+  return `${countLabel} on ${formattedDate}`;
+}
+
+function buildHomeContributionCells(
+  calendar: GitHubAccountProfile["contributionCalendar"]
+): HomeContributionCell[] {
+  if (!calendar?.weeks.length) {
+    return [];
+  }
+
+  return calendar.weeks.flatMap((week) => {
+    const daysByWeekday = new Map(week.contributionDays.map((day) => [day.weekday, day]));
+
+    return Array.from({ length: 7 }, (_, weekday) => {
+      const day = daysByWeekday.get(weekday);
+      const date = day?.date ?? homeDayKeyAfter(week.firstDay, weekday);
+      const count = day?.contributionCount ?? 0;
+      const level = homeContributionLevel(count);
+
+      return {
+        key: date,
+        date,
+        weekday,
+        count,
+        level,
+        color: day?.color ?? homeContributionColors[level],
+        label: homeContributionLabel(count, date, "contribution")
+      };
+    });
+  });
+}
+
+function buildHomeContributionFallbackCells(
+  values: Array<string | null | undefined>
+): HomeContributionCell[] {
+  const counts = new Map<string, number>();
+  const times = values.map((value) => homeActivityTime(value)).filter((time) => time > 0);
+
+  for (const time of times) {
+    const key = homeActivityDayKey(new Date(time));
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+
+  const endDate = new Date(times.length ? Math.max(...times) : Date.now());
+  endDate.setHours(0, 0, 0, 0);
+  endDate.setDate(endDate.getDate() + (6 - endDate.getDay()));
+
+  const startDate = new Date(endDate);
+  startDate.setDate(endDate.getDate() - homeContributionWeekCount * 7 + 1);
+
+  return Array.from({ length: homeContributionWeekCount * 7 }, (_, index) => {
+    const date = new Date(startDate);
+    date.setDate(startDate.getDate() + index);
+    const key = homeActivityDayKey(date);
+    const count = counts.get(key) ?? 0;
+    const level = homeContributionLevel(count);
+
+    return {
+      key,
+      date: key,
+      weekday: date.getDay(),
+      count,
+      level,
+      color: homeContributionColors[level],
+      label: homeContributionLabel(count, key, "update")
+    };
+  });
+}
+
+function buildHomeContributionMonthLabels(cells: HomeContributionCell[]): HomeContributionMonthLabel[] {
+  const labels: HomeContributionMonthLabel[] = [];
+  const weekCount = Math.ceil(cells.length / 7);
+  let lastMonthKey: string | null = null;
+
+  for (let weekIndex = 0; weekIndex < weekCount; weekIndex += 1) {
+    const weekCells = cells.slice(weekIndex * 7, weekIndex * 7 + 7);
+    const monthStartCell = weekCells.find((cell) => homeDateFromDayKey(cell.date).getDate() <= 7);
+
+    if (!monthStartCell) {
+      continue;
+    }
+
+    const date = homeDateFromDayKey(monthStartCell.date);
+    const monthKey = `${date.getFullYear()}-${date.getMonth()}`;
+
+    if (monthKey === lastMonthKey) {
+      continue;
+    }
+
+    labels.push({
+      key: monthKey,
+      label: homeContributionMonthFormatter.format(date),
+      column: weekIndex + 1
+    });
+    lastMonthKey = monthKey;
+  }
+
+  return labels;
+}
+
+function buildHomeContributionCalendarView(
+  calendar: GitHubAccountProfile["contributionCalendar"],
+  fallbackValues: Array<string | null | undefined>
+): HomeContributionCalendarView {
+  const exactCells = buildHomeContributionCells(calendar);
+
+  if (exactCells.length > 0 && calendar) {
+    return {
+      cells: exactCells,
+      monthLabels: buildHomeContributionMonthLabels(exactCells),
+      activeDays: exactCells.filter((cell) => cell.count > 0).length,
+      totalContributions: calendar.totalContributions,
+      exact: true
+    };
+  }
+
+  const fallbackCells = buildHomeContributionFallbackCells(fallbackValues);
+  const totalContributions = fallbackCells.reduce((total, cell) => total + cell.count, 0);
+
+  return {
+    cells: fallbackCells,
+    monthLabels: buildHomeContributionMonthLabels(fallbackCells),
+    activeDays: fallbackCells.filter((cell) => cell.count > 0).length,
+    totalContributions,
+    exact: false
+  };
+}
+
+function homeTimelineMonthLabel(items: HomeTimelineItem[]): string {
+  const firstDate = items.find((item) => homeActivityTime(item.date) > 0)?.date;
+  const time = homeActivityTime(firstDate);
+  return time ? homeActivityMonthFormatter.format(new Date(time)) : "Recent activity";
+}
+
+function homeRepositoryMetadataParts(repository: RepositorySummary): string[] {
+  const languageName = repository.primaryLanguage?.name;
+
+  return repositoryCollectionMetadataParts(repository).filter((part) => part !== languageName);
+}
+
+function homeRepositoryShortcutMetadataParts(repository: RepositoryShortcut): string[] {
+  const languageName = repository.primaryLanguage?.name;
+
+  return repositoryShortcutMetadataParts(repository).filter((part) => part !== languageName);
+}
+
 function HomeDashboard({
   appState,
   profile,
@@ -13385,12 +13641,8 @@ function HomeDashboard({
   pullsLoading,
   pullsError,
   pullsAvailability,
-  workLimit,
-  maxWorkLimit,
   onOpenRepository,
   onLoadMoreRepositories,
-  onLoadMoreWork,
-  onOpenMailbox,
   onOpenIssue,
   onOpenPullRequest,
   onOpenExternal
@@ -13412,12 +13664,8 @@ function HomeDashboard({
   pullsLoading: boolean;
   pullsError: Error | null;
   pullsAvailability: GitHubReadAvailability | null;
-  workLimit: number;
-  maxWorkLimit: number;
   onOpenRepository(nameWithOwner: string): void;
   onLoadMoreRepositories(): void;
-  onLoadMoreWork(): void;
-  onOpenMailbox(): void;
   onOpenIssue(issue: IssueSummary): void;
   onOpenPullRequest(pullRequest: PullRequestSummary): void;
   onOpenExternal(url: string): void;
@@ -13440,28 +13688,124 @@ function HomeDashboard({
     !canLoadMoreRepositories &&
     sortedRepositories.length > 0 &&
     latestRepositories.length >= Math.min(sortedRepositories.length, maxRepositoryListLimit);
-  const pinnedRepositoryNameSet = new Set(pinnedRepositoryNames.map((name) => name.toLowerCase()));
   const pinnedRepositories = repositoryShortcutsFromPins(pinnedRepositoryNames, repositories);
-  const workItems = [
-    ...issues.map((issue) => ({ ...issue, kind: "issue" as const })),
-    ...pulls.map((pull) => ({ ...pull, kind: "pull" as const }))
+  const repositoryByName = new Map(repositories.map((repository) => [repository.nameWithOwner, repository]));
+  const activityTimelineItems: HomeTimelineItem[] = [
+    ...latestRepositories.map((repository) => {
+      const metadataParts = homeRepositoryMetadataParts(repository);
+
+      return {
+        kind: "repository" as const,
+        id: `repository-${repository.id}`,
+        title: displayRepositoryName(repository, login),
+        subtitle: metadataParts.length > 0 ? metadataParts.join(" · ") : "Repository",
+        date: repository.pushedAt ?? repository.updatedAt,
+        repository
+      };
+    }),
+    ...pulls.map((pull) => ({
+      kind: "pull" as const,
+      id: `pull-${pull.repositoryNameWithOwner ?? "github"}-${pull.number}`,
+      title: pull.title,
+      subtitle: `${pull.repositoryNameWithOwner ?? "GitHub"} #${pull.number} · ${
+        pull.merged ? "merged" : pull.state
+      } · ${formatCompactNumber(pull.changedFiles)} files · +${formatCompactNumber(
+        pull.additions
+      )} -${formatCompactNumber(pull.deletions)}`,
+      date: pull.updatedAt,
+      pull
+    })),
+    ...issues.map((issue) => ({
+      kind: "issue" as const,
+      id: `issue-${issue.repositoryNameWithOwner ?? "github"}-${issue.number}`,
+      title: issue.title,
+      subtitle: `${issue.repositoryNameWithOwner ?? "GitHub"} #${issue.number} · ${issueStateLabel(
+        issue
+      )} · ${formatCompactNumber(issue.comments)} comments`,
+      date: issue.updatedAt,
+      issue
+    }))
   ]
-    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-    .slice(0, workLimit);
-  const workLoading = issuesLoading || pullsLoading;
-  const workErrors = [
+    .sort((a, b) => homeActivityTime(b.date) - homeActivityTime(a.date))
+    .slice(0, 12);
+  const activityDates = [
+    ...latestRepositories.map((repository) => repository.pushedAt ?? repository.updatedAt),
+    ...pulls.map((pull) => pull.updatedAt),
+    ...issues.map((issue) => issue.updatedAt)
+  ];
+  const contributionCalendar = buildHomeContributionCalendarView(
+    profile?.contributionCalendar,
+    activityDates
+  );
+  const contributionCells = contributionCalendar.cells;
+  const activeContributionDays = contributionCalendar.activeDays;
+  const contributionWeekCount = Math.max(1, Math.ceil(contributionCells.length / 7));
+  const contributionGridStyle = {
+    gridTemplateColumns: `repeat(${contributionWeekCount}, 10px)`
+  };
+  const activityRepositoryStats = new Map<string, HomeActivityRepositoryStat>();
+  const upsertActivityRepository = (
+    nameWithOwner: string | null | undefined,
+    count: number,
+    date: string | null | undefined
+  ): void => {
+    if (!nameWithOwner) {
+      return;
+    }
+
+    const repository = repositoryByName.get(nameWithOwner);
+    const current = activityRepositoryStats.get(nameWithOwner);
+    const latestAt =
+      homeActivityTime(date) > homeActivityTime(current?.latestAt)
+        ? (date ?? null)
+        : (current?.latestAt ?? null);
+
+    activityRepositoryStats.set(nameWithOwner, {
+      nameWithOwner,
+      displayName: repository ? displayRepositoryName(repository, login) : nameWithOwner,
+      count: (current?.count ?? 0) + count,
+      latestAt
+    });
+  };
+
+  for (const repository of latestRepositories) {
+    upsertActivityRepository(repository.nameWithOwner, 1, repository.pushedAt ?? repository.updatedAt);
+  }
+  for (const pull of pulls) {
+    upsertActivityRepository(pull.repositoryNameWithOwner, 1, pull.updatedAt);
+  }
+  for (const issue of issues) {
+    upsertActivityRepository(issue.repositoryNameWithOwner, 1, issue.updatedAt);
+  }
+
+  const topActivityRepositories = [...activityRepositoryStats.values()]
+    .sort(
+      (a, b) =>
+        b.count - a.count ||
+        homeActivityTime(b.latestAt) - homeActivityTime(a.latestAt) ||
+        a.nameWithOwner.localeCompare(b.nameWithOwner)
+    )
+    .slice(0, 4);
+  const maxActivityRepositoryCount = Math.max(
+    1,
+    ...topActivityRepositories.map((repository) => repository.count)
+  );
+  const totalActivityUpdates = contributionCalendar.totalContributions;
+  const contributionHeading = contributionCalendar.exact
+    ? `${formatCompactNumber(totalActivityUpdates)} contributions in the last year`
+    : `${formatCompactNumber(totalActivityUpdates)} visible updates`;
+  const activityLoading = repositoriesLoading || issuesLoading || pullsLoading;
+  const activityErrors = [
+    repositoriesError ? `Repositories unavailable: ${repositoriesError.message}` : null,
     issuesError ? `Issues unavailable: ${issuesError.message}` : null,
     pullsError ? `Pull requests unavailable: ${pullsError.message}` : null
   ].filter((message): message is string => Boolean(message));
-  const workAvailabilityMessages = [
+  const activityAvailabilityMessages = [
+    repositoriesAvailabilityMessage,
     readAvailabilityMessage("Account issues", issuesAvailability),
     readAvailabilityMessage("Account pull requests", pullsAvailability)
   ].filter((message): message is string => Boolean(message));
-  const workRowsAvailable = issues.length + pulls.length;
-  const canLoadMoreWork = workRowsAvailable > workLimit && workLimit < maxWorkLimit;
-  const workAtHomeMaxLimit =
-    workLimit >= maxWorkLimit &&
-    (workRowsAvailable > maxWorkLimit || issues.length >= maxWorkLimit || pulls.length >= maxWorkLimit);
+  const timelineMonthLabel = homeTimelineMonthLabel(activityTimelineItems);
 
   return (
     <section className="home-dashboard">
@@ -13506,7 +13850,7 @@ function HomeDashboard({
             </header>
             <div className="home-repo-grid">
               {pinnedRepositories.map((repository) => {
-                const metadataParts = repositoryShortcutMetadataParts(repository);
+                const metadataParts = homeRepositoryShortcutMetadataParts(repository);
                 const chips = repositoryShortcutChips(repository);
 
                 return (
@@ -13532,49 +13876,177 @@ function HomeDashboard({
           </article>
         )}
 
-        <article className="home-panel">
+        <article className="home-panel home-activity-panel">
           <header>
             <h2>Latest repository activity</h2>
           </header>
-          <div className="home-repo-grid">
-            {repositoriesLoading && latestRepositories.length === 0 && (
-              <div className="loading-state">Loading repositories…</div>
+
+          <div className="home-activity-overview">
+            <section className="home-contribution-graph-panel" aria-label="Contribution overview">
+              <div className="home-contribution-heading">
+                <strong>{contributionHeading}</strong>
+                <span>{formatCompactNumber(activeContributionDays)} active days</span>
+              </div>
+              <div className="home-contribution-calendar">
+                <div aria-hidden="true" className="home-contribution-months" style={contributionGridStyle}>
+                  {contributionCalendar.monthLabels.map((label) => (
+                    <span key={label.key} style={{ gridColumn: `${label.column} / span 4` }}>
+                      {label.label}
+                    </span>
+                  ))}
+                </div>
+                <div className="home-contribution-weekdays" aria-hidden="true">
+                  <span />
+                  <span>Mon</span>
+                  <span />
+                  <span>Wed</span>
+                  <span />
+                  <span>Fri</span>
+                  <span />
+                </div>
+                <div
+                  className="home-contribution-grid"
+                  style={contributionGridStyle}
+                  aria-label="Contribution activity in the last year"
+                >
+                  {contributionCells.map((cell) => (
+                    <span
+                      aria-label={cell.label}
+                      className={`home-contribution-cell level-${cell.level}`}
+                      key={`${cell.date}-${cell.weekday}`}
+                      style={{ backgroundColor: cell.color ?? undefined }}
+                      title={cell.label}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div className="home-contribution-legend" aria-hidden="true">
+                <span>Less</span>
+                <span
+                  className="home-contribution-cell level-0"
+                  style={{ backgroundColor: homeContributionColors[0] }}
+                />
+                <span
+                  className="home-contribution-cell level-1"
+                  style={{ backgroundColor: homeContributionColors[1] }}
+                />
+                <span
+                  className="home-contribution-cell level-2"
+                  style={{ backgroundColor: homeContributionColors[2] }}
+                />
+                <span
+                  className="home-contribution-cell level-3"
+                  style={{ backgroundColor: homeContributionColors[3] }}
+                />
+                <span
+                  className="home-contribution-cell level-4"
+                  style={{ backgroundColor: homeContributionColors[4] }}
+                />
+                <span>More</span>
+              </div>
+            </section>
+
+            <section className="home-activity-repository-summary" aria-label="Activity overview">
+              <h3>Activity overview</h3>
+              {topActivityRepositories.length > 0 ? (
+                <div className="home-activity-repository-bars">
+                  {topActivityRepositories.map((repository) => (
+                    <div className="home-activity-repository-bar" key={repository.nameWithOwner}>
+                      <div>
+                        <strong>{repository.displayName}</strong>
+                        <small>
+                          {repository.latestAt
+                            ? `updated ${formatRelativeDate(repository.latestAt)}`
+                            : "Repository activity"}
+                        </small>
+                      </div>
+                      <span className="home-activity-bar-track" aria-hidden="true">
+                        <span
+                          style={{
+                            width: `${Math.max(8, (repository.count / maxActivityRepositoryCount) * 100)}%`
+                          }}
+                        />
+                      </span>
+                      <em>{formatCompactNumber(repository.count)}</em>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="muted-row">No repository activity loaded.</p>
+              )}
+            </section>
+          </div>
+
+          <section className="home-activity-timeline" aria-label="Contribution activity">
+            <div className="home-activity-timeline-heading">
+              <h3>Contribution activity</h3>
+              <span>{timelineMonthLabel}</span>
+            </div>
+            {activityLoading && activityTimelineItems.length === 0 && (
+              <div className="loading-state">Loading repository activity…</div>
             )}
-            {repositoriesError && (
-              <div className="error-state">Repositories unavailable: {repositoriesError.message}</div>
-            )}
-            {repositoriesAvailabilityMessage && (
-              <div className="error-state">{repositoriesAvailabilityMessage}</div>
-            )}
-            {latestRepositories.map((repository) => {
-              const pinned = pinnedRepositoryNameSet.has(repository.nameWithOwner.toLowerCase());
-              const metadataParts = repositoryCollectionMetadataParts(repository);
+            {activityErrors.map((message) => (
+              <div className="error-state" key={message}>
+                {message}
+              </div>
+            ))}
+            {activityAvailabilityMessages.map((message) => (
+              <div className="error-state" key={message}>
+                {message}
+              </div>
+            ))}
+            {activityTimelineItems.map((item) => {
+              const icon =
+                item.kind === "repository" ? (
+                  <Code2 size={16} />
+                ) : item.kind === "pull" ? (
+                  <GitPullRequest size={16} />
+                ) : (
+                  <CircleDot size={16} />
+                );
+              const onOpen = (): void => {
+                if (item.kind === "repository") {
+                  onOpenRepository(item.repository.nameWithOwner);
+                  return;
+                }
+                if (item.kind === "pull") {
+                  onOpenPullRequest(item.pull);
+                  return;
+                }
+                onOpenIssue(item.issue);
+              };
+              const ariaLabel =
+                item.kind === "repository"
+                  ? `Open ${item.repository.nameWithOwner}`
+                  : item.kind === "pull"
+                    ? `Open pull request #${item.pull.number}: ${item.pull.title}`
+                    : `Open issue #${item.issue.number}: ${item.issue.title}`;
 
               return (
                 <button
-                  key={repository.id}
+                  aria-label={ariaLabel}
+                  className={`home-activity-timeline-row ${item.kind}`}
+                  key={item.id}
                   type="button"
-                  onClick={() => onOpenRepository(repository.nameWithOwner)}
+                  onClick={onOpen}
                 >
-                  <strong>{displayRepositoryName(repository, login)}</strong>
-                  <small>{repository.description ?? "Repository"}</small>
-                  {metadataParts.length > 0 && <span>{metadataParts.join(" · ")}</span>}
-                  <span className="home-repo-card-chips">
-                    <span className="state-chip">{repository.visibility.toLowerCase()}</span>
-                    {repository.isFork && <span className="state-chip attention">fork</span>}
-                    {pinned && <span className="state-chip success">pinned</span>}
+                  <span className="home-activity-timeline-icon">{icon}</span>
+                  <span className="home-activity-timeline-copy">
+                    <strong>{item.title}</strong>
+                    <small>{item.subtitle}</small>
                   </span>
+                  <time dateTime={item.date ?? undefined}>{formatRelativeDate(item.date)}</time>
                 </button>
               );
             })}
-            {!repositoriesLoading &&
-              !repositoriesError &&
-              !repositoriesAvailabilityMessage &&
-              latestRepositories.length === 0 && <div className="empty-state">No repositories loaded.</div>}
+            {!activityLoading &&
+              activityErrors.length === 0 &&
+              activityAvailabilityMessages.length === 0 &&
+              activityTimelineItems.length === 0 && <div className="empty-state">No activity loaded.</div>}
             {canLoadMoreRepositories && (
               <div className="table-action-row">
                 <button type="button" onClick={onLoadMoreRepositories}>
-                  Load more repositories
+                  Load more repository activity
                 </button>
               </div>
             )}
@@ -13583,131 +14055,7 @@ function HomeDashboard({
                 Showing {latestRepositories.length} loaded repositories for Home.
               </div>
             )}
-          </div>
-        </article>
-
-        <article className="home-panel">
-          <header>
-            <h2>Your work</h2>
-          </header>
-          <div className="table-panel compact-table">
-            {workLoading && workItems.length === 0 && (
-              <div className="loading-state">Loading assigned issues and pull requests…</div>
-            )}
-            {workErrors.map((message) => (
-              <div className="error-state" key={message}>
-                {message}
-              </div>
-            ))}
-            {workAvailabilityMessages.map((message) => (
-              <div className="error-state" key={message}>
-                {message}
-              </div>
-            ))}
-            {workItems.map((item) => {
-              const reviewDecisionLabel =
-                item.kind === "pull" ? pullRequestReviewDecisionLabel(item.reviewDecision) : null;
-              const reviewDecisionChipTone =
-                item.kind === "pull" ? pullRequestReviewDecisionTone(item.reviewDecision) : "";
-              const mergeableStateLabel =
-                item.kind === "pull" ? pullRequestMergeableStateLabel(item.mergeableState) : null;
-              const isCrossRepository =
-                item.kind === "pull"
-                  ? (item.isCrossRepository ??
-                    Boolean(
-                      (item.headRepositoryNameWithOwner &&
-                        item.headRepositoryNameWithOwner !== item.repositoryNameWithOwner) ||
-                      (item.baseRepositoryNameWithOwner &&
-                        item.baseRepositoryNameWithOwner !== item.repositoryNameWithOwner)
-                    ))
-                  : false;
-              const sourceRepositoryLabel =
-                item.kind === "pull" && item.headRepositoryNameWithOwner
-                  ? `fork: ${item.headRepositoryNameWithOwner}`
-                  : "fork";
-              const metadataParts =
-                item.kind === "pull"
-                  ? mailboxPullRequestMetadataParts(item)
-                  : mailboxIssueMetadataParts(item);
-
-              return (
-                <div
-                  key={`${item.repositoryNameWithOwner ?? "item"}-${item.kind}-${item.number}`}
-                  className="issue-row mailbox-work-row"
-                >
-                  <button
-                    className="mailbox-work-row-main"
-                    type="button"
-                    onClick={() => (item.kind === "pull" ? onOpenPullRequest(item) : onOpenIssue(item))}
-                  >
-                    {item.kind === "pull" ? <GitPullRequest size={17} /> : <CircleDot size={17} />}
-                    <div>
-                      <strong>{item.title}</strong>
-                      <small>
-                        {item.repositoryNameWithOwner ?? "GitHub"} #{item.number} · updated{" "}
-                        {formatRelativeDate(item.updatedAt)}
-                      </small>
-                      <small className="notification-detail-line">{metadataParts.join(" · ")}</small>
-                    </div>
-                  </button>
-                  <span className="row-chip-stack">
-                    <span className={`state-chip ${item.state === "open" ? "success" : "attention"}`}>
-                      {item.kind === "issue" ? issueStateLabel(item) : item.state}
-                    </span>
-                    {item.kind === "pull" && item.isDraft && (
-                      <span className="state-chip attention">draft</span>
-                    )}
-                    {item.kind === "pull" && mergeableStateLabel && item.mergeableState !== "clean" && (
-                      <span className="state-chip attention">{mergeableStateLabel}</span>
-                    )}
-                    {reviewDecisionLabel && (
-                      <span className={`state-chip ${reviewDecisionChipTone}`}>{reviewDecisionLabel}</span>
-                    )}
-                    {isCrossRepository && (
-                      <span className="state-chip attention" title={sourceRepositoryLabel}>
-                        fork
-                      </span>
-                    )}
-                    {item.locked && <span className="state-chip attention">locked</span>}
-                  </span>
-                  <span className="row-action-stack">
-                    <button
-                      className="pin-row-button"
-                      type="button"
-                      aria-label={`Open GitHub fallback for ${item.title}`}
-                      title={`Open GitHub fallback for ${item.kind === "pull" ? "pull request" : "issue"}`}
-                      onClick={() => onOpenExternal(item.htmlUrl)}
-                    >
-                      <ExternalLink size={15} />
-                    </button>
-                  </span>
-                </div>
-              );
-            })}
-            {!workLoading &&
-              workErrors.length === 0 &&
-              workAvailabilityMessages.length === 0 &&
-              workItems.length === 0 && (
-                <div className="empty-state">No open assigned issues or pull requests.</div>
-              )}
-            {canLoadMoreWork && (
-              <div className="table-action-row">
-                <button type="button" onClick={onLoadMoreWork}>
-                  Load more work
-                </button>
-              </div>
-            )}
-            {!canLoadMoreWork && workAtHomeMaxLimit && (
-              <div className="muted-row">
-                Showing the first {maxWorkLimit} issues and pull requests returned for Home. More may be
-                available in{" "}
-                <button type="button" className="link-button" onClick={onOpenMailbox}>
-                  Mailbox
-                </button>
-                .
-              </div>
-            )}
-          </div>
+          </section>
         </article>
       </section>
     </section>

@@ -4098,7 +4098,8 @@ describe("Control renderer routing", () => {
     expect(screen.getByText("Open issues")).toBeInTheDocument();
     expect(screen.getByText("Open PRs")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Latest repository activity" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Your work" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Contribution activity" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Your work" })).not.toBeInTheDocument();
     expect(screen.queryByText("Followers")).not.toBeInTheDocument();
     expect(screen.queryByText("Following")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /apple \/ swift/i })).not.toBeInTheDocument();

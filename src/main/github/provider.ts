@@ -375,12 +375,14 @@ export class GitHubProviderManager implements GitHubProvider {
     if (!input.forceRefresh || input.cacheOnly) {
       const cached = this.store.getCacheEntry<GitHubAccountProfile>("github", cacheKey);
       if (cached) {
+        const missingContributionCalendar = !cached.payload.contributionCalendar;
+
         this.store.saveAccount("github", cached.payload.login, cached.payload);
         if (!input.login) {
           this.store.saveAccount("github-viewer", cached.payload.login, cached.payload);
         }
 
-        if (input.cacheOnly || !cached.isExpired) {
+        if (input.cacheOnly || (!cached.isExpired && !missingContributionCalendar)) {
           logControlLoading(
             input.cacheOnly ? "account profile cache-only hit" : "account profile cache hit",
             {
@@ -390,11 +392,18 @@ export class GitHubProviderManager implements GitHubProvider {
           return { profile: cached.payload, availability: available };
         }
 
-        logControlLoading("account profile stale cache hit", { cacheKey });
-        this.refreshInBackground(() =>
-          this.getAccountProfileWithStatus({ ...input, cacheOnly: false, forceRefresh: true })
+        logControlLoading(
+          missingContributionCalendar
+            ? "account profile cache missing contribution calendar"
+            : "account profile stale cache hit",
+          { cacheKey }
         );
-        return { profile: cached.payload, availability: available };
+        if (!missingContributionCalendar) {
+          this.refreshInBackground(() =>
+            this.getAccountProfileWithStatus({ ...input, cacheOnly: false, forceRefresh: true })
+          );
+          return { profile: cached.payload, availability: available };
+        }
       }
     }
 
@@ -445,6 +454,9 @@ export class GitHubProviderManager implements GitHubProvider {
             : "account profile live refresh unchanged",
           { cacheKey }
         );
+      }
+      if (!result.profile && previous) {
+        return { profile: previous.payload, availability: result.availability };
       }
       return result;
     });

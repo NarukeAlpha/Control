@@ -1238,6 +1238,16 @@ body:not(.no-liquid-glass) .repository-content-scroll {
   gap: 12px;
 }
 
+.repo-page-focused-issue {
+  grid-template-columns: minmax(0, 1fr);
+  padding-top: 58px;
+}
+
+.repo-page-focused-issue .repo-hero,
+.repo-page-focused-issue .repo-tabs {
+  display: none;
+}
+
 .code-browser-page {
   grid-column: 1;
 }
@@ -2526,6 +2536,10 @@ p {
   min-height: 520px;
 }
 
+.github-split.issue-detail-route {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .thread-list {
   overflow: auto;
   border-right: 1px solid rgba(85, 105, 135, 0.11);
@@ -2537,6 +2551,86 @@ p {
   gap: 16px;
   min-width: 0;
   padding: 22px;
+}
+
+.issue-summary-pane {
+  background: rgba(247, 250, 255, 0.5);
+}
+
+.issue-detail-page {
+  min-height: min(720px, calc(100vh - 232px));
+}
+
+.issue-summary-tile {
+  display: grid;
+  min-width: 0;
+  gap: 14px;
+}
+
+.issue-summary-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 14px;
+}
+
+.issue-summary-header h2 {
+  margin: 0 0 7px;
+  color: #08111f;
+  font-size: 18px;
+  line-height: 1.18;
+}
+
+.issue-summary-header small,
+.issue-summary-meta {
+  color: var(--color-text-muted);
+}
+
+.issue-summary-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  font-size: 13px;
+}
+
+.issue-summary-labels {
+  max-width: none;
+}
+
+.issue-summary-body {
+  max-height: min(420px, calc(100vh - 430px));
+  min-height: 178px;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.issue-summary-body .markdown-body-lite {
+  padding: 14px 16px;
+}
+
+.issue-detail-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.issue-detail-toolbar button,
+.thread-actions button {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid rgba(73, 94, 126, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #334963;
+  padding: 0 12px;
+  white-space: nowrap;
 }
 
 .thread-header h2,
@@ -4070,6 +4164,19 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
   .contributors-layout {
     grid-template-columns: 1fr;
   }
+
+  .github-split {
+    grid-template-columns: 1fr;
+  }
+
+  .thread-list {
+    border-right: 0;
+    border-bottom: 1px solid rgba(85, 105, 135, 0.11);
+  }
+
+  .issue-summary-body {
+    max-height: none;
+  }
 }
 
 .rail-error {
@@ -5174,6 +5281,10 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
     .repo-hero,
     .cached-mode-banner,
     .thread-detail,
+    .issue-summary-tile,
+    .issue-summary-body,
+    .issue-detail-toolbar button,
+    .thread-actions button,
     .timeline-card,
     .timeline-card-header,
     .compose-form,

@@ -492,7 +492,7 @@ export function RepositoryPage({
     forkMetadata.sourceLabel !== forkMetadata.parentLabel;
 
   return (
-    <article className="repo-page">
+    <article className={`repo-page${focusedIssueNumber !== null ? " repo-page-focused-issue" : ""}`}>
       <section className="repo-hero">
         <div className="repo-icon">
           <span>{repo.owner.slice(0, 1).toUpperCase()}</span>
@@ -754,6 +754,7 @@ export function RepositoryPage({
           onMutate={onMutate}
           onOpenExternal={onOpenExternal}
           onSelectIssue={onSelectIssue}
+          onOpenIssueList={() => onSelectTab("issues")}
           onExpandIssues={onExpandIssues}
         />
       )}
@@ -981,7 +982,7 @@ export function RepositoryPage({
           onExpandRepositoryAccess={onExpandRepositoryAccess}
         />
       )}
-      {rightRail}
+      {focusedIssueNumber === null && rightRail}
     </article>
   );
 }

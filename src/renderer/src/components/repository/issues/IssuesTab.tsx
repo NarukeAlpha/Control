@@ -1,5 +1,5 @@
-import { CircleDot, ExternalLink, Plus, Search, X } from "lucide-react";
-import { useState, type JSX } from "react";
+import { ArrowLeft, CircleDot, ExternalLink, Plus, Search, X } from "lucide-react";
+import { useEffect, useRef, useState, type JSX } from "react";
 import { useQuery, type QueryClient } from "@tanstack/react-query";
 
 import type {
@@ -13,7 +13,11 @@ import type {
 } from "@shared/github";
 import type { ControlApi } from "@shared/ipc";
 
-import { markdownRepositoryUrlContext } from "@renderer/components/MarkdownBody";
+import {
+  MarkdownBody,
+  markdownRepositoryUrlContext,
+  type MarkdownUrlContext
+} from "@renderer/components/MarkdownBody";
 import { issueDetailQueryKey, useIssueDetail } from "@renderer/components/repository/issues/useIssueDetail";
 import {
   fieldsMatchSearchParts,
@@ -241,6 +245,94 @@ function issueStateLabel(issue: IssueSummary): string {
   return issue.stateReason ? `${issue.state} · ${issue.stateReason.replace(/_/g, " ")}` : issue.state;
 }
 
+function IssueSummaryTile({
+  issue,
+  body,
+  commentsAvailable,
+  loading,
+  availabilityMessage,
+  markdownUrlContext,
+  onOpenIssue,
+  onOpenExternal
+}: {
+  issue: IssueSummary;
+  body: string | null | undefined;
+  commentsAvailable: number;
+  loading: boolean;
+  availabilityMessage: string | null;
+  markdownUrlContext: MarkdownUrlContext;
+  onOpenIssue(issue: IssueSummary): void;
+  onOpenExternal(url: string): void;
+}): JSX.Element {
+  const labels = issue.labels.slice(0, 4);
+  const hiddenLabelCount = issue.labels.length - labels.length;
+  const assignees = (issue.assignees ?? []).slice(0, 3);
+  const hiddenAssigneeCount = (issue.assignees ?? []).length - assignees.length;
+
+  return (
+    <article className="issue-summary-tile" aria-label={`Issue ${issue.number} summary`}>
+      <header className="issue-summary-header">
+        <div>
+          <h2>{issue.title}</h2>
+          <small>
+            #{issue.number} opened by {issue.authorLogin ?? "unknown"} · {formatRelativeDate(issue.createdAt)}
+          </small>
+        </div>
+        <span className={`state-chip ${issue.state === "open" ? "success" : ""}`}>
+          {issueStateLabel(issue)}
+        </span>
+      </header>
+      <div className="issue-summary-meta">
+        <span>{commentsAvailable} comments</span>
+        <span>Updated {formatRelativeDate(issue.updatedAt)}</span>
+        {issue.milestone && <span>Milestone {issue.milestone.title}</span>}
+        {issue.locked && <span>Locked</span>}
+      </div>
+      {(labels.length > 0 || assignees.length > 0) && (
+        <div className="label-stack issue-summary-labels">
+          {labels.map((label) => (
+            <span key={label.id}>{label.name}</span>
+          ))}
+          {hiddenLabelCount > 0 && (
+            <span>
+              +{hiddenLabelCount} {hiddenLabelCount === 1 ? "label" : "labels"}
+            </span>
+          )}
+          {assignees.map((assignee) => (
+            <span key={assignee.id}>@{assignee.login}</span>
+          ))}
+          {hiddenAssigneeCount > 0 && (
+            <span>
+              +{hiddenAssigneeCount} {hiddenAssigneeCount === 1 ? "assignee" : "assignees"}
+            </span>
+          )}
+        </div>
+      )}
+      <section className="issue-summary-body" aria-label="Original issue comment">
+        {loading ? (
+          <div className="loading-state">Loading issue summary…</div>
+        ) : (
+          <MarkdownBody
+            markdown={body}
+            emptyText="No description provided."
+            onOpenExternal={onOpenExternal}
+            urlContext={markdownUrlContext}
+          />
+        )}
+      </section>
+      {availabilityMessage && <div className="error-state">{availabilityMessage}</div>}
+      <div className="thread-actions">
+        <button className="dark-action" type="button" onClick={() => onOpenIssue(issue)}>
+          Open issue
+        </button>
+        <button type="button" onClick={() => onOpenExternal(issue.htmlUrl)}>
+          <ExternalLink size={16} /> GitHub fallback
+        </button>
+      </div>
+    </article>
+  );
+}
+
 export function IssuesTab({
   repository,
   githubReady,
@@ -254,6 +346,7 @@ export function IssuesTab({
   mutationError,
   onOpenExternal,
   onSelectIssue,
+  onOpenIssueList,
   onExpandIssues,
   onMutate
 }: {
@@ -269,9 +362,11 @@ export function IssuesTab({
   mutationError: Error | null;
   onOpenExternal(url: string): void;
   onSelectIssue(issue: IssueSummary): void;
+  onOpenIssueList(): void;
   onExpandIssues(): void;
   onMutate(action: GitHubAction, dangerous: boolean, payload?: GitHubMutationFields): void;
 }): JSX.Element {
+  const surfaceRef = useRef<HTMLElement | null>(null);
   const [selectedIssueNumber, setSelectedIssueNumber] = useState<number | null>(null);
   const [filter, setFilter] = useState(initialFilter);
   const [creating, setCreating] = useState(initialCreating);
@@ -357,6 +452,7 @@ export function IssuesTab({
     "Issue detail",
     issueDetail.data?.availability ?? null
   );
+  const issueDetailRoute = focusedIssueNumber !== null && !creating;
   const selectedLabels = detail?.labels ?? selectedIssue?.labels ?? [];
   const selectedAssignees = detail?.assignees ?? selectedIssue?.assignees ?? [];
   const selectedMilestone = detail?.milestone ?? selectedIssue?.milestone ?? null;
@@ -431,134 +527,151 @@ export function IssuesTab({
     setEditingIssue(true);
   }
 
-  return (
-    <section className="table-panel github-surface">
-      <div className="table-action-row surface-filter-row">
-        <label className="surface-filter">
-          <Search size={15} />
-          <input
-            aria-label="Filter issues"
-            value={filter}
-            onChange={(event) => setFilter(event.target.value)}
-            placeholder="Filter issues"
-          />
-        </label>
-        <button
-          type="button"
-          disabled={Boolean(createIssueDisabledReason)}
-          title={createIssueDisabledReason ?? undefined}
-          onClick={() => {
-            setEditingIssue(false);
-            setSubmittedIssueAction(null);
-            setTitle("");
-            setBody("");
-            setCreateLabelEntry("");
-            setCreateAssigneeEntry("");
-            setCreateMilestoneNumber("");
-            setCreating(true);
-          }}
-        >
-          <Plus size={16} /> New issue
-        </button>
-      </div>
-      <div className="github-split">
-        <div className="thread-list">
-          {loading && issues.length === 0 && <div className="loading-state">Loading issues…</div>}
-          {!loading && issuesAvailabilityMessage && (
-            <div className="error-state">{issuesAvailabilityMessage}</div>
-          )}
-          {filteredIssues.map((issue) => {
-            const visibleLabels = issue.labels.slice(0, 2);
-            const hiddenLabels = issue.labels.slice(2);
-            const visibleAssignees = (issue.assignees ?? []).slice(0, 2);
-            const hiddenAssignees = (issue.assignees ?? []).slice(2);
+  useEffect(() => {
+    if (!issueDetailRoute) {
+      return;
+    }
 
-            return (
-              <div
-                className={`issue-row thread-list-action-row ${
-                  selectedIssue?.number === issue.number && !creating ? "active" : ""
-                }`}
-                key={issue.id}
-              >
-                <button
-                  className="thread-list-row-main"
-                  type="button"
-                  onClick={() => {
-                    setCreating(false);
-                    setEditingIssue(false);
-                    setSelectedIssueNumber(issue.number);
-                    onSelectIssue(issue);
-                  }}
+    const scrollContainer = surfaceRef.current?.closest(".content-scroll");
+    if (scrollContainer instanceof HTMLElement) {
+      scrollContainer.scrollTop = 0;
+    }
+  }, [issueDetailRoute, focusedIssueNumber]);
+
+  return (
+    <section className="table-panel github-surface" ref={surfaceRef}>
+      {!issueDetailRoute && (
+        <div className="table-action-row surface-filter-row">
+          <label className="surface-filter">
+            <Search size={15} />
+            <input
+              aria-label="Filter issues"
+              value={filter}
+              onChange={(event) => setFilter(event.target.value)}
+              placeholder="Filter issues"
+            />
+          </label>
+          <button
+            type="button"
+            disabled={Boolean(createIssueDisabledReason)}
+            title={createIssueDisabledReason ?? undefined}
+            onClick={() => {
+              setEditingIssue(false);
+              setSubmittedIssueAction(null);
+              setTitle("");
+              setBody("");
+              setCreateLabelEntry("");
+              setCreateAssigneeEntry("");
+              setCreateMilestoneNumber("");
+              setCreating(true);
+            }}
+          >
+            <Plus size={16} /> New issue
+          </button>
+        </div>
+      )}
+      <div className={`github-split${issueDetailRoute ? " issue-detail-route" : ""}`}>
+        {!issueDetailRoute && (
+          <div className="thread-list">
+            {loading && issues.length === 0 && <div className="loading-state">Loading issues…</div>}
+            {!loading && issuesAvailabilityMessage && (
+              <div className="error-state">{issuesAvailabilityMessage}</div>
+            )}
+            {filteredIssues.map((issue) => {
+              const visibleLabels = issue.labels.slice(0, 2);
+              const hiddenLabels = issue.labels.slice(2);
+              const visibleAssignees = (issue.assignees ?? []).slice(0, 2);
+              const hiddenAssignees = (issue.assignees ?? []).slice(2);
+
+              return (
+                <div
+                  className={`issue-row thread-list-action-row ${
+                    selectedIssue?.number === issue.number && !creating ? "active" : ""
+                  }`}
+                  key={issue.id}
                 >
-                  <CircleDot size={17} />
-                  <div>
-                    <strong>{issue.title}</strong>
-                    <small>
-                      #{issue.number} opened by {issue.authorLogin ?? "unknown"} · {issue.comments} comments
-                    </small>
-                  </div>
-                  <div className="thread-list-row-badges">
-                    <div className="label-stack">
-                      {visibleLabels.map((label) => (
-                        <span key={label.id}>{label.name}</span>
-                      ))}
-                      {hiddenLabels.length > 0 && (
-                        <span title={`Hidden labels: ${hiddenLabels.map((label) => label.name).join(", ")}`}>
-                          +{hiddenLabels.length} {hiddenLabels.length === 1 ? "label" : "labels"}
-                        </span>
-                      )}
-                      {issue.milestone && (
-                        <span title={`Milestone ${issue.milestone.title}`}>{issue.milestone.title}</span>
-                      )}
-                      {visibleAssignees.map((assignee) => (
-                        <span key={assignee.id}>@{assignee.login}</span>
-                      ))}
-                      {hiddenAssignees.length > 0 && (
-                        <span
-                          title={`Hidden assignees: ${hiddenAssignees
-                            .map((assignee) => `@${assignee.login}`)
-                            .join(", ")}`}
-                        >
-                          +{hiddenAssignees.length} {hiddenAssignees.length === 1 ? "assignee" : "assignees"}
-                        </span>
-                      )}
+                  <button
+                    className="thread-list-row-main"
+                    type="button"
+                    onClick={() => {
+                      setCreating(false);
+                      setEditingIssue(false);
+                      setSelectedIssueNumber(issue.number);
+                    }}
+                  >
+                    <CircleDot size={17} />
+                    <div>
+                      <strong>{issue.title}</strong>
+                      <small>
+                        #{issue.number} opened by {issue.authorLogin ?? "unknown"} · {issue.comments} comments
+                      </small>
                     </div>
-                    <span className={`state-chip ${issue.state === "open" ? "success" : ""}`}>
-                      {issueStateLabel(issue)}
-                    </span>
-                    {issue.locked && <span className="state-chip attention">locked</span>}
-                  </div>
-                </button>
-                <button
-                  className="pin-row-button"
-                  type="button"
-                  aria-label={`Open issue ${issue.number} GitHub fallback`}
-                  title={`GitHub fallback for issue #${issue.number}`}
-                  onClick={() => onOpenExternal(issue.htmlUrl)}
-                >
-                  <ExternalLink size={15} />
+                    <div className="thread-list-row-badges">
+                      <div className="label-stack">
+                        {visibleLabels.map((label) => (
+                          <span key={label.id}>{label.name}</span>
+                        ))}
+                        {hiddenLabels.length > 0 && (
+                          <span
+                            title={`Hidden labels: ${hiddenLabels.map((label) => label.name).join(", ")}`}
+                          >
+                            +{hiddenLabels.length} {hiddenLabels.length === 1 ? "label" : "labels"}
+                          </span>
+                        )}
+                        {issue.milestone && (
+                          <span title={`Milestone ${issue.milestone.title}`}>{issue.milestone.title}</span>
+                        )}
+                        {visibleAssignees.map((assignee) => (
+                          <span key={assignee.id}>@{assignee.login}</span>
+                        ))}
+                        {hiddenAssignees.length > 0 && (
+                          <span
+                            title={`Hidden assignees: ${hiddenAssignees
+                              .map((assignee) => `@${assignee.login}`)
+                              .join(", ")}`}
+                          >
+                            +{hiddenAssignees.length}{" "}
+                            {hiddenAssignees.length === 1 ? "assignee" : "assignees"}
+                          </span>
+                        )}
+                      </div>
+                      <span className={`state-chip ${issue.state === "open" ? "success" : ""}`}>
+                        {issueStateLabel(issue)}
+                      </span>
+                      {issue.locked && <span className="state-chip attention">locked</span>}
+                    </div>
+                  </button>
+                  <button
+                    className="pin-row-button"
+                    type="button"
+                    aria-label={`Open issue ${issue.number} GitHub fallback`}
+                    title={`GitHub fallback for issue #${issue.number}`}
+                    onClick={() => onOpenExternal(issue.htmlUrl)}
+                  >
+                    <ExternalLink size={15} />
+                  </button>
+                </div>
+              );
+            })}
+            {!loading && filteredIssues.length === 0 && (
+              <div className="empty-state">
+                {filter.trim() ? "No issues match this filter." : "No issues returned for this repository."}
+              </div>
+            )}
+            {unfilteredIssueListLimitHit && issueListLimit < maxIssueListLimit && (
+              <div className="table-action-row">
+                <button type="button" onClick={onExpandIssues}>
+                  Load more issues
                 </button>
               </div>
-            );
-          })}
-          {!loading && filteredIssues.length === 0 && (
-            <div className="empty-state">
-              {filter.trim() ? "No issues match this filter." : "No issues returned for this repository."}
-            </div>
-          )}
-          {unfilteredIssueListLimitHit && issueListLimit < maxIssueListLimit && (
-            <div className="table-action-row">
-              <button type="button" onClick={onExpandIssues}>
-                Load more issues
-              </button>
-            </div>
-          )}
-          {unfilteredIssueListLimitHit && issueListLimit >= maxIssueListLimit && (
-            <div className="muted-row">Showing the first {issueListLimit} issues returned by GitHub.</div>
-          )}
-        </div>
+            )}
+            {unfilteredIssueListLimitHit && issueListLimit >= maxIssueListLimit && (
+              <div className="muted-row">Showing the first {issueListLimit} issues returned by GitHub.</div>
+            )}
+          </div>
+        )}
 
-        <div className="thread-detail">
+        <div className={`thread-detail${issueDetailRoute ? " issue-detail-page" : " issue-summary-pane"}`}>
           {creating ? (
             <form
               className="compose-form"
@@ -759,8 +872,27 @@ export function IssuesTab({
                 )}
               </div>
             </form>
+          ) : selectedIssue && !issueDetailRoute ? (
+            <IssueSummaryTile
+              issue={selectedIssue}
+              body={detail?.body}
+              commentsAvailable={detail?.commentsList.length ?? selectedIssue.comments}
+              loading={issueDetail.isLoading || issueDetail.isFetching}
+              availabilityMessage={issueDetail.error?.message ?? issueDetailAvailabilityMessage}
+              markdownUrlContext={issueMarkdownUrlContext}
+              onOpenIssue={onSelectIssue}
+              onOpenExternal={onOpenExternal}
+            />
           ) : selectedIssue ? (
             <>
+              <div className="issue-detail-toolbar">
+                <button type="button" onClick={onOpenIssueList}>
+                  <ArrowLeft size={16} /> Back to issues
+                </button>
+                <button type="button" onClick={() => onOpenExternal(selectedIssue.htmlUrl)}>
+                  <ExternalLink size={16} /> GitHub fallback
+                </button>
+              </div>
               <header className="thread-header">
                 <h2>{selectedIssue.title}</h2>
                 <small>
@@ -1163,9 +1295,6 @@ export function IssuesTab({
                 )}
               </form>
               <div className="thread-actions">
-                <button type="button" onClick={() => onOpenExternal(selectedIssue.htmlUrl)}>
-                  <ExternalLink size={16} /> GitHub fallback
-                </button>
                 <button
                   type="button"
                   disabled={Boolean(issueActionDisabledReason)}

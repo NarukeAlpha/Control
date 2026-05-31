@@ -128,10 +128,31 @@ require("keytar");
 
 function repairRuntime() {
   console.log("[electron-runtime] Repairing Electron binary...");
-  runNodeScript("node_modules/electron/install.js", []);
+  if (!repairElectronPathMetadata()) {
+    runNodeScript("node_modules/electron/install.js", []);
+    repairElectronPathMetadata();
+  }
 
   console.log("[electron-runtime] Rebuilding Electron native dependencies...");
   runNodeScript("node_modules/electron-builder/cli.js", ["install-app-deps"]);
+}
+
+function repairElectronPathMetadata() {
+  const electronRoot = path.join(projectRoot, "node_modules/electron");
+  const pathFile = path.join(electronRoot, "path.txt");
+  const platformPath = electronPlatformPath();
+  const electronPath = path.join(electronRoot, "dist", platformPath);
+
+  if (fs.existsSync(pathFile) && fs.existsSync(electronPath)) {
+    return true;
+  }
+
+  if (fs.existsSync(electronPath)) {
+    fs.writeFileSync(pathFile, platformPath);
+    return true;
+  }
+
+  return false;
 }
 
 function runNodeScript(scriptPath, scriptArgs) {
@@ -155,6 +176,24 @@ function runNodeScript(scriptPath, scriptArgs) {
     const exitCode = typeof result.status === "number" ? result.status : 1;
     console.error(`[electron-runtime] Command failed: node ${scriptPath} ${scriptArgs.join(" ")}`.trim());
     process.exit(exitCode);
+  }
+}
+
+function electronPlatformPath() {
+  const platform = process.env.npm_config_platform || process.platform;
+
+  switch (platform) {
+    case "mas":
+    case "darwin":
+      return "Electron.app/Contents/MacOS/Electron";
+    case "freebsd":
+    case "openbsd":
+    case "linux":
+      return "electron";
+    case "win32":
+      return "electron.exe";
+    default:
+      throw new Error(`Electron builds are not available on platform: ${platform}`);
   }
 }
 

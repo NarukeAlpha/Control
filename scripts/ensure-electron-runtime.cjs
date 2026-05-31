@@ -143,6 +143,7 @@ function runNodeScript(scriptPath, scriptArgs) {
 
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;
+  delete env.ELECTRON_SKIP_BINARY_DOWNLOAD;
 
   const result = spawnSync(process.execPath, [absoluteScriptPath, ...scriptArgs], {
     cwd: projectRoot,

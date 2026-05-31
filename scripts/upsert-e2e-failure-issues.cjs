@@ -30,7 +30,11 @@ const summary = readJson(inputPath);
 const codexOutput = readOptionalText(codexOutputPath).trim();
 const labels = [
   { name: "ci:e2e", color: "5319e7", description: "Created by the GitHub benchmark E2E workflow." },
-  { name: "dev-regression", color: "d93f0b", description: "Regression detected after merging into dev." },
+  {
+    name: "release-regression",
+    color: "d93f0b",
+    description: "Regression detected after merging into release."
+  },
   { name: "automated", color: "ededed", description: "Created or maintained by automation." }
 ];
 
@@ -64,7 +68,7 @@ async function main() {
         labels: labels.map((label) => label.name)
       });
       await github("POST", `/repos/${owner}/${repoName}/issues/${existing.number}/comments`, {
-        body: `Updated from the latest dev E2E run.\n\n- Commit: \`${failure.commitSha ?? "unknown"}\`\n- Run: ${summary.runUrl ?? "unavailable"}`
+        body: `Updated from the latest release E2E run.\n\n- Commit: \`${failure.commitSha ?? "unknown"}\`\n- Run: ${summary.runUrl ?? "unavailable"}`
       });
       updated += 1;
     } else {
@@ -97,7 +101,7 @@ async function closeResolvedIssues() {
   let closed = 0;
   for (const issue of issues) {
     await github("POST", `/repos/${owner}/${repoName}/issues/${issue.number}/comments`, {
-      body: `Closing because the latest dev E2E run passed.\n\n- Commit: \`${summary.commitSha ?? "unknown"}\`\n- Run: ${summary.runUrl ?? "unavailable"}`
+      body: `Closing because the latest release E2E run passed.\n\n- Commit: \`${summary.commitSha ?? "unknown"}\`\n- Run: ${summary.runUrl ?? "unavailable"}`
     });
     await github("PATCH", `/repos/${owner}/${repoName}/issues/${issue.number}`, {
       state: "closed",

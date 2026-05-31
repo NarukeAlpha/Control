@@ -2578,6 +2578,45 @@ describe("Control renderer routing", () => {
     );
   });
 
+  it("resets plain repository opens to the default code branch", async () => {
+    const listContents = vi.fn<GitHubTestApi["listContents"]>(async () => mockContents);
+    const listTree = vi.fn<GitHubTestApi["listTree"]>(async (input) => ({
+      ...mockTree,
+      ref: input.ref ?? mockTree.ref
+    }));
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "code" }
+    });
+
+    renderControl(makeApi({ listContents, listTree }));
+
+    await userEvent.selectOptions(await screen.findByLabelText("Code reference"), "release/6.0");
+    await waitFor(() =>
+      expect(listContents).toHaveBeenCalledWith(
+        expect.objectContaining({ owner: "apple", repo: "swift", ref: "release/6.0" })
+      )
+    );
+    expect(screen.getByLabelText("Code reference")).toHaveValue("release/6.0");
+
+    await userEvent.type(screen.getByLabelText("Search or jump to"), "apple/swift");
+    const popover = await waitFor(() => {
+      const element = document.querySelector(".search-popover");
+      expect(element).not.toBeNull();
+      return element as HTMLElement;
+    });
+    await userEvent.click(within(popover).getByRole("button", { name: /apple\/swift/i }));
+
+    await waitFor(() => expect(screen.getByLabelText("Code reference")).toHaveValue("main"));
+    await userEvent.click(screen.getByRole("button", { name: "Go to file" }));
+    await waitFor(() =>
+      expect(listTree).toHaveBeenCalledWith(
+        expect.objectContaining({ owner: "apple", repo: "swift", ref: "main", recursive: true })
+      )
+    );
+  });
+
   it("opens repository files through the in-app Go to file finder", async () => {
     const listTree = vi.fn<GitHubTestApi["listTree"]>(async (input) => ({
       ...mockTree,

@@ -110,29 +110,49 @@ interface UiState {
   setSettingsOpen(open: boolean): void;
 }
 
+type RouteSelectionState = Pick<
+  UiState,
+  "route" | "selectedAreaId" | "selectedRepository" | "selectedLocalRepository"
+>;
+
+function stateForRoute(route: AppRoute, previous: RouteSelectionState): RouteSelectionState {
+  if (route.kind === "repository" || route.kind === "codeBrowser") {
+    return {
+      route,
+      selectedAreaId: previous.selectedAreaId,
+      selectedRepository: route.nameWithOwner,
+      selectedLocalRepository: previous.selectedLocalRepository
+    };
+  }
+
+  if (route.kind === "localRepository") {
+    return {
+      route,
+      selectedAreaId: route.areaId,
+      selectedRepository: previous.selectedRepository,
+      selectedLocalRepository: {
+        areaId: route.areaId,
+        repositoryId: route.repositoryId,
+        workspaceId: route.workspaceId ?? null
+      }
+    };
+  }
+
+  return {
+    route,
+    selectedAreaId: previous.selectedAreaId,
+    selectedRepository: previous.selectedRepository,
+    selectedLocalRepository: previous.selectedLocalRepository
+  };
+}
+
 export const useUiStore = create<UiState>((set) => ({
   route: { kind: "home" },
   selectedAreaId: null,
   selectedRepository: null,
   selectedLocalRepository: null,
   settingsOpen: false,
-  navigate: (route) =>
-    set((state) => ({
-      route,
-      selectedAreaId: "areaId" in route ? route.areaId : state.selectedAreaId,
-      selectedRepository:
-        route.kind === "repository" || route.kind === "codeBrowser"
-          ? route.nameWithOwner
-          : state.selectedRepository,
-      selectedLocalRepository:
-        route.kind === "localRepository"
-          ? {
-              areaId: route.areaId,
-              repositoryId: route.repositoryId,
-              workspaceId: route.workspaceId ?? null
-            }
-          : state.selectedLocalRepository
-    })),
+  navigate: (route) => set((state) => stateForRoute(route, state)),
   selectArea: (selectedAreaId) =>
     set((state) => ({
       selectedAreaId,
@@ -141,23 +161,18 @@ export const useUiStore = create<UiState>((set) => ({
           ? { kind: "home" }
           : state.route
     })),
-  goHome: () => set({ route: { kind: "home" } }),
-  goToMailbox: () => set({ route: { kind: "mailbox" } }),
-  goToRepositories: () => set({ route: { kind: "repositories" } }),
-  goToOrganizations: () => set({ route: { kind: "organizations" } }),
+  goHome: () => set((state) => stateForRoute({ kind: "home" }, state)),
+  goToMailbox: () => set((state) => stateForRoute({ kind: "mailbox" }, state)),
+  goToRepositories: () => set((state) => stateForRoute({ kind: "repositories" }, state)),
+  goToOrganizations: () => set((state) => stateForRoute({ kind: "organizations" }, state)),
   goToRepository: (nameWithOwner, tab = "code") =>
-    set({ selectedRepository: nameWithOwner, route: { kind: "repository", nameWithOwner, tab } }),
+    set((state) => stateForRoute({ kind: "repository", nameWithOwner, tab }, state)),
   goToLocalRepository: (areaId, repositoryId, tab = "overview", workspaceId = null, path = null) =>
-    set({
-      selectedAreaId: areaId,
-      selectedLocalRepository: { areaId, repositoryId, workspaceId },
-      route: { kind: "localRepository", areaId, repositoryId, workspaceId, tab, path }
-    }),
+    set((state) =>
+      stateForRoute({ kind: "localRepository", areaId, repositoryId, workspaceId, tab, path }, state)
+    ),
   openCodeBrowser: (nameWithOwner, path, entryType, ref = null, line = null) =>
-    set({
-      selectedRepository: nameWithOwner,
-      route: { kind: "codeBrowser", nameWithOwner, path, entryType, ref, line }
-    }),
+    set((state) => stateForRoute({ kind: "codeBrowser", nameWithOwner, path, entryType, ref, line }, state)),
   setRepositoryTab: (tab) =>
     set((state) => {
       const nameWithOwner =
@@ -167,15 +182,11 @@ export const useUiStore = create<UiState>((set) => ({
         return state;
       }
 
-      return {
-        selectedRepository: nameWithOwner,
-        route: { kind: "repository", nameWithOwner, tab }
-      };
+      return stateForRoute({ kind: "repository", nameWithOwner, tab }, state);
     }),
   setSelectedRepository: (selectedRepository) =>
-    set({
-      selectedRepository,
-      route: { kind: "repository", nameWithOwner: selectedRepository, tab: "code" }
-    }),
+    set((state) =>
+      stateForRoute({ kind: "repository", nameWithOwner: selectedRepository, tab: "code" }, state)
+    ),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen })
 }));

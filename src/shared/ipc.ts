@@ -4,6 +4,10 @@ import type {
   AreaFileContent,
   AreaFileContentInput,
   AreaFileEntry,
+  AreaFileSearchInput,
+  AreaFileSearchResult,
+  AreaGatewayLifecycleInput,
+  AreaGatewayLifecycleResult,
   AreaGatewayOperationInput,
   AreaGatewayOperationPreview,
   AreaGatewayOperationResult,
@@ -34,141 +38,20 @@ import type {
   UpdateAreaInput
 } from "./areas";
 import type {
-  AccountIssueListInput,
-  AccountIssueListResult,
-  AccountProfileInput,
-  AccountProfileResult,
-  AccountPullRequestListInput,
-  AccountPullRequestListResult,
-  AccountRepositoryInput,
-  AccountRepositoryListResult,
-  ActionsInput,
   AppState,
-  AssignableUserListInput,
-  AssignableUserListResult,
-  AssignableUserSummary,
-  BranchListInput,
-  BranchListResult,
-  BranchProtectionInput,
-  BranchProtectionResult,
-  BranchSummary,
-  CodeScanningAlertsInput,
-  CodeScanningAlertsResult,
-  ContributorsInput,
   ContributorListResult,
-  ContributorSummary,
   ControlSettings,
-  DependabotAlertsInput,
-  DependabotAlertsResult,
-  DiscussionCategoryListInput,
-  DiscussionCategoryListResult,
-  DiscussionDetailInput,
-  DiscussionDetailResult,
-  DiscussionListInput,
-  DiscussionListResult,
-  DiscussionSummary,
-  GitHubAccountProfile,
-  GitHubSignInSession,
   GitHubMutationInput,
   GitHubMutationResult,
-  IssueDetail,
-  IssueDetailInput,
-  IssueDetailResult,
-  IssueListInput,
+  GitHubProvider,
+  GitHubSignInSession,
   IssueListResult,
-  IssueSummary,
-  RepositoryLabelListResult,
-  LabelSummary,
-  RepositoryMilestoneListResult,
-  MilestoneSummary,
-  NotificationListResult,
-  NotificationListInput,
-  NotificationSummary,
-  NotificationThreadInput,
-  NotificationThreadMutationResult,
-  OrganizationListInput,
-  OrganizationListResult,
-  OrganizationMembersInput,
-  OrganizationMembersResult,
-  OrganizationProjectsInput,
-  OrganizationRepositoriesInput,
-  OrganizationRepositoriesResult,
-  OrganizationTeamMembersInput,
-  OrganizationTeamMembersResult,
-  OrganizationTeamRepositoriesInput,
-  OrganizationTeamRepositoriesResult,
-  OrganizationSummary,
-  OrganizationTeamsInput,
-  OrganizationTeamsResult,
-  ProjectSummary,
-  ProjectListResult,
-  ProjectsInput,
-  PullRequestDetail,
-  PullRequestDetailInput,
-  PullRequestDetailResult,
-  PullRequestListInput,
   PullRequestListResult,
-  PullRequestSummary,
-  ReleaseSummary,
   ReleaseListResult,
-  ReleasesInput,
-  RepoContentsInput,
-  RepoContentsResult,
   RepoDetailInput,
-  RepoEntry,
-  RepoFileBlameInput,
-  RepoFileBlameResult,
-  RepoFileContent,
-  RepoFileContentInput,
-  RepoFileContentResult,
-  RepoReadmeInput,
-  RepoReadmeResult,
-  RepoListInput,
-  RepositoryAccessInput,
-  RepositoryAccessResult,
-  RepositoryCommitListInput,
-  RepositoryCommitListResult,
-  RepositoryCommitSummary,
-  RepositoryCommunityProfileInput,
-  RepositoryCommunityProfileResult,
-  RepositoryForksInput,
-  RepositoryForksResult,
-  RepositoryWikiInput,
-  RepositoryWikiResult,
-  RepositoryMilestoneListInput,
-  RepositoryRulesetsInput,
-  RepositoryRulesetsResult,
-  RepositorySecurityAdvisoriesInput,
-  RepositorySecurityAdvisoriesResult,
-  RepositorySecurityPolicyInput,
-  RepositorySecurityPolicyResult,
-  RepoTreeInput,
-  RepoTreeReadResult,
-  RepoTreeResult,
-  RepositoryLabelListInput,
-  RepositoryDetail,
-  RepositoryDetailResult,
-  RepositoryListResult,
-  RepositorySearchResult,
-  RepositorySummary,
-  SearchInput,
-  SecretScanningAlertsInput,
-  SecretScanningAlertsResult,
-  TagListInput,
-  TagListResult,
-  TagSummary,
-  TeamSummary,
-  Viewer,
-  WorkflowDefinitionListResult,
-  WorkflowDefinitionSummary,
-  WorkflowJobLogsInput,
-  WorkflowJobLogsResult,
-  WorkflowListInput,
-  WorkflowRunDetail,
-  WorkflowRunDetailInput,
-  WorkflowRunDetailResult,
   WorkflowRunListResult,
-  WorkflowRunSummary
+  JsonValue,
+  RepositoryDetailResult
 } from "./github";
 import type {
   LocalRecentItem,
@@ -177,6 +60,135 @@ import type {
   RepositoryPinInput,
   RepositoryPinRecord
 } from "./local";
+import type {
+  ControlExportPreview,
+  ControlExportInput,
+  ControlExportResult,
+  ControlExportScope,
+  ControlImportApplyInput,
+  ControlImportInput,
+  ControlImportPreview,
+  ControlImportResult
+} from "./sync";
+
+type JsonSerializableObject<T extends object> = {
+  [K in keyof T]: JsonSerializable<T[K]>;
+};
+
+type HasNonSerializableProperty<T extends object> = {
+  [K in keyof T]-?: [T[K]] extends [never] ? K : never;
+}[keyof T] extends never
+  ? false
+  : true;
+
+export type JsonSerializable<T> = unknown extends T
+  ? JsonValue
+  : T extends JsonValue
+    ? T
+    : T extends Date | Map<unknown, unknown> | Set<unknown> | RegExp | Error | Promise<unknown>
+      ? never
+      : T extends (...args: never[]) => unknown
+        ? never
+        : T extends readonly (infer TItem)[]
+          ? readonly JsonSerializable<TItem>[]
+          : T extends object
+            ? HasNonSerializableProperty<JsonSerializableObject<T>> extends true
+              ? never
+              : JsonSerializableObject<T>
+            : never;
+
+type JsonCompatible<T> = [JsonSerializable<T>] extends [never] ? never : T;
+
+type JsonIpcMethod<TMethod> = TMethod extends (...args: infer TArgs) => Promise<infer TResult>
+  ? (...args: { [K in keyof TArgs]: JsonCompatible<TArgs[K]> }) => Promise<JsonCompatible<TResult>>
+  : never;
+
+type JsonIpcApi<TApi> = {
+  [K in keyof TApi]: JsonIpcMethod<TApi[K]>;
+};
+
+type GitHubOptionalInputAdapter<TMethod> = TMethod extends (input: infer TInput) => Promise<infer TResult>
+  ? (input?: JsonCompatible<TInput>) => Promise<JsonCompatible<TResult>>
+  : never;
+
+type GitHubIpcOptionalInputKeys =
+  | "listRepositoriesWithStatus"
+  | "listAccountRepositoriesWithStatus"
+  | "getAccountProfileWithStatus"
+  | "listOrganizationsWithStatus"
+  | "listAccountIssuesWithStatus"
+  | "listAccountPullRequestsWithStatus"
+  | "listNotificationsWithStatus";
+
+type GitHubIpcProviderKeys =
+  | "getViewer"
+  | "listOrganizationTeamsWithStatus"
+  | "listOrganizationRepositoriesWithStatus"
+  | "listOrganizationTeamRepositoriesWithStatus"
+  | "listOrganizationTeamMembersWithStatus"
+  | "listOrganizationMembersWithStatus"
+  | "listOrganizationProjectsWithStatus"
+  | "markNotificationThreadRead"
+  | "unsubscribeNotificationThread"
+  | "listRepositoryForks"
+  | "listBranchesWithStatus"
+  | "listTagsWithStatus"
+  | "listTreeWithStatus"
+  | "getReadme"
+  | "listContentsWithStatus"
+  | "getFileContentWithStatus"
+  | "getFileBlame"
+  | "getRepositoryWiki"
+  | "listCommitsWithStatus"
+  | "listLabelsWithStatus"
+  | "listAssignableUsersWithStatus"
+  | "getRepositoryAccess"
+  | "listMilestonesWithStatus"
+  | "listIssuesWithStatus"
+  | "getIssueDetailWithStatus"
+  | "listPullRequestsWithStatus"
+  | "getPullRequestDetailWithStatus"
+  | "getPullRequestOverviewWithStatus"
+  | "listPullRequestCommentsWithStatus"
+  | "listPullRequestFilesWithStatus"
+  | "listPullRequestCommitsWithStatus"
+  | "listPullRequestReviewsWithStatus"
+  | "listPullRequestChecksWithStatus"
+  | "listPullRequestReviewThreadsWithStatus"
+  | "listPullRequestTimelineWithStatus"
+  | "listPullRequestLinkedIssuesWithStatus"
+  | "listDiscussionsWithStatus"
+  | "listDiscussionCategoriesWithStatus"
+  | "getDiscussionDetail"
+  | "listActionsWithStatus"
+  | "listWorkflowsWithStatus"
+  | "getWorkflowRunDetailWithStatus"
+  | "getWorkflowJobLogs"
+  | "listProjectsWithStatus"
+  | "getBranchProtection"
+  | "listDependabotAlerts"
+  | "listCodeScanningAlerts"
+  | "listSecretScanningAlerts"
+  | "listRepositoryRulesets"
+  | "listRepositorySecurityAdvisories"
+  | "getRepositorySecurityPolicy"
+  | "getRepositoryCommunityProfile"
+  | "listReleasesWithStatus"
+  | "getReleaseDetailWithStatus"
+  | "listContributorsWithStatus"
+  | "searchWithStatus";
+
+type GitHubIpcProviderBase = JsonIpcApi<Pick<GitHubProvider, GitHubIpcProviderKeys>>;
+
+type GitHubIpcOptionalInputOverrides = {
+  [K in GitHubIpcOptionalInputKeys]: GitHubOptionalInputAdapter<GitHubProvider[K]>;
+};
+
+export type GitHubIpcApi = GitHubIpcProviderBase &
+  GitHubIpcOptionalInputOverrides & {
+    getRepositoryWithStatus(input: RepoDetailInput): Promise<JsonCompatible<RepositoryDetailResult>>;
+    mutate(input: GitHubMutationInput): Promise<JsonCompatible<GitHubMutationResult>>;
+  };
 
 export interface ControlApi {
   getAppState(): Promise<AppState>;
@@ -195,6 +207,10 @@ export interface ControlApi {
   unpinAreaRepository(input: RepositoryPinInput): Promise<RepositoryPinRecord[]>;
   listRecentItems(input?: LocalRecentListInput): Promise<LocalRecentItem[]>;
   recordRecentItem(input: LocalRecentRecordInput): Promise<LocalRecentItem[]>;
+  previewDataExport(input: ControlExportScope): Promise<ControlExportPreview>;
+  exportData(input: ControlExportInput): Promise<ControlExportResult>;
+  previewDataImport(input: ControlImportInput): Promise<ControlImportPreview>;
+  importData(input: ControlImportApplyInput): Promise<ControlImportResult>;
   onGitHubRepositoriesUpdated(callback: (event: GitHubRepositoriesUpdatedEvent) => void): () => void;
   onGitHubAuthUpdated(callback: (event: GitHubAuthUpdatedEvent) => void): () => void;
   areas: {
@@ -211,6 +227,7 @@ export interface ControlApi {
     getRepository(input: AreaRepositoryInput): Promise<AreaRepositoryDetail | null>;
     listContents(input: AreaContentsInput): Promise<AreaFileEntry[]>;
     getFileContent(input: AreaFileContentInput): Promise<AreaFileContent>;
+    searchFilePaths(input: AreaFileSearchInput): Promise<AreaFileSearchResult>;
     listBranches(input: AreaRefInput): Promise<AreaRepositoryDetail["branches"]>;
     listRemotes(input: AreaRepositoryInput): Promise<AreaRepositoryDetail["remotes"]>;
     getStatus(input: AreaRepositoryInput): Promise<AreaRepositoryDetail["status"]>;
@@ -227,114 +244,15 @@ export interface ControlApi {
     prepareGatewayOperation(input: AreaGatewayOperationInput): Promise<AreaGatewayOperationPreview>;
     runGatewayOperation(input: AreaGatewayRunOperationInput): Promise<AreaGatewayOperationResult>;
     stopGateway(input: StopAreaGatewayInput): Promise<AreaSummary | null>;
+    repairGateway(input: AreaGatewayLifecycleInput): Promise<AreaGatewayLifecycleResult>;
+    rotateGatewayCredentials(input: AreaGatewayLifecycleInput): Promise<AreaGatewayLifecycleResult>;
+    restartGateway(input: AreaGatewayLifecycleInput): Promise<AreaGatewayLifecycleResult>;
     openLocalFolderPicker(): Promise<string | null>;
   };
   onAreasUpdated(callback: (event: AreaUpdatedEvent) => void): () => void;
   onAreaRepositoryUpdated(callback: (event: AreaRepositoryUpdatedEvent) => void): () => void;
   onAreaWorkspaceUpdated(callback: (event: AreaWorkspaceUpdatedEvent) => void): () => void;
-  github: {
-    getViewer(): Promise<Viewer>;
-    getAccountProfile(input?: AccountProfileInput): Promise<GitHubAccountProfile>;
-    getAccountProfileWithStatus(input?: AccountProfileInput): Promise<AccountProfileResult>;
-    listRepositories(input?: RepoListInput): Promise<RepositorySummary[]>;
-    listRepositoriesWithStatus(input?: RepoListInput): Promise<RepositoryListResult>;
-    listAccountRepositories(input?: AccountRepositoryInput): Promise<RepositorySummary[]>;
-    listAccountRepositoriesWithStatus(input?: AccountRepositoryInput): Promise<AccountRepositoryListResult>;
-    listOrganizations(input?: OrganizationListInput): Promise<OrganizationSummary[]>;
-    listOrganizationsWithStatus(input?: OrganizationListInput): Promise<OrganizationListResult>;
-    listOrganizationTeams(input: OrganizationTeamsInput): Promise<TeamSummary[]>;
-    listOrganizationTeamsWithStatus(input: OrganizationTeamsInput): Promise<OrganizationTeamsResult>;
-    listOrganizationRepositoriesWithStatus(
-      input: OrganizationRepositoriesInput
-    ): Promise<OrganizationRepositoriesResult>;
-    listOrganizationTeamRepositoriesWithStatus(
-      input: OrganizationTeamRepositoriesInput
-    ): Promise<OrganizationTeamRepositoriesResult>;
-    listOrganizationTeamMembersWithStatus(
-      input: OrganizationTeamMembersInput
-    ): Promise<OrganizationTeamMembersResult>;
-    listOrganizationMembersWithStatus(input: OrganizationMembersInput): Promise<OrganizationMembersResult>;
-    listOrganizationProjectsWithStatus(input: OrganizationProjectsInput): Promise<ProjectListResult>;
-    listAccountIssues(input?: AccountIssueListInput): Promise<IssueSummary[]>;
-    listAccountIssuesWithStatus(input?: AccountIssueListInput): Promise<AccountIssueListResult>;
-    listAccountPullRequests(input?: AccountPullRequestListInput): Promise<PullRequestSummary[]>;
-    listAccountPullRequestsWithStatus(
-      input?: AccountPullRequestListInput
-    ): Promise<AccountPullRequestListResult>;
-    listNotifications(input?: NotificationListInput): Promise<NotificationSummary[]>;
-    listNotificationsWithStatus(input?: NotificationListInput): Promise<NotificationListResult>;
-    markNotificationThreadRead(input: NotificationThreadInput): Promise<NotificationThreadMutationResult>;
-    unsubscribeNotificationThread(input: NotificationThreadInput): Promise<NotificationThreadMutationResult>;
-    getRepository(input: RepoDetailInput): Promise<RepositoryDetail>;
-    getRepositoryWithStatus(input: RepoDetailInput): Promise<RepositoryDetailResult>;
-    listRepositoryForks(input: RepositoryForksInput): Promise<RepositoryForksResult>;
-    listBranches(input: BranchListInput): Promise<BranchSummary[]>;
-    listBranchesWithStatus(input: BranchListInput): Promise<BranchListResult>;
-    listTags(input: TagListInput): Promise<TagSummary[]>;
-    listTagsWithStatus(input: TagListInput): Promise<TagListResult>;
-    listTree(input: RepoTreeInput): Promise<RepoTreeResult>;
-    listTreeWithStatus(input: RepoTreeInput): Promise<RepoTreeReadResult>;
-    getReadme(input: RepoReadmeInput): Promise<RepoReadmeResult>;
-    listContents(input: RepoContentsInput): Promise<RepoEntry[]>;
-    listContentsWithStatus(input: RepoContentsInput): Promise<RepoContentsResult>;
-    getFileContent(input: RepoFileContentInput): Promise<RepoFileContent>;
-    getFileContentWithStatus(input: RepoFileContentInput): Promise<RepoFileContentResult>;
-    getFileBlame(input: RepoFileBlameInput): Promise<RepoFileBlameResult>;
-    getRepositoryWiki(input: RepositoryWikiInput): Promise<RepositoryWikiResult>;
-    listCommits(input: RepositoryCommitListInput): Promise<RepositoryCommitSummary[]>;
-    listCommitsWithStatus(input: RepositoryCommitListInput): Promise<RepositoryCommitListResult>;
-    listLabels(input: RepositoryLabelListInput): Promise<LabelSummary[]>;
-    listLabelsWithStatus(input: RepositoryLabelListInput): Promise<RepositoryLabelListResult>;
-    listAssignableUsers(input: AssignableUserListInput): Promise<AssignableUserSummary[]>;
-    listAssignableUsersWithStatus(input: AssignableUserListInput): Promise<AssignableUserListResult>;
-    getRepositoryAccess(input: RepositoryAccessInput): Promise<RepositoryAccessResult>;
-    listMilestones(input: RepositoryMilestoneListInput): Promise<MilestoneSummary[]>;
-    listMilestonesWithStatus(input: RepositoryMilestoneListInput): Promise<RepositoryMilestoneListResult>;
-    listIssues(input: IssueListInput): Promise<IssueSummary[]>;
-    listIssuesWithStatus(input: IssueListInput): Promise<IssueListResult>;
-    getIssueDetail(input: IssueDetailInput): Promise<IssueDetail>;
-    getIssueDetailWithStatus(input: IssueDetailInput): Promise<IssueDetailResult>;
-    listPullRequests(input: PullRequestListInput): Promise<PullRequestSummary[]>;
-    listPullRequestsWithStatus(input: PullRequestListInput): Promise<PullRequestListResult>;
-    getPullRequestDetail(input: PullRequestDetailInput): Promise<PullRequestDetail>;
-    getPullRequestDetailWithStatus(input: PullRequestDetailInput): Promise<PullRequestDetailResult>;
-    listDiscussions(input: DiscussionListInput): Promise<DiscussionSummary[]>;
-    listDiscussionsWithStatus(input: DiscussionListInput): Promise<DiscussionListResult>;
-    listDiscussionCategoriesWithStatus(
-      input: DiscussionCategoryListInput
-    ): Promise<DiscussionCategoryListResult>;
-    getDiscussionDetail(input: DiscussionDetailInput): Promise<DiscussionDetailResult>;
-    listActions(input: ActionsInput): Promise<WorkflowRunSummary[]>;
-    listActionsWithStatus(input: ActionsInput): Promise<WorkflowRunListResult>;
-    listWorkflows(input: WorkflowListInput): Promise<WorkflowDefinitionSummary[]>;
-    listWorkflowsWithStatus(input: WorkflowListInput): Promise<WorkflowDefinitionListResult>;
-    getWorkflowRunDetail(input: WorkflowRunDetailInput): Promise<WorkflowRunDetail>;
-    getWorkflowRunDetailWithStatus(input: WorkflowRunDetailInput): Promise<WorkflowRunDetailResult>;
-    getWorkflowJobLogs(input: WorkflowJobLogsInput): Promise<WorkflowJobLogsResult>;
-    listProjects(input: ProjectsInput): Promise<ProjectSummary[]>;
-    listProjectsWithStatus(input: ProjectsInput): Promise<ProjectListResult>;
-    getBranchProtection(input: BranchProtectionInput): Promise<BranchProtectionResult>;
-    listDependabotAlerts(input: DependabotAlertsInput): Promise<DependabotAlertsResult>;
-    listCodeScanningAlerts(input: CodeScanningAlertsInput): Promise<CodeScanningAlertsResult>;
-    listSecretScanningAlerts(input: SecretScanningAlertsInput): Promise<SecretScanningAlertsResult>;
-    listRepositoryRulesets(input: RepositoryRulesetsInput): Promise<RepositoryRulesetsResult>;
-    listRepositorySecurityAdvisories(
-      input: RepositorySecurityAdvisoriesInput
-    ): Promise<RepositorySecurityAdvisoriesResult>;
-    getRepositorySecurityPolicy(
-      input: RepositorySecurityPolicyInput
-    ): Promise<RepositorySecurityPolicyResult>;
-    getRepositoryCommunityProfile(
-      input: RepositoryCommunityProfileInput
-    ): Promise<RepositoryCommunityProfileResult>;
-    listReleases(input: ReleasesInput): Promise<ReleaseSummary[]>;
-    listReleasesWithStatus(input: ReleasesInput): Promise<ReleaseListResult>;
-    listContributors(input: ContributorsInput): Promise<ContributorSummary[]>;
-    listContributorsWithStatus(input: ContributorsInput): Promise<ContributorListResult>;
-    search(input: SearchInput): Promise<RepositorySummary[]>;
-    searchWithStatus(input: SearchInput): Promise<RepositorySearchResult>;
-    mutate(input: GitHubMutationInput): Promise<GitHubMutationResult>;
-  };
+  github: GitHubIpcApi;
 }
 
 export interface GitHubRepositoriesUpdatedEvent {
@@ -362,6 +280,10 @@ export const ipcChannels = {
   unpinAreaRepository: "control:unpin-area-repository",
   listRecentItems: "control:list-recent-items",
   recordRecentItem: "control:record-recent-item",
+  previewDataExport: "control:preview-data-export",
+  exportData: "control:export-data",
+  previewDataImport: "control:preview-data-import",
+  importData: "control:import-data",
   githubRepositoriesUpdated: "github:repositories-updated",
   githubAuthUpdated: "github:auth-updated",
   areasList: "areas:list",
@@ -377,6 +299,7 @@ export const ipcChannels = {
   areaRepository: "areas:repository",
   areaContents: "areas:contents",
   areaFileContent: "areas:file-content",
+  areaFilePathSearch: "areas:file-path-search",
   areaBranches: "areas:branches",
   areaRemotes: "areas:remotes",
   areaStatus: "areas:status",
@@ -393,79 +316,64 @@ export const ipcChannels = {
   areaPrepareGatewayOperation: "areas:prepare-gateway-operation",
   areaRunGatewayOperation: "areas:run-gateway-operation",
   areaStopGateway: "areas:stop-gateway",
+  areaRepairGateway: "areas:repair-gateway",
+  areaRotateGatewayCredentials: "areas:rotate-gateway-credentials",
+  areaRestartGateway: "areas:restart-gateway",
   areaOpenLocalFolderPicker: "areas:open-local-folder-picker",
   areasUpdated: "areas:updated",
   areaRepositoryUpdated: "areas:repository-updated",
   areaWorkspaceUpdated: "areas:workspace-updated",
   githubViewer: "github:viewer",
-  githubAccountProfile: "github:account-profile",
   githubAccountProfileWithStatus: "github:account-profile-with-status",
-  githubRepositories: "github:repositories",
   githubRepositoriesWithStatus: "github:repositories-with-status",
-  githubAccountRepositories: "github:account-repositories",
   githubAccountRepositoriesWithStatus: "github:account-repositories-with-status",
-  githubOrganizations: "github:organizations",
   githubOrganizationsWithStatus: "github:organizations-with-status",
-  githubOrganizationTeams: "github:organization-teams",
   githubOrganizationTeamsWithStatus: "github:organization-teams-with-status",
   githubOrganizationRepositoriesWithStatus: "github:organization-repositories-with-status",
   githubOrganizationTeamRepositoriesWithStatus: "github:organization-team-repositories-with-status",
   githubOrganizationTeamMembersWithStatus: "github:organization-team-members-with-status",
   githubOrganizationMembersWithStatus: "github:organization-members-with-status",
   githubOrganizationProjectsWithStatus: "github:organization-projects-with-status",
-  githubAccountIssues: "github:account-issues",
   githubAccountIssuesWithStatus: "github:account-issues-with-status",
-  githubAccountPullRequests: "github:account-pull-requests",
   githubAccountPullRequestsWithStatus: "github:account-pull-requests-with-status",
-  githubNotifications: "github:notifications",
   githubNotificationsWithStatus: "github:notifications-with-status",
   githubNotificationThreadRead: "github:notification-thread-read",
   githubNotificationThreadUnsubscribe: "github:notification-thread-unsubscribe",
-  githubRepository: "github:repository",
   githubRepositoryWithStatus: "github:repository-with-status",
   githubRepositoryForks: "github:repository-forks",
-  githubBranches: "github:branches",
   githubBranchesWithStatus: "github:branches-with-status",
-  githubTags: "github:tags",
   githubTagsWithStatus: "github:tags-with-status",
-  githubTree: "github:tree",
   githubTreeWithStatus: "github:tree-with-status",
   githubReadme: "github:readme",
-  githubContents: "github:contents",
   githubContentsWithStatus: "github:contents-with-status",
-  githubFileContent: "github:file-content",
   githubFileContentWithStatus: "github:file-content-with-status",
   githubFileBlame: "github:file-blame",
   githubRepositoryWiki: "github:repository-wiki",
-  githubCommits: "github:commits",
   githubCommitsWithStatus: "github:commits-with-status",
-  githubLabels: "github:labels",
   githubLabelsWithStatus: "github:labels-with-status",
-  githubAssignableUsers: "github:assignable-users",
   githubAssignableUsersWithStatus: "github:assignable-users-with-status",
   githubRepositoryAccess: "github:repository-access",
-  githubMilestones: "github:milestones",
   githubMilestonesWithStatus: "github:milestones-with-status",
-  githubIssues: "github:issues",
   githubIssuesWithStatus: "github:issues-with-status",
-  githubIssueDetail: "github:issue-detail",
   githubIssueDetailWithStatus: "github:issue-detail-with-status",
-  githubPullRequests: "github:pull-requests",
   githubPullRequestsWithStatus: "github:pull-requests-with-status",
-  githubPullRequestDetail: "github:pull-request-detail",
   githubPullRequestDetailWithStatus: "github:pull-request-detail-with-status",
-  githubDiscussions: "github:discussions",
+  githubPullRequestOverviewWithStatus: "github:pull-request-overview-with-status",
+  githubPullRequestCommentsWithStatus: "github:pull-request-comments-with-status",
+  githubPullRequestFilesWithStatus: "github:pull-request-files-with-status",
+  githubPullRequestCommitsWithStatus: "github:pull-request-commits-with-status",
+  githubPullRequestReviewsWithStatus: "github:pull-request-reviews-with-status",
+  githubPullRequestChecksWithStatus: "github:pull-request-checks-with-status",
+  githubPullRequestReviewThreadsWithStatus: "github:pull-request-review-threads-with-status",
+  githubPullRequestTimelineWithStatus: "github:pull-request-timeline-with-status",
+  githubPullRequestLinkedIssuesWithStatus: "github:pull-request-linked-issues-with-status",
   githubDiscussionsWithStatus: "github:discussions-with-status",
   githubDiscussionCategoriesWithStatus: "github:discussion-categories-with-status",
   githubDiscussionDetail: "github:discussion-detail",
-  githubActions: "github:actions",
   githubActionsWithStatus: "github:actions-with-status",
-  githubWorkflows: "github:workflows",
   githubWorkflowsWithStatus: "github:workflows-with-status",
-  githubWorkflowRunDetail: "github:workflow-run-detail",
   githubWorkflowRunDetailWithStatus: "github:workflow-run-detail-with-status",
   githubWorkflowJobLogs: "github:workflow-job-logs",
-  githubProjects: "github:projects",
   githubProjectsWithStatus: "github:projects-with-status",
   githubBranchProtection: "github:branch-protection",
   githubDependabotAlerts: "github:dependabot-alerts",
@@ -475,14 +383,98 @@ export const ipcChannels = {
   githubRepositorySecurityAdvisories: "github:repository-security-advisories",
   githubRepositorySecurityPolicy: "github:repository-security-policy",
   githubRepositoryCommunityProfile: "github:repository-community-profile",
-  githubReleases: "github:releases",
   githubReleasesWithStatus: "github:releases-with-status",
-  githubContributors: "github:contributors",
+  githubReleaseDetailWithStatus: "github:release-detail-with-status",
   githubContributorsWithStatus: "github:contributors-with-status",
-  githubSearch: "github:search",
   githubSearchWithStatus: "github:search-with-status",
   githubMutate: "github:mutate"
 } as const;
+
+export type IpcChannel = (typeof ipcChannels)[keyof typeof ipcChannels];
+
+export const githubIpcRouteChannels = {
+  getViewer: ipcChannels.githubViewer,
+  getAccountProfileWithStatus: ipcChannels.githubAccountProfileWithStatus,
+  listRepositoriesWithStatus: ipcChannels.githubRepositoriesWithStatus,
+  listAccountRepositoriesWithStatus: ipcChannels.githubAccountRepositoriesWithStatus,
+  listOrganizationsWithStatus: ipcChannels.githubOrganizationsWithStatus,
+  listOrganizationTeamsWithStatus: ipcChannels.githubOrganizationTeamsWithStatus,
+  listOrganizationRepositoriesWithStatus: ipcChannels.githubOrganizationRepositoriesWithStatus,
+  listOrganizationTeamRepositoriesWithStatus: ipcChannels.githubOrganizationTeamRepositoriesWithStatus,
+  listOrganizationTeamMembersWithStatus: ipcChannels.githubOrganizationTeamMembersWithStatus,
+  listOrganizationMembersWithStatus: ipcChannels.githubOrganizationMembersWithStatus,
+  listOrganizationProjectsWithStatus: ipcChannels.githubOrganizationProjectsWithStatus,
+  listAccountIssuesWithStatus: ipcChannels.githubAccountIssuesWithStatus,
+  listAccountPullRequestsWithStatus: ipcChannels.githubAccountPullRequestsWithStatus,
+  listNotificationsWithStatus: ipcChannels.githubNotificationsWithStatus,
+  markNotificationThreadRead: ipcChannels.githubNotificationThreadRead,
+  unsubscribeNotificationThread: ipcChannels.githubNotificationThreadUnsubscribe,
+  getRepositoryWithStatus: ipcChannels.githubRepositoryWithStatus,
+  listRepositoryForks: ipcChannels.githubRepositoryForks,
+  listBranchesWithStatus: ipcChannels.githubBranchesWithStatus,
+  listTagsWithStatus: ipcChannels.githubTagsWithStatus,
+  listTreeWithStatus: ipcChannels.githubTreeWithStatus,
+  getReadme: ipcChannels.githubReadme,
+  listContentsWithStatus: ipcChannels.githubContentsWithStatus,
+  getFileContentWithStatus: ipcChannels.githubFileContentWithStatus,
+  getFileBlame: ipcChannels.githubFileBlame,
+  getRepositoryWiki: ipcChannels.githubRepositoryWiki,
+  listCommitsWithStatus: ipcChannels.githubCommitsWithStatus,
+  listLabelsWithStatus: ipcChannels.githubLabelsWithStatus,
+  listAssignableUsersWithStatus: ipcChannels.githubAssignableUsersWithStatus,
+  getRepositoryAccess: ipcChannels.githubRepositoryAccess,
+  listMilestonesWithStatus: ipcChannels.githubMilestonesWithStatus,
+  listIssuesWithStatus: ipcChannels.githubIssuesWithStatus,
+  getIssueDetailWithStatus: ipcChannels.githubIssueDetailWithStatus,
+  listPullRequestsWithStatus: ipcChannels.githubPullRequestsWithStatus,
+  getPullRequestDetailWithStatus: ipcChannels.githubPullRequestDetailWithStatus,
+  getPullRequestOverviewWithStatus: ipcChannels.githubPullRequestOverviewWithStatus,
+  listPullRequestCommentsWithStatus: ipcChannels.githubPullRequestCommentsWithStatus,
+  listPullRequestFilesWithStatus: ipcChannels.githubPullRequestFilesWithStatus,
+  listPullRequestCommitsWithStatus: ipcChannels.githubPullRequestCommitsWithStatus,
+  listPullRequestReviewsWithStatus: ipcChannels.githubPullRequestReviewsWithStatus,
+  listPullRequestChecksWithStatus: ipcChannels.githubPullRequestChecksWithStatus,
+  listPullRequestReviewThreadsWithStatus: ipcChannels.githubPullRequestReviewThreadsWithStatus,
+  listPullRequestTimelineWithStatus: ipcChannels.githubPullRequestTimelineWithStatus,
+  listPullRequestLinkedIssuesWithStatus: ipcChannels.githubPullRequestLinkedIssuesWithStatus,
+  listDiscussionsWithStatus: ipcChannels.githubDiscussionsWithStatus,
+  listDiscussionCategoriesWithStatus: ipcChannels.githubDiscussionCategoriesWithStatus,
+  getDiscussionDetail: ipcChannels.githubDiscussionDetail,
+  listActionsWithStatus: ipcChannels.githubActionsWithStatus,
+  listWorkflowsWithStatus: ipcChannels.githubWorkflowsWithStatus,
+  getWorkflowRunDetailWithStatus: ipcChannels.githubWorkflowRunDetailWithStatus,
+  getWorkflowJobLogs: ipcChannels.githubWorkflowJobLogs,
+  listProjectsWithStatus: ipcChannels.githubProjectsWithStatus,
+  getBranchProtection: ipcChannels.githubBranchProtection,
+  listDependabotAlerts: ipcChannels.githubDependabotAlerts,
+  listCodeScanningAlerts: ipcChannels.githubCodeScanningAlerts,
+  listSecretScanningAlerts: ipcChannels.githubSecretScanningAlerts,
+  listRepositoryRulesets: ipcChannels.githubRepositoryRulesets,
+  listRepositorySecurityAdvisories: ipcChannels.githubRepositorySecurityAdvisories,
+  getRepositorySecurityPolicy: ipcChannels.githubRepositorySecurityPolicy,
+  getRepositoryCommunityProfile: ipcChannels.githubRepositoryCommunityProfile,
+  listReleasesWithStatus: ipcChannels.githubReleasesWithStatus,
+  getReleaseDetailWithStatus: ipcChannels.githubReleaseDetailWithStatus,
+  listContributorsWithStatus: ipcChannels.githubContributorsWithStatus,
+  searchWithStatus: ipcChannels.githubSearchWithStatus,
+  mutate: ipcChannels.githubMutate
+} as const satisfies Record<keyof GitHubIpcApi, IpcChannel>;
+
+export interface ControlIpcEvents {
+  githubRepositoriesUpdated: GitHubRepositoriesUpdatedEvent;
+  githubAuthUpdated: GitHubAuthUpdatedEvent;
+  areasUpdated: AreaUpdatedEvent;
+  areaRepositoryUpdated: AreaRepositoryUpdatedEvent;
+  areaWorkspaceUpdated: AreaWorkspaceUpdatedEvent;
+}
+
+export const controlIpcEventChannels = {
+  githubRepositoriesUpdated: ipcChannels.githubRepositoriesUpdated,
+  githubAuthUpdated: ipcChannels.githubAuthUpdated,
+  areasUpdated: ipcChannels.areasUpdated,
+  areaRepositoryUpdated: ipcChannels.areaRepositoryUpdated,
+  areaWorkspaceUpdated: ipcChannels.areaWorkspaceUpdated
+} as const satisfies Record<keyof ControlIpcEvents, IpcChannel>;
 
 declare global {
   interface Window {

@@ -500,7 +500,32 @@ describe("OctokitProvider query scopes", () => {
   });
 
   it("pins the GitHub REST API version without replacing raw content accepts", async () => {
-    requestMock.mockResolvedValue({ data: "# README" });
+    requestMock.mockImplementation(async (route: string, params: Record<string, unknown>) => {
+      const headers = params.headers as Record<string, string> | undefined;
+      if (
+        route === "GET /repos/{owner}/{repo}/contents/{path}" &&
+        headers?.accept === "application/vnd.github.raw"
+      ) {
+        return { data: "# README" };
+      }
+      if (route === "GET /repos/{owner}/{repo}/contents/{path}") {
+        return {
+          data: {
+            name: "list.md",
+            path: "list.md",
+            type: "file",
+            sha: "blob_sha",
+            size: 8,
+            html_url: "https://github.com/NarukeAlpha/dots/blob/main/list.md",
+            download_url: "https://raw.githubusercontent.com/NarukeAlpha/dots/main/list.md"
+          }
+        };
+      }
+      if (route === "GET /repos/{owner}/{repo}/commits") {
+        return { data: [] };
+      }
+      throw new Error(`Unexpected route ${route}`);
+    });
 
     const provider = new OctokitProvider("gho_test");
     const fileContent = await provider.getFileContent({
@@ -513,12 +538,26 @@ describe("OctokitProvider query scopes", () => {
     expect(requestMock).toHaveBeenCalledWith(
       "GET /repos/{owner}/{repo}/contents/{path}",
       expect.objectContaining({
+        owner: "NarukeAlpha",
+        repo: "dots",
+        path: "list.md",
+        ref: "main",
+        headers: {
+          accept: "application/vnd.github+json",
+          "X-GitHub-Api-Version": "2022-11-28"
+        }
+      })
+    );
+    expect(requestMock).toHaveBeenCalledWith(
+      "GET /repos/{owner}/{repo}/contents/{path}",
+      expect.objectContaining({
         headers: {
           accept: "application/vnd.github.raw",
           "X-GitHub-Api-Version": "2022-11-28"
         }
       })
     );
+    expect(fileContent.kind).toBe("text");
     expect(fileContent.downloadUrl).toBe("https://raw.githubusercontent.com/NarukeAlpha/dots/main/list.md");
   });
 
@@ -1226,19 +1265,19 @@ describe("OctokitProvider query scopes", () => {
       action: "rerunWorkflow",
       owner: "apple",
       repo: "swift",
-      payload: { runId: 9000 }
+      runId: 9000
     });
     await provider.mutate({
       action: "rerunFailedWorkflowJobs",
       owner: "apple",
       repo: "swift",
-      payload: { runId: 9000 }
+      runId: 9000
     });
     await provider.mutate({
       action: "rerunWorkflowJob",
       owner: "apple",
       repo: "swift",
-      payload: { jobId: 7100 }
+      jobId: 7100
     });
 
     expect(requestMock).toHaveBeenNthCalledWith(
@@ -2006,6 +2045,84 @@ describe("OctokitProvider query scopes", () => {
     });
   });
 
+  it("maps nullable GraphQL project owner shapes", async () => {
+    graphqlMock.mockResolvedValue({
+      repository: {
+        projectsV2: {
+          nodes: [
+            {
+              id: "P_user",
+              number: 1,
+              title: "User board",
+              closed: false,
+              updatedAt: "2026-05-05T12:00:00.000Z",
+              url: "https://github.com/users/octocat/projects/1",
+              owner: { __typename: "User", login: "octocat", url: null }
+            },
+            {
+              id: "P_org",
+              number: 2,
+              title: "Organization board",
+              closed: false,
+              updatedAt: "2026-05-05T12:00:00.000Z",
+              url: "https://github.com/orgs/apple/projects/2",
+              owner: { __typename: "Organization", login: null, url: "https://github.com/apple" }
+            },
+            {
+              id: "P_repo",
+              number: 3,
+              title: "Repository board",
+              closed: false,
+              updatedAt: "2026-05-05T12:00:00.000Z",
+              url: "https://github.com/apple/swift/projects/3",
+              owner: { __typename: "Repository", nameWithOwner: "apple/swift", url: null }
+            },
+            {
+              id: "P_unknown",
+              number: 4,
+              title: "Unknown owner board",
+              closed: false,
+              updatedAt: "2026-05-05T12:00:00.000Z",
+              url: "https://github.com/projects/4",
+              owner: null
+            }
+          ]
+        }
+      }
+    });
+
+    const provider = new OctokitProvider("gho_test");
+    const result = await provider.listProjectsWithStatus({ owner: "apple", repo: "swift" });
+
+    expect(result.availability).toEqual({ status: "available", message: null });
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        id: "P_user",
+        ownerLogin: "octocat",
+        ownerKind: "user",
+        ownerHtmlUrl: null
+      }),
+      expect.objectContaining({
+        id: "P_org",
+        ownerLogin: null,
+        ownerKind: "organization",
+        ownerHtmlUrl: "https://github.com/apple"
+      }),
+      expect.objectContaining({
+        id: "P_repo",
+        ownerLogin: "apple/swift",
+        ownerKind: "repository",
+        ownerHtmlUrl: null
+      }),
+      expect.objectContaining({
+        id: "P_unknown",
+        ownerLogin: null,
+        ownerKind: "unknown",
+        ownerHtmlUrl: null
+      })
+    ]);
+  });
+
   it("maps project GraphQL errors without returning a false empty list", async () => {
     graphqlMock.mockRejectedValue(
       Object.assign(new Error("GraphQL failed while loading repository projects"), {
@@ -2031,11 +2148,9 @@ describe("OctokitProvider query scopes", () => {
       action: "editIssue",
       owner: "apple",
       repo: "swift",
-      payload: {
-        issueNumber: 123,
-        title: "Updated issue title",
-        body: "Updated issue body"
-      }
+      issueNumber: 123,
+      title: "Updated issue title",
+      body: "Updated issue body"
     });
 
     expect(requestMock).toHaveBeenCalledWith(
@@ -2068,18 +2183,14 @@ describe("OctokitProvider query scopes", () => {
       action: "editComment",
       owner: "apple",
       repo: "swift",
-      payload: {
-        commentId: 44001,
-        body: "Updated comment body"
-      }
+      commentId: 44001,
+      body: "Updated comment body"
     });
     await provider.mutate({
       action: "deleteComment",
       owner: "apple",
       repo: "swift",
-      payload: {
-        commentId: 44001
-      }
+      commentId: 44001
     });
 
     expect(requestMock).toHaveBeenNthCalledWith(
@@ -2119,37 +2230,29 @@ describe("OctokitProvider query scopes", () => {
       action: "addLabels",
       owner: "apple",
       repo: "swift",
-      payload: {
-        issueNumber: 123,
-        labels: ["triage", "regression"]
-      }
+      issueNumber: 123,
+      labels: ["triage", "regression"]
     });
     await provider.mutate({
       action: "setAssignees",
       owner: "apple",
       repo: "swift",
-      payload: {
-        issueNumber: 123,
-        assignees: ["octocat", "swift-ci"]
-      }
+      issueNumber: 123,
+      assignees: ["octocat", "swift-ci"]
     });
     await provider.mutate({
       action: "removeLabel",
       owner: "apple",
       repo: "swift",
-      payload: {
-        issueNumber: 123,
-        name: "regression"
-      }
+      issueNumber: 123,
+      name: "regression"
     });
     await provider.mutate({
       action: "removeAssignees",
       owner: "apple",
       repo: "swift",
-      payload: {
-        issueNumber: 123,
-        assignees: ["swift-ci"]
-      }
+      issueNumber: 123,
+      assignees: ["swift-ci"]
     });
 
     expect(requestMock).toHaveBeenNthCalledWith(
@@ -2218,21 +2321,17 @@ describe("OctokitProvider query scopes", () => {
       action: "requestReviewers",
       owner: "apple",
       repo: "swift",
-      payload: {
-        pullNumber: 17,
-        reviewers: ["octocat"],
-        teamReviewers: ["compiler"]
-      }
+      pullNumber: 17,
+      reviewers: ["octocat"],
+      teamReviewers: ["compiler"]
     });
     await provider.mutate({
       action: "removeReviewers",
       owner: "apple",
       repo: "swift",
-      payload: {
-        pullNumber: 17,
-        reviewers: ["octocat"],
-        teamReviewers: ["compiler"]
-      }
+      pullNumber: 17,
+      reviewers: ["octocat"],
+      teamReviewers: ["compiler"]
     });
 
     expect(requestMock).toHaveBeenNthCalledWith(
@@ -2341,36 +2440,30 @@ describe("OctokitProvider query scopes", () => {
       action: "createRelease",
       owner: "apple",
       repo: "swift",
-      payload: {
-        tag_name: "swift-5.11.0",
-        target_commitish: "main",
-        name: "Swift 5.11.0",
-        body: "Release notes from Control",
-        draft: false,
-        prerelease: true
-      }
+      tag_name: "swift-5.11.0",
+      target_commitish: "main",
+      name: "Swift 5.11.0",
+      body: "Release notes from Control",
+      draft: false,
+      prerelease: true
     });
     await provider.mutate({
       action: "deleteRelease",
       owner: "apple",
       repo: "swift",
-      payload: {
-        releaseId: 87
-      }
+      releaseId: 87
     });
     await provider.mutate({
       action: "editRelease",
       owner: "apple",
       repo: "swift",
-      payload: {
-        releaseId: 87,
-        tag_name: "swift-5.11.1",
-        target_commitish: "main",
-        name: "Swift 5.11.1",
-        body: "Edited release notes from Control",
-        draft: true,
-        prerelease: false
-      }
+      releaseId: 87,
+      tag_name: "swift-5.11.1",
+      target_commitish: "main",
+      name: "Swift 5.11.1",
+      body: "Edited release notes from Control",
+      draft: true,
+      prerelease: false
     });
 
     expect(requestMock).toHaveBeenNthCalledWith(

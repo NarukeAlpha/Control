@@ -28,7 +28,14 @@ interface GatewayRepositoryPayload {
 }
 
 export class GatewayClient {
-  constructor(private readonly record: AreaGatewayRecord) {}
+  constructor(
+    private readonly record: AreaGatewayRecord,
+    private readonly apiToken: string
+  ) {
+    if (!apiToken.trim()) {
+      throw new Error("Gateway API token is unavailable.");
+    }
+  }
 
   async listRepositories(): Promise<AreaRepositorySummary[]> {
     const data = await this.graphql<GatewayRepositoryPayload>(`
@@ -193,7 +200,7 @@ export class GatewayClient {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        ...(this.record.apiToken ? { authorization: `Bearer ${this.record.apiToken}` } : {})
+        authorization: `Bearer ${this.apiToken}`
       },
       body: JSON.stringify({ query, variables })
     });

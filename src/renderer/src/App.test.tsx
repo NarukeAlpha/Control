@@ -78,12 +78,22 @@ function appStateWithRepositoryTabPreferences(
 describe("Control renderer routing", () => {
   it("opens repositories from the sidebar pinned list", async () => {
     useUiStore.setState(defaultUiState);
+    const listRepositoryPins = vi.fn<ControlApi["listRepositoryPins"]>(async () => [
+      {
+        areaId: "github:default",
+        repositoryId: "github:default:apple/swift",
+        workspaceId: null,
+        nameWithOwner: "apple/swift",
+        createdAt: "2026-05-01T00:00:00.000Z"
+      }
+    ]);
+
     renderControl({
       ...makeApi(),
-      listPinnedRepositories: async () => ["apple/swift"]
+      listRepositoryPins
     });
 
-    await userEvent.click(await screen.findByRole("button", { name: /^apple\/swift/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /apple\/swift/i }));
 
     await waitFor(() => {
       expect(useUiStore.getState().route).toEqual({
@@ -346,7 +356,7 @@ describe("Control renderer routing", () => {
       })
     );
 
-    expect(await screen.findByText("Blog")).toBeInTheDocument();
+    expect((await screen.findAllByText("Blog")).length).toBeGreaterThan(0);
     expect(screen.queryByText("NarukeAlpha/blog")).not.toBeInTheDocument();
   });
 
@@ -4177,7 +4187,8 @@ describe("Control renderer routing", () => {
     expect(screen.getByText("Open issues")).toBeInTheDocument();
     expect(screen.getByText("Open PRs")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Latest repository activity" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Your work" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Contribution activity" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Your work" })).not.toBeInTheDocument();
     expect(screen.queryByText("Followers")).not.toBeInTheDocument();
     expect(screen.queryByText("Following")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /apple \/ swift/i })).not.toBeInTheDocument();

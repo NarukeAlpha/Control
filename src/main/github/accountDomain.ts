@@ -43,6 +43,20 @@ const githubProfileFragment = `
     repositories { totalCount }
     starredRepositories { totalCount }
     status { emoji message }
+    contributionsCollection {
+      contributionCalendar {
+        totalContributions
+        weeks {
+          firstDay
+          contributionDays {
+            contributionCount
+            date
+            color
+            weekday
+          }
+        }
+      }
+    }
     pinnedItems(first: $limit, types: REPOSITORY) {
       nodes {
         ... on Repository {
@@ -350,7 +364,29 @@ function mapAccountProfile(node: GitHubProfileNode): GitHubAccountProfile {
     repositoryCount: node.repositories.totalCount,
     starredRepositoryCount: node.starredRepositories.totalCount,
     status: node.status ? { emoji: node.status.emoji, message: node.status.message } : null,
+    contributionCalendar: mapContributionCalendar(node.contributionsCollection?.contributionCalendar ?? null),
     pinnedRepositories: node.pinnedItems.nodes.filter(Boolean).map(mapRepositorySummary)
+  };
+}
+
+function mapContributionCalendar(
+  node: GitHubContributionCalendarNode | null | undefined
+): GitHubAccountProfile["contributionCalendar"] {
+  if (!node) {
+    return null;
+  }
+
+  return {
+    totalContributions: node.totalContributions,
+    weeks: node.weeks.map((week) => ({
+      firstDay: week.firstDay,
+      contributionDays: week.contributionDays.map((day) => ({
+        date: day.date,
+        weekday: day.weekday,
+        contributionCount: day.contributionCount,
+        color: day.color
+      }))
+    }))
   };
 }
 
@@ -457,6 +493,19 @@ function normalizeGraphqlMergeStateStatus(status: string | null): string | null 
   return status?.toLowerCase() ?? null;
 }
 
+interface GitHubContributionCalendarNode {
+  totalContributions: number;
+  weeks: Array<{
+    firstDay: string;
+    contributionDays: Array<{
+      date: string;
+      weekday: number;
+      contributionCount: number;
+      color: string | null;
+    }>;
+  }>;
+}
+
 interface GitHubProfileNode {
   id: string;
   login: string;
@@ -472,6 +521,7 @@ interface GitHubProfileNode {
   repositories: { totalCount: number };
   starredRepositories: { totalCount: number };
   status: { emoji: string | null; message: string | null } | null;
+  contributionsCollection?: { contributionCalendar: GitHubContributionCalendarNode | null } | null;
   pinnedItems: { nodes: GitHubRepositoryNode[] };
 }
 

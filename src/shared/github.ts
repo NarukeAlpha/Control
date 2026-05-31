@@ -180,6 +180,23 @@ export interface RepositoryAdministrationMetadata {
   };
 }
 
+export interface GitHubContributionCalendarDay {
+  date: string;
+  weekday: number;
+  contributionCount: number;
+  color: string | null;
+}
+
+export interface GitHubContributionCalendarWeek {
+  firstDay: string;
+  contributionDays: GitHubContributionCalendarDay[];
+}
+
+export interface GitHubContributionCalendar {
+  totalContributions: number;
+  weeks: GitHubContributionCalendarWeek[];
+}
+
 export interface GitHubAccountProfile {
   id: string;
   login: string;
@@ -198,6 +215,7 @@ export interface GitHubAccountProfile {
     emoji: string | null;
     message: string | null;
   } | null;
+  contributionCalendar?: GitHubContributionCalendar | null;
   pinnedRepositories: RepositorySummary[];
 }
 

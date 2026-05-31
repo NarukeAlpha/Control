@@ -108,7 +108,6 @@ export function App(): JSX.Element {
   const {
     repositoryListLimit,
     homeRepositoryActivityLimit,
-    homeWorkLimit,
     mailboxWorkLimit,
     recentItemLimit,
     notificationFilter,
@@ -117,7 +116,6 @@ export function App(): JSX.Element {
     maxHomeWorkLimit,
     setNotificationFilter,
     expandMailboxWork,
-    loadMoreHomeWork,
     loadMoreHomeRepositoryActivity,
     expandMailboxNotifications,
     expandRepositoryList
@@ -544,13 +542,9 @@ export function App(): JSX.Element {
                 pullsLoading={accountPulls.isLoading || accountPulls.isFetching}
                 pullsError={accountPulls.error}
                 pullsAvailability={accountPullsAvailability}
-                workLimit={homeWorkLimit}
-                maxWorkLimit={maxHomeWorkLimit}
                 onOpenRepository={openRepositoryInApp}
                 onLoadMoreRepositories={() => loadMoreHomeRepositoryActivity(repositoryItems.length)}
-                onLoadMoreWork={loadMoreHomeWork}
                 onOpenRecent={openRecentItem}
-                onOpenMailbox={goToMailbox}
                 onOpenIssue={openIssueSummaryInApp}
                 onOpenPullRequest={openPullRequestSummaryInApp}
                 onOpenExternal={(url) => void api.openExternal(url)}

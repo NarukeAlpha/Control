@@ -1254,6 +1254,8 @@ describe("Control renderer routing", () => {
 
     const issueMeta = await screen.findByText(/#1199 opened by swift-ci/i);
     await userEvent.click(issueMeta.closest("button") as HTMLButtonElement);
+    const issueSummary = await screen.findByRole("article", { name: "Issue 1199 summary" });
+    await userEvent.click(within(issueSummary).getByRole("button", { name: "Open issue" }));
 
     await waitFor(() =>
       expect(recordRecentItem).toHaveBeenCalledWith(
@@ -2873,7 +2875,12 @@ describe("Control renderer routing", () => {
 
     useUiStore.setState({
       ...defaultUiState,
-      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "issues" }
+      route: {
+        kind: "repository",
+        nameWithOwner: "apple/swift",
+        tab: "issues",
+        issueNumber: mockIssues[0].number
+      }
     });
     renderControl(makeApi({ mutate }));
 
@@ -2892,9 +2899,12 @@ describe("Control renderer routing", () => {
       )
     );
 
+    await userEvent.click(screen.getByRole("button", { name: "Back to issues" }));
     await userEvent.click(
       (await screen.findAllByRole("button", { name: /Compiler crash in async closure/i }))[0]
     );
+    const issueSummary = await screen.findByRole("article", { name: "Issue 1199 summary" });
+    await userEvent.click(within(issueSummary).getByRole("button", { name: "Open issue" }));
     await userEvent.click(await screen.findByRole("button", { name: "Close issue" }));
 
     await waitFor(() =>
@@ -3147,7 +3157,12 @@ describe("Control renderer routing", () => {
 
     useUiStore.setState({
       ...defaultUiState,
-      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "issues" }
+      route: {
+        kind: "repository",
+        nameWithOwner: "apple/swift",
+        tab: "issues",
+        issueNumber: mockIssues[0].number
+      }
     });
     renderControl(makeApi({ mutate }));
 
@@ -3189,7 +3204,12 @@ describe("Control renderer routing", () => {
 
     useUiStore.setState({
       ...defaultUiState,
-      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "issues" }
+      route: {
+        kind: "repository",
+        nameWithOwner: "apple/swift",
+        tab: "issues",
+        issueNumber: mockIssues[0].number
+      }
     });
     renderControl(makeApi({ mutate, listLabels, listAssignableUsers }));
 
@@ -3311,7 +3331,12 @@ describe("Control renderer routing", () => {
 
     useUiStore.setState({
       ...defaultUiState,
-      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "issues" }
+      route: {
+        kind: "repository",
+        nameWithOwner: "apple/swift",
+        tab: "issues",
+        issueNumber: mockIssues[0].number
+      }
     });
     renderControl(makeApi({ mutate, getIssueDetailWithStatus }));
 

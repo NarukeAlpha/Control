@@ -13611,12 +13611,6 @@ function homeTimelineMonthLabel(items: HomeTimelineItem[]): string {
   return time ? homeActivityMonthFormatter.format(new Date(time)) : "Recent activity";
 }
 
-function homeRepositoryMetadataParts(repository: RepositorySummary): string[] {
-  const languageName = repository.primaryLanguage?.name;
-
-  return repositoryCollectionMetadataParts(repository).filter((part) => part !== languageName);
-}
-
 function homeRepositoryShortcutMetadataParts(repository: RepositoryShortcut): string[] {
   const languageName = repository.primaryLanguage?.name;
 
@@ -13691,27 +13685,19 @@ function HomeDashboard({
   const pinnedRepositories = repositoryShortcutsFromPins(pinnedRepositoryNames, repositories);
   const repositoryByName = new Map(repositories.map((repository) => [repository.nameWithOwner, repository]));
   const activityTimelineItems: HomeTimelineItem[] = [
-    ...latestRepositories.map((repository) => {
-      const metadataParts = homeRepositoryMetadataParts(repository);
-
-      return {
-        kind: "repository" as const,
-        id: `repository-${repository.id}`,
-        title: displayRepositoryName(repository, login),
-        subtitle: metadataParts.length > 0 ? metadataParts.join(" · ") : "Repository",
-        date: repository.pushedAt ?? repository.updatedAt,
-        repository
-      };
-    }),
+    ...latestRepositories.map((repository) => ({
+      kind: "repository" as const,
+      id: `repository-${repository.id}`,
+      title: displayRepositoryName(repository, login),
+      subtitle: repository.nameWithOwner,
+      date: repository.pushedAt ?? repository.updatedAt,
+      repository
+    })),
     ...pulls.map((pull) => ({
       kind: "pull" as const,
       id: `pull-${pull.repositoryNameWithOwner ?? "github"}-${pull.number}`,
       title: pull.title,
-      subtitle: `${pull.repositoryNameWithOwner ?? "GitHub"} #${pull.number} · ${
-        pull.merged ? "merged" : pull.state
-      } · ${formatCompactNumber(pull.changedFiles)} files · +${formatCompactNumber(
-        pull.additions
-      )} -${formatCompactNumber(pull.deletions)}`,
+      subtitle: `${pull.repositoryNameWithOwner ?? "GitHub"} #${pull.number}`,
       date: pull.updatedAt,
       pull
     })),
@@ -13719,9 +13705,7 @@ function HomeDashboard({
       kind: "issue" as const,
       id: `issue-${issue.repositoryNameWithOwner ?? "github"}-${issue.number}`,
       title: issue.title,
-      subtitle: `${issue.repositoryNameWithOwner ?? "GitHub"} #${issue.number} · ${issueStateLabel(
-        issue
-      )} · ${formatCompactNumber(issue.comments)} comments`,
+      subtitle: `${issue.repositoryNameWithOwner ?? "GitHub"} #${issue.number}`,
       date: issue.updatedAt,
       issue
     }))
@@ -13809,7 +13793,7 @@ function HomeDashboard({
 
   return (
     <section className="home-dashboard">
-      <header className="account-hero">
+      <header className="account-hero account-hero-with-metrics">
         {(profile?.avatarUrl ?? appState?.viewer?.avatarUrl) ? (
           <img src={profile?.avatarUrl ?? appState?.viewer?.avatarUrl ?? ""} alt="" />
         ) : (
@@ -13817,30 +13801,30 @@ function HomeDashboard({
             {login.slice(0, 1).toUpperCase()}
           </span>
         )}
-        <div>
-          <h1>{displayName}</h1>
+        <div className="account-hero-copy">
+          <div className="account-hero-title-row">
+            <h1>{displayName}</h1>
+            <button
+              className="account-hero-profile-action"
+              type="button"
+              onClick={() =>
+                onOpenExternal(profile?.htmlUrl ?? appState?.viewer?.htmlUrl ?? "https://github.com")
+              }
+            >
+              <ExternalLink size={16} /> Open profile
+            </button>
+          </div>
           <p>@{login}</p>
           {profile?.bio && <small>{profile.bio}</small>}
           {profileAvailabilityMessage && <small className="error-state">{profileAvailabilityMessage}</small>}
         </div>
-        <div className="surface-header-actions">
-          <button
-            type="button"
-            onClick={() =>
-              onOpenExternal(profile?.htmlUrl ?? appState?.viewer?.htmlUrl ?? "https://github.com")
-            }
-          >
-            <ExternalLink size={16} /> Open profile
-          </button>
+        <div className="account-hero-metrics" aria-label="Account metrics">
+          <HeroMetric label="Repositories" value={profile?.repositoryCount ?? repositories.length} />
+          <HeroMetric label="Starred" value={profile?.starredRepositoryCount ?? 0} />
+          <HeroMetric label="Open issues" value={issues.length} />
+          <HeroMetric label="Open PRs" value={pulls.length} />
         </div>
       </header>
-
-      <section className="home-metrics">
-        <Metric label="Repositories" value={profile?.repositoryCount ?? repositories.length} />
-        <Metric label="Starred" value={profile?.starredRepositoryCount ?? 0} />
-        <Metric label="Open issues" value={issues.length} />
-        <Metric label="Open PRs" value={pulls.length} />
-      </section>
 
       <section className="home-grid">
         {pinnedRepositories.length > 0 && (
@@ -26803,6 +26787,15 @@ function RepositorySettingsTab({
 function Metric({ label, value }: { label: string; value: number }): JSX.Element {
   return (
     <div className="metric-tile">
+      <strong>{formatCompactNumber(value)}</strong>
+      <span>{label}</span>
+    </div>
+  );
+}
+
+function HeroMetric({ label, value }: { label: string; value: number }): JSX.Element {
+  return (
+    <div className="account-hero-metric">
       <strong>{formatCompactNumber(value)}</strong>
       <span>{label}</span>
     </div>

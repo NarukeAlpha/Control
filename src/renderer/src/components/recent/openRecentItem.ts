@@ -28,6 +28,7 @@ interface OpenRecentItemHandlers {
     line?: number | null
   ): void;
   recordRecent(input: LocalRecentRecordInput): void;
+  resetRepositoryRefForDefaultOpen(nameWithOwner: string): void;
   setSelectedOrganizationLogin(login: string | null): void;
   setSelectedOrganizationTeamSlug(slug: string | null): void;
   setSelectedOrganizationMemberLogin(login: string | null): void;
@@ -85,6 +86,7 @@ export function openRecentItemInApp(item: LocalRecentItem, handlers: OpenRecentI
       recordOpenedRecent(item, handlers);
       return;
     }
+    handlers.resetRepositoryRefForDefaultOpen(item.repositoryNameWithOwner);
     handlers.navigate({
       kind: "repository",
       nameWithOwner: item.repositoryNameWithOwner,

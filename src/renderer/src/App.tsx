@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { JSX } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -79,6 +79,8 @@ export function App(): JSX.Element {
   const commandPalette = useCommandPaletteController();
   const dialogs = useShellDialogState();
   const [repositoryRefs, setRepositoryRefs] = useStoredRepositoryRefs();
+  const contentScrollRef = useRef<HTMLElement | null>(null);
+  const contentScrollKey = JSON.stringify(route);
 
   const appState = useQuery({
     queryKey: ["app-state"],
@@ -236,6 +238,16 @@ export function App(): JSX.Element {
   const topbarRepository = effectiveRepository || (repositoryItems[0]?.nameWithOwner ?? null);
   const { repositoryTree, repositoryTreeItem, repositoryTreeAvailabilityMessage } = codeBrowserQueries;
   const { refreshRepositorySurface } = refreshActions;
+
+  useEffect(() => {
+    if (!contentScrollRef.current) {
+      return;
+    }
+
+    contentScrollRef.current.scrollTop = 0;
+    contentScrollRef.current.scrollLeft = 0;
+  }, [contentScrollKey]);
+
   async function showRepositoryTab(tab: RepositoryTabPreferenceKey): Promise<void> {
     await api.updateSettings({
       repositoryTabPreferences: {
@@ -492,6 +504,7 @@ export function App(): JSX.Element {
           {!appState.data?.github.authenticated && <SetupPanel appState={appState.data} />}
 
           <main
+            ref={contentScrollRef}
             className={
               isRepositoryRoute || isLocalRepositoryRoute
                 ? "content-scroll repository-content-scroll"

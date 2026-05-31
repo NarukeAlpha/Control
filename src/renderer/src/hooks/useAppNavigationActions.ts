@@ -134,7 +134,21 @@ export function useAppNavigationActions({
     return repositoriesByName.get(normalized);
   }
 
+  function resetRepositoryRefForDefaultOpen(nameWithOwner: string): void {
+    setRepositoryRefs((currentRefs) => {
+      if (currentRefs[nameWithOwner] === undefined || currentRefs[nameWithOwner] === null) {
+        return currentRefs;
+      }
+
+      return {
+        ...currentRefs,
+        [nameWithOwner]: null
+      };
+    });
+  }
+
   function openRepositoryInApp(nameWithOwner: string, tab?: RepositoryTab): void {
+    resetRepositoryRefForDefaultOpen(nameWithOwner);
     goToRepository(nameWithOwner, tab);
     recordRecent(repositoryRecentInput(nameWithOwner, repositoryForRecent(nameWithOwner), tab ?? "code"));
   }
@@ -573,6 +587,7 @@ export function useAppNavigationActions({
       openCodeBrowser,
       openCodeBrowserInApp,
       recordRecent,
+      resetRepositoryRefForDefaultOpen,
       setSelectedOrganizationLogin,
       setSelectedOrganizationTeamSlug,
       setSelectedOrganizationMemberLogin,

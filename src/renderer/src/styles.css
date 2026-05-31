@@ -1226,8 +1226,8 @@ body:not(.no-liquid-glass) .workspace-repository {
 }
 
 body:not(.no-liquid-glass) .repository-content-scroll {
-  padding-top: 0;
-  scroll-padding-top: 64px;
+  padding-top: calc(var(--topbar-height) + 12px);
+  scroll-padding-top: calc(var(--topbar-height) + 12px);
 }
 
 .repo-page {

@@ -1,9 +1,9 @@
-name: Dev E2E
+name: Release E2E
 
 on:
   push:
     branches:
-      - dev
+      - release
   workflow_dispatch:
 
 permissions:
@@ -11,7 +11,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: dev-e2e-${{ github.ref }}
+  group: release-e2e-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -34,7 +34,10 @@ jobs:
         uses: oven-sh/setup-bun@v2
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
+
+      - name: Repair Electron runtime
+        run: npm run repair:runtime
 
       - name: Install Playwright Chromium
         run: npx playwright install chromium
@@ -63,7 +66,7 @@ jobs:
         uses: openai/codex-action@v1
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          prompt-file: .github/codex/prompts/dev-e2e-failure.md
+          prompt-file: .github/codex/prompts/release-e2e-failure.md
           output-file: codex-e2e-analysis.md
           safety-strategy: drop-sudo
           sandbox: read-only

@@ -1,6 +1,6 @@
-# Dev E2E Failure Triage
+# Release E2E Failure Triage
 
-You are analyzing a failed `dev` branch GitHub benchmark E2E run for Control, an Electron desktop client for
+You are analyzing a failed `release` branch GitHub benchmark E2E run for Control, an Electron desktop client for
 GitHub.
 
 Read these generated files first:

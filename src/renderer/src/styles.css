@@ -1,5 +1,5 @@
 :root {
-  color: #10151f;
+  color: var(--color-text);
   font-family:
     Inter,
     ui-sans-serif,
@@ -14,15 +14,224 @@
   letter-spacing: 0;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  --ink: #111827;
-  --muted: #64748b;
-  --line: rgba(63, 83, 113, 0.14);
-  --glass: rgba(255, 255, 255, 0.46);
-  --glass-strong: rgba(255, 255, 255, 0.7);
-  --glass-border: rgba(108, 128, 156, 0.2);
-  --shadow: 0 24px 60px rgba(31, 41, 55, 0.09);
-  --blue: #0969da;
-  --green: #1a7f37;
+  color-scheme: light;
+  --topbar-height: 52px;
+  --shell-margin: 16px;
+  --radius-shell: 30px;
+  --radius-glass-panel: 24px;
+  --radius-panel: 18px;
+  --radius-control: 12px;
+  --color-app-background: transparent;
+  --color-text: #111827;
+  --color-text-inverse: #ffffff;
+  --color-text-muted: #64748b;
+  --color-text-subtle: #8794a8;
+  --color-heading: #24364b;
+  --color-border: rgba(63, 83, 113, 0.14);
+  --color-border-strong: rgba(75, 96, 128, 0.28);
+  --color-glass-border: rgba(108, 128, 156, 0.2);
+  --color-shell-border: rgba(255, 255, 255, 0.76);
+  --color-surface-glass: rgba(255, 255, 255, 0.46);
+  --color-surface-glass-strong: rgba(255, 255, 255, 0.7);
+  --color-surface-solid: #f8fafc;
+  --color-surface-primary: var(--color-surface-glass);
+  --color-surface-secondary: var(--color-surface-row);
+  --color-surface-hover: var(--color-surface-row-hover);
+  --color-surface-elevated: rgba(248, 250, 252, 0.94);
+  --color-surface-row: rgba(255, 255, 255, 0.58);
+  --color-surface-row-hover: rgba(255, 255, 255, 0.74);
+  --color-surface-control: rgba(255, 255, 255, 0.72);
+  --color-surface-control-hover: rgba(255, 255, 255, 0.84);
+  --color-surface-selected: rgba(9, 105, 218, 0.08);
+  --color-accent: #0969da;
+  --color-accent-strong: #0758b8;
+  --color-accent-muted: rgba(9, 105, 218, 0.1);
+  --color-success: #1a7f37;
+  --color-success-bg: rgba(26, 127, 55, 0.12);
+  --color-warning: #9a5b00;
+  --color-warning-bg: rgba(255, 202, 102, 0.24);
+  --color-danger: #b42318;
+  --color-danger-bg: rgba(180, 35, 24, 0.12);
+  --color-disabled-text: #52647a;
+  --color-disabled-surface: rgba(248, 250, 252, 0.58);
+  --color-focus-ring: #0969da;
+  --color-selection-background: rgba(9, 105, 218, 0.22);
+  --color-selection-text: #08111f;
+  --color-code-border: var(--color-border);
+  --color-code-background: rgba(248, 250, 252, 0.92);
+  --color-code-text: #172033;
+  --color-diff-addition: rgba(26, 127, 55, 0.14);
+  --color-diff-deletion: rgba(180, 35, 24, 0.14);
+  --color-log-background: rgba(7, 15, 28, 0.92);
+  --color-log-text: #e2e8f0;
+  --color-overlay: rgba(18, 34, 56, 0.18);
+  --color-overlay-background: var(--color-overlay);
+  --shadow-shell: 0 34px 90px rgba(31, 41, 55, 0.14);
+  --shadow-panel: 0 24px 60px rgba(31, 41, 55, 0.09);
+  --shadow-popover: 0 32px 80px rgba(15, 23, 42, 0.2);
+  --glass-panel-blur: 26px;
+  --glass-panel-saturation: 1.25;
+  --glass-transient-blur: 30px;
+  --glass-transient-saturation: 1.2;
+}
+
+.app-shell[data-theme-preset="control-light"] {
+  color-scheme: light;
+}
+
+.app-shell[data-theme-preset="control-dark"] {
+  color-scheme: dark;
+  --color-text: #e5edf7;
+  --color-text-muted: #a8b6c8;
+  --color-text-subtle: #7f8da3;
+  --color-heading: #f3f7fc;
+  --color-border: rgba(148, 163, 184, 0.22);
+  --color-border-strong: rgba(203, 213, 225, 0.32);
+  --color-glass-border: rgba(203, 213, 225, 0.18);
+  --color-shell-border: rgba(203, 213, 225, 0.18);
+  --color-surface-glass: rgba(15, 23, 42, 0.58);
+  --color-surface-glass-strong: rgba(15, 23, 42, 0.76);
+  --color-surface-solid: #101827;
+  --color-surface-elevated: rgba(15, 23, 42, 0.92);
+  --color-surface-row: rgba(30, 41, 59, 0.64);
+  --color-surface-row-hover: rgba(51, 65, 85, 0.76);
+  --color-surface-control: rgba(15, 23, 42, 0.7);
+  --color-surface-control-hover: rgba(30, 41, 59, 0.84);
+  --color-surface-selected: rgba(96, 165, 250, 0.2);
+  --color-accent: #60a5fa;
+  --color-accent-strong: #93c5fd;
+  --color-accent-muted: rgba(96, 165, 250, 0.18);
+  --color-success: #86efac;
+  --color-success-bg: rgba(34, 197, 94, 0.2);
+  --color-warning: #facc15;
+  --color-warning-bg: rgba(250, 204, 21, 0.18);
+  --color-danger: #fca5a5;
+  --color-danger-bg: rgba(248, 113, 113, 0.18);
+  --color-disabled-text: #94a3b8;
+  --color-disabled-surface: rgba(30, 41, 59, 0.5);
+  --color-focus-ring: #93c5fd;
+  --color-selection-background: rgba(96, 165, 250, 0.34);
+  --color-selection-text: #f8fafc;
+  --color-code-background: rgba(2, 6, 23, 0.78);
+  --color-code-text: #dbeafe;
+  --color-log-background: rgba(2, 6, 23, 0.92);
+  --color-log-text: #e2e8f0;
+  --color-overlay: rgba(2, 6, 23, 0.58);
+  --shadow-panel: 0 24px 60px rgba(0, 0, 0, 0.28);
+  --shadow-popover: 0 32px 80px rgba(0, 0, 0, 0.42);
+}
+
+.app-shell[data-theme-preset="control-dim"] {
+  color-scheme: dark;
+  --color-text: #d8dee8;
+  --color-text-muted: #9aa8bb;
+  --color-text-subtle: #7f8b9e;
+  --color-heading: #eef2f7;
+  --color-border: rgba(148, 163, 184, 0.18);
+  --color-border-strong: rgba(203, 213, 225, 0.26);
+  --color-glass-border: rgba(203, 213, 225, 0.14);
+  --color-shell-border: rgba(203, 213, 225, 0.14);
+  --color-surface-glass: rgba(24, 34, 50, 0.62);
+  --color-surface-glass-strong: rgba(24, 34, 50, 0.8);
+  --color-surface-solid: #151e2c;
+  --color-surface-elevated: rgba(24, 34, 50, 0.94);
+  --color-surface-row: rgba(37, 49, 67, 0.66);
+  --color-surface-row-hover: rgba(51, 65, 85, 0.78);
+  --color-surface-control: rgba(24, 34, 50, 0.74);
+  --color-surface-control-hover: rgba(37, 49, 67, 0.86);
+  --color-surface-selected: rgba(125, 211, 252, 0.16);
+  --color-accent: #7dd3fc;
+  --color-accent-strong: #bae6fd;
+  --color-accent-muted: rgba(125, 211, 252, 0.16);
+  --color-success: #bbf7d0;
+  --color-success-bg: rgba(34, 197, 94, 0.18);
+  --color-warning: #fde68a;
+  --color-warning-bg: rgba(245, 158, 11, 0.18);
+  --color-danger: #fecaca;
+  --color-danger-bg: rgba(248, 113, 113, 0.16);
+  --color-disabled-text: #95a3b7;
+  --color-disabled-surface: rgba(37, 49, 67, 0.48);
+  --color-focus-ring: #bae6fd;
+  --color-selection-background: rgba(125, 211, 252, 0.28);
+  --color-selection-text: #f8fafc;
+  --color-code-background: rgba(8, 15, 26, 0.78);
+  --color-code-text: #dbeafe;
+  --color-log-background: rgba(8, 15, 26, 0.92);
+  --color-log-text: #e2e8f0;
+  --color-overlay: rgba(8, 15, 26, 0.54);
+  --shadow-panel: 0 24px 60px rgba(0, 0, 0, 0.24);
+  --shadow-popover: 0 32px 80px rgba(0, 0, 0, 0.38);
+}
+
+.app-shell[data-theme-preset="control-high-contrast-dark"] {
+  color-scheme: dark;
+  --color-text: #ffffff;
+  --color-text-muted: #d7e2f0;
+  --color-text-subtle: #b7c8dc;
+  --color-heading: #ffffff;
+  --color-border: rgba(226, 232, 240, 0.42);
+  --color-border-strong: rgba(248, 250, 252, 0.66);
+  --color-glass-border: rgba(248, 250, 252, 0.38);
+  --color-shell-border: rgba(248, 250, 252, 0.34);
+  --color-surface-glass: rgba(2, 6, 23, 0.78);
+  --color-surface-glass-strong: rgba(2, 6, 23, 0.9);
+  --color-surface-solid: #020617;
+  --color-surface-elevated: rgba(2, 6, 23, 0.98);
+  --color-surface-row: rgba(15, 23, 42, 0.86);
+  --color-surface-row-hover: rgba(30, 41, 59, 0.96);
+  --color-surface-control: rgba(15, 23, 42, 0.9);
+  --color-surface-control-hover: rgba(30, 41, 59, 0.98);
+  --color-surface-selected: rgba(191, 219, 254, 0.24);
+  --color-accent: #bfdbfe;
+  --color-accent-strong: #ffffff;
+  --color-accent-muted: rgba(191, 219, 254, 0.22);
+  --color-success: #bbf7d0;
+  --color-success-bg: rgba(34, 197, 94, 0.28);
+  --color-warning: #fef08a;
+  --color-warning-bg: rgba(250, 204, 21, 0.24);
+  --color-danger: #fecaca;
+  --color-danger-bg: rgba(248, 113, 113, 0.26);
+  --color-disabled-text: #cbd5e1;
+  --color-disabled-surface: rgba(15, 23, 42, 0.72);
+  --color-focus-ring: #ffffff;
+  --color-selection-background: rgba(191, 219, 254, 0.42);
+  --color-selection-text: #020617;
+  --color-code-background: rgba(0, 0, 0, 0.88);
+  --color-code-text: #f8fafc;
+  --color-log-background: rgba(0, 0, 0, 0.95);
+  --color-log-text: #f8fafc;
+  --color-overlay: rgba(0, 0, 0, 0.68);
+  --shadow-panel: 0 24px 60px rgba(0, 0, 0, 0.44);
+  --shadow-popover: 0 32px 80px rgba(0, 0, 0, 0.56);
+}
+
+.app-shell[data-color-scheme="light"] {
+  color-scheme: light;
+}
+
+.app-shell[data-color-scheme="dark"] {
+  color-scheme: dark;
+}
+
+.app-shell[data-accent="green"] {
+  --color-accent: var(--color-success);
+  --color-accent-strong: #0f6b2b;
+  --color-accent-muted: var(--color-success-bg);
+  --color-focus-ring: var(--color-success);
+}
+
+.app-shell[data-accent="purple"] {
+  --color-accent: #7c3aed;
+  --color-accent-strong: #6d28d9;
+  --color-accent-muted: rgba(124, 58, 237, 0.16);
+  --color-focus-ring: #8b5cf6;
+}
+
+.app-shell[data-accent="gray"] {
+  --color-accent: #475569;
+  --color-accent-strong: #334155;
+  --color-accent-muted: rgba(71, 85, 105, 0.16);
+  --color-focus-ring: #64748b;
 }
 
 * {
@@ -39,15 +248,16 @@ body,
   background: transparent;
 }
 
-/* Fallback gradient only for non-macOS where native liquid glass is unavailable. */
-@media not all and (-webkit-min-device-pixel-ratio: 0) {
-  body {
-    background: linear-gradient(135deg, #fdfefe 0%, #f8fafc 58%, #f1f6fb 100%);
-  }
+body.no-liquid-glass {
+  background:
+    radial-gradient(circle at 18% 18%, rgba(136, 196, 255, 0.36), transparent 28%),
+    radial-gradient(circle at 82% 0%, rgba(42, 112, 197, 0.16), transparent 32%),
+    linear-gradient(135deg, #f6fbff 0%, #e6f1fb 48%, #dceafa 100%);
 }
 
-body.no-liquid-glass {
-  background: linear-gradient(135deg, #fdfefe 0%, #f8fafc 58%, #f1f6fb 100%);
+::selection {
+  background: var(--color-selection-background);
+  color: var(--color-selection-text);
 }
 
 button,
@@ -65,6 +275,7 @@ button {
 button:disabled {
   cursor: not-allowed;
   opacity: 0.56;
+  color: var(--color-disabled-text);
 }
 
 .visually-hidden {
@@ -80,46 +291,53 @@ button:disabled {
 .app-shell {
   display: grid;
   grid-template-columns: 264px minmax(620px, 1fr) 296px;
-  grid-template-rows: 52px minmax(0, 1fr);
+  grid-template-rows: var(--topbar-height) minmax(0, 1fr);
   gap: 12px;
   height: 100vh;
   margin: 0;
   padding: 12px;
   overflow: hidden;
-  border-radius: 30px;
+  border-radius: var(--radius-shell);
   background: transparent;
+  color: var(--color-text);
 }
 
 body:not(.no-liquid-glass) .app-shell {
-  border: 1px solid rgba(255, 255, 255, 0.34);
-  background: rgba(250, 252, 255, 0.42);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--color-shell-border);
+  background: transparent;
+  box-shadow: none;
 }
 
 /* Only paint a fake-glass shell when native liquid glass is unavailable. */
 body.no-liquid-glass .app-shell {
-  height: calc(100vh - 32px);
-  margin: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.76);
-  background: rgba(255, 255, 255, 0.48);
-  box-shadow: 0 34px 90px rgba(31, 41, 55, 0.14);
-  -webkit-backdrop-filter: blur(34px) saturate(1.35);
-  backdrop-filter: blur(34px) saturate(1.35);
+  height: calc(100vh - (var(--shell-margin) * 2));
+  margin: var(--shell-margin);
+  border: 1px solid var(--color-shell-border);
+  background: var(--color-surface-glass);
+  box-shadow: var(--shadow-shell);
+  -webkit-backdrop-filter: blur(var(--glass-panel-blur)) saturate(var(--glass-panel-saturation));
+  backdrop-filter: blur(var(--glass-panel-blur)) saturate(var(--glass-panel-saturation));
 }
 
 .solid-shell {
+  --glass-panel-blur: 0px;
+  --glass-panel-saturation: 1;
+  --glass-transient-blur: 0px;
+  --glass-transient-saturation: 1;
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
   background: transparent;
 }
 
 .reduced-glass {
-  -webkit-backdrop-filter: blur(16px) saturate(1.1);
-  backdrop-filter: blur(16px) saturate(1.1);
+  --glass-panel-blur: 14px;
+  --glass-panel-saturation: 1.08;
+  --glass-transient-blur: 18px;
+  --glass-transient-saturation: 1.1;
 }
 
 body.no-liquid-glass .solid-shell {
-  background: #f8fafc;
+  background: var(--color-surface-solid);
 }
 
 .sidebar,
@@ -127,13 +345,13 @@ body.no-liquid-glass .solid-shell {
 .rail-panel,
 .settings-panel,
 .setup-panel {
-  border: 1px solid var(--glass-border);
-  background: var(--glass);
+  border: 1px solid var(--color-glass-border);
+  background: var(--color-surface-glass);
   box-shadow:
-    var(--shadow),
+    var(--shadow-panel),
     inset 0 1px 0 rgba(255, 255, 255, 0.74);
-  -webkit-backdrop-filter: blur(26px) saturate(1.25);
-  backdrop-filter: blur(26px) saturate(1.25);
+  -webkit-backdrop-filter: blur(var(--glass-panel-blur)) saturate(var(--glass-panel-saturation));
+  backdrop-filter: blur(var(--glass-panel-blur)) saturate(var(--glass-panel-saturation));
 }
 
 body:not(.no-liquid-glass) .sidebar,
@@ -142,16 +360,16 @@ body:not(.no-liquid-glass) .rail-panel,
 body:not(.no-liquid-glass) .settings-panel,
 body:not(.no-liquid-glass) .setup-panel {
   border-color: rgba(108, 128, 156, 0.18);
-  background: rgba(248, 250, 252, 0.52);
+  background: var(--color-surface-glass);
   box-shadow:
     0 22px 52px rgba(15, 23, 42, 0.08),
     inset 0 1px 0 rgba(255, 255, 255, 0.76);
-  -webkit-backdrop-filter: blur(20px) saturate(1.08);
-  backdrop-filter: blur(20px) saturate(1.08);
+  -webkit-backdrop-filter: blur(var(--glass-panel-blur)) saturate(var(--glass-panel-saturation));
+  backdrop-filter: blur(var(--glass-panel-blur)) saturate(var(--glass-panel-saturation));
 }
 
 body:not(.no-liquid-glass) .code-toolbar {
-  background: rgba(242, 245, 248, 0.72);
+  background: var(--color-surface-control);
 }
 
 .sidebar {
@@ -201,7 +419,7 @@ body:not(.no-liquid-glass) .code-toolbar {
   display: grid;
   gap: 10px;
   margin-bottom: 16px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--color-border);
   padding-bottom: 14px;
 }
 
@@ -218,7 +436,7 @@ body:not(.no-liquid-glass) .code-toolbar {
   min-height: 44px;
   border-radius: 10px;
   background: transparent;
-  color: var(--ink);
+  color: var(--color-text);
   padding: 5px 8px;
   text-align: left;
 }
@@ -240,7 +458,7 @@ body:not(.no-liquid-glass) .code-toolbar {
 .settings-panel button,
 .settings-panel select,
 .settings-panel input {
-  color: var(--ink);
+  color: var(--color-text);
 }
 
 .nav-item {
@@ -288,7 +506,7 @@ body:not(.no-liquid-glass) .code-toolbar {
   flex: 1;
   flex-direction: column;
   margin-top: 28px;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--color-border);
   padding-top: 16px;
 }
 
@@ -538,7 +756,7 @@ body:not(.no-liquid-glass) .code-toolbar {
 .issue-row small,
 .release-row small,
 .project-tile small {
-  color: var(--muted);
+  color: var(--color-text-muted);
 }
 
 .workspace {
@@ -594,14 +812,12 @@ body:not(.no-liquid-glass) .workspace-repository {
   min-height: 34px;
   align-items: center;
   gap: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.52);
+  border: 1px solid var(--color-border);
   border-radius: 13px;
-  background: rgba(255, 255, 255, 0.5);
-  color: var(--ink);
+  background: var(--color-surface-control);
+  color: var(--color-text);
   padding: 0 12px;
   box-shadow: 0 10px 22px rgba(15, 23, 42, 0.08);
-  -webkit-backdrop-filter: blur(18px) saturate(1.04);
-  backdrop-filter: blur(18px) saturate(1.04);
 }
 
 .area-topbar-selector {
@@ -622,12 +838,12 @@ body:not(.no-liquid-glass) .workspace-repository {
   display: grid;
   width: min(260px, calc(100vw - 28px));
   gap: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.58);
+  border: 1px solid var(--color-glass-border);
   border-radius: 14px;
-  background: rgba(248, 250, 252, 0.92);
-  box-shadow: 0 22px 54px rgba(15, 23, 42, 0.16);
-  -webkit-backdrop-filter: blur(22px) saturate(1.08);
-  backdrop-filter: blur(22px) saturate(1.08);
+  background: var(--color-surface-elevated);
+  box-shadow: var(--shadow-popover);
+  -webkit-backdrop-filter: blur(var(--glass-transient-blur)) saturate(var(--glass-transient-saturation));
+  backdrop-filter: blur(var(--glass-transient-blur)) saturate(var(--glass-transient-saturation));
   padding: 8px;
 }
 
@@ -639,7 +855,7 @@ body:not(.no-liquid-glass) .workspace-repository {
   gap: 10px;
   border-radius: 10px;
   background: transparent;
-  color: var(--ink);
+  color: var(--color-text);
   padding: 6px 8px;
   text-align: left;
 }
@@ -658,7 +874,7 @@ body:not(.no-liquid-glass) .workspace-repository {
   gap: 10px;
   border-radius: 10px;
   background: transparent;
-  color: var(--ink);
+  color: var(--color-text);
   padding: 0;
   text-align: left;
 }
@@ -760,12 +976,12 @@ body:not(.no-liquid-glass) .workspace-repository {
   width: 100%;
   justify-self: center;
   height: 36px;
-  border: 1px solid rgba(255, 255, 255, 0.52);
+  border: 1px solid var(--color-border);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.52);
+  background: var(--color-surface-control);
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
-  -webkit-backdrop-filter: blur(18px) saturate(1.04);
-  backdrop-filter: blur(18px) saturate(1.04);
+  -webkit-backdrop-filter: blur(var(--glass-transient-blur)) saturate(var(--glass-transient-saturation));
+  backdrop-filter: blur(var(--glass-transient-blur)) saturate(var(--glass-transient-saturation));
   padding: 0 12px;
   -webkit-app-region: no-drag;
 }
@@ -780,7 +996,7 @@ body:not(.no-liquid-glass) .workspace-repository {
   border: 0;
   outline: 0;
   background: transparent;
-  color: var(--ink);
+  color: var(--color-text);
 }
 
 .search-wrap kbd {
@@ -808,13 +1024,13 @@ body:not(.no-liquid-glass) .workspace-repository {
   z-index: 10;
   display: grid;
   gap: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.4);
+  border: 1px solid var(--color-glass-border);
   border-radius: 16px;
-  background: rgba(252, 252, 252, 0.82);
+  background: var(--color-surface-elevated);
   padding: 8px;
-  box-shadow: 0 20px 44px rgba(15, 23, 42, 0.12);
-  -webkit-backdrop-filter: blur(22px) saturate(1.04);
-  backdrop-filter: blur(22px) saturate(1.04);
+  box-shadow: var(--shadow-popover);
+  -webkit-backdrop-filter: blur(var(--glass-transient-blur)) saturate(var(--glass-transient-saturation));
+  backdrop-filter: blur(var(--glass-transient-blur)) saturate(var(--glass-transient-saturation));
 }
 
 .search-popover button {
@@ -890,7 +1106,7 @@ body:not(.no-liquid-glass) .workspace-repository {
   grid-template-columns: 76px minmax(0, 1fr) auto;
   align-items: center;
   gap: 18px;
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--color-glass-border);
   border-radius: 20px;
   background: rgba(255, 255, 255, 0.24);
   padding: 18px;
@@ -927,7 +1143,7 @@ body:not(.no-liquid-glass) .workspace-repository {
 
 .account-hero p,
 .account-hero small {
-  color: var(--muted);
+  color: var(--color-text-muted);
 }
 
 .account-hero button,
@@ -939,7 +1155,7 @@ body:not(.no-liquid-glass) .workspace-repository {
   border: 1px solid rgba(255, 255, 255, 0.64);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.46);
-  color: var(--ink);
+  color: var(--color-text);
   padding: 9px 12px;
 }
 
@@ -975,7 +1191,7 @@ body:not(.no-liquid-glass) .workspace-repository {
 .account-hero-metric span {
   min-width: 0;
   overflow: hidden;
-  color: var(--muted);
+  color: var(--color-text-muted);
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1042,7 +1258,7 @@ body:not(.no-liquid-glass) .workspace-repository {
   align-content: start;
   gap: 12px;
   min-width: 0;
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-border);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.5);
   padding: 14px;
@@ -1103,7 +1319,7 @@ body:not(.no-liquid-glass) .workspace-repository {
 
 .home-contribution-heading span,
 .home-activity-timeline-heading span {
-  color: var(--muted);
+  color: var(--color-text-muted);
   font-size: 12px;
   white-space: nowrap;
 }
@@ -1132,7 +1348,7 @@ body:not(.no-liquid-glass) .workspace-repository {
   display: grid;
   grid-column: 2;
   column-gap: 3px;
-  color: var(--muted);
+  color: var(--color-text-muted);
   font-size: 11px;
   line-height: 14px;
 }
@@ -1193,7 +1409,7 @@ body:not(.no-liquid-glass) .workspace-repository {
   align-items: center;
   justify-content: flex-end;
   gap: 4px;
-  color: var(--muted);
+  color: var(--color-text-muted);
   font-size: 11px;
 }
 
@@ -1226,7 +1442,7 @@ body:not(.no-liquid-glass) .workspace-repository {
 }
 
 .home-activity-repository-bar small {
-  color: var(--muted);
+  color: var(--color-text-muted);
   font-size: 12px;
 }
 
@@ -1247,7 +1463,7 @@ body:not(.no-liquid-glass) .workspace-repository {
 }
 
 .home-activity-repository-bar em {
-  color: var(--muted);
+  color: var(--color-text-muted);
   font-size: 12px;
   font-style: normal;
   text-align: right;
@@ -1297,7 +1513,7 @@ body:not(.no-liquid-glass) .workspace-repository {
   border: 0;
   border-radius: 10px;
   background: transparent;
-  color: var(--ink);
+  color: var(--color-text);
   padding: 9px 8px 9px 0;
   text-align: left;
 }
@@ -1352,12 +1568,12 @@ body:not(.no-liquid-glass) .workspace-repository {
 }
 
 .home-activity-timeline-copy small {
-  color: var(--muted);
+  color: var(--color-text-muted);
   font-size: 12px;
 }
 
 .home-activity-timeline-row time {
-  color: var(--muted);
+  color: var(--color-text-muted);
   font-size: 12px;
   white-space: nowrap;
 }
@@ -1379,7 +1595,7 @@ body:not(.no-liquid-glass) .workspace-repository {
   border: 1px solid rgba(74, 94, 124, 0.14);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.64);
-  color: var(--ink);
+  color: var(--color-text);
   padding: 8px 10px;
   text-align: left;
 }
@@ -1409,7 +1625,7 @@ button.shortcut-item:focus-visible {
 }
 
 .shortcut-item small {
-  color: var(--muted);
+  color: var(--color-text-muted);
   font-size: 12px;
 }
 
@@ -1442,7 +1658,7 @@ button.shortcut-item:focus-visible {
 .home-repo-grid span {
   overflow: hidden;
   max-width: 100%;
-  color: var(--muted);
+  color: var(--color-text-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1460,7 +1676,7 @@ button.shortcut-item:focus-visible {
 }
 
 .home-repo-grid .home-repo-card-chips .state-chip.success {
-  color: var(--green);
+  color: var(--color-success);
 }
 
 .home-repo-grid .home-repo-card-chips .state-chip.attention {
@@ -1554,7 +1770,8 @@ body:not(.no-liquid-glass) .repository-content-scroll {
 .repo-title-line {
   display: flex;
   min-width: 0;
-  align-items: center;
+  align-items: flex-start;
+  flex-wrap: wrap;
   gap: 10px;
 }
 
@@ -1566,13 +1783,11 @@ p {
 }
 
 .repo-title-line h1 {
-  overflow: hidden;
   color: #080f1e;
   font-size: 25px;
   font-weight: 700;
   line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .repo-title-line h1 span {
@@ -1600,7 +1815,7 @@ p {
 
 .fork-banner button {
   background: transparent;
-  color: var(--blue);
+  color: var(--color-accent);
   padding: 0;
 }
 
@@ -1624,7 +1839,7 @@ p {
 }
 
 .mutation-feedback {
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-border);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.58);
   padding: 10px 12px;
@@ -1648,7 +1863,7 @@ p {
 }
 
 .success-state {
-  color: var(--green);
+  color: var(--color-success);
 }
 
 .repo-action-row button,
@@ -1754,9 +1969,23 @@ p {
     inset 0 1px 0 rgba(255, 255, 255, 0.78);
 }
 
+.repo-tabs button.route-only {
+  border-style: dashed;
+}
+
 .repo-tabs button span {
-  color: var(--muted);
+  color: var(--color-text-muted);
   font-size: 12px;
+}
+
+.hidden-repository-tab-panel {
+  gap: 14px;
+  padding: 18px;
+}
+
+.hidden-repository-tab-panel p {
+  margin-top: 6px;
+  color: var(--color-text-muted);
 }
 
 .local-repository-page {
@@ -1774,7 +2003,7 @@ p {
 
 .local-repository-header h1 {
   margin: 8px 0 4px;
-  color: var(--ink);
+  color: var(--color-text);
   font-size: 28px;
   letter-spacing: 0;
 }
@@ -1785,6 +2014,23 @@ p {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+}
+
+.local-workspace-select {
+  display: inline-grid;
+  gap: 3px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.local-workspace-select select {
+  min-width: 180px;
+  border: 1px solid rgba(93, 110, 138, 0.24);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--color-text);
+  font: inherit;
+  padding: 6px 8px;
 }
 
 .status-pill {
@@ -1818,7 +2064,7 @@ p {
 }
 
 .definition-list dt {
-  color: var(--muted);
+  color: var(--color-text-muted);
 }
 
 .definition-list dd {
@@ -1989,7 +2235,7 @@ p {
 .insight-grid,
 .code-viewer {
   overflow: hidden;
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-border);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.74);
 }
@@ -2060,7 +2306,7 @@ p {
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 16px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-border);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.72);
   padding: 14px;
@@ -2108,7 +2354,7 @@ p {
 }
 
 .path-crumbs button + button::before {
-  color: var(--muted);
+  color: var(--color-text-muted);
   content: "/";
   margin-right: 4px;
 }
@@ -2122,7 +2368,7 @@ p {
   align-items: center;
   justify-content: space-between;
   min-height: 44px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--color-border);
   padding: 0 16px;
 }
 
@@ -2175,7 +2421,7 @@ p {
 }
 
 .code-file-metadata button {
-  color: var(--blue);
+  color: var(--color-accent);
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 }
 
@@ -2225,7 +2471,7 @@ p {
 }
 
 .blame-range-list code {
-  color: var(--blue);
+  color: var(--color-accent);
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 12px;
 }
@@ -2324,6 +2570,17 @@ p {
   display: grid;
 }
 
+.code-source-wrap {
+  display: grid;
+  gap: 8px;
+}
+
+.code-highlight-status {
+  color: #60748c;
+  font-size: 12px;
+  padding: 0 4px;
+}
+
 .code-source-line {
   display: grid;
   grid-template-columns: 52px minmax(0, 1fr);
@@ -2348,6 +2605,20 @@ p {
 .code-source-line-text {
   min-width: 0;
   white-space: pre;
+}
+
+.code-source-token {
+  white-space: pre;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
 }
 
 .code-image-preview,
@@ -2420,7 +2691,7 @@ p {
 }
 
 .file-row time {
-  color: var(--muted);
+  color: var(--color-text-muted);
   text-align: right;
 }
 
@@ -2429,7 +2700,7 @@ p {
   align-items: center;
   gap: 10px;
   min-height: 44px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--color-border);
   padding: 0 18px;
   color: #334963;
 }
@@ -2437,7 +2708,7 @@ p {
 .readme-panel header small {
   min-width: 0;
   overflow: hidden;
-  color: var(--muted);
+  color: var(--color-text-muted);
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2530,7 +2801,7 @@ p {
 
 .commit-history-list small,
 .commit-history-list time {
-  color: var(--muted);
+  color: var(--color-text-muted);
   font-size: 12px;
 }
 
@@ -2567,7 +2838,7 @@ p {
 .root-markdown-tabs button.active {
   border-color: rgba(27, 104, 210, 0.28);
   background: rgba(232, 241, 255, 0.9);
-  color: var(--blue);
+  color: var(--color-accent);
 }
 
 .root-markdown-preview {
@@ -2629,7 +2900,7 @@ p {
   border: 0;
   outline: 0;
   background: transparent;
-  color: var(--ink);
+  color: var(--color-text);
 }
 
 .issue-row {
@@ -2749,14 +3020,14 @@ p {
 
 .thread-header small,
 .compose-form small {
-  color: var(--muted);
+  color: var(--color-text-muted);
 }
 
 .thread-body {
   display: grid;
   grid-template-columns: 32px minmax(0, 1fr);
   gap: 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.72);
   padding: 14px;
@@ -2786,7 +3057,7 @@ p {
 
 .project-readme-panel {
   overflow: hidden;
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.72);
 }
@@ -2824,7 +3095,7 @@ p {
 .timeline-card {
   min-width: 0;
   overflow: hidden;
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.78);
 }
@@ -2834,7 +3105,7 @@ p {
   min-height: 38px;
   align-items: center;
   gap: 8px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--color-border);
   background: rgba(247, 250, 255, 0.86);
   padding: 0 12px;
 }
@@ -2844,7 +3115,7 @@ p {
 }
 
 .timeline-card-header span {
-  color: var(--muted);
+  color: var(--color-text-muted);
   font-size: 13px;
 }
 
@@ -2944,7 +3215,7 @@ p {
   display: block;
   max-width: 100%;
   max-height: 320px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   margin: 8px 0;
   object-fit: contain;
@@ -3048,7 +3319,7 @@ p {
   display: grid;
   min-width: 0;
   gap: 10px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.64);
   padding: 12px;
@@ -3074,7 +3345,7 @@ p {
 .issue-metadata-controls label {
   display: grid;
   gap: 6px;
-  color: var(--muted);
+  color: var(--color-text-muted);
   font-size: 12px;
 }
 
@@ -3111,13 +3382,13 @@ p {
 
 .action-disabled-note {
   flex-basis: 100%;
-  color: var(--muted);
+  color: var(--color-text-muted);
   font-size: 12px;
 }
 
 .diff-summary,
 .workflow-summary {
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.7);
   padding: 12px;
@@ -3140,7 +3411,7 @@ p {
 .pr-inspection article {
   display: grid;
   min-width: 0;
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.64);
 }
@@ -3150,7 +3421,7 @@ p {
   align-items: center;
   justify-content: space-between;
   min-height: 38px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--color-border);
   padding: 0 12px;
 }
 
@@ -3161,7 +3432,7 @@ p {
 }
 
 .pr-inspection header span {
-  color: var(--muted);
+  color: var(--color-text-muted);
   font-size: 12px;
 }
 
@@ -3194,7 +3465,7 @@ p {
 }
 
 .pr-inspection-list small {
-  color: var(--muted);
+  color: var(--color-text-muted);
   font-size: 12px;
 }
 
@@ -3226,7 +3497,7 @@ p {
 }
 
 .pr-file-row small {
-  color: var(--muted);
+  color: var(--color-text-muted);
   font-size: 12px;
 }
 
@@ -3241,7 +3512,7 @@ p {
 }
 
 .additions {
-  color: var(--green);
+  color: var(--color-success);
 }
 
 .deletions {
@@ -3437,7 +3708,7 @@ p {
   grid-template-columns: 44px minmax(0, 1fr) auto;
   align-items: start;
   gap: 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-border);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.58);
   padding: 12px;
@@ -3462,7 +3733,7 @@ p {
 
 .organization-profile-summary small,
 .organization-profile-summary p {
-  color: var(--muted);
+  color: var(--color-text-muted);
   font-size: 13px;
 }
 
@@ -3656,7 +3927,7 @@ p {
 }
 
 .state-chip.success {
-  color: var(--green);
+  color: var(--color-success);
 }
 
 .state-chip.attention {
@@ -3712,7 +3983,7 @@ p {
 }
 
 .collection-section-label {
-  color: var(--muted);
+  color: var(--color-text-muted);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0;
@@ -3739,7 +4010,7 @@ p {
   grid-template-columns: auto minmax(0, 1fr);
   align-items: start;
   gap: 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-border);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.74);
   padding: 14px 16px;
@@ -3761,7 +4032,7 @@ p {
   display: grid;
   gap: 10px;
   min-height: 118px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-border);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.74);
   padding: 16px;
@@ -3858,7 +4129,7 @@ p {
 .loading-state,
 .error-state,
 .muted-row {
-  color: var(--muted);
+  color: var(--color-text-muted);
   padding: 18px;
 }
 
@@ -3912,7 +4183,7 @@ p {
 .rail-panel {
   display: grid;
   gap: 12px;
-  border-radius: 18px;
+  border-radius: var(--radius-panel);
   padding: 18px;
 }
 
@@ -3920,20 +4191,20 @@ p {
   display: grid;
   gap: 0;
   overflow: hidden;
-  border: 1px solid var(--glass-border);
-  border-radius: 18px;
-  background: var(--glass);
-  box-shadow: var(--shadow);
-  -webkit-backdrop-filter: blur(26px) saturate(1.25);
-  backdrop-filter: blur(26px) saturate(1.25);
+  border: 1px solid var(--color-glass-border);
+  border-radius: var(--radius-panel);
+  background: var(--color-surface-glass);
+  box-shadow: var(--shadow-panel);
+  -webkit-backdrop-filter: blur(var(--glass-panel-blur)) saturate(var(--glass-panel-saturation));
+  backdrop-filter: blur(var(--glass-panel-blur)) saturate(var(--glass-panel-saturation));
 }
 
 body:not(.no-liquid-glass) .right-rail .commit-history-panel {
   border-color: rgba(255, 255, 255, 0.5);
-  background: rgba(248, 250, 252, 0.52);
+  background: var(--color-surface-glass);
   box-shadow: 0 22px 52px rgba(15, 23, 42, 0.08);
-  -webkit-backdrop-filter: blur(20px) saturate(1.08);
-  backdrop-filter: blur(20px) saturate(1.08);
+  -webkit-backdrop-filter: blur(var(--glass-panel-blur)) saturate(var(--glass-panel-saturation));
+  backdrop-filter: blur(var(--glass-panel-blur)) saturate(var(--glass-panel-saturation));
 }
 
 .right-rail .commit-history-panel header {
@@ -3978,7 +4249,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
   justify-self: start;
   border-radius: 8px;
   background: transparent;
-  color: var(--blue);
+  color: var(--color-accent);
   padding: 0;
   font-size: 13px;
   font-weight: 700;
@@ -3991,7 +4262,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 .link-button {
   justify-self: start;
   background: transparent;
-  color: var(--blue);
+  color: var(--color-accent);
   padding: 0;
 }
 
@@ -4080,7 +4351,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 }
 
 .contributor-row small {
-  color: var(--muted);
+  color: var(--color-text-muted);
 }
 
 .contributor-grid {
@@ -4152,7 +4423,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 }
 
 .contributor-card small {
-  color: var(--muted);
+  color: var(--color-text-muted);
 }
 
 .contributor-external {
@@ -4208,7 +4479,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 .contributor-detail-header small,
 .contributor-detail-copy small,
 .contributor-repository-row small {
-  color: var(--muted);
+  color: var(--color-text-muted);
 }
 
 .contributor-detail-copy p {
@@ -4238,7 +4509,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 }
 
 .contributor-stats small {
-  color: var(--muted);
+  color: var(--color-text-muted);
 }
 
 .contributor-repositories {
@@ -4263,7 +4534,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 }
 
 .contributor-repository-row > span:last-child {
-  color: var(--muted);
+  color: var(--color-text-muted);
   font-size: 12px;
 }
 
@@ -4278,7 +4549,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 }
 
 .rail-muted {
-  color: var(--muted);
+  color: var(--color-text-muted);
 }
 
 .language-panel {
@@ -4319,7 +4590,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 }
 
 .language-list small {
-  color: var(--muted);
+  color: var(--color-text-muted);
 }
 
 .modal-backdrop {
@@ -4328,14 +4599,16 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
   z-index: 20;
   display: grid;
   place-items: center;
-  background: rgba(18, 34, 56, 0.18);
-  -webkit-backdrop-filter: blur(18px);
-  backdrop-filter: blur(18px);
+  background: var(--color-overlay);
+  -webkit-backdrop-filter: blur(var(--glass-transient-blur));
+  backdrop-filter: blur(var(--glass-transient-blur));
 }
 
 .settings-panel {
   display: grid;
   width: min(520px, calc(100vw - 40px));
+  max-height: min(780px, calc(100vh - 40px));
+  overflow: auto;
   gap: 18px;
   border-radius: 22px;
   padding: 20px;
@@ -4351,10 +4624,12 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
   width: min(680px, calc(100vw - 40px));
   max-height: min(680px, calc(100vh - 120px));
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--color-glass-border);
   border-radius: 18px;
-  background: rgba(248, 252, 255, 0.94);
-  box-shadow: 0 32px 80px rgba(15, 23, 42, 0.2);
+  background: var(--color-surface-elevated);
+  box-shadow: var(--shadow-popover);
+  -webkit-backdrop-filter: blur(var(--glass-transient-blur)) saturate(var(--glass-transient-saturation));
+  backdrop-filter: blur(var(--glass-transient-blur)) saturate(var(--glass-transient-saturation));
 }
 
 .command-palette header {
@@ -4362,7 +4637,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
   grid-template-columns: 22px minmax(0, 1fr) 34px;
   align-items: center;
   gap: 10px;
-  border-bottom: 1px solid rgba(85, 105, 135, 0.14);
+  border-bottom: 1px solid var(--color-border);
   padding: 10px 12px;
 }
 
@@ -4372,7 +4647,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
   border: 0;
   outline: 0;
   background: transparent;
-  color: var(--ink);
+  color: var(--color-text);
   font: inherit;
 }
 
@@ -4391,7 +4666,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
   min-height: 56px;
   border-radius: 12px;
   background: transparent;
-  color: var(--ink);
+  color: var(--color-text);
   padding: 0 10px;
   text-align: left;
 }
@@ -4399,7 +4674,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 .command-palette-list button:hover,
 .command-palette-list button:focus-visible,
 .command-palette-list button.active-finder-row {
-  background: rgba(33, 139, 255, 0.08);
+  background: var(--color-surface-selected);
 }
 
 .command-palette-list span {
@@ -4417,7 +4692,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 
 .command-palette-list small,
 .command-palette-list em {
-  color: var(--muted);
+  color: var(--color-text-muted);
   font-size: 12px;
   font-style: normal;
 }
@@ -4437,7 +4712,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
   justify-content: space-between;
   gap: 12px;
   border-bottom: 1px solid rgba(85, 105, 135, 0.1);
-  color: var(--muted);
+  color: var(--color-text-muted);
   font-size: 12px;
   padding: 8px 12px;
 }
@@ -4472,7 +4747,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 }
 
 .repository-settings-form {
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-border);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.72);
   padding: 16px;
@@ -4512,7 +4787,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-border);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.72);
   padding: 18px;
@@ -4523,7 +4798,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 }
 
 .settings-surface-header small {
-  color: var(--muted);
+  color: var(--color-text-muted);
 }
 
 .surface-header-actions {
@@ -4541,7 +4816,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
   gap: 8px;
   border-radius: 12px;
   background: rgba(33, 139, 255, 0.1);
-  color: var(--blue);
+  color: var(--color-accent);
   padding: 0 12px;
 }
 
@@ -4557,7 +4832,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 
 .settings-summary-grid > div,
 .settings-list-grid section {
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-border);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.72);
   padding: 16px;
@@ -4565,13 +4840,13 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 
 .settings-summary-grid span,
 .settings-list-grid span {
-  color: var(--muted);
+  color: var(--color-text-muted);
   font-size: 13px;
 }
 
 .settings-summary-grid strong,
 .settings-list-grid strong {
-  color: var(--ink);
+  color: var(--color-text);
   font-size: 14px;
 }
 
@@ -4599,7 +4874,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 .repository-admin-section {
   display: grid;
   gap: 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-border);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.72);
   padding: 16px;
@@ -4626,7 +4901,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 
 .repository-admin-section small,
 .repository-admin-row small {
-  color: var(--muted);
+  color: var(--color-text-muted);
   font-size: 12px;
 }
 
@@ -4693,7 +4968,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
   display: grid;
   align-content: start;
   gap: 10px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-border);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.72);
   padding: 16px;
@@ -4751,7 +5026,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 }
 
 .access-list small {
-  color: var(--muted);
+  color: var(--color-text-muted);
   font-size: 12px;
 }
 
@@ -4766,7 +5041,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 .settings-network-section {
   display: grid;
   gap: 10px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-border);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.72);
   padding: 16px;
@@ -4822,7 +5097,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 }
 
 .fork-network-row small {
-  color: var(--muted);
+  color: var(--color-text-muted);
   font-size: 12px;
 }
 
@@ -4913,7 +5188,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 
 .workflow-job-card,
 .workflow-artifact-row {
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-border);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.62);
   padding: 12px;
@@ -4955,7 +5230,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 
 .workflow-job-card small,
 .workflow-artifact-row small {
-  color: var(--muted);
+  color: var(--color-text-muted);
 }
 
 .code-preview {
@@ -4963,10 +5238,10 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
   overflow: auto;
   margin: 0;
   padding: 10px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.7);
-  color: var(--text);
+  background: var(--color-code-background);
+  color: var(--color-code-text);
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 12px;
   line-height: 1.5;
@@ -5040,10 +5315,10 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 .workflow-log-preview {
   max-height: 260px;
   overflow: auto;
-  border: 1px solid rgba(73, 94, 126, 0.12);
+  border: 1px solid var(--color-border);
   border-radius: 10px;
-  background: rgba(7, 15, 28, 0.92);
-  color: #e2e8f0;
+  background: var(--color-log-background);
+  color: var(--color-log-text);
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 12px;
   line-height: 1.55;
@@ -5102,7 +5377,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 .settings-panel label {
   display: grid;
   gap: 7px;
-  color: #334963;
+  color: var(--color-heading);
   font-weight: 700;
 }
 
@@ -5112,10 +5387,90 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
   min-width: 0;
   min-height: 40px;
   box-sizing: border-box;
-  border: 1px solid var(--line);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--color-surface-control);
+  color: var(--color-text);
   padding: 0 12px;
+}
+
+.data-sync-panel {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 14px;
+}
+
+.data-sync-panel h3 {
+  margin: 0;
+  color: var(--color-heading);
+  font-size: 15px;
+}
+
+.data-sync-scope-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 8px;
+}
+
+.settings-panel .data-sync-checkbox {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface-row);
+  color: var(--color-text);
+  font-size: 12px;
+  font-weight: 650;
+  padding: 0 9px;
+}
+
+.settings-panel .data-sync-checkbox input {
+  width: 16px;
+  min-height: 16px;
+  padding: 0;
+}
+
+.data-sync-preview {
+  display: grid;
+  gap: 6px;
+}
+
+.data-sync-preview div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface-row);
+  padding: 6px 9px;
+}
+
+.data-sync-preview span,
+.data-sync-preview small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-sync-preview span {
+  color: var(--color-text);
+  font-size: 13px;
+}
+
+.data-sync-preview strong {
+  color: var(--color-heading);
+  font-size: 13px;
+}
+
+.data-sync-preview small {
+  grid-column: 1 / -1;
+  color: var(--color-text-muted);
+  font-size: 12px;
 }
 
 .ssh-area-dialog,
@@ -5128,12 +5483,12 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
   display: grid;
   gap: 4px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.54);
+  background: var(--color-surface-row);
   padding: 12px;
 }
 
 .area-delete-summary span {
-  color: var(--muted);
+  color: var(--color-text-muted);
   font-size: 13px;
 }
 
@@ -5146,50 +5501,284 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 
 .settings-inline-actions span {
   flex: 1 1 180px;
-  color: var(--muted);
+  color: var(--color-text-muted);
   font-size: 13px;
 }
 
 .settings-panel .danger-button {
-  border-color: rgba(180, 35, 24, 0.22);
-  background: rgba(180, 35, 24, 0.1);
-  color: #b42318;
+  border-color: var(--color-danger);
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
 }
 
 .settings-panel .danger-button:hover:not(:disabled) {
-  background: rgba(180, 35, 24, 0.16);
+  background: var(--color-danger-bg);
 }
 
 .settings-inline-code {
   border-radius: 10px;
-  background: rgba(21, 38, 61, 0.08);
+  background: var(--color-surface-selected);
   padding: 8px 12px;
-  color: #132238;
+  color: var(--color-code-text);
   font-size: 13px;
   letter-spacing: 0.08em;
 }
 
 .settings-error {
   margin: 0;
-  color: #b42318;
+  color: var(--color-danger);
   font-size: 13px;
 }
 
 .settings-success {
   margin: 0;
-  color: var(--green);
+  color: var(--color-success);
   font-size: 13px;
+}
+
+.icon-button:focus-visible,
+.repo-tabs button:focus-visible,
+.repository-row-main:focus-visible,
+.thread-list-row-main:focus-visible,
+.command-palette-list button:focus-visible,
+.metadata-picker-options button:focus-visible,
+.ref-picker select:focus-visible,
+.settings-panel input:focus-visible,
+.settings-panel select:focus-visible,
+.compose-form textarea:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.app-shell:is(
+  [data-color-scheme="dark"],
+  [data-theme-preset="control-dark"],
+  [data-theme-preset="control-dim"],
+  [data-theme-preset="control-high-contrast-dark"]
+) {
+  background: transparent;
+}
+
+.app-shell:is(
+    [data-color-scheme="dark"],
+    [data-theme-preset="control-dark"],
+    [data-theme-preset="control-dim"],
+    [data-theme-preset="control-high-contrast-dark"]
+  )
+  :is(
+    .nav-item,
+    .repo-item,
+    .area-item,
+    .topbar button,
+    .code-toolbar button,
+    .repo-action-row button,
+    .collection-view button,
+    .issue-row button,
+    .settings-panel button
+  ) {
+  color: var(--color-text);
+}
+
+.app-shell:is(
+    [data-color-scheme="dark"],
+    [data-theme-preset="control-dark"],
+    [data-theme-preset="control-dim"],
+    [data-theme-preset="control-high-contrast-dark"]
+  )
+  :is(
+    .section-title-row,
+    .rail-heading,
+    .settings-panel label,
+    .workflow-input-grid label > span,
+    .workflow-check-output strong
+  ) {
+  color: var(--color-heading);
+}
+
+.app-shell:is(
+    [data-color-scheme="dark"],
+    [data-theme-preset="control-dark"],
+    [data-theme-preset="control-dim"],
+    [data-theme-preset="control-high-contrast-dark"]
+  )
+  :is(.count-pill, .visibility-pill, .state-chip, .topic-wrap span, .label-stack span) {
+  border-color: var(--color-border);
+  background: var(--color-surface-row);
+  color: var(--color-text);
+}
+
+.app-shell:is(
+    [data-color-scheme="dark"],
+    [data-theme-preset="control-dark"],
+    [data-theme-preset="control-dim"],
+    [data-theme-preset="control-high-contrast-dark"]
+  )
+  :is(
+    .nav-item:hover,
+    .repo-item:hover,
+    .area-item:hover,
+    .area-item.selected,
+    .local-repo-item.selected,
+    .nav-item.active,
+    .command-palette-list button:hover,
+    .command-palette-list button:focus-visible,
+    .command-palette-list button.active-finder-row
+  ) {
+  background: var(--color-surface-row-hover);
+  box-shadow: none;
+}
+
+.app-shell:is(
+    [data-color-scheme="dark"],
+    [data-theme-preset="control-dark"],
+    [data-theme-preset="control-dim"],
+    [data-theme-preset="control-high-contrast-dark"]
+  )
+  :is(
+    .home-panel,
+    .account-hero,
+    .local-file-preview,
+    .local-file-list,
+    .table-panel,
+    .github-surface,
+    .collection-view,
+    .repository-content-scroll,
+    .repo-hero,
+    .cached-mode-banner,
+    .thread-detail,
+    .timeline-card,
+    .timeline-card-header,
+    .compose-form,
+    .repository-settings-panel,
+    .organization-profile-summary,
+    .project-tile,
+    .metric-tile,
+    .workflow-annotation-row,
+    .area-delete-summary
+  ) {
+  border-color: var(--color-border);
+  background: var(--color-surface-row);
+  color: var(--color-text);
+}
+
+.app-shell:is(
+    [data-color-scheme="dark"],
+    [data-theme-preset="control-dark"],
+    [data-theme-preset="control-dim"],
+    [data-theme-preset="control-high-contrast-dark"]
+  )
+  :is(
+    .repository-row,
+    .organization-row,
+    .mailbox-work-row,
+    .notification-row,
+    .workflow-failure-item,
+    .workflow-job-card,
+    .workflow-artifact-row,
+    .local-file-row,
+    .code-row,
+    .file-row
+  ) {
+  border-color: var(--color-border);
+  background: var(--color-surface-row);
+  color: var(--color-text);
+}
+
+.app-shell:is(
+    [data-color-scheme="dark"],
+    [data-theme-preset="control-dark"],
+    [data-theme-preset="control-dim"],
+    [data-theme-preset="control-high-contrast-dark"]
+  )
+  :is(
+    .sidebar-repo-filter,
+    .surface-filter,
+    .issue-metadata-controls,
+    .metadata-picker-options,
+    .ref-picker select,
+    .settings-panel input,
+    .settings-panel select,
+    .compose-form input,
+    .compose-form select,
+    .compose-form textarea,
+    .dark-action
+  ) {
+  border-color: var(--color-border);
+  background: var(--color-surface-control);
+  color: var(--color-text);
+}
+
+.app-shell:is(
+    [data-color-scheme="dark"],
+    [data-theme-preset="control-dark"],
+    [data-theme-preset="control-dim"],
+    [data-theme-preset="control-high-contrast-dark"]
+  )
+  :is(
+    .empty-state,
+    .loading-state,
+    .error-state,
+    .external-workflow-note,
+    .workflow-action-availability,
+    .finder-meta,
+    .workflow-check-output,
+    .workflow-step-list div
+  ) {
+  color: var(--color-text-muted);
+}
+
+.app-shell:is(
+    [data-color-scheme="dark"],
+    [data-theme-preset="control-dark"],
+    [data-theme-preset="control-dim"],
+    [data-theme-preset="control-high-contrast-dark"]
+  )
+  :is(.settings-error, .rail-error, .markdown-unsafe, .deletions) {
+  color: var(--color-danger);
+}
+
+.app-shell:is(
+    [data-color-scheme="dark"],
+    [data-theme-preset="control-dark"],
+    [data-theme-preset="control-dim"],
+    [data-theme-preset="control-high-contrast-dark"]
+  )
+  :is(.settings-success, .state-chip.success) {
+  color: var(--color-success);
+  background: var(--color-success-bg);
+}
+
+.app-shell:is(
+    [data-color-scheme="dark"],
+    [data-theme-preset="control-dark"],
+    [data-theme-preset="control-dim"],
+    [data-theme-preset="control-high-contrast-dark"]
+  )
+  :is(.state-chip.attention, .workflow-failure-item) {
+  color: var(--color-warning);
+  background: var(--color-warning-bg);
+}
+
+.app-shell:is(
+    [data-color-scheme="dark"],
+    [data-theme-preset="control-dark"],
+    [data-theme-preset="control-dim"],
+    [data-theme-preset="control-high-contrast-dark"]
+  )
+  :is(.markdown-body-lite, .markdown-code-block, .markdown-body-lite code, .markdown-table, .code-preview) {
+  border-color: var(--color-border);
+  background: var(--color-code-background);
+  color: var(--color-code-text);
 }
 
 @media (max-width: 1180px) {
   .app-shell {
     grid-template-columns: 252px minmax(0, 1fr);
-    grid-template-rows: 52px minmax(0, 1fr);
+    grid-template-rows: var(--topbar-height) minmax(0, 1fr);
   }
 
   body.no-liquid-glass .app-shell {
-    margin: 14px;
-    height: calc(100vh - 28px);
+    --shell-margin: 14px;
   }
 
   .workspace-repository {
@@ -5221,9 +5810,5 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 
   .code-toolbar {
     grid-template-columns: 1fr 1fr;
-  }
-
-  .home-activity-overview {
-    grid-template-columns: minmax(0, 1fr);
   }
 }

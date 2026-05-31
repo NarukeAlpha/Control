@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { discoverLocalRepositories } from "./localDiscovery";
+import { discoverLocalRepositories, ignoredDirectoryNames } from "./localDiscovery";
 
 const tempDirs: string[] = [];
 
@@ -21,6 +21,12 @@ function makeTempRoot(): string {
 }
 
 describe("discoverLocalRepositories", () => {
+  it("exports the shared ignored-directory policy used by local scanners", () => {
+    expect([...ignoredDirectoryNames].sort()).toEqual(
+      expect.arrayContaining([".git", ".jj", "node_modules"])
+    );
+  });
+
   it("discovers .git directories and prunes ignored dependency folders", async () => {
     const root = makeTempRoot();
     const repositoryRoot = join(root, "packages", "app");

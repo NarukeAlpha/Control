@@ -33,6 +33,7 @@ import type {
   DiscussionSummary,
   GitHubAccountProfile,
   GitHubAuthStatus,
+  GitHubListResult,
   GitHubReadAvailability,
   GitHubSignInSession,
   GitHubMutationInput,
@@ -68,12 +69,32 @@ import type {
   ProjectSummary,
   ProjectListResult,
   ProjectsInput,
+  PullRequestChecksInput,
+  PullRequestChecksResult,
+  PullRequestCommentsInput,
+  PullRequestCommentsResult,
+  PullRequestCommitsInput,
+  PullRequestCommitsResult,
   PullRequestDetail,
   PullRequestDetailInput,
   PullRequestDetailResult,
+  PullRequestFilesInput,
+  PullRequestFilesResult,
+  PullRequestLinkedIssuesInput,
+  PullRequestLinkedIssuesResult,
   PullRequestListInput,
   PullRequestListResult,
+  PullRequestOverviewInput,
+  PullRequestOverviewResult,
+  PullRequestReviewsInput,
+  PullRequestReviewsResult,
+  PullRequestReviewThreadsInput,
+  PullRequestReviewThreadsResult,
   PullRequestSummary,
+  PullRequestTimelineInput,
+  PullRequestTimelineResult,
+  ReleaseDetailInput,
+  ReleaseDetailResult,
   ReleaseSummary,
   ReleaseListResult,
   ReleasesInput,
@@ -139,16 +160,22 @@ import type {
   WorkflowRunSummary
 } from "@shared/github";
 import { clearGitHubToken, getGitHubToken, setGitHubToken } from "./credentials";
+import { DeviceSignInPollScheduler } from "./deviceSignInScheduler";
 import { OctokitProvider, validateGitHubToken } from "./octokitProvider";
+import { GitHubReadCache } from "./readCache";
+import { GitHubRequestDedupe } from "./requestDedupe";
 import { pollGitHubDeviceAuthorization, requestGitHubDeviceAuthorization } from "./webOAuth";
-import type { CachedRepositoryList, CachedRepositoryValue, LocalStore } from "../storage";
+import type { CacheEntry, CachedRepositoryList, CachedRepositoryValue, LocalStore } from "../storage";
 
 const githubOAuthClientIdEnvironmentVariable = "CONTROL_GITHUB_CLIENT_ID";
 const defaultGitHubOAuthClientId = "Ov23ctnQ2BrIJraiNh0c";
 
+// Cache TTLs reflect how quickly each GitHub surface changes and how painful stale UI is:
+// high-churn work queues stay short, repository metadata and refs stay longer, and immutable-ish
+// document/content reads sit in the middle so offline reads remain useful without hiding fresh updates.
 const cacheTtlMs = {
   accountProfile: 120_000,
-  accountRepositories: 120_000,
+  accountRepositories: 600_000,
   organizationDirectory: 120_000,
   accountWork: 30_000,
   notifications: 15_000,
@@ -182,6 +209,24 @@ const cacheTtlMs = {
   contributors: 300_000
 } as const;
 
+interface StatusCacheOptions {
+  forceRefresh?: boolean;
+  cacheOnly?: boolean;
+}
+
+interface ReadCachedStatusSpec<TResult extends { availability: GitHubReadAvailability }> {
+  cacheKey: string;
+  ttlMs: number;
+  load: () => Promise<TResult>;
+  options?: StatusCacheOptions;
+  unavailable: (availability: GitHubReadAvailability) => TResult;
+  unavailableErrorMessage: string;
+  hitLog: string;
+  cacheOnlyHitLog: string;
+  staleHitLog: string;
+  metadata?: (entry: CacheEntry<TResult>) => Record<string, unknown>;
+}
+
 type RepositoryUpdateListener = (nameWithOwner: string | null) => void;
 type AuthUpdateListener = (appState: AppState) => void;
 type OpenExternalUrl = (url: string) => Promise<void>;
@@ -198,12 +243,50 @@ interface DeviceSignInRecord {
   intervalMs: number;
   status: GitHubSignInSession["status"];
   error: string | null;
-  pollTimeout: NodeJS.Timeout | null;
+}
+
+// Main-process cache hydration and status-bearing read wrappers still compose a small set of raw reads.
+// Keep this interface private to the provider manager; renderer/preload contracts must expose status results.
+interface GitHubRawReadProvider extends GitHubProvider {
+  getAccountProfile(input?: AccountProfileInput): Promise<GitHubAccountProfile>;
+  listRepositories(input: RepoListInput): Promise<RepositorySummary[]>;
+  listAccountRepositories(input: AccountRepositoryInput): Promise<RepositorySummary[]>;
+  listOrganizations(input: OrganizationListInput): Promise<OrganizationSummary[]>;
+  listOrganizationTeams(input: OrganizationTeamsInput): Promise<TeamSummary[]>;
+  listAccountIssues(input: AccountIssueListInput): Promise<IssueSummary[]>;
+  listAccountPullRequests(input: AccountPullRequestListInput): Promise<PullRequestSummary[]>;
+  listNotifications(input: NotificationListInput): Promise<NotificationSummary[]>;
+  getRepository(owner: string, repo: string): Promise<RepositoryDetail>;
+  listBranches(input: BranchListInput): Promise<BranchSummary[]>;
+  listTags(input: TagListInput): Promise<TagSummary[]>;
+  listTree(input: RepoTreeInput): Promise<RepoTreeResult>;
+  listContents(input: RepoContentsInput): Promise<RepoEntry[]>;
+  getFileContent(input: RepoFileContentInput): Promise<RepoFileContent>;
+  listCommits(input: RepositoryCommitListInput): Promise<RepositoryCommitSummary[]>;
+  listLabels(input: RepositoryLabelListInput): Promise<LabelSummary[]>;
+  listAssignableUsers(input: AssignableUserListInput): Promise<AssignableUserSummary[]>;
+  listMilestones(input: RepositoryMilestoneListInput): Promise<MilestoneSummary[]>;
+  listIssues(input: IssueListInput): Promise<IssueSummary[]>;
+  getIssueDetail(input: IssueDetailInput): Promise<IssueDetail>;
+  listPullRequests(input: PullRequestListInput): Promise<PullRequestSummary[]>;
+  getPullRequestDetail(input: PullRequestDetailInput): Promise<PullRequestDetail>;
+  listDiscussions(input: DiscussionListInput): Promise<DiscussionSummary[]>;
+  listActions(input: ActionsInput): Promise<WorkflowRunSummary[]>;
+  listWorkflows(input: WorkflowListInput): Promise<WorkflowDefinitionSummary[]>;
+  getWorkflowRunDetail(input: WorkflowRunDetailInput): Promise<WorkflowRunDetail>;
+  listProjects(input: ProjectsInput): Promise<ProjectSummary[]>;
+  listReleases(input: ReleasesInput): Promise<ReleaseSummary[]>;
+  listContributors(input: ContributorsInput): Promise<ContributorSummary[]>;
+  search(input: SearchInput): Promise<RepositorySummary[]>;
 }
 
 export class GitHubProviderManager implements GitHubProvider {
-  private providerPromise: Promise<GitHubProvider> | null = null;
-  private readonly inFlight = new Map<string, Promise<unknown>>();
+  private providerPromise: Promise<GitHubRawReadProvider> | null = null;
+  private readonly requestDedupe = new GitHubRequestDedupe();
+  private readonly readCache = new GitHubReadCache();
+  private readonly deviceSignInScheduler = new DeviceSignInPollScheduler<DeviceSignInRecord>(
+    (signIn) => void this.pollDeviceSignIn(signIn)
+  );
   private deviceSignIn: DeviceSignInRecord | null = null;
   private authenticatedViewer: Viewer | null = null;
   private authRefreshPromise: Promise<void> | null = null;
@@ -213,6 +296,12 @@ export class GitHubProviderManager implements GitHubProvider {
     private readonly onRepositoryDataUpdated: RepositoryUpdateListener = () => undefined,
     private readonly onAuthStateUpdated: AuthUpdateListener = () => undefined
   ) {}
+
+  close(): void {
+    this.clearDeviceSignIn();
+    this.readCache.invalidate();
+    this.requestDedupe.clear();
+  }
 
   async createAppState(): Promise<AppState> {
     const settings = this.store.getSettings();
@@ -273,8 +362,7 @@ export class GitHubProviderManager implements GitHubProvider {
       expiresAt: request.expiresAt,
       intervalMs: request.intervalSeconds * 1000,
       status: "pending",
-      error: null,
-      pollTimeout: null
+      error: null
     };
 
     this.store.updateSettings({ credentialProvider: "github-oauth" });
@@ -286,7 +374,7 @@ export class GitHubProviderManager implements GitHubProvider {
       throw error instanceof Error ? error : new Error("Could not open GitHub sign-in.");
     }
 
-    this.scheduleDeviceSignInPoll(this.deviceSignIn);
+    this.deviceSignInScheduler.start(this.deviceSignIn, this.deviceSignIn.intervalMs);
     return this.getGitHubSignInState()!;
   }
 
@@ -309,15 +397,12 @@ export class GitHubProviderManager implements GitHubProvider {
       return;
     }
 
-    if (this.deviceSignIn.pollTimeout) {
-      clearTimeout(this.deviceSignIn.pollTimeout);
-    }
+    this.deviceSignInScheduler.cancel(this.deviceSignIn);
 
     this.deviceSignIn = {
       ...this.deviceSignIn,
       status: "cancelled",
-      error: "GitHub sign-in was cancelled.",
-      pollTimeout: null
+      error: "GitHub sign-in was cancelled."
     };
   }
 
@@ -344,6 +429,7 @@ export class GitHubProviderManager implements GitHubProvider {
     this.authenticatedViewer = null;
     this.authRefreshPromise = null;
     this.clearDeviceSignIn();
+    this.store.deleteAccount("github-viewer");
   }
 
   async getViewer(): Promise<Viewer> {
@@ -420,7 +506,7 @@ export class GitHubProviderManager implements GitHubProvider {
     const statusDedupeKey = `account-profile-status:${input.login ?? "viewer"}`;
     const dedupeKey = input.forceRefresh ? `force:${statusDedupeKey}` : statusDedupeKey;
     return this.dedupe(dedupeKey, async () => {
-      let provider: GitHubProvider;
+      let provider: GitHubRawReadProvider;
       try {
         provider = await this.provider();
       } catch (error) {
@@ -489,61 +575,14 @@ export class GitHubProviderManager implements GitHubProvider {
   }
 
   async listRepositoriesWithStatus(input: RepoListInput = {}): Promise<RepositoryListResult> {
-    const limit = input.limit ?? 50;
-    const cached = this.store.listGitHubRepositoriesWithMetadata(limit);
-    const cacheKey = `repositories-with-status:${limit}`;
-    const cachedResult = this.store.getCacheEntry<RepositoryListResult>("github", cacheKey);
-    const available = { status: "available", message: null } as const;
-
-    if (input.cacheOnly) {
-      if (cached.items.length > 0) {
-        logControlLoading("repository list status cache-only", { count: cached.items.length });
-        return { items: cached.items, availability: available };
-      }
-      if (cachedResult) {
-        logControlLoading("repository list status cache-only result", {
-          count: cachedResult.payload.items.length
-        });
-        return cachedResult.payload;
-      }
-      return {
-        items: [],
-        availability: {
-          status: "not_loaded",
-          message: `No cached GitHub data for ${cacheKey}. Sign in with GitHub to refresh it.`
-        }
-      };
-    }
-
-    if (input.forceRefresh) {
-      return this.refreshRepositoriesWithStatus(input);
-    }
-
-    if (cached.items.length > 0) {
-      if (repositoryCacheIsFresh(cached, cacheTtlMs.accountRepositories)) {
-        logControlLoading("repository list status cache hit", { count: cached.items.length });
-      } else {
-        logControlLoading("repository list status stale hit", { count: cached.items.length });
-        this.refreshInBackground(() => this.refreshRepositoriesWithStatus(input));
-      }
-      return { items: cached.items, availability: available };
-    }
-
-    if (cachedResult) {
-      if (cachedResult.isExpired) {
-        logControlLoading("repository list status stale result", {
-          count: cachedResult.payload.items.length
-        });
-        this.refreshInBackground(() => this.refreshRepositoriesWithStatus(input));
-      } else {
-        logControlLoading("repository list status cache result", {
-          count: cachedResult.payload.items.length
-        });
-      }
-      return cachedResult.payload;
-    }
-
-    return this.refreshRepositoriesWithStatus(input);
+    return this.readCache.listRepositoriesWithStatus(input, {
+      store: this.store,
+      ttlMs: cacheTtlMs.accountRepositories,
+      refreshLive: (refreshInput) => this.refreshRepositoriesWithStatusLive(refreshInput),
+      areMateriallyEqual,
+      onRepositoryDataUpdated: () => this.onRepositoryDataUpdated(null),
+      log: logControlLoading
+    });
   }
 
   async listAccountRepositories(input: AccountRepositoryInput = {}): Promise<RepositorySummary[]> {
@@ -1056,7 +1095,7 @@ export class GitHubProviderManager implements GitHubProvider {
       key,
       cacheTtlMs.repositoryTree,
       async () => (await this.provider()).listTreeWithStatus(input),
-      { tree: null },
+      (availability) => ({ tree: null, availability }),
       {
         forceRefresh: input.forceRefresh,
         cacheOnly: input.cacheOnly
@@ -1070,7 +1109,7 @@ export class GitHubProviderManager implements GitHubProvider {
         `readme:${input.owner}/${input.repo}:${input.ref}`,
         cacheTtlMs.repositoryReadme,
         async () => (await this.provider()).getReadme(input),
-        { markdown: null },
+        (availability) => ({ markdown: null, availability }),
         { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
       );
     }
@@ -1165,7 +1204,7 @@ export class GitHubProviderManager implements GitHubProvider {
       key,
       cacheTtlMs.fileContent,
       async () => (await this.provider()).getFileContentWithStatus(input),
-      { item: null },
+      (availability) => ({ item: null, availability }),
       {
         forceRefresh: input.forceRefresh,
         cacheOnly: input.cacheOnly
@@ -1179,7 +1218,13 @@ export class GitHubProviderManager implements GitHubProvider {
       key,
       cacheTtlMs.fileBlame,
       async () => (await this.provider()).getFileBlame(input),
-      { path: input.path, ref: input.ref ?? null, ranges: [], truncated: false },
+      (availability) => ({
+        path: input.path,
+        ref: input.ref ?? null,
+        ranges: [],
+        truncated: false,
+        availability
+      }),
       {
         forceRefresh: input.forceRefresh,
         cacheOnly: input.cacheOnly
@@ -1193,7 +1238,7 @@ export class GitHubProviderManager implements GitHubProvider {
       key,
       cacheTtlMs.repositoryWiki,
       async () => (await this.provider()).getRepositoryWiki(input),
-      { pages: [], selectedPage: null },
+      (availability) => ({ pages: [], selectedPage: null, availability }),
       {
         forceRefresh: input.forceRefresh,
         cacheOnly: input.cacheOnly
@@ -1326,7 +1371,7 @@ export class GitHubProviderManager implements GitHubProvider {
       key,
       cacheTtlMs.issueDetail,
       async () => (await this.provider()).getIssueDetailWithStatus(input),
-      { detail: null },
+      (availability) => ({ detail: null, availability }),
       {
         forceRefresh: input.forceRefresh,
         cacheOnly: input.cacheOnly
@@ -1371,11 +1416,105 @@ export class GitHubProviderManager implements GitHubProvider {
       key,
       cacheTtlMs.pullDetail,
       async () => (await this.provider()).getPullRequestDetailWithStatus(input),
-      { detail: null },
+      (availability) => ({ detail: null, availability }),
       {
         forceRefresh: input.forceRefresh,
         cacheOnly: input.cacheOnly
       }
+    );
+  }
+
+  async getPullRequestOverviewWithStatus(
+    input: PullRequestOverviewInput
+  ): Promise<PullRequestOverviewResult> {
+    const key = `pull-overview-with-status:${input.owner}/${input.repo}:${input.pullNumber}`;
+    return this.withStatusCache(
+      key,
+      cacheTtlMs.pullDetail,
+      async () => (await this.provider()).getPullRequestOverviewWithStatus(input),
+      (availability) => ({ overview: null, availability }),
+      { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
+    );
+  }
+
+  async listPullRequestCommentsWithStatus(
+    input: PullRequestCommentsInput
+  ): Promise<PullRequestCommentsResult> {
+    return this.withListStatusCache(
+      `pull-comments-with-status:${input.owner}/${input.repo}:${input.pullNumber}:${input.limit ?? "all"}:${input.cursor ?? ""}`,
+      cacheTtlMs.pullDetail,
+      async () => (await this.provider()).listPullRequestCommentsWithStatus(input),
+      { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
+    );
+  }
+
+  async listPullRequestFilesWithStatus(input: PullRequestFilesInput): Promise<PullRequestFilesResult> {
+    return this.withListStatusCache(
+      `pull-files-with-status:${input.owner}/${input.repo}:${input.pullNumber}:${input.limit ?? "all"}:${input.cursor ?? ""}`,
+      cacheTtlMs.pullDetail,
+      async () => (await this.provider()).listPullRequestFilesWithStatus(input),
+      { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
+    );
+  }
+
+  async listPullRequestCommitsWithStatus(input: PullRequestCommitsInput): Promise<PullRequestCommitsResult> {
+    return this.withListStatusCache(
+      `pull-commits-with-status:${input.owner}/${input.repo}:${input.pullNumber}:${input.limit ?? "all"}:${input.cursor ?? ""}`,
+      cacheTtlMs.pullDetail,
+      async () => (await this.provider()).listPullRequestCommitsWithStatus(input),
+      { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
+    );
+  }
+
+  async listPullRequestReviewsWithStatus(input: PullRequestReviewsInput): Promise<PullRequestReviewsResult> {
+    return this.withListStatusCache(
+      `pull-reviews-with-status:${input.owner}/${input.repo}:${input.pullNumber}:${input.limit ?? "all"}:${input.cursor ?? ""}`,
+      cacheTtlMs.pullDetail,
+      async () => (await this.provider()).listPullRequestReviewsWithStatus(input),
+      { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
+    );
+  }
+
+  async listPullRequestChecksWithStatus(input: PullRequestChecksInput): Promise<PullRequestChecksResult> {
+    return this.withListStatusCache(
+      `pull-checks-with-status:${input.owner}/${input.repo}:${input.pullNumber}`,
+      cacheTtlMs.pullDetail,
+      async () => (await this.provider()).listPullRequestChecksWithStatus(input),
+      { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
+    );
+  }
+
+  async listPullRequestReviewThreadsWithStatus(
+    input: PullRequestReviewThreadsInput
+  ): Promise<PullRequestReviewThreadsResult> {
+    return this.withListStatusCache(
+      `pull-review-threads-with-status:${input.owner}/${input.repo}:${input.pullNumber}:${input.limit ?? "all"}:${input.cursor ?? ""}`,
+      cacheTtlMs.pullDetail,
+      async () => (await this.provider()).listPullRequestReviewThreadsWithStatus(input),
+      { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly },
+      (availability) => ({ items: [], availability, statesAvailability: availability })
+    );
+  }
+
+  async listPullRequestTimelineWithStatus(
+    input: PullRequestTimelineInput
+  ): Promise<PullRequestTimelineResult> {
+    return this.withListStatusCache(
+      `pull-timeline-with-status:${input.owner}/${input.repo}:${input.pullNumber}:${input.limit ?? "all"}:${input.cursor ?? ""}`,
+      cacheTtlMs.pullDetail,
+      async () => (await this.provider()).listPullRequestTimelineWithStatus(input),
+      { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
+    );
+  }
+
+  async listPullRequestLinkedIssuesWithStatus(
+    input: PullRequestLinkedIssuesInput
+  ): Promise<PullRequestLinkedIssuesResult> {
+    return this.withListStatusCache(
+      `pull-linked-issues-with-status:${input.owner}/${input.repo}:${input.pullNumber}`,
+      cacheTtlMs.pullDetail,
+      async () => (await this.provider()).listPullRequestLinkedIssuesWithStatus(input),
+      { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
   }
 
@@ -1413,7 +1552,7 @@ export class GitHubProviderManager implements GitHubProvider {
       `discussion-detail:${input.owner}/${input.repo}:${input.discussionNumber}:${input.commentsLimit ?? 100}:${input.repliesLimit ?? 20}`,
       cacheTtlMs.discussionDetail,
       async () => (await this.provider()).getDiscussionDetail(input),
-      { item: null },
+      (availability) => ({ item: null, availability }),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
   }
@@ -1468,7 +1607,7 @@ export class GitHubProviderManager implements GitHubProvider {
       `action-detail-with-status:${input.owner}/${input.repo}:${input.runId}`,
       cacheTtlMs.workflowDetail,
       async () => (await this.provider()).getWorkflowRunDetailWithStatus(input),
-      { detail: null },
+      (availability) => ({ detail: null, availability }),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
   }
@@ -1478,7 +1617,13 @@ export class GitHubProviderManager implements GitHubProvider {
       `workflow-job-logs:${input.owner}/${input.repo}:${input.jobId}:${input.maxCharacters ?? 12_000}`,
       cacheTtlMs.workflowLogs,
       async () => (await this.provider()).getWorkflowJobLogs(input),
-      { jobId: input.jobId, text: "", truncated: false, downloadUrl: null },
+      (availability) => ({
+        jobId: input.jobId,
+        text: "",
+        truncated: false,
+        downloadUrl: null,
+        availability
+      }),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
   }
@@ -1506,7 +1651,7 @@ export class GitHubProviderManager implements GitHubProvider {
       `branch-protection:${input.owner}/${input.repo}:${input.branch}`,
       cacheTtlMs.branchProtection,
       async () => (await this.provider()).getBranchProtection(input),
-      { protection: null },
+      (availability) => ({ protection: null, availability }),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
   }
@@ -1574,7 +1719,7 @@ export class GitHubProviderManager implements GitHubProvider {
       `repository-security-policy:${input.owner}/${input.repo}:${input.ref ?? "default"}`,
       cacheTtlMs.securityDocuments,
       async () => (await this.provider()).getRepositorySecurityPolicy(input),
-      { policy: null },
+      (availability) => ({ policy: null, availability }),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
   }
@@ -1586,7 +1731,7 @@ export class GitHubProviderManager implements GitHubProvider {
       `repository-community-profile:${input.owner}/${input.repo}`,
       cacheTtlMs.securityDocuments,
       async () => (await this.provider()).getRepositoryCommunityProfile(input),
-      { profile: null },
+      (availability) => ({ profile: null, availability }),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
   }
@@ -1605,6 +1750,16 @@ export class GitHubProviderManager implements GitHubProvider {
       `releases-with-status:${input.owner}/${input.repo}:${input.limit ?? 20}`,
       cacheTtlMs.releases,
       async () => (await this.provider()).listReleasesWithStatus(input),
+      { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
+    );
+  }
+
+  async getReleaseDetailWithStatus(input: ReleaseDetailInput): Promise<ReleaseDetailResult> {
+    return this.withStatusCache(
+      releaseDetailCacheKey(input),
+      cacheTtlMs.releases,
+      async () => (await this.provider()).getReleaseDetailWithStatus(input),
+      (availability) => ({ item: null, availability }),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
     );
   }
@@ -1628,7 +1783,7 @@ export class GitHubProviderManager implements GitHubProvider {
   }
 
   async search(input: SearchInput): Promise<RepositorySummary[]> {
-    let provider: GitHubProvider;
+    let provider: GitHubRawReadProvider;
     try {
       provider = await this.provider();
     } catch (error) {
@@ -1643,7 +1798,7 @@ export class GitHubProviderManager implements GitHubProvider {
   }
 
   async searchWithStatus(input: SearchInput): Promise<RepositorySearchResult> {
-    let provider: GitHubProvider;
+    let provider: GitHubRawReadProvider;
     try {
       provider = await this.provider();
     } catch (error) {
@@ -1807,6 +1962,15 @@ export class GitHubProviderManager implements GitHubProvider {
       `pulls-with-status:${scope}`,
       `pull-detail:${scope}`,
       `pull-detail-with-status:${scope}`,
+      `pull-overview-with-status:${scope}`,
+      `pull-comments-with-status:${scope}`,
+      `pull-files-with-status:${scope}`,
+      `pull-commits-with-status:${scope}`,
+      `pull-reviews-with-status:${scope}`,
+      `pull-checks-with-status:${scope}`,
+      `pull-review-threads-with-status:${scope}`,
+      `pull-timeline-with-status:${scope}`,
+      `pull-linked-issues-with-status:${scope}`,
       `discussions:${scope}`,
       `discussions-status:${scope}`,
       `discussion-categories-status:${scope}`,
@@ -1832,6 +1996,7 @@ export class GitHubProviderManager implements GitHubProvider {
       `repository-wiki:${scope}`,
       `releases:${scope}`,
       `releases-with-status:${scope}`,
+      `release-detail:${scope}`,
       `contributors:${scope}`,
       `contributors-with-status:${scope}`
     ]);
@@ -1840,11 +2005,7 @@ export class GitHubProviderManager implements GitHubProvider {
   private clearCachePrefixes(prefixes: string[]): void {
     for (const prefix of prefixes) {
       this.store.clearCacheByPrefix("github", prefix);
-      for (const key of this.inFlight.keys()) {
-        if (key.startsWith(prefix) || key.startsWith(`force:${prefix}`)) {
-          this.inFlight.delete(key);
-        }
-      }
+      this.requestDedupe.invalidatePrefix(prefix);
     }
   }
 
@@ -1874,45 +2035,21 @@ export class GitHubProviderManager implements GitHubProvider {
     });
   }
 
-  private async refreshRepositoriesWithStatus(input: RepoListInput): Promise<RepositoryListResult> {
-    const key = `refresh-repositories-with-status:${input.limit ?? 50}`;
-    return this.dedupe(key, async () => {
-      try {
-        logControlLoading("repository list status live refresh start", { limit: input.limit ?? 50 });
-        const previous = this.store.listGitHubRepositories(input.limit ?? 50);
-        const result = await (await this.provider()).listRepositoriesWithStatus(input);
-        if (result.availability.status === "available") {
-          result.items.forEach((repository) => this.store.upsertGitHubRepositorySummary(repository));
-          this.store.setCache({
-            provider: "github",
-            cacheKey: `repositories-with-status:${input.limit ?? 50}`,
-            payload: result,
-            etag: null,
-            expiresAt: new Date(Date.now() + cacheTtlMs.accountRepositories).toISOString()
-          });
-          const changed = !areMateriallyEqual(previous, result.items);
-          if (changed) {
-            this.onRepositoryDataUpdated(null);
-          }
-          logControlLoading(
-            changed
-              ? "repository list status live refresh changed"
-              : "repository list status live refresh unchanged",
-            { count: result.items.length }
-          );
+  private async refreshRepositoriesWithStatusLive(input: RepoListInput): Promise<RepositoryListResult> {
+    try {
+      logControlLoading("repository list status live refresh start", { limit: input.limit ?? 50 });
+      const result = await (await this.provider()).listRepositoriesWithStatus(input);
+      return result;
+    } catch (error) {
+      console.warn("Control could not refresh GitHub repositories with status.", error);
+      return {
+        items: [],
+        availability: {
+          status: "error",
+          message: error instanceof Error ? error.message : "GitHub repository list is unavailable."
         }
-        return result;
-      } catch (error) {
-        console.warn("Control could not refresh GitHub repositories with status.", error);
-        return {
-          items: [],
-          availability: {
-            status: "error",
-            message: error instanceof Error ? error.message : "GitHub repository list is unavailable."
-          }
-        };
-      }
-    });
+      };
+    }
   }
 
   private async refreshAccountRepositoriesWithStatus(
@@ -2020,7 +2157,7 @@ export class GitHubProviderManager implements GitHubProvider {
     });
   }
 
-  private async provider(): Promise<GitHubProvider> {
+  private async provider(): Promise<GitHubRawReadProvider> {
     if (this.providerPromise) {
       return this.providerPromise;
     }
@@ -2161,103 +2298,99 @@ export class GitHubProviderManager implements GitHubProvider {
     }
   }
 
-  private async withListStatusCache<T extends { items: unknown[]; availability: GitHubReadAvailability }>(
+  private async withListStatusCache<TItem>(
     cacheKey: string,
     ttlMs: number,
-    load: () => Promise<T>,
-    options: { forceRefresh?: boolean; cacheOnly?: boolean } = {}
-  ): Promise<T> {
-    if (!options.forceRefresh || options.cacheOnly) {
-      const cached = this.store.getCacheEntry<T>("github", cacheKey);
-      if (cached) {
-        if (options.cacheOnly || !cached.isExpired) {
-          logControlLoading(options.cacheOnly ? "list cache-only hit" : "list cache hit", {
-            cacheKey,
-            count: cached.payload.items.length
-          });
-          return cached.payload;
-        }
-
-        logControlLoading("list stale cache hit", { cacheKey, count: cached.payload.items.length });
-        this.refreshInBackground(() => this.refreshCachePayload(cacheKey, ttlMs, load));
-        return cached.payload;
-      }
-    }
-
-    if (options.cacheOnly) {
-      return {
-        items: [],
-        availability: {
-          status: "not_loaded",
-          message: `No cached GitHub data for ${cacheKey}. Sign in with GitHub to refresh it.`
-        }
-      } as unknown as T;
-    }
-
-    try {
-      return await this.refreshCachePayload(cacheKey, ttlMs, load, options.forceRefresh);
-    } catch (error) {
-      const expired = this.store.getCacheEntry<T>("github", cacheKey);
-      if (expired) {
-        console.warn("Control served stale cache for GitHub cache key.", cacheKey, error);
-        return expired.payload;
-      }
-      return {
-        items: [],
-        availability: {
-          status: "error",
-          message: error instanceof Error ? error.message : "GitHub list data is unavailable."
-        }
-      } as unknown as T;
-    }
+    load: () => Promise<GitHubListResult<TItem>>,
+    options?: { forceRefresh?: boolean; cacheOnly?: boolean }
+  ): Promise<GitHubListResult<TItem>>;
+  private async withListStatusCache<
+    TItem,
+    TResult extends { items: TItem[]; availability: GitHubReadAvailability }
+  >(
+    cacheKey: string,
+    ttlMs: number,
+    load: () => Promise<TResult>,
+    options: StatusCacheOptions,
+    createUnavailableResult: (availability: GitHubReadAvailability) => TResult
+  ): Promise<TResult>;
+  private async withListStatusCache<
+    TItem,
+    TResult extends { items: TItem[]; availability: GitHubReadAvailability }
+  >(
+    cacheKey: string,
+    ttlMs: number,
+    load: () => Promise<TResult>,
+    options: StatusCacheOptions = {},
+    createUnavailableResult?: (availability: GitHubReadAvailability) => TResult
+  ): Promise<GitHubListResult<TItem> | TResult> {
+    return this.readCachedStatus<GitHubListResult<TItem> | TResult>({
+      cacheKey,
+      ttlMs,
+      load,
+      options,
+      unavailable: createUnavailableResult ?? ((availability) => emptyListStatusResult<TItem>(availability)),
+      unavailableErrorMessage: "GitHub list data is unavailable.",
+      hitLog: "list cache hit",
+      cacheOnlyHitLog: "list cache-only hit",
+      staleHitLog: "list stale cache hit",
+      metadata: (entry) => ({ cacheKey, count: entry.payload.items.length })
+    });
   }
 
   private async withStatusCache<T extends { availability: GitHubReadAvailability }>(
     cacheKey: string,
     ttlMs: number,
     load: () => Promise<T>,
-    emptyValue: Omit<T, "availability">,
-    options: { forceRefresh?: boolean; cacheOnly?: boolean } = {}
+    createUnavailableResult: (availability: GitHubReadAvailability) => T,
+    options: StatusCacheOptions = {}
   ): Promise<T> {
+    return this.readCachedStatus({
+      cacheKey,
+      ttlMs,
+      load,
+      options,
+      unavailable: createUnavailableResult,
+      unavailableErrorMessage: "GitHub data is unavailable.",
+      hitLog: "status cache hit",
+      cacheOnlyHitLog: "status cache-only hit",
+      staleHitLog: "status stale cache hit"
+    });
+  }
+
+  private async readCachedStatus<TResult extends { availability: GitHubReadAvailability }>(
+    spec: ReadCachedStatusSpec<TResult>
+  ): Promise<TResult> {
+    const { cacheKey, options = {} } = spec;
+    const metadata = (entry: CacheEntry<TResult>) => spec.metadata?.(entry) ?? { cacheKey };
+
     if (!options.forceRefresh || options.cacheOnly) {
-      const cached = this.store.getCacheEntry<T>("github", cacheKey);
+      const cached = this.store.getCacheEntry<TResult>("github", cacheKey);
       if (cached) {
         if (options.cacheOnly || !cached.isExpired) {
-          logControlLoading(options.cacheOnly ? "status cache-only hit" : "status cache hit", { cacheKey });
+          logControlLoading(options.cacheOnly ? spec.cacheOnlyHitLog : spec.hitLog, metadata(cached));
           return cached.payload;
         }
 
-        logControlLoading("status stale cache hit", { cacheKey });
-        this.refreshInBackground(() => this.refreshCachePayload(cacheKey, ttlMs, load));
+        logControlLoading(spec.staleHitLog, metadata(cached));
+        this.refreshInBackground(() => this.refreshCachePayload(cacheKey, spec.ttlMs, spec.load));
         return cached.payload;
       }
     }
 
     if (options.cacheOnly) {
-      return {
-        ...emptyValue,
-        availability: {
-          status: "not_loaded",
-          message: `No cached GitHub data for ${cacheKey}. Sign in with GitHub to refresh it.`
-        }
-      } as T;
+      return spec.unavailable(notLoadedAvailability(cacheKey));
     }
 
     try {
-      return await this.refreshCachePayload(cacheKey, ttlMs, load, options.forceRefresh);
+      return await this.refreshCachePayload(cacheKey, spec.ttlMs, spec.load, options.forceRefresh);
     } catch (error) {
-      const expired = this.store.getCacheEntry<T>("github", cacheKey);
+      const expired = this.store.getCacheEntry<TResult>("github", cacheKey);
       if (expired) {
         console.warn("Control served stale cache for GitHub cache key.", cacheKey, error);
         return expired.payload;
       }
-      return {
-        ...emptyValue,
-        availability: {
-          status: "error",
-          message: error instanceof Error ? error.message : "GitHub data is unavailable."
-        }
-      } as T;
+      return spec.unavailable(errorAvailability(error, spec.unavailableErrorMessage));
     }
   }
 
@@ -2312,14 +2445,7 @@ export class GitHubProviderManager implements GitHubProvider {
   }
 
   private async dedupe<T>(key: string, load: () => Promise<T>): Promise<T> {
-    const existing = this.inFlight.get(key) as Promise<T> | undefined;
-    if (existing) {
-      return existing;
-    }
-
-    const promise = load().finally(() => this.inFlight.delete(key));
-    this.inFlight.set(key, promise);
-    return promise;
+    return this.requestDedupe.run(key, load);
   }
 
   private refreshInBackground(load: () => Promise<unknown>): void {
@@ -2328,14 +2454,8 @@ export class GitHubProviderManager implements GitHubProvider {
     });
   }
 
-  private scheduleDeviceSignInPoll(signIn: DeviceSignInRecord): void {
-    signIn.pollTimeout = setTimeout(() => {
-      void this.pollDeviceSignIn(signIn);
-    }, signIn.intervalMs);
-  }
-
   private async pollDeviceSignIn(signIn: DeviceSignInRecord): Promise<void> {
-    if (this.deviceSignIn !== signIn || signIn.status !== "pending") {
+    if (!this.isCurrentPendingDeviceSignIn(signIn)) {
       return;
     }
 
@@ -2350,38 +2470,52 @@ export class GitHubProviderManager implements GitHubProvider {
         deviceCode: signIn.deviceCode
       });
 
+      if (!this.isCurrentPendingDeviceSignIn(signIn)) {
+        return;
+      }
+
       if (result.status === "pending") {
         signIn.intervalMs = result.intervalSeconds * 1000;
-        this.scheduleDeviceSignInPoll(signIn);
+        this.deviceSignInScheduler.reschedule(signIn, signIn.intervalMs);
+        return;
+      }
+
+      if (!this.isCurrentPendingDeviceSignIn(signIn)) {
         return;
       }
 
       await this.saveToken(result.token.accessToken);
+      if (!this.isCurrentPendingDeviceSignIn(signIn)) {
+        return;
+      }
+
+      this.deviceSignInScheduler.cancel(signIn);
       this.deviceSignIn = {
         ...signIn,
         status: "complete",
-        error: null,
-        pollTimeout: null
+        error: null
       };
     } catch (error) {
+      if (isTransientDevicePollError(error)) {
+        this.deviceSignInScheduler.reschedule(signIn, signIn.intervalMs);
+        return;
+      }
+
       this.failDeviceSignIn(signIn, error instanceof Error ? error.message : "GitHub sign-in failed.");
     }
   }
 
   private failDeviceSignIn(signIn: DeviceSignInRecord, error: string): void {
-    if (this.deviceSignIn !== signIn) {
+    if (!this.isCurrentPendingDeviceSignIn(signIn)) {
       return;
     }
 
-    if (signIn.pollTimeout) {
-      clearTimeout(signIn.pollTimeout);
-    }
+    this.deviceSignInScheduler.cancel(signIn);
 
     this.deviceSignIn = {
       ...signIn,
       status: "error",
-      error,
-      pollTimeout: null
+      error
     };
   }
 
@@ -2390,11 +2524,17 @@ export class GitHubProviderManager implements GitHubProvider {
       return;
     }
 
-    if (this.deviceSignIn.pollTimeout) {
-      clearTimeout(this.deviceSignIn.pollTimeout);
-    }
+    this.deviceSignInScheduler.cancel(this.deviceSignIn);
 
     this.deviceSignIn = null;
+  }
+
+  private isCurrentPendingDeviceSignIn(signIn: DeviceSignInRecord): boolean {
+    return (
+      this.deviceSignIn === signIn &&
+      this.deviceSignInScheduler.isCurrent(signIn) &&
+      signIn.status === "pending"
+    );
   }
 
   private resolveOAuthConfig(): { clientId: string } {
@@ -2411,6 +2551,34 @@ export class GitHubProviderManager implements GitHubProvider {
 
 function isGitHubSignInConfigured(): boolean {
   return Boolean(process.env[githubOAuthClientIdEnvironmentVariable]?.trim() || defaultGitHubOAuthClientId);
+}
+
+function notLoadedAvailability(cacheKey: string): GitHubReadAvailability {
+  return {
+    status: "not_loaded",
+    message: `No cached GitHub data for ${cacheKey}. Sign in with GitHub to refresh it.`
+  };
+}
+
+function errorAvailability(error: unknown, fallbackMessage: string): GitHubReadAvailability {
+  return {
+    status: "error",
+    message: error instanceof Error ? error.message : fallbackMessage
+  };
+}
+
+function emptyListStatusResult<TItem>(availability: GitHubReadAvailability): GitHubListResult<TItem> {
+  return { items: [], availability };
+}
+
+function releaseDetailCacheKey(input: ReleaseDetailInput): string {
+  if (typeof input.releaseId === "number") {
+    return `release-detail:${input.owner}/${input.repo}:id:${input.releaseId}`;
+  }
+  if (input.releaseTagName) {
+    return `release-detail:${input.owner}/${input.repo}:tag:${input.releaseTagName}`;
+  }
+  return `release-detail:${input.owner}/${input.repo}:missing`;
 }
 
 function cachedViewerFromStore(store: LocalStore): Viewer | null {
@@ -2527,6 +2695,10 @@ function repositoryCacheIsFresh(
 
   const syncedAt = Date.parse(cache.syncedAt);
   return Number.isFinite(syncedAt) && Date.now() - syncedAt < ttlMs;
+}
+
+function isTransientDevicePollError(error: unknown): boolean {
+  return error instanceof TypeError;
 }
 
 function areMateriallyEqual(left: unknown, right: unknown): boolean {

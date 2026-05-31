@@ -1,0 +1,293 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  githubActions,
+  type GitHubAction,
+  type GitHubMutationInput,
+  type GitHubPageInfo,
+  type GitHubReadAvailability,
+  type PullRequestChecksInput,
+  type PullRequestChecksResult,
+  type PullRequestCommentsInput,
+  type PullRequestCommentsResult,
+  type PullRequestFilesResult,
+  type PullRequestOverviewResult,
+  type PullRequestReviewThreadsResult
+} from "./github";
+import {
+  githubIpcRouteChannels,
+  ipcChannels,
+  type ControlApi,
+  type GitHubIpcApi,
+  type JsonSerializable
+} from "./ipc";
+
+type Equal<TLeft, TRight> =
+  (<T>() => T extends TLeft ? 1 : 2) extends <T>() => T extends TRight ? 1 : 2 ? true : false;
+
+type Expect<T extends true> = T;
+
+type GitHubIpcRouteKey = keyof typeof githubIpcRouteChannels;
+type CreateIssueMutationInput = Extract<GitHubMutationInput, { action: "createIssue" }>;
+type DispatchWorkflowMutationInput = Extract<GitHubMutationInput, { action: "dispatchWorkflow" }>;
+
+type _RouteMapCoversGitHubIpcApi = Expect<Equal<GitHubIpcRouteKey, keyof GitHubIpcApi>>;
+type _RuntimeGitHubActionsCoverActionUnion = Expect<Equal<(typeof githubActions)[number], GitHubAction>>;
+type _CreateIssueRequiresTitle = Expect<
+  Equal<CreateIssueMutationInput extends { title: string } ? true : false, true>
+>;
+type _MutationInputOmitsNestedPayload = Expect<
+  Equal<"payload" extends keyof CreateIssueMutationInput ? true : false, false>
+>;
+type _DispatchWorkflowRequiresRef = Expect<
+  Equal<DispatchWorkflowMutationInput extends { workflowId: string; ref: string } ? true : false, true>
+>;
+type _RejectsNestedDate = Expect<Equal<JsonSerializable<{ id: string; nested: { createdAt: Date } }>, never>>;
+type _RejectsNestedFunction = Expect<
+  Equal<JsonSerializable<{ id: string; nested: { run: () => void } }>, never>
+>;
+type _AcceptsJsonContract = Expect<
+  Equal<
+    JsonSerializable<{ id: string; nested: { values: Array<string | number | null> } }>,
+    {
+      id: string;
+      nested: { values: (string | number | null)[] };
+    }
+  >
+>;
+type _GitHubIpcResultIsJsonSerializable = Expect<
+  Equal<
+    JsonSerializable<Awaited<ReturnType<GitHubIpcApi["listRepositoriesWithStatus"]>>> extends never
+      ? false
+      : true,
+    true
+  >
+>;
+type _PullRequestCommentsInputCarriesPagination = Expect<
+  Equal<PullRequestCommentsInput extends { limit?: number; cursor?: string | null } ? true : false, true>
+>;
+type _PullRequestChecksInputOmitsPagination = Expect<
+  Equal<"cursor" extends keyof PullRequestChecksInput ? true : false, false>
+>;
+type _PullRequestPagedResultCarriesPageInfo = Expect<
+  Equal<PullRequestFilesResult extends { pageInfo?: GitHubPageInfo | null } ? true : false, true>
+>;
+type _PullRequestChecksResultOmitsPageInfo = Expect<
+  Equal<"pageInfo" extends keyof PullRequestChecksResult ? true : false, false>
+>;
+type _PullRequestReviewThreadsExposeStateAvailability = Expect<
+  Equal<
+    PullRequestReviewThreadsResult extends { statesAvailability: GitHubReadAvailability } ? true : false,
+    true
+  >
+>;
+type _PullRequestSubresourceResultsAreJsonSerializable = Expect<
+  Equal<
+    JsonSerializable<
+      | PullRequestOverviewResult
+      | PullRequestCommentsResult
+      | PullRequestFilesResult
+      | PullRequestChecksResult
+      | PullRequestReviewThreadsResult
+    > extends never
+      ? false
+      : true,
+    true
+  >
+>;
+type _AreaFilePathSearchResultIsJsonSerializable = Expect<
+  Equal<
+    JsonSerializable<Awaited<ReturnType<ControlApi["areas"]["searchFilePaths"]>>> extends never
+      ? false
+      : true,
+    true
+  >
+>;
+type _AreaGatewayLifecycleResultIsJsonSerializable = Expect<
+  Equal<
+    JsonSerializable<Awaited<ReturnType<ControlApi["areas"]["restartGateway"]>>> extends never ? false : true,
+    true
+  >
+>;
+type _ControlExportPreviewIsJsonSerializable = Expect<
+  Equal<
+    JsonSerializable<Awaited<ReturnType<ControlApi["previewDataExport"]>>> extends never ? false : true,
+    true
+  >
+>;
+type _ControlExportResultIsJsonSerializable = Expect<
+  Equal<JsonSerializable<Awaited<ReturnType<ControlApi["exportData"]>>> extends never ? false : true, true>
+>;
+type _ControlImportPreviewIsJsonSerializable = Expect<
+  Equal<
+    JsonSerializable<Awaited<ReturnType<ControlApi["previewDataImport"]>>> extends never ? false : true,
+    true
+  >
+>;
+type _ControlImportResultIsJsonSerializable = Expect<
+  Equal<JsonSerializable<Awaited<ReturnType<ControlApi["importData"]>>> extends never ? false : true, true>
+>;
+
+const githubIpcRouteKeys = {
+  getViewer: true,
+  getAccountProfileWithStatus: true,
+  listRepositoriesWithStatus: true,
+  listAccountRepositoriesWithStatus: true,
+  listOrganizationsWithStatus: true,
+  listOrganizationTeamsWithStatus: true,
+  listOrganizationRepositoriesWithStatus: true,
+  listOrganizationTeamRepositoriesWithStatus: true,
+  listOrganizationTeamMembersWithStatus: true,
+  listOrganizationMembersWithStatus: true,
+  listOrganizationProjectsWithStatus: true,
+  listAccountIssuesWithStatus: true,
+  listAccountPullRequestsWithStatus: true,
+  listNotificationsWithStatus: true,
+  markNotificationThreadRead: true,
+  unsubscribeNotificationThread: true,
+  getRepositoryWithStatus: true,
+  listRepositoryForks: true,
+  listBranchesWithStatus: true,
+  listTagsWithStatus: true,
+  listTreeWithStatus: true,
+  getReadme: true,
+  listContentsWithStatus: true,
+  getFileContentWithStatus: true,
+  getFileBlame: true,
+  getRepositoryWiki: true,
+  listCommitsWithStatus: true,
+  listLabelsWithStatus: true,
+  listAssignableUsersWithStatus: true,
+  getRepositoryAccess: true,
+  listMilestonesWithStatus: true,
+  listIssuesWithStatus: true,
+  getIssueDetailWithStatus: true,
+  listPullRequestsWithStatus: true,
+  getPullRequestDetailWithStatus: true,
+  getPullRequestOverviewWithStatus: true,
+  listPullRequestCommentsWithStatus: true,
+  listPullRequestFilesWithStatus: true,
+  listPullRequestCommitsWithStatus: true,
+  listPullRequestReviewsWithStatus: true,
+  listPullRequestChecksWithStatus: true,
+  listPullRequestReviewThreadsWithStatus: true,
+  listPullRequestTimelineWithStatus: true,
+  listPullRequestLinkedIssuesWithStatus: true,
+  listDiscussionsWithStatus: true,
+  listDiscussionCategoriesWithStatus: true,
+  getDiscussionDetail: true,
+  listActionsWithStatus: true,
+  listWorkflowsWithStatus: true,
+  getWorkflowRunDetailWithStatus: true,
+  getWorkflowJobLogs: true,
+  listProjectsWithStatus: true,
+  getBranchProtection: true,
+  listDependabotAlerts: true,
+  listCodeScanningAlerts: true,
+  listSecretScanningAlerts: true,
+  listRepositoryRulesets: true,
+  listRepositorySecurityAdvisories: true,
+  getRepositorySecurityPolicy: true,
+  getRepositoryCommunityProfile: true,
+  listReleasesWithStatus: true,
+  getReleaseDetailWithStatus: true,
+  listContributorsWithStatus: true,
+  searchWithStatus: true,
+  mutate: true
+} satisfies Record<keyof GitHubIpcApi, true>;
+
+describe("GitHubIpcApi route map", () => {
+  it("preserves area file path search channel name", () => {
+    expect(ipcChannels.areaFilePathSearch).toBe("areas:file-path-search");
+  });
+
+  it("preserves explicit gateway lifecycle channel names", () => {
+    expect(ipcChannels.areaRepairGateway).toBe("areas:repair-gateway");
+    expect(ipcChannels.areaRotateGatewayCredentials).toBe("areas:rotate-gateway-credentials");
+    expect(ipcChannels.areaRestartGateway).toBe("areas:restart-gateway");
+  });
+
+  it("keeps runtime keys in parity with GitHubIpcApi", () => {
+    expect(Object.keys(githubIpcRouteChannels).sort()).toEqual(Object.keys(githubIpcRouteKeys).sort());
+  });
+
+  it("does not expose raw GitHub read channel constants", () => {
+    expect(ipcChannels).not.toHaveProperty("githubRepositories");
+    expect(ipcChannels).not.toHaveProperty("githubOrganizations");
+    expect(ipcChannels).not.toHaveProperty("githubOrganizationTeams");
+    expect(ipcChannels).not.toHaveProperty("githubBranches");
+    expect(ipcChannels).not.toHaveProperty("githubTags");
+    expect(ipcChannels).not.toHaveProperty("githubReleases");
+    expect(ipcChannels).not.toHaveProperty("githubSearch");
+  });
+
+  it("preserves existing GitHub IPC channel names", () => {
+    expect(githubIpcRouteChannels).toEqual({
+      getViewer: ipcChannels.githubViewer,
+      getAccountProfileWithStatus: ipcChannels.githubAccountProfileWithStatus,
+      listRepositoriesWithStatus: ipcChannels.githubRepositoriesWithStatus,
+      listAccountRepositoriesWithStatus: ipcChannels.githubAccountRepositoriesWithStatus,
+      listOrganizationsWithStatus: ipcChannels.githubOrganizationsWithStatus,
+      listOrganizationTeamsWithStatus: ipcChannels.githubOrganizationTeamsWithStatus,
+      listOrganizationRepositoriesWithStatus: ipcChannels.githubOrganizationRepositoriesWithStatus,
+      listOrganizationTeamRepositoriesWithStatus: ipcChannels.githubOrganizationTeamRepositoriesWithStatus,
+      listOrganizationTeamMembersWithStatus: ipcChannels.githubOrganizationTeamMembersWithStatus,
+      listOrganizationMembersWithStatus: ipcChannels.githubOrganizationMembersWithStatus,
+      listOrganizationProjectsWithStatus: ipcChannels.githubOrganizationProjectsWithStatus,
+      listAccountIssuesWithStatus: ipcChannels.githubAccountIssuesWithStatus,
+      listAccountPullRequestsWithStatus: ipcChannels.githubAccountPullRequestsWithStatus,
+      listNotificationsWithStatus: ipcChannels.githubNotificationsWithStatus,
+      markNotificationThreadRead: ipcChannels.githubNotificationThreadRead,
+      unsubscribeNotificationThread: ipcChannels.githubNotificationThreadUnsubscribe,
+      getRepositoryWithStatus: ipcChannels.githubRepositoryWithStatus,
+      listRepositoryForks: ipcChannels.githubRepositoryForks,
+      listBranchesWithStatus: ipcChannels.githubBranchesWithStatus,
+      listTagsWithStatus: ipcChannels.githubTagsWithStatus,
+      listTreeWithStatus: ipcChannels.githubTreeWithStatus,
+      getReadme: ipcChannels.githubReadme,
+      listContentsWithStatus: ipcChannels.githubContentsWithStatus,
+      getFileContentWithStatus: ipcChannels.githubFileContentWithStatus,
+      getFileBlame: ipcChannels.githubFileBlame,
+      getRepositoryWiki: ipcChannels.githubRepositoryWiki,
+      listCommitsWithStatus: ipcChannels.githubCommitsWithStatus,
+      listLabelsWithStatus: ipcChannels.githubLabelsWithStatus,
+      listAssignableUsersWithStatus: ipcChannels.githubAssignableUsersWithStatus,
+      getRepositoryAccess: ipcChannels.githubRepositoryAccess,
+      listMilestonesWithStatus: ipcChannels.githubMilestonesWithStatus,
+      listIssuesWithStatus: ipcChannels.githubIssuesWithStatus,
+      getIssueDetailWithStatus: ipcChannels.githubIssueDetailWithStatus,
+      listPullRequestsWithStatus: ipcChannels.githubPullRequestsWithStatus,
+      getPullRequestDetailWithStatus: ipcChannels.githubPullRequestDetailWithStatus,
+      getPullRequestOverviewWithStatus: ipcChannels.githubPullRequestOverviewWithStatus,
+      listPullRequestCommentsWithStatus: ipcChannels.githubPullRequestCommentsWithStatus,
+      listPullRequestFilesWithStatus: ipcChannels.githubPullRequestFilesWithStatus,
+      listPullRequestCommitsWithStatus: ipcChannels.githubPullRequestCommitsWithStatus,
+      listPullRequestReviewsWithStatus: ipcChannels.githubPullRequestReviewsWithStatus,
+      listPullRequestChecksWithStatus: ipcChannels.githubPullRequestChecksWithStatus,
+      listPullRequestReviewThreadsWithStatus: ipcChannels.githubPullRequestReviewThreadsWithStatus,
+      listPullRequestTimelineWithStatus: ipcChannels.githubPullRequestTimelineWithStatus,
+      listPullRequestLinkedIssuesWithStatus: ipcChannels.githubPullRequestLinkedIssuesWithStatus,
+      listDiscussionsWithStatus: ipcChannels.githubDiscussionsWithStatus,
+      listDiscussionCategoriesWithStatus: ipcChannels.githubDiscussionCategoriesWithStatus,
+      getDiscussionDetail: ipcChannels.githubDiscussionDetail,
+      listActionsWithStatus: ipcChannels.githubActionsWithStatus,
+      listWorkflowsWithStatus: ipcChannels.githubWorkflowsWithStatus,
+      getWorkflowRunDetailWithStatus: ipcChannels.githubWorkflowRunDetailWithStatus,
+      getWorkflowJobLogs: ipcChannels.githubWorkflowJobLogs,
+      listProjectsWithStatus: ipcChannels.githubProjectsWithStatus,
+      getBranchProtection: ipcChannels.githubBranchProtection,
+      listDependabotAlerts: ipcChannels.githubDependabotAlerts,
+      listCodeScanningAlerts: ipcChannels.githubCodeScanningAlerts,
+      listSecretScanningAlerts: ipcChannels.githubSecretScanningAlerts,
+      listRepositoryRulesets: ipcChannels.githubRepositoryRulesets,
+      listRepositorySecurityAdvisories: ipcChannels.githubRepositorySecurityAdvisories,
+      getRepositorySecurityPolicy: ipcChannels.githubRepositorySecurityPolicy,
+      getRepositoryCommunityProfile: ipcChannels.githubRepositoryCommunityProfile,
+      listReleasesWithStatus: ipcChannels.githubReleasesWithStatus,
+      getReleaseDetailWithStatus: ipcChannels.githubReleaseDetailWithStatus,
+      listContributorsWithStatus: ipcChannels.githubContributorsWithStatus,
+      searchWithStatus: ipcChannels.githubSearchWithStatus,
+      mutate: ipcChannels.githubMutate
+    });
+  });
+});

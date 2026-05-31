@@ -12,9 +12,14 @@
     "postinstall": "node scripts/ensure-electron-runtime.cjs --repair",
     "prebuild": "node scripts/ensure-electron-runtime.cjs --repair",
     "build": "npm run typecheck && electron-vite build",
+    "build:gateway": "node scripts/package-control-gateway.cjs",
+    "verify:gateway-bundle": "node scripts/verify-control-gateway-bundle.cjs",
     "prepreview": "node scripts/ensure-electron-runtime.cjs --repair",
     "preview": "env -u ELECTRON_RUN_AS_NODE electron-vite preview",
-    "package": "npm run build && electron-builder --mac",
+    "package": "npm run package:mac",
+    "package:mac": "npm run build:gateway && npm run verify:gateway-bundle && npm run build && electron-builder --mac",
+    "package:win": "npm run build:gateway && npm run verify:gateway-bundle && npm run build && electron-builder --win",
+    "package:linux": "npm run build:gateway && npm run verify:gateway-bundle && npm run build && electron-builder --linux",
     "ensure:runtime": "node scripts/ensure-electron-runtime.cjs --check",
     "repair:runtime": "node scripts/ensure-electron-runtime.cjs --repair",
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -43,18 +48,20 @@
     "format": "prettier --write ."
   },
   "dependencies": {
-    "@tanstack/react-query": "^5.100.9",
-    "@tanstack/react-virtual": "^3.13.24",
-    "electron-liquid-glass": "^1.1.1",
-    "lucide-react": "^1.14.0",
-    "octokit": "^5.0.5",
-    "react": "^19.2.5",
-    "react-dom": "^19.2.5",
-    "zustand": "^5.0.12"
+    "@tanstack/react-query": "5.100.9",
+    "@tanstack/react-virtual": "3.13.24",
+    "effect": "3.21.2",
+    "electron-liquid-glass": "1.1.1",
+    "lucide-react": "1.14.0",
+    "octokit": "5.0.5",
+    "react": "19.2.5",
+    "react-dom": "19.2.5",
+    "shiki": "4.1.0",
+    "zustand": "5.0.12"
   },
   "optionalDependencies": {
-    "better-sqlite3": "^12.9.0",
-    "keytar": "^7.9.0"
+    "better-sqlite3": "12.9.0",
+    "keytar": "7.9.0"
   },
   "trustedDependencies": [
     "better-sqlite3",
@@ -93,11 +100,30 @@
       "out/**/*",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "dist/control-gateway",
+        "to": "control-gateway"
+      }
+    ],
     "mac": {
       "category": "public.app-category.developer-tools",
       "target": [
         "dmg",
         "zip"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ]
+    },
+    "linux": {
+      "category": "Development",
+      "target": [
+        "AppImage",
+        "tar.gz"
       ]
     }
   }

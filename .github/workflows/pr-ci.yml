@@ -37,8 +37,8 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
-      - name: Repair Electron runtime
-        run: npm run repair:runtime
+      - name: Rebuild native dependencies
+        run: node node_modules/electron-builder/cli.js install-app-deps
 
       - name: Check formatting
         run: bun run format:check
@@ -62,4 +62,4 @@ jobs:
         run: bun run verify:gateway-bundle
 
       - name: Production build
-        run: bun run build
+        run: npx electron-vite build

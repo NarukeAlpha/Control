@@ -64,10 +64,40 @@ export function firstMarkdownHeading(markdown: string | null): string {
     return "README";
   }
 
-  const heading = markdown
-    .split("\n")
-    .map((line) => line.trim())
-    .find((line) => line.startsWith("# "));
+  let inFence = false;
+  let previousContentLine: string | null = null;
+  let lineStart = 0;
 
-  return heading?.replace(/^#\s+/, "").trim() || "README";
+  for (let index = 0; index <= markdown.length; index += 1) {
+    if (index < markdown.length && markdown[index] !== "\n") {
+      continue;
+    }
+
+    const line = markdown.slice(lineStart, index).replace(/\r$/, "");
+    const trimmed = line.trim();
+
+    if (/^```/.test(trimmed) || /^~~~/.test(trimmed)) {
+      inFence = !inFence;
+      previousContentLine = null;
+      lineStart = index + 1;
+      continue;
+    }
+
+    if (!inFence) {
+      const heading = line.match(/^\s*#\s+(.+)$/);
+      if (heading) {
+        return heading[1].trim() || "README";
+      }
+
+      if (/^\s*=+\s*$/.test(line) && previousContentLine) {
+        return previousContentLine;
+      }
+
+      previousContentLine = trimmed ? trimmed : null;
+    }
+
+    lineStart = index + 1;
+  }
+
+  return "README";
 }

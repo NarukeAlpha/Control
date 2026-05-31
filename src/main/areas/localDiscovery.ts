@@ -8,9 +8,10 @@ export interface LocalRepositoryCandidate {
   rootPath: string;
 }
 
-const ignoredDirectoryNames = new Set([
+export const ignoredDirectoryNames = new Set([
   ".git",
   ".hg",
+  ".jj",
   ".next",
   ".turbo",
   ".cache",

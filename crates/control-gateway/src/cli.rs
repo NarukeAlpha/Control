@@ -21,5 +21,11 @@ pub struct Args {
     pub token: Option<String>,
 
     #[arg(long)]
+    pub token_file: Option<PathBuf>,
+
+    #[arg(long)]
+    pub admin_token_file: Option<PathBuf>,
+
+    #[arg(long)]
     pub manifest: Option<PathBuf>,
 }

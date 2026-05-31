@@ -32,6 +32,7 @@ function createAreaManager(): AreaManager {
     getRepository: vi.fn(),
     listContents: vi.fn(() => []),
     getFileContent: vi.fn(),
+    searchFilePaths: vi.fn(),
     listBranches: vi.fn(() => []),
     listRemotes: vi.fn(() => []),
     getStatus: vi.fn(),
@@ -53,7 +54,10 @@ function createAreaManager(): AreaManager {
     getSyncStatus: vi.fn(),
     prepareGatewayOperation: vi.fn(),
     runGatewayOperation: vi.fn(),
-    stopGateway: vi.fn()
+    stopGateway: vi.fn(),
+    repairGateway: vi.fn(),
+    rotateGatewayCredentials: vi.fn(),
+    restartGateway: vi.fn()
   } as unknown as AreaManager;
 }
 
@@ -85,7 +89,7 @@ describe("registerAreaIpc", () => {
 
     expect(areaManager.getArea).toHaveBeenCalledWith("local:workspace");
 
-    expect(() => handler(ipcChannels.areasGet)(null, "   ")).toThrow(
+    await expect(handler(ipcChannels.areasGet)(null, "   ")).rejects.toThrow(
       "Area IPC input requires a non-empty string."
     );
     expect(areaManager.getArea).toHaveBeenCalledTimes(1);
@@ -205,14 +209,47 @@ describe("registerAreaIpc", () => {
       path: "README.md"
     });
 
-    expect(() =>
+    await expect(
       handler(ipcChannels.areaFileContent)(null, {
         areaId: "local",
         repositoryId: "repo",
         path: " "
       })
-    ).toThrow("Area IPC input requires a non-empty string.");
+    ).rejects.toThrow("Area IPC input requires a non-empty string.");
     expect(areaManager.getFileContent).toHaveBeenCalledTimes(1);
+  });
+
+  it("normalizes file path search payloads", async () => {
+    const areaManager = await loadRegisteredHandlers();
+
+    handler(ipcChannels.areaFilePathSearch)(null, {
+      areaId: " local ",
+      repositoryId: " repo ",
+      workspaceId: " workspace ",
+      query: " Search ",
+      limit: 12.8
+    });
+    handler(ipcChannels.areaFilePathSearch)(null, {
+      areaId: "local",
+      repositoryId: "repo",
+      query: 42,
+      limit: "ignored"
+    });
+
+    expect(areaManager.searchFilePaths).toHaveBeenNthCalledWith(1, {
+      areaId: "local",
+      repositoryId: "repo",
+      workspaceId: "workspace",
+      query: "Search",
+      limit: 12.8
+    });
+    expect(areaManager.searchFilePaths).toHaveBeenNthCalledWith(2, {
+      areaId: "local",
+      repositoryId: "repo",
+      workspaceId: null,
+      query: "",
+      limit: undefined
+    });
   });
 
   it("normalizes workspace lookup payloads", async () => {
@@ -247,12 +284,12 @@ describe("registerAreaIpc", () => {
       cacheOnly: true,
       forceRefresh: false
     });
-    expect(() =>
+    await expect(
       handler(ipcChannels.areaGitHubRepository)(null, {
         areaId: "local",
         repositoryId: " "
       })
-    ).toThrow("Area IPC input requires a non-empty string.");
+    ).rejects.toThrow("Area IPC input requires a non-empty string.");
     expect(areaManager.getGitHubRepository).toHaveBeenCalledTimes(1);
   });
 
@@ -327,6 +364,9 @@ describe("registerAreaIpc", () => {
       confirmed: true
     });
     handler(ipcChannels.areaStopGateway)(null, { areaId: " ssh " });
+    handler(ipcChannels.areaRepairGateway)(null, { areaId: " ssh " });
+    handler(ipcChannels.areaRotateGatewayCredentials)(null, { areaId: " ssh " });
+    handler(ipcChannels.areaRestartGateway)(null, { areaId: " ssh " });
 
     expect(areaManager.getSyncStatus).toHaveBeenCalledWith({
       areaId: "ssh",
@@ -346,6 +386,9 @@ describe("registerAreaIpc", () => {
       confirmed: true
     });
     expect(areaManager.stopGateway).toHaveBeenCalledWith({ areaId: "ssh" });
+    expect(areaManager.repairGateway).toHaveBeenCalledWith({ areaId: "ssh" });
+    expect(areaManager.rotateGatewayCredentials).toHaveBeenCalledWith({ areaId: "ssh" });
+    expect(areaManager.restartGateway).toHaveBeenCalledWith({ areaId: "ssh" });
   });
 
   it("returns a selected folder path or null from the local folder picker", async () => {

@@ -1,4 +1,4 @@
-use std::{convert::Infallible, net::SocketAddr};
+use std::{convert::Infallible, net::SocketAddr, path::Path};
 
 use anyhow::{Context, Result};
 use async_graphql::{http::GraphiQLSource, Request, Response};
@@ -33,6 +33,7 @@ struct HttpState {
 #[derive(Clone)]
 struct AdminState {
     stop: watch::Sender<bool>,
+    token: Option<std::sync::Arc<str>>,
 }
 
 #[derive(Serialize)]
@@ -52,7 +53,9 @@ pub async fn run(args: Args) -> Result<()> {
     let catalog = validate_root(args.root)?;
     let events = EventBus::new();
     let operations = OperationManager::new(catalog.clone(), events.clone());
-    let app_state = build_state(catalog, operations, args.token);
+    let api_token = resolve_api_token(args.token, args.token_file.as_deref()).await?;
+    let admin_token = read_optional_token_file(args.admin_token_file.as_deref()).await?;
+    let app_state = build_state(catalog, operations, api_token);
     let schema = schema(app_state.clone());
 
     let public_listener = TcpListener::bind(SocketAddr::new(args.host, args.port))
@@ -92,7 +95,10 @@ pub async fn run(args: Args) -> Result<()> {
         app: app_state,
         events,
     });
-    let admin_router = admin_router(AdminState { stop: stop_tx });
+    let admin_router = admin_router(AdminState {
+        stop: stop_tx,
+        token: admin_token.map(std::sync::Arc::from),
+    });
 
     eprintln!("control-gateway listening on http://{public_addr}; admin http://{admin_addr}");
 
@@ -173,7 +179,10 @@ async fn admin_index() -> Html<&'static str> {
     )
 }
 
-async fn stop(State(state): State<AdminState>) -> StatusCode {
+async fn stop(State(state): State<AdminState>, headers: HeaderMap) -> StatusCode {
+    if authorize_token(state.token.as_deref(), &headers).is_err() {
+        return StatusCode::UNAUTHORIZED;
+    }
     let _ = state.stop.send(true);
     StatusCode::ACCEPTED
 }
@@ -190,7 +199,11 @@ async fn wait_for_stop(mut stop: watch::Receiver<bool>) {
 }
 
 fn authorize(state: &AppState, headers: &HeaderMap) -> Result<(), StatusCode> {
-    let Some(token) = &state.token else {
+    authorize_token(state.token.as_deref(), headers)
+}
+
+fn authorize_token(token: Option<&str>, headers: &HeaderMap) -> Result<(), StatusCode> {
+    let Some(token) = token else {
         return Ok(());
     };
     let bearer = headers
@@ -200,11 +213,42 @@ fn authorize(state: &AppState, headers: &HeaderMap) -> Result<(), StatusCode> {
     let explicit = headers
         .get("x-control-token")
         .and_then(|value| value.to_str().ok());
-    if bearer == Some(token.as_ref()) || explicit == Some(token.as_ref()) {
+    if bearer == Some(token) || explicit == Some(token) {
         Ok(())
     } else {
         Err(StatusCode::UNAUTHORIZED)
     }
+}
+
+async fn resolve_api_token(
+    token: Option<String>,
+    token_file: Option<&Path>,
+) -> Result<Option<String>> {
+    Ok(match token_file {
+        Some(path) => Some(read_token_file(path).await?),
+        None => token,
+    })
+}
+
+async fn read_optional_token_file(path: Option<&Path>) -> Result<Option<String>> {
+    match path {
+        Some(path) => read_token_file(path).await.map(Some),
+        None => Ok(None),
+    }
+}
+
+async fn read_token_file(path: &Path) -> Result<String> {
+    let content = tokio::fs::read_to_string(path)
+        .await
+        .with_context(|| format!("cannot read token file {}", path.display()))?;
+    let _ = tokio::fs::remove_file(path).await;
+    let token = content.trim_end_matches(&['\r', '\n'][..]).to_string();
+    anyhow::ensure!(
+        !token.trim().is_empty(),
+        "token file {} did not contain a token",
+        path.display()
+    );
+    Ok(token)
 }
 
 #[cfg(test)]
@@ -216,24 +260,38 @@ mod tests {
         body::Body,
         http::{Request as HttpRequest, StatusCode},
     };
-    use tempfile::tempdir;
+    use tempfile::{tempdir, TempDir};
     use tower::ServiceExt;
 
     use super::*;
 
-    #[tokio::test]
-    async fn graphql_requires_token_when_configured() {
+    fn test_public_router(token: Option<&str>) -> (Router, TempDir) {
         let root = tempdir().unwrap();
         fs::create_dir_all(root.path().join("repo/.git")).unwrap();
         let catalog = validate_root(root.path().to_path_buf()).unwrap();
         let events = EventBus::new();
         let operations = OperationManager::new(catalog.clone(), events.clone());
-        let app = build_state(catalog, operations, Some("secret".to_string()));
+        let app = build_state(catalog, operations, token.map(str::to_string));
         let router = public_router(HttpState {
             schema: schema(app.clone()),
             app,
             events,
         });
+        (router, root)
+    }
+
+    fn test_admin_router(token: Option<&str>) -> (Router, watch::Receiver<bool>) {
+        let (stop, receiver) = watch::channel(false);
+        let router = admin_router(AdminState {
+            stop,
+            token: token.map(std::sync::Arc::from),
+        });
+        (router, receiver)
+    }
+
+    #[tokio::test]
+    async fn graphql_requires_token_when_configured() {
+        let (router, _root) = test_public_router(Some("secret"));
 
         let response = router
             .oneshot(
@@ -251,18 +309,32 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn graphql_lists_repositories() {
-        let root = tempdir().unwrap();
-        fs::create_dir_all(root.path().join("repo/.git")).unwrap();
-        let catalog = validate_root(root.path().to_path_buf()).unwrap();
-        let events = EventBus::new();
-        let operations = OperationManager::new(catalog.clone(), events.clone());
-        let app = build_state(catalog, operations, None);
-        let router = public_router(HttpState {
-            schema: schema(app.clone()),
-            app,
-            events,
-        });
+    async fn graphql_accepts_matching_token_when_configured() {
+        let (router, _root) = test_public_router(Some("secret"));
+
+        let response = router
+            .oneshot(
+                HttpRequest::builder()
+                    .method("POST")
+                    .uri("/graphql")
+                    .header(header::AUTHORIZATION, "Bearer secret")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(r#"{"query":"{ repositories { id vcs } }"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let text = String::from_utf8(body.to_vec()).unwrap();
+        assert!(text.contains("repo"));
+        assert!(text.contains("GIT"));
+    }
+
+    #[tokio::test]
+    async fn graphql_lists_repositories_without_token() {
+        let (router, _root) = test_public_router(None);
 
         let response = router
             .oneshot(
@@ -281,5 +353,76 @@ mod tests {
         let text = String::from_utf8(body.to_vec()).unwrap();
         assert!(text.contains("repo"));
         assert!(text.contains("GIT"));
+    }
+
+    #[tokio::test]
+    async fn stop_requires_admin_token_when_configured() {
+        let (router, receiver) = test_admin_router(Some("admin-secret"));
+
+        let response = router
+            .oneshot(
+                HttpRequest::builder()
+                    .method("POST")
+                    .uri("/stop")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert!(!*receiver.borrow());
+    }
+
+    #[tokio::test]
+    async fn stop_rejects_wrong_admin_token() {
+        let (router, receiver) = test_admin_router(Some("admin-secret"));
+
+        let response = router
+            .oneshot(
+                HttpRequest::builder()
+                    .method("POST")
+                    .uri("/stop")
+                    .header(header::AUTHORIZATION, "Bearer wrong")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert!(!*receiver.borrow());
+    }
+
+    #[tokio::test]
+    async fn stop_accepts_matching_admin_token() {
+        let (router, receiver) = test_admin_router(Some("admin-secret"));
+
+        let response = router
+            .oneshot(
+                HttpRequest::builder()
+                    .method("POST")
+                    .uri("/stop")
+                    .header(header::AUTHORIZATION, "Bearer admin-secret")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::ACCEPTED);
+        assert!(*receiver.borrow());
+    }
+
+    #[tokio::test]
+    async fn reading_token_file_removes_it() {
+        let root = tempdir().unwrap();
+        let token_path = root.path().join("token");
+        fs::write(&token_path, "secret\n").unwrap();
+
+        let token = read_token_file(&token_path).await.unwrap();
+
+        assert_eq!(token, "secret");
+        assert!(!token_path.exists());
     }
 }

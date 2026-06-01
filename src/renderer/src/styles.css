@@ -1300,6 +1300,10 @@ body:not(.no-liquid-glass) .workspace-repository {
   gap: 10px;
 }
 
+.home-activity-repository-summary {
+  gap: 6px;
+}
+
 .home-contribution-heading,
 .home-activity-timeline-heading {
   display: flex;
@@ -1415,7 +1419,7 @@ body:not(.no-liquid-glass) .workspace-repository {
 
 .home-activity-repository-bars {
   display: grid;
-  gap: 12px;
+  gap: 5px;
   min-width: 0;
 }
 
@@ -1423,14 +1427,14 @@ body:not(.no-liquid-glass) .workspace-repository {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 28px;
   align-items: center;
-  gap: 5px 9px;
+  gap: 1px 8px;
   min-width: 0;
 }
 
 .home-activity-repository-bar > div {
   display: grid;
   min-width: 0;
-  gap: 2px;
+  gap: 0;
 }
 
 .home-activity-repository-bar strong,
@@ -1441,15 +1445,21 @@ body:not(.no-liquid-glass) .workspace-repository {
   white-space: nowrap;
 }
 
+.home-activity-repository-bar strong {
+  font-size: 13px;
+  line-height: 15px;
+}
+
 .home-activity-repository-bar small {
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: 10px;
+  line-height: 12px;
 }
 
 .home-activity-bar-track {
   display: block;
   grid-column: 1 / -1;
-  height: 6px;
+  height: 3px;
   overflow: hidden;
   border-radius: 999px;
   background: rgba(99, 115, 136, 0.16);
@@ -1464,8 +1474,9 @@ body:not(.no-liquid-glass) .workspace-repository {
 
 .home-activity-repository-bar em {
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: 11px;
   font-style: normal;
+  line-height: 15px;
   text-align: right;
 }
 

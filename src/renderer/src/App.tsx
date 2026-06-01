@@ -533,7 +533,6 @@ export function App(): JSX.Element {
                 repositoriesError={repositories.error}
                 repositoriesAvailabilityMessage={repositoriesAvailabilityMessage}
                 pinnedRepositoryNames={pinnedRepositoryNames}
-                recentItems={recentItems.data ?? []}
                 issues={accountIssueItems}
                 issuesLoading={accountIssues.isLoading || accountIssues.isFetching}
                 issuesError={accountIssues.error}
@@ -544,7 +543,6 @@ export function App(): JSX.Element {
                 pullsAvailability={accountPullsAvailability}
                 onOpenRepository={openRepositoryInApp}
                 onLoadMoreRepositories={() => loadMoreHomeRepositoryActivity(repositoryItems.length)}
-                onOpenRecent={openRecentItem}
                 onOpenIssue={openIssueSummaryInApp}
                 onOpenPullRequest={openPullRequestSummaryInApp}
                 onOpenExternal={(url) => void api.openExternal(url)}

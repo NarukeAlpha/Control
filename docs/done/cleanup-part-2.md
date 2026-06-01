@@ -322,7 +322,7 @@ design slice before implementation.
 
 - [x] Start with a design slice that maps every current `PullRequestDetail` field to an owned subresource:
       overview, comments, files, commits, reviewers, reviews, review decision, checks, review threads, timeline,
-      and linked issues. See `docs/cleanup/pr-detail-decomposition.md`.
+      and linked issues. See `docs/done/pr-detail-decomposition.md`.
 - [x] Define the new statusful result contracts with explicit availability for each subresource and pagination
       metadata where "Load More" behavior exists or is likely.
 - [x] Keep the existing monolithic `getPullRequestDetail` and `getPullRequestDetailWithStatus` routes as

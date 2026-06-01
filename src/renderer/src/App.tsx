@@ -430,6 +430,21 @@ export function App(): JSX.Element {
   ]
     .filter(Boolean)
     .join(" ");
+  const isHomeRoute = route.kind === "home";
+  const workspaceClass = [
+    "workspace",
+    isRepositoryRoute || isLocalRepositoryRoute ? "workspace-repository" : "workspace-wide",
+    isHomeRoute ? "workspace-home" : null
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const contentScrollClass = [
+    "content-scroll",
+    isRepositoryRoute || isLocalRepositoryRoute ? "repository-content-scroll" : null,
+    isHomeRoute ? "home-content-scroll" : null
+  ]
+    .filter(Boolean)
+    .join(" ");
   return (
     <MarkdownUrlHandlerContext.Provider value={openMarkdownUrl}>
       <AppEventBridge activeRepository={activeRepositoryScope} />
@@ -492,23 +507,10 @@ export function App(): JSX.Element {
           onOpenSettings={() => setSettingsOpen(true)}
         />
 
-        <section
-          className={
-            isRepositoryRoute || isLocalRepositoryRoute
-              ? "workspace workspace-repository"
-              : "workspace workspace-wide"
-          }
-        >
+        <section className={workspaceClass}>
           {!appState.data?.github.authenticated && <SetupPanel appState={appState.data} />}
 
-          <main
-            ref={contentScrollRef}
-            className={
-              isRepositoryRoute || isLocalRepositoryRoute
-                ? "content-scroll repository-content-scroll"
-                : "content-scroll"
-            }
-          >
+          <main ref={contentScrollRef} className={contentScrollClass}>
             {route.kind === "home" && selectedArea && selectedAreaIsGateway ? (
               <LocalAreaHome
                 area={selectedArea}

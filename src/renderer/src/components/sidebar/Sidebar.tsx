@@ -40,6 +40,8 @@ const navigation = [
   { key: "mailbox", label: "Mailbox", icon: Inbox }
 ] as const;
 
+const githubOnlyNavigationKeys = new Set<(typeof navigation)[number]["key"]>(["organizations", "mailbox"]);
+
 function isNavigationActive(route: AppRoute, label: string): boolean {
   if (label === "Home") {
     return route.kind === "home";
@@ -119,6 +121,11 @@ export function Sidebar({
     areas.find((area) => area.kind === "github") ??
     null;
   const browsingLocalArea = isGatewayAreaKind(selectedAreaSummary?.kind);
+  const selectedAreaSupportsGitHubNavigation =
+    selectedAreaSummary === null || selectedAreaSummary.kind === "github";
+  const visibleNavigation = navigation.filter(
+    (item) => !githubOnlyNavigationKeys.has(item.key) || selectedAreaSupportsGitHubNavigation
+  );
   const selectedLocalRepositoryId = route.kind === "localRepository" ? route.repositoryId : null;
   const localPinnedRepositories = repositoryShortcutsFromPins(pinnedRepositoryNames, repositories);
   const trimmedRepositoryFilter = repositoryFilter.trim();
@@ -277,7 +284,7 @@ export function Sidebar({
   return (
     <aside className="sidebar">
       <nav className="nav-list">
-        {navigation.map((item) => {
+        {visibleNavigation.map((item) => {
           const Icon = item.icon;
           return (
             <button

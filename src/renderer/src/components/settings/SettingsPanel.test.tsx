@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
@@ -39,10 +39,25 @@ describe("SettingsPanel", () => {
       onSave
     });
 
-    await userEvent.selectOptions(screen.getByLabelText("Glass mode"), "solid");
-    await userEvent.selectOptions(screen.getByLabelText("Theme mode"), "dark");
-    await userEvent.selectOptions(screen.getByLabelText("Preset"), "control-high-contrast-dark");
-    await userEvent.selectOptions(screen.getByLabelText("Accent"), "purple");
+    await userEvent.click(screen.getByRole("button", { name: "Appearance" }));
+    await userEvent.click(
+      within(screen.getByRole("group", { name: "Glass mode" })).getByRole("button", {
+        name: /Solid/
+      })
+    );
+    await userEvent.click(
+      within(screen.getByRole("group", { name: "Theme mode" })).getByRole("button", { name: "Dark" })
+    );
+    await userEvent.click(
+      within(screen.getByRole("group", { name: "Theme" })).getByRole("button", {
+        name: /High Contrast Dark/
+      })
+    );
+    await userEvent.click(
+      within(screen.getByRole("group", { name: "Accent" })).getByRole("button", {
+        name: "Purple accent"
+      })
+    );
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() =>
@@ -71,18 +86,47 @@ describe("SettingsPanel", () => {
       onSave
     });
 
-    await userEvent.selectOptions(screen.getByLabelText("Glass mode"), "reduced");
-    await userEvent.selectOptions(screen.getByLabelText("Theme mode"), "light");
-    await userEvent.selectOptions(screen.getByLabelText("Preset"), "control-dim");
-    await userEvent.selectOptions(screen.getByLabelText("Accent"), "gray");
+    await userEvent.click(screen.getByRole("button", { name: "Appearance" }));
+    await userEvent.click(
+      within(screen.getByRole("group", { name: "Glass mode" })).getByRole("button", {
+        name: /Reduced glass/
+      })
+    );
+    await userEvent.click(
+      within(screen.getByRole("group", { name: "Theme mode" })).getByRole("button", { name: "Light" })
+    );
+    await userEvent.click(
+      within(screen.getByRole("group", { name: "Theme" })).getByRole("button", {
+        name: /^Dim/
+      })
+    );
+    await userEvent.click(
+      within(screen.getByRole("group", { name: "Accent" })).getByRole("button", {
+        name: "Gray accent"
+      })
+    );
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
 
     expect(await screen.findByText("Could not save settings: settings store unavailable")).toHaveClass(
       "settings-error"
     );
-    expect(screen.getByLabelText<HTMLSelectElement>("Glass mode").value).toBe("reduced");
-    expect(screen.getByLabelText<HTMLSelectElement>("Theme mode").value).toBe("light");
-    expect(screen.getByLabelText<HTMLSelectElement>("Preset").value).toBe("control-dim");
-    expect(screen.getByLabelText<HTMLSelectElement>("Accent").value).toBe("gray");
+    expect(
+      within(screen.getByRole("group", { name: "Glass mode" })).getByRole("button", {
+        name: /Reduced glass/
+      })
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      within(screen.getByRole("group", { name: "Theme mode" })).getByRole("button", { name: "Light" })
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      within(screen.getByRole("group", { name: "Theme" })).getByRole("button", {
+        name: /^Dim/
+      })
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      within(screen.getByRole("group", { name: "Accent" })).getByRole("button", {
+        name: "Gray accent"
+      })
+    ).toHaveAttribute("aria-pressed", "true");
   });
 });

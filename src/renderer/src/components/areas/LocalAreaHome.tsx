@@ -5,6 +5,54 @@ import type { AreaRepositorySummary, AreaSummary } from "@shared/areas";
 import type { LocalRecentItem } from "@shared/local";
 
 import { Metric } from "../shared/Metric";
+import { formatRelativeDate } from "../../utils/format";
+
+function localRecentKindLabel(kind: LocalRecentItem["kind"]): string {
+  switch (kind) {
+    case "repository":
+      return "Repository";
+    case "commit":
+      return "Commit";
+    case "issue":
+      return "Issue";
+    case "pullRequest":
+      return "Pull request";
+    case "discussion":
+      return "Discussion";
+    case "organization":
+      return "Organization";
+    case "team":
+      return "Team";
+    case "contributor":
+      return "Contributor";
+    case "project":
+      return "Project";
+    case "release":
+      return "Release";
+    case "releaseAsset":
+      return "Asset";
+    case "workflowRun":
+      return "Workflow run";
+    case "workflowArtifact":
+      return "Artifact";
+    case "securityItem":
+      return "Security";
+    case "wikiPage":
+      return "Wiki";
+    case "file":
+      return "File";
+    default:
+      return "Local";
+  }
+}
+
+function localRecentKindMark(kind: LocalRecentItem["kind"]): string {
+  return localRecentKindLabel(kind).slice(0, 1);
+}
+
+function localRecentSubtitle(item: LocalRecentItem): string {
+  return item.subtitle ?? item.repositoryNameWithOwner ?? item.repositoryId ?? item.url ?? "Local work";
+}
 
 export function LocalAreaHome({
   area,
@@ -27,11 +75,13 @@ export function LocalAreaHome({
 }): JSX.Element {
   const [refreshing, setRefreshing] = useState(false);
   const [stoppingGateway, setStoppingGateway] = useState(false);
-  const connectedRepositories = repositories.filter((repository) => repository.connection);
   const dirtyRepositories = repositories.filter((repository) => repository.isDirty);
+  const gitRepositories = repositories.filter(
+    (repository) => repository.kind === "git" || repository.kind === "github"
+  );
   const jjRepositories = repositories.filter((repository) => repository.kind === "jj");
-  const recentLocalRepositories = recentItems
-    .filter((item) => item.provider === "local" && item.kind === "repository" && item.areaId === area.id)
+  const recentLocalWork = recentItems
+    .filter((item) => item.provider === "local" && item.areaId === area.id)
     .slice(0, 6);
   const visibleRepositories = [...repositories]
     .sort((left, right) => {
@@ -79,8 +129,8 @@ export function LocalAreaHome({
 
       <section className="home-metrics">
         <Metric label="Repositories" value={repositories.length || area.repositoryCount} />
-        <Metric label="GitHub remotes" value={connectedRepositories.length} />
         <Metric label="Changed" value={dirtyRepositories.length} />
+        <Metric label="Git" value={gitRepositories.length} />
         <Metric label="JJ" value={jjRepositories.length} />
       </section>
 
@@ -124,62 +174,31 @@ export function LocalAreaHome({
           <div className="surface-header">
             <div>
               <h2>Recent local work</h2>
-              <p>
-                {recentLocalRepositories.length ? "Latest local repository routes." : "No local recents yet."}
-              </p>
+              <p>{recentLocalWork.length ? "Latest local routes in this Area." : "No local recents yet."}</p>
             </div>
           </div>
-          <div className="shortcut-list">
-            {recentLocalRepositories.length ? (
-              recentLocalRepositories.map((item) => (
+          <div className="local-recent-list">
+            {recentLocalWork.length ? (
+              recentLocalWork.map((item) => (
                 <button
                   key={`${item.kind}-${item.itemKey}`}
                   type="button"
-                  className="shortcut-item"
+                  className="local-recent-item"
                   onClick={() => onOpenRecent(item)}
                 >
-                  <span className="repo-avatar">R</span>
-                  <span>
+                  <span className="local-recent-icon">{localRecentKindMark(item.kind)}</span>
+                  <span className="local-recent-copy">
                     <strong>{item.title}</strong>
-                    <small>{item.subtitle ?? item.repositoryNameWithOwner ?? item.repositoryId}</small>
+                    <small>{localRecentSubtitle(item)}</small>
+                  </span>
+                  <span className="local-recent-meta">
+                    <span className="state-chip">{localRecentKindLabel(item.kind)}</span>
+                    <time dateTime={item.updatedAt}>{formatRelativeDate(item.updatedAt)}</time>
                   </span>
                 </button>
               ))
             ) : (
               <p className="muted-row">Open a local repository to add it here.</p>
-            )}
-          </div>
-        </div>
-
-        <div className="home-panel">
-          <div className="surface-header">
-            <div>
-              <h2>GitHub remotes</h2>
-              <p>
-                {connectedRepositories.length ? "Connected local repositories." : "No GitHub remotes found."}
-              </p>
-            </div>
-          </div>
-          <div className="shortcut-list">
-            {connectedRepositories.length ? (
-              connectedRepositories.slice(0, 6).map((repository) => (
-                <button
-                  key={repository.id}
-                  type="button"
-                  className="shortcut-item"
-                  onClick={() => onOpenRepository(repository)}
-                >
-                  <span className="repo-avatar">
-                    {repository.connection?.owner.slice(0, 1).toUpperCase()}
-                  </span>
-                  <span>
-                    <strong>{repository.connection?.nameWithOwner}</strong>
-                    <small>{repository.displayName}</small>
-                  </span>
-                </button>
-              ))
-            ) : (
-              <p className="muted-row">Add an origin remote to connect a local repository to GitHub.</p>
             )}
           </div>
         </div>

@@ -9,7 +9,6 @@ import type {
   PullRequestSummary,
   RepositorySummary
 } from "@shared/github";
-import type { LocalRecentItem } from "@shared/local";
 
 import {
   displayRepositoryName,
@@ -105,7 +104,6 @@ interface HomeDashboardProps {
   repositoriesError: Error | null;
   repositoriesAvailabilityMessage: string | null;
   pinnedRepositoryNames: string[];
-  recentItems: LocalRecentItem[];
   issues: IssueSummary[];
   issuesLoading: boolean;
   issuesError: Error | null;
@@ -116,7 +114,6 @@ interface HomeDashboardProps {
   pullsAvailability: GitHubReadAvailability | null;
   onOpenRepository(nameWithOwner: string): void;
   onLoadMoreRepositories(): void;
-  onOpenRecent(item: LocalRecentItem): void;
   onOpenIssue(issue: IssueSummary): void;
   onOpenPullRequest(pullRequest: PullRequestSummary): void;
   onOpenExternal(url: string): void;
@@ -135,7 +132,6 @@ interface HomeDashboardModel {
   profileUrl: string;
   metrics: HomeMetricModel[];
   pinnedRepositories: RepositoryShortcut[];
-  recentGitHubItems: LocalRecentItem[];
   activity: HomeActivityModel;
 }
 
@@ -574,7 +570,7 @@ function buildHomeActivityModel({
 }
 
 function buildHomeDashboardModel(props: HomeDashboardProps): HomeDashboardModel {
-  const { appState, profile, repositories, pinnedRepositoryNames, recentItems, issues, pulls } = props;
+  const { appState, profile, repositories, pinnedRepositoryNames, issues, pulls } = props;
   const login = profile?.login ?? appState?.viewer?.login ?? "github";
   const viewerLoading = Boolean(appState?.github.authenticated && !appState.viewer && !profile);
   const displayName = viewerLoading
@@ -595,7 +591,6 @@ function buildHomeDashboardModel(props: HomeDashboardProps): HomeDashboardModel 
       { label: "Open PRs", value: pulls.length }
     ],
     pinnedRepositories: repositoryShortcutsFromPins(pinnedRepositoryNames, repositories),
-    recentGitHubItems: recentItems.filter((item) => item.provider === "github").slice(0, 6),
     activity: buildHomeActivityModel({ ...props, login })
   };
 }
@@ -618,7 +613,6 @@ export function HomeDashboard(props: HomeDashboardProps): JSX.Element {
           repositories={model.pinnedRepositories}
           onOpenRepository={props.onOpenRepository}
         />
-        <RecentGitHubPanel items={model.recentGitHubItems} onOpenRecent={props.onOpenRecent} />
         <HomeActivityPanel
           activity={model.activity}
           onLoadMoreRepositories={props.onLoadMoreRepositories}
@@ -736,57 +730,6 @@ function PinnedRepositoryCard({
             {chip}
           </span>
         ))}
-      </span>
-    </button>
-  );
-}
-
-function RecentGitHubPanel({
-  items,
-  onOpenRecent
-}: {
-  items: LocalRecentItem[];
-  onOpenRecent(item: LocalRecentItem): void;
-}): JSX.Element {
-  return (
-    <article className="home-panel">
-      <header>
-        <h2>Recents</h2>
-      </header>
-      <div className="shortcut-list">
-        {items.length > 0 ? (
-          items.map((item) => (
-            <RecentGitHubItemButton
-              key={`${item.kind}-${item.itemKey}`}
-              item={item}
-              onOpenRecent={onOpenRecent}
-            />
-          ))
-        ) : (
-          <p className="muted-row">Open GitHub work to add it here.</p>
-        )}
-      </div>
-    </article>
-  );
-}
-
-function RecentGitHubItemButton({
-  item,
-  onOpenRecent
-}: {
-  item: LocalRecentItem;
-  onOpenRecent(item: LocalRecentItem): void;
-}): JSX.Element {
-  function openRecentItem(): void {
-    onOpenRecent(item);
-  }
-
-  return (
-    <button type="button" className="shortcut-item" onClick={openRecentItem}>
-      <span className="repo-avatar">{item.kind.slice(0, 1).toUpperCase()}</span>
-      <span>
-        <strong>{item.title}</strong>
-        <small>{item.subtitle ?? item.repositoryNameWithOwner ?? item.url ?? "Recent"}</small>
       </span>
     </button>
   );

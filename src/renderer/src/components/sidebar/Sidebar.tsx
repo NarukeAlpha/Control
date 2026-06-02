@@ -40,6 +40,7 @@ const navigation = [
   { key: "organizations", label: "Organizations", icon: Building2 },
   { key: "mailbox", label: "Mailbox", icon: Inbox }
 ] as const;
+const githubOnlyNavigationKeys = new Set<(typeof navigation)[number]["key"]>(["organizations", "mailbox"]);
 
 interface SidebarProps {
   appState?: AppState;
@@ -81,6 +82,7 @@ interface SidebarRepositoryModel {
   selectedLocalRepositoryId: string | null;
   viewerLogin: string | null;
   browsingLocalArea: boolean;
+  selectedAreaSupportsGitHubNavigation: boolean;
   matchingAreaRepositories: AreaRepositorySummary[];
   areaPinnedRepositoryKeys: Set<string>;
   sidebarRepositories: SidebarRepositoryItem[];
@@ -168,7 +170,10 @@ export function Sidebar({
 
   return (
     <aside className="sidebar">
-      <SidebarNavigation route={route} />
+      <SidebarNavigation
+        route={route}
+        selectedAreaSupportsGitHubNavigation={repositoryModel.selectedAreaSupportsGitHubNavigation}
+      />
       <SidebarRepositorySection
         model={repositoryModel}
         selectedRepository={selectedRepository}
@@ -226,6 +231,8 @@ function useSidebarRepositoryModel({
     areas.find((area) => area.kind === "github") ??
     null;
   const browsingLocalArea = isGatewayAreaKind(selectedAreaSummary?.kind);
+  const selectedAreaSupportsGitHubNavigation =
+    selectedAreaSummary === null || selectedAreaSummary.kind === "github";
   const selectedLocalRepositoryId = route.kind === "localRepository" ? route.repositoryId : null;
   const localPinnedRepositories = repositoryShortcutsFromPins(pinnedRepositoryNames, repositories);
   const trimmedRepositoryFilter = repositoryFilter.trim();
@@ -415,6 +422,7 @@ function useSidebarRepositoryModel({
     selectedLocalRepositoryId,
     viewerLogin,
     browsingLocalArea,
+    selectedAreaSupportsGitHubNavigation,
     matchingAreaRepositories,
     areaPinnedRepositoryKeys,
     sidebarRepositories,
@@ -448,11 +456,20 @@ function useSidebarRepositoryModel({
   };
 }
 
-function SidebarNavigation({ route }: { route: AppRoute }): JSX.Element {
+function SidebarNavigation({
+  route,
+  selectedAreaSupportsGitHubNavigation
+}: {
+  route: AppRoute;
+  selectedAreaSupportsGitHubNavigation: boolean;
+}): JSX.Element {
   const goHome = useUiStore((state) => state.goHome);
   const goToRepositories = useUiStore((state) => state.goToRepositories);
   const goToOrganizations = useUiStore((state) => state.goToOrganizations);
   const goToMailbox = useUiStore((state) => state.goToMailbox);
+  const visibleNavigation = navigation.filter(
+    (item) => !githubOnlyNavigationKeys.has(item.key) || selectedAreaSupportsGitHubNavigation
+  );
 
   function openNavigationItem(key: (typeof navigation)[number]["key"]): void {
     if (key === "home") {
@@ -472,7 +489,7 @@ function SidebarNavigation({ route }: { route: AppRoute }): JSX.Element {
 
   return (
     <nav className="nav-list">
-      {navigation.map((item) => (
+      {visibleNavigation.map((item) => (
         <SidebarNavigationItem
           key={item.label}
           item={item}

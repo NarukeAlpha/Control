@@ -689,15 +689,27 @@ function AppWorkspace({
   contentScrollRef: ReturnType<typeof useContentScrollReset>;
 }): JSX.Element {
   const repositoryWorkspace = state.isRepositoryRoute || state.isLocalRepositoryRoute;
+  const homeRoute = state.route.kind === "home";
+  const workspaceClass = [
+    "workspace",
+    repositoryWorkspace ? "workspace-repository" : "workspace-wide",
+    homeRoute ? "workspace-home" : null
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const contentScrollClass = [
+    "content-scroll",
+    repositoryWorkspace ? "repository-content-scroll" : null,
+    homeRoute ? "home-content-scroll" : null
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
-    <section className={repositoryWorkspace ? "workspace workspace-repository" : "workspace workspace-wide"}>
+    <section className={workspaceClass}>
       {!state.appState.data?.github.authenticated && <SetupPanel appState={state.appState.data} />}
 
-      <main
-        ref={contentScrollRef}
-        className={repositoryWorkspace ? "content-scroll repository-content-scroll" : "content-scroll"}
-      >
+      <main ref={contentScrollRef} className={contentScrollClass}>
         <AppHomeRoute state={state} />
         <AppLocalRepositoryRoute state={state} />
         <AppRepositoryRoute state={state} />
@@ -744,7 +756,6 @@ function AppHomeRoute({ state }: { state: AppShellState }): JSX.Element | null {
       repositoriesError={state.repositories.error}
       repositoriesAvailabilityMessage={state.repositoriesAvailabilityMessage}
       pinnedRepositoryNames={state.pinnedRepositoryNames}
-      recentItems={state.recentItems.data ?? []}
       issues={state.accountIssueItems}
       issuesLoading={state.accountIssues.isLoading || state.accountIssues.isFetching}
       issuesError={state.accountIssues.error}
@@ -755,7 +766,6 @@ function AppHomeRoute({ state }: { state: AppShellState }): JSX.Element | null {
       pullsAvailability={state.accountPullsAvailability}
       onOpenRepository={state.openRepositoryInApp}
       onLoadMoreRepositories={loadMoreHomeRepositories}
-      onOpenRecent={state.openRecentItem}
       onOpenIssue={state.openIssueSummaryInApp}
       onOpenPullRequest={state.openPullRequestSummaryInApp}
       onOpenExternal={state.openExternal}

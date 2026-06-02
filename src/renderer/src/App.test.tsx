@@ -441,6 +441,48 @@ describe("Control renderer routing", () => {
     });
   });
 
+  it("hides GitHub-only sidebar routes for local Areas", async () => {
+    useUiStore.setState({ ...defaultUiState, selectedAreaId: localArea.id });
+    renderControl({
+      ...makeApi(),
+      areas: {
+        ...mockControlApi.areas,
+        listAreas: async () => [
+          { ...githubArea, selected: false },
+          { ...localArea, selected: true }
+        ],
+        listRepositories: async () => [localGitRepository, localJjRepository]
+      }
+    });
+
+    expect(await screen.findByRole("heading", { name: "Laptop Projects" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Home" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Repositories" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Organizations" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Mailbox" })).not.toBeInTheDocument();
+  });
+
+  it("hides GitHub-only sidebar routes for SSH Areas", async () => {
+    useUiStore.setState({ ...defaultUiState, selectedAreaId: sshArea.id });
+    renderControl({
+      ...makeApi(),
+      areas: {
+        ...mockControlApi.areas,
+        listAreas: async () => [
+          { ...githubArea, selected: false },
+          { ...sshArea, selected: true }
+        ],
+        listRepositories: async () => [{ ...localGitRepository, id: "ssh-repo-control", areaId: sshArea.id }]
+      }
+    });
+
+    expect(await screen.findByRole("heading", { name: "Delta WSL" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Home" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Repositories" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Organizations" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Mailbox" })).not.toBeInTheDocument();
+  });
+
   it("opens an in-app SSH Area dialog from the topbar selector", async () => {
     const createSshArea = vi.fn<ControlApi["areas"]["createSshArea"]>(async (input) => ({
       ...localArea,

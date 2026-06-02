@@ -229,7 +229,7 @@ export function FileFinder({
           id="file-finder-results"
           role="listbox"
         >
-          {loading && entries.length === 0 && <div className="loading-state">Loading repository tree...</div>}
+          {loading && entries.length === 0 && <div className="loading-state">Loading repository tree…</div>}
           {treeUnavailableReason && <div className="empty-state">{treeUnavailableReason}</div>}
           {error && entries.length === 0 && (
             <div className="error-state">Could not load the repository tree: {error.message}</div>

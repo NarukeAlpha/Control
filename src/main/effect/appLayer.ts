@@ -23,7 +23,7 @@ const defaultBackendLogger: BackendLoggerService = {
   error: (message, cause) => console.error(message, cause)
 };
 
-export function createAppLayer(dependencies: AppLayerDependencies): Layer.Layer<AppServices> {
+function createAppLayer(dependencies: AppLayerDependencies): Layer.Layer<AppServices> {
   return Layer.mergeAll(
     Layer.succeed(LocalStoreService, dependencies.store),
     Layer.succeed(GitHubManagerService, dependencies.github),

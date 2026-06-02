@@ -3,7 +3,7 @@ const accessTokenUrl = "https://github.com/login/oauth/access_token";
 
 export const defaultGitHubOAuthScopes = "repo read:org workflow gist user:email";
 
-export interface GitHubOAuthToken {
+interface GitHubOAuthToken {
   accessToken: string;
   tokenType: string;
   scope: string;

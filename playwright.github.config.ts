@@ -29,7 +29,7 @@ export default defineConfig<BenchmarkOptions>({
     locale: "en-US"
   },
   webServer: {
-    command: "npm run dev:renderer -- --port 5174",
+    command: "bun run dev:renderer -- --port 5174",
     url: rendererURL,
     reuseExistingServer: true,
     timeout: 120_000

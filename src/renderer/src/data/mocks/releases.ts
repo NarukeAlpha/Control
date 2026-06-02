@@ -46,7 +46,7 @@ export function readMockReleases(): ReleaseSummary[] {
   return readMockArray(mockReleasesKey, () => mockReleases);
 }
 
-export function writeMockReleases(items: ReleaseSummary[]): void {
+function writeMockReleases(items: ReleaseSummary[]): void {
   writeMockArray(mockReleasesKey, items);
 }
 

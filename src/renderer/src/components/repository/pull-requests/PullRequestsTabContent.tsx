@@ -1,0 +1,444 @@
+import { Plus, Search } from "lucide-react";
+import type { ChangeEvent, JSX } from "react";
+
+import type {
+  AssignableUserSummary,
+  BranchProtectionSummary,
+  GitHubAction,
+  LabelSummary,
+  MilestoneSummary,
+  PullRequestCommitSummary,
+  PullRequestDetail,
+  PullRequestRequestedTeamSummary,
+  PullRequestReviewSummary,
+  PullRequestReviewThreadCommentSummary,
+  PullRequestSummary,
+  PullRequestTimelineEventSummary,
+  RepositoryDetail,
+  TimelineCommentSummary
+} from "@shared/github";
+
+import type { MarkdownUrlContext } from "@renderer/components/MarkdownBody";
+
+import { PullRequestInspection } from "./PullRequestInspection";
+import { PullRequestCreateForm, type PullRequestCreateDraft } from "./PullRequestCreateForm";
+import { PullRequestConversationActions } from "./PullRequestConversationActions";
+import { PullRequestDetailSummary } from "./PullRequestDetailSummary";
+import { PullRequestDiscussion } from "./PullRequestDiscussion";
+import { PullRequestList } from "./PullRequestList";
+import { PullRequestMetadataControls } from "./PullRequestMetadataControls";
+import { PullRequestReviewerControls } from "./PullRequestReviewerControls";
+import {
+  isPullRequestDetailSectionRequested,
+  type PullRequestDetailSection,
+  type RequestedPullRequestDetailSections
+} from "./PullRequestsTab.queries";
+import type { PullRequestLinkedIssue } from "./PullRequestsTab.types";
+
+export interface PullRequestsTabContentProps {
+  repository: RepositoryDetail;
+  filter: string;
+  creating: boolean;
+  createPullDisabledReason: string | null;
+  filteredPulls: PullRequestSummary[];
+  selectedPull: PullRequestSummary | null;
+  loading: boolean;
+  pullsAvailabilityMessage: string | null;
+  pullRequestListLimit: number;
+  branchOptions: string[];
+  branchesError: Error | null;
+  effectiveBaseBranch: string;
+  createPullSubmitDisabledReason: string | null;
+  createPullDraft: PullRequestCreateDraft;
+  createPullMutationActive: boolean;
+  mutationPending: boolean;
+  mutationSucceeded: boolean;
+  mutationError: Error | null;
+  detail: PullRequestDetail | null;
+  pullDetailLoading: boolean;
+  pullDetailError: Error | null;
+  pullDetailAvailabilityMessage: string | null;
+  requestedPullDetailSections: RequestedPullRequestDetailSections;
+  pullMarkdownUrlContext: MarkdownUrlContext;
+  selectedMerged: boolean | null;
+  selectedReviewDecision: string | null;
+  reviewDecisionAvailabilityMessage: string | null;
+  selectedIsCrossRepository: boolean | null;
+  selectedHeadRepository: string | null;
+  selectedBaseRepository: string | null;
+  selectedMaintainerCanModify: boolean | null;
+  selectedMergeCommitSha: string | null;
+  selectedMergedAt: string | null;
+  selectedBranchSignals: string[];
+  selectedBaseProtection: BranchProtectionSummary | null;
+  selectedBaseProtectionBranchLabel: string;
+  selectedBaseProtectionStatusLabel: string;
+  selectedBaseProtectionStatusUnavailable: boolean;
+  selectedBaseProtectionLoading: boolean;
+  selectedBaseProtectionError: Error | null;
+  selectedBaseProtectionAvailabilityMessage: string | null;
+  selectedBaseProtectionLoaded: boolean;
+  selectedLabels: LabelSummary[];
+  selectedAssignees: AssignableUserSummary[];
+  visibleLabels: LabelSummary[];
+  visibleMilestones: MilestoneSummary[];
+  assigneeSuggestions: AssignableUserSummary[];
+  labelEntry: string;
+  assigneeEntry: string;
+  selectedMetadataDisabledReason: string | null;
+  pullMetadataSubmitDisabledReason: string | null;
+  labelsLoading: boolean;
+  labelsError: Error | null;
+  labelsAvailabilityMessage: string | null;
+  assignableUsersLoading: boolean;
+  assignableUsersError: Error | null;
+  assignableUsersAvailabilityMessage: string | null;
+  milestonesLoading: boolean;
+  milestonesError: Error | null;
+  milestonesAvailabilityMessage: string | null;
+  hiddenPullLabelCount: number;
+  hiddenPullAssigneeCount: number;
+  hiddenPullMilestoneCount: number;
+  requestedReviewers: AssignableUserSummary[];
+  requestedTeams: PullRequestRequestedTeamSummary[];
+  reviewerSuggestions: AssignableUserSummary[];
+  reviewerEntry: string;
+  teamReviewerEntry: string;
+  selectedReviewDisabledReason: string | null;
+  reviewerRequestSubmitDisabledReason: string | null;
+  hiddenPullReviewerCount: number;
+  commentBody: string;
+  reviewBody: string;
+  pullActionLabel: string;
+  pullCommentMutationActive: boolean;
+  pullReviewMutationActive: boolean;
+  submittedPullAction: GitHubAction | null;
+  pullCommentDisabledReason: string | null;
+  reviewCommentDisabledReason: string | null;
+  pullActionDisabledReason: string | null;
+  selectedMergeDisabledReason: string | null;
+  reviewCommentActions: {
+    getDisabledReason(comment: PullRequestReviewThreadCommentSummary): string | null;
+    onEdit(comment: PullRequestReviewThreadCommentSummary, body: string): void;
+    onDelete(comment: PullRequestReviewThreadCommentSummary): void;
+  };
+  commentActions: {
+    getDisabledReason(comment: TimelineCommentSummary): string | null;
+    onEdit(comment: TimelineCommentSummary, body: string): void;
+    onDelete(comment: TimelineCommentSummary): void;
+  };
+  onFilterChange(value: string): void;
+  onStartCreating(): void;
+  onSelectPull(pull: PullRequestSummary): void;
+  onOpenExternal(url: string): void;
+  onExpandPullRequests(): void;
+  onDraftChange(draft: PullRequestCreateDraft): void;
+  onSubmitCreatePullRequest(): void;
+  onCancelCreatePullRequest(): void;
+  onOpenIssueReference(issue: PullRequestLinkedIssue): void;
+  onOpenPullRequestCommit(
+    commit: PullRequestCommitSummary,
+    targetRepositoryNameWithOwner?: string | null
+  ): void;
+  onOpenPullRequestReviewCommit(
+    review: PullRequestReviewSummary,
+    targetRepositoryNameWithOwner?: string | null
+  ): void;
+  onOpenPullRequestTimelineEventCommit(
+    event: PullRequestTimelineEventSummary,
+    targetRepositoryNameWithOwner?: string | null
+  ): void;
+  onOpenWorkflowRun(runId: number, url?: string | null): void;
+  onRequestPullDetailSection(section: PullRequestDetailSection): void;
+  onOpenCodePath(
+    path: string,
+    ref: string | null,
+    blobUrl?: string | null,
+    line?: number | null,
+    targetRepositoryNameWithOwner?: string | null
+  ): void;
+  onRemoveLabel(name: string): void;
+  onRemoveAssignee(login: string): void;
+  onAddLabelSuggestion(name: string): void;
+  onAddAssigneeSuggestion(login: string): void;
+  onShowAllLabels(): void;
+  onShowAllAssignees(): void;
+  onShowAllMilestones(): void;
+  onMilestoneChange(milestone: number | null): void;
+  onLabelEntryChange(value: string): void;
+  onAssigneeEntryChange(value: string): void;
+  onRemoveReviewer(login: string): void;
+  onRemoveTeamReviewer(slug: string): void;
+  onAddReviewerSuggestion(login: string): void;
+  onShowAllReviewers(): void;
+  onReviewerEntryChange(value: string): void;
+  onTeamReviewerEntryChange(value: string): void;
+  onSubmitMetadata(): void;
+  onSubmitReviewerRequest(): void;
+  onCommentBodyChange(value: string): void;
+  onReviewBodyChange(value: string): void;
+  onSubmitComment(): void;
+  onSubmitReview(action: GitHubAction, dangerous: boolean): void;
+  onRunPullAction(): void;
+  onMerge(): void;
+}
+
+type PullRequestsToolbarProps = Pick<
+  PullRequestsTabContentProps,
+  "filter" | "createPullDisabledReason" | "onFilterChange" | "onStartCreating"
+>;
+
+type PullRequestSelectedDetailProps = Omit<PullRequestsTabContentProps, "selectedPull"> & {
+  selectedPull: PullRequestSummary;
+};
+
+function PullRequestsToolbar({
+  filter,
+  createPullDisabledReason,
+  onFilterChange,
+  onStartCreating
+}: PullRequestsToolbarProps): JSX.Element {
+  function handleFilterChange(event: ChangeEvent<HTMLInputElement>): void {
+    onFilterChange(event.target.value);
+  }
+
+  return (
+    <div className="table-action-row surface-filter-row">
+      <label className="surface-filter">
+        <Search size={15} />
+        <input
+          aria-label="Filter pull requests"
+          value={filter}
+          onChange={handleFilterChange}
+          placeholder="Filter pull requests"
+        />
+      </label>
+      <button
+        type="button"
+        disabled={Boolean(createPullDisabledReason)}
+        title={createPullDisabledReason ?? undefined}
+        onClick={onStartCreating}
+      >
+        <Plus size={16} /> New pull request
+      </button>
+    </div>
+  );
+}
+
+export function PullRequestsTabContent(props: PullRequestsTabContentProps): JSX.Element {
+  return (
+    <section className="table-panel github-surface">
+      <PullRequestsToolbar
+        filter={props.filter}
+        createPullDisabledReason={props.createPullDisabledReason}
+        onFilterChange={props.onFilterChange}
+        onStartCreating={props.onStartCreating}
+      />
+      <div className="github-split">
+        <PullRequestList
+          repository={props.repository}
+          pulls={props.filteredPulls}
+          selectedPullNumber={props.selectedPull?.number ?? null}
+          creating={props.creating}
+          loading={props.loading}
+          availabilityMessage={props.pullsAvailabilityMessage}
+          filter={props.filter}
+          pullRequestListLimit={props.pullRequestListLimit}
+          onSelect={props.onSelectPull}
+          onOpenExternal={props.onOpenExternal}
+          onExpandPullRequests={props.onExpandPullRequests}
+        />
+
+        <PullRequestDetailPane {...props} />
+      </div>
+    </section>
+  );
+}
+
+function PullRequestDetailPane(props: PullRequestsTabContentProps): JSX.Element {
+  if (props.creating) {
+    return (
+      <div className="thread-detail">
+        <PullRequestCreateForm
+          repository={props.repository}
+          branchOptions={props.branchOptions}
+          branchesError={props.branchesError}
+          effectiveBaseBranch={props.effectiveBaseBranch}
+          disabledReason={props.createPullDisabledReason}
+          submitDisabledReason={props.createPullSubmitDisabledReason}
+          draft={props.createPullDraft}
+          status={{
+            createPullMutationActive: props.createPullMutationActive,
+            mutationPending: props.mutationPending,
+            mutationSucceeded: props.mutationSucceeded,
+            mutationError: props.mutationError
+          }}
+          onDraftChange={props.onDraftChange}
+          onSubmit={props.onSubmitCreatePullRequest}
+          onCancel={props.onCancelCreatePullRequest}
+        />
+      </div>
+    );
+  }
+
+  if (!props.selectedPull) {
+    return (
+      <div className="thread-detail">
+        <div className="empty-state">No pull requests found.</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="thread-detail">
+      <PullRequestSelectedDetail {...props} selectedPull={props.selectedPull} />
+    </div>
+  );
+}
+
+function PullRequestSelectedDetail(props: PullRequestSelectedDetailProps): JSX.Element {
+  const commentsRequested = isPullRequestDetailSectionRequested(
+    props.requestedPullDetailSections,
+    "comments"
+  );
+
+  function handleRequestComments(): void {
+    props.onRequestPullDetailSection("comments");
+  }
+
+  return (
+    <>
+      <PullRequestDetailSummary
+        selectedPull={props.selectedPull}
+        selectedMerged={props.selectedMerged}
+        selectedReviewDecision={props.selectedReviewDecision}
+        reviewDecisionAvailabilityMessage={props.reviewDecisionAvailabilityMessage}
+        selectedIsCrossRepository={props.selectedIsCrossRepository}
+        selectedHeadRepository={props.selectedHeadRepository}
+        selectedBaseRepository={props.selectedBaseRepository}
+        selectedMaintainerCanModify={props.selectedMaintainerCanModify}
+        selectedMergeCommitSha={props.selectedMergeCommitSha}
+        selectedMergedAt={props.selectedMergedAt}
+        selectedBranchSignals={props.selectedBranchSignals}
+        selectedBaseProtection={props.selectedBaseProtection}
+        selectedBaseProtectionBranchLabel={props.selectedBaseProtectionBranchLabel}
+        selectedBaseProtectionStatusLabel={props.selectedBaseProtectionStatusLabel}
+        selectedBaseProtectionStatusUnavailable={props.selectedBaseProtectionStatusUnavailable}
+        selectedBaseProtectionLoading={props.selectedBaseProtectionLoading}
+        selectedBaseProtectionError={props.selectedBaseProtectionError}
+        selectedBaseProtectionAvailabilityMessage={props.selectedBaseProtectionAvailabilityMessage}
+        selectedBaseProtectionLoaded={props.selectedBaseProtectionLoaded}
+      />
+      {props.pullDetailError && <div className="error-state">{props.pullDetailError.message}</div>}
+      {props.pullDetailAvailabilityMessage && (
+        <div className="error-state">{props.pullDetailAvailabilityMessage}</div>
+      )}
+      <PullRequestInspection
+        repository={props.repository}
+        detail={props.detail}
+        loading={props.pullDetailLoading}
+        requestedSections={props.requestedPullDetailSections}
+        markdownUrlContext={props.pullMarkdownUrlContext}
+        onOpenExternal={props.onOpenExternal}
+        onOpenIssueReference={props.onOpenIssueReference}
+        onOpenPullRequestCommit={props.onOpenPullRequestCommit}
+        onOpenPullRequestReviewCommit={props.onOpenPullRequestReviewCommit}
+        onOpenPullRequestTimelineEventCommit={props.onOpenPullRequestTimelineEventCommit}
+        onOpenWorkflowRun={props.onOpenWorkflowRun}
+        onRequestSection={props.onRequestPullDetailSection}
+        onOpenCodePath={props.onOpenCodePath}
+        reviewCommentActions={props.reviewCommentActions}
+      />
+      <PullRequestDiscussion
+        selectedPull={props.selectedPull}
+        detail={props.detail}
+        loading={props.pullDetailLoading}
+        commentsRequested={commentsRequested}
+        markdownUrlContext={props.pullMarkdownUrlContext}
+        onRequestComments={handleRequestComments}
+        onOpenExternal={props.onOpenExternal}
+        commentActions={props.commentActions}
+      />
+      <PullRequestMetadataControls
+        selectedPull={props.selectedPull}
+        detail={props.detail}
+        selectedLabels={props.selectedLabels}
+        selectedAssignees={props.selectedAssignees}
+        visibleLabels={props.visibleLabels}
+        visibleMilestones={props.visibleMilestones}
+        assigneeSuggestions={props.assigneeSuggestions}
+        labelEntry={props.labelEntry}
+        assigneeEntry={props.assigneeEntry}
+        selectedMetadataDisabledReason={props.selectedMetadataDisabledReason}
+        pullMetadataSubmitDisabledReason={props.pullMetadataSubmitDisabledReason}
+        labelsLoading={props.labelsLoading}
+        labelsError={props.labelsError}
+        labelsAvailabilityMessage={props.labelsAvailabilityMessage}
+        assignableUsersLoading={props.assignableUsersLoading}
+        assignableUsersError={props.assignableUsersError}
+        assignableUsersAvailabilityMessage={props.assignableUsersAvailabilityMessage}
+        milestonesLoading={props.milestonesLoading}
+        milestonesError={props.milestonesError}
+        milestonesAvailabilityMessage={props.milestonesAvailabilityMessage}
+        hiddenPullLabelCount={props.hiddenPullLabelCount}
+        hiddenPullAssigneeCount={props.hiddenPullAssigneeCount}
+        hiddenPullMilestoneCount={props.hiddenPullMilestoneCount}
+        onRemoveLabel={props.onRemoveLabel}
+        onRemoveAssignee={props.onRemoveAssignee}
+        onAddLabelSuggestion={props.onAddLabelSuggestion}
+        onAddAssigneeSuggestion={props.onAddAssigneeSuggestion}
+        onShowAllLabels={props.onShowAllLabels}
+        onShowAllAssignees={props.onShowAllAssignees}
+        onShowAllMilestones={props.onShowAllMilestones}
+        onMilestoneChange={props.onMilestoneChange}
+        onLabelEntryChange={props.onLabelEntryChange}
+        onAssigneeEntryChange={props.onAssigneeEntryChange}
+        onSubmitMetadata={props.onSubmitMetadata}
+      />
+      <PullRequestReviewerControls
+        requestedReviewers={props.requestedReviewers}
+        requestedTeams={props.requestedTeams}
+        reviewerSuggestions={props.reviewerSuggestions}
+        reviewerEntry={props.reviewerEntry}
+        teamReviewerEntry={props.teamReviewerEntry}
+        selectedReviewDisabledReason={props.selectedReviewDisabledReason}
+        reviewerRequestSubmitDisabledReason={props.reviewerRequestSubmitDisabledReason}
+        assignableUsersLoading={props.assignableUsersLoading}
+        assignableUsersError={props.assignableUsersError}
+        assignableUsersAvailabilityMessage={props.assignableUsersAvailabilityMessage}
+        hiddenPullReviewerCount={props.hiddenPullReviewerCount}
+        onRemoveReviewer={props.onRemoveReviewer}
+        onRemoveTeamReviewer={props.onRemoveTeamReviewer}
+        onAddReviewerSuggestion={props.onAddReviewerSuggestion}
+        onShowAllReviewers={props.onShowAllReviewers}
+        onReviewerEntryChange={props.onReviewerEntryChange}
+        onTeamReviewerEntryChange={props.onTeamReviewerEntryChange}
+        onSubmitReviewerRequest={props.onSubmitReviewerRequest}
+      />
+      <PullRequestConversationActions
+        selectedPull={props.selectedPull}
+        commentBody={props.commentBody}
+        reviewBody={props.reviewBody}
+        pullActionLabel={props.pullActionLabel}
+        pullCommentMutationActive={props.pullCommentMutationActive}
+        pullReviewMutationActive={props.pullReviewMutationActive}
+        submittedPullAction={props.submittedPullAction}
+        mutationPending={props.mutationPending}
+        mutationSucceeded={props.mutationSucceeded}
+        mutationError={props.mutationError}
+        pullCommentDisabledReason={props.pullCommentDisabledReason}
+        selectedReviewDisabledReason={props.selectedReviewDisabledReason}
+        reviewCommentDisabledReason={props.reviewCommentDisabledReason}
+        pullActionDisabledReason={props.pullActionDisabledReason}
+        selectedMergeDisabledReason={props.selectedMergeDisabledReason}
+        onCommentBodyChange={props.onCommentBodyChange}
+        onReviewBodyChange={props.onReviewBodyChange}
+        onSubmitComment={props.onSubmitComment}
+        onSubmitReview={props.onSubmitReview}
+        onOpenExternal={props.onOpenExternal}
+        onRunPullAction={props.onRunPullAction}
+        onMerge={props.onMerge}
+      />
+    </>
+  );
+}

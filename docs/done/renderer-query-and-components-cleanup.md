@@ -1,4 +1,4 @@
-# Renderer Query And Component Cleanup
+# Renderer Query And Component Cleanup Record
 
 ## Scope
 
@@ -274,7 +274,20 @@ itself.
 
 ## RENDER-07: Replace Blocking Native Confirmation Dialogs With App-Owned Confirm Flows
 
-### Current Evidence
+### Current Status
+
+The production renderer no longer has `window.confirm` usage. Gateway operations, dangerous GitHub mutations, and
+notification unsubscribe now route through the shared app confirmation flow:
+
+- `src/renderer/src/components/local-repository/LocalRepositoryPage.tsx` requests confirmation from the gateway
+  operation preview before calling the privileged main-process operation with `confirmed: true`.
+- `src/renderer/src/components/shell/RepositoryRouteSection.tsx` requests confirmation before dangerous GitHub
+  mutations.
+- `src/renderer/src/components/collection/MailboxRoute.tsx` requests confirmation before notification unsubscribe.
+- `src/renderer/src/components/dialogs/ConfirmDialog.tsx` renders the shared modal, with tests covering confirm,
+  cancel, and Escape behavior.
+
+Original evidence:
 
 - Gateway operation confirmation:
   - `src/renderer/src/components/local-repository/LocalRepositoryPage.tsx:208` uses `window.confirm`.

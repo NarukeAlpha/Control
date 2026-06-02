@@ -305,22 +305,7 @@ export class OctokitMutationDomain {
           asset_id: getNumber(payload, "assetId")
         });
       case "updateBranchProtection":
-        return this.client.rest("PUT /repos/{owner}/{repo}/branches/{branch}/protection", {
-          owner,
-          repo,
-          branch: getString(payload, "branch"),
-          required_status_checks: payload.required_status_checks ?? null,
-          enforce_admins: payload.enforce_admins ?? null,
-          required_pull_request_reviews: payload.required_pull_request_reviews ?? null,
-          restrictions: payload.restrictions ?? null,
-          required_linear_history: payload.required_linear_history ?? false,
-          allow_force_pushes: payload.allow_force_pushes ?? false,
-          allow_deletions: payload.allow_deletions ?? false,
-          block_creations: payload.block_creations ?? false,
-          required_conversation_resolution: payload.required_conversation_resolution ?? false,
-          lock_branch: payload.lock_branch ?? false,
-          allow_fork_syncing: payload.allow_fork_syncing ?? false
-        });
+        return this.updateBranchProtection(owner, repo, payload);
       case "deleteBranchProtection":
         return this.client.rest("DELETE /repos/{owner}/{repo}/branches/{branch}/protection", {
           owner,
@@ -701,6 +686,164 @@ export class OctokitMutationDomain {
         throw new Error(`Unsupported GitHub action: ${(input as { action: string }).action}`);
     }
   }
+
+  private async updateBranchProtection(
+    owner: string,
+    repo: string,
+    payload: GitHubMutationRuntimePayload
+  ): Promise<unknown> {
+    const branch = getString(payload, "branch");
+    const current = await this.readCurrentBranchProtection(owner, repo, branch);
+    return this.client.rest("PUT /repos/{owner}/{repo}/branches/{branch}/protection", {
+      owner,
+      repo,
+      branch,
+      ...branchProtectionPutPayload(current, payload)
+    });
+  }
+
+  private async readCurrentBranchProtection(
+    owner: string,
+    repo: string,
+    branch: string
+  ): Promise<Record<string, unknown> | null> {
+    try {
+      const current = await this.client.rest("GET /repos/{owner}/{repo}/branches/{branch}/protection", {
+        owner,
+        repo,
+        branch
+      });
+      return objectRecord(current);
+    } catch (error) {
+      if (error && typeof error === "object" && Reflect.get(error, "status") === 404) {
+        return null;
+      }
+      throw error;
+    }
+  }
+}
+
+function branchProtectionPutPayload(
+  current: Record<string, unknown> | null,
+  payload: GitHubMutationRuntimePayload
+): Record<string, unknown> {
+  return {
+    required_status_checks:
+      payload.required_status_checks !== undefined
+        ? payload.required_status_checks
+        : currentRequiredStatusChecks(current),
+    enforce_admins:
+      payload.enforce_admins !== undefined
+        ? payload.enforce_admins
+        : enabledFlag(current, "enforce_admins", null),
+    required_pull_request_reviews:
+      payload.required_pull_request_reviews !== undefined
+        ? payload.required_pull_request_reviews
+        : currentPullRequestReviews(current),
+    restrictions: payload.restrictions !== undefined ? payload.restrictions : currentRestrictions(current),
+    required_linear_history:
+      payload.required_linear_history !== undefined
+        ? payload.required_linear_history
+        : enabledFlag(current, "required_linear_history", false),
+    allow_force_pushes:
+      payload.allow_force_pushes !== undefined
+        ? payload.allow_force_pushes
+        : enabledFlag(current, "allow_force_pushes", false),
+    allow_deletions:
+      payload.allow_deletions !== undefined
+        ? payload.allow_deletions
+        : enabledFlag(current, "allow_deletions", false),
+    block_creations:
+      payload.block_creations !== undefined
+        ? payload.block_creations
+        : enabledFlag(current, "block_creations", false),
+    required_conversation_resolution:
+      payload.required_conversation_resolution !== undefined
+        ? payload.required_conversation_resolution
+        : enabledFlag(current, "required_conversation_resolution", false),
+    lock_branch:
+      payload.lock_branch !== undefined ? payload.lock_branch : enabledFlag(current, "lock_branch", false),
+    allow_fork_syncing:
+      payload.allow_fork_syncing !== undefined
+        ? payload.allow_fork_syncing
+        : enabledFlag(current, "allow_fork_syncing", false)
+  };
+}
+
+function currentRequiredStatusChecks(current: Record<string, unknown> | null): unknown {
+  const statusChecks = objectRecord(current?.required_status_checks);
+  if (!statusChecks) {
+    return null;
+  }
+  const output: Record<string, unknown> = {
+    strict:
+      typeof statusChecks.strict === "boolean"
+        ? statusChecks.strict
+        : stringValue(statusChecks.enforcement_level) !== "off",
+    contexts: Array.isArray(statusChecks.contexts) ? statusChecks.contexts.filter(isString) : []
+  };
+  if (Array.isArray(statusChecks.checks)) {
+    output.checks = statusChecks.checks;
+  }
+  return output;
+}
+
+function currentPullRequestReviews(current: Record<string, unknown> | null): unknown {
+  const reviews = objectRecord(current?.required_pull_request_reviews);
+  if (!reviews) {
+    return null;
+  }
+  if (reviews.dismissal_restrictions || reviews.bypass_pull_request_allowances) {
+    throw new Error(
+      "Cannot update branch protection without explicit pull request review settings; existing review bypass or dismissal restrictions cannot be safely preserved."
+    );
+  }
+  return {
+    dismiss_stale_reviews: booleanValue(reviews.dismiss_stale_reviews, false),
+    require_code_owner_reviews: booleanValue(reviews.require_code_owner_reviews, false),
+    required_approving_review_count: numberValue(reviews.required_approving_review_count, 0),
+    require_last_push_approval: booleanValue(reviews.require_last_push_approval, false)
+  };
+}
+
+function currentRestrictions(current: Record<string, unknown> | null): unknown {
+  if (!current?.restrictions) {
+    return null;
+  }
+  throw new Error(
+    "Cannot update branch protection without explicit restrictions; existing push restrictions cannot be safely preserved."
+  );
+}
+
+function enabledFlag(
+  current: Record<string, unknown> | null,
+  key: string,
+  fallback: boolean | null
+): boolean | null {
+  const value = objectRecord(current?.[key]);
+  return value ? booleanValue(value.enabled, fallback) : fallback;
+}
+
+function objectRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function booleanValue(value: unknown, fallback: boolean | null): boolean | null {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function numberValue(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === "string";
 }
 
 function getNumber(payload: GitHubMutationRuntimePayload, key: keyof GitHubMutationFields): number {

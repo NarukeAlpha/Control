@@ -1,6 +1,6 @@
 import type { AreaRepositoryDetail, AreaRepositorySummary, AreaSummary } from "@shared/areas";
 
-export const readyAreaHealth = {
+const readyAreaHealth = {
   status: "ready",
   message: null,
   checkedAt: "2026-05-01T00:00:00.000Z"

@@ -265,7 +265,7 @@ export class GitHubReadCache {
   }
 }
 
-export function repositoryStatusCacheKey(limit: number): string {
+function repositoryStatusCacheKey(limit: number): string {
   return `repositories-with-status:${limit}`;
 }
 

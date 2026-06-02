@@ -1,4 +1,4 @@
-import { readdir, readFile, stat } from "node:fs/promises";
+import { lstat, readdir, readFile, realpath, stat } from "node:fs/promises";
 import { join, normalize, relative, resolve, sep } from "node:path";
 
 import type { AreaFileContent, AreaFileEntry } from "@shared/areas";
@@ -9,15 +9,18 @@ export async function listLocalDirectory(
   rootPath: string,
   requestedPath: string | null = null
 ): Promise<AreaFileEntry[]> {
-  const directoryPath = resolveInsideRoot(rootPath, requestedPath ?? ".");
+  const resolvedDirectory = await resolveExistingPathInsideRoot(rootPath, requestedPath ?? ".");
+  const directoryPath = resolvedDirectory.targetPath;
   const entries = await readdir(directoryPath, { withFileTypes: true });
   const rows = await Promise.all(
     entries
       .filter((entry) => entry.name !== ".git" && entry.name !== ".jj")
       .map(async (entry): Promise<AreaFileEntry> => {
         const absolutePath = join(directoryPath, entry.name);
-        const relativePath = normalize(relative(rootPath, absolutePath)).split(sep).join("/");
-        const entryStat = await stat(absolutePath).catch(() => null);
+        const relativePath = normalize(relative(resolvedDirectory.rootPath, absolutePath))
+          .split(sep)
+          .join("/");
+        const entryStat = await lstat(absolutePath).catch(() => null);
         return {
           name: entry.name,
           path: relativePath,
@@ -48,8 +51,16 @@ export async function readLocalFileContent(
   rootPath: string,
   requestedPath: string
 ): Promise<AreaFileContent> {
-  const filePath = resolveInsideRoot(rootPath, requestedPath);
-  const fileStat = await stat(filePath).catch(() => null);
+  const resolvedPath = resolveInsideRoot(rootPath, requestedPath);
+  const filePath = await resolveExistingPathInsideRoot(rootPath, requestedPath).catch(() => null);
+  if (!filePath) {
+    return unavailableFile(requestedPath, "File is unavailable.");
+  }
+  const linkStat = await lstat(resolvedPath).catch(() => null);
+  if (!linkStat) {
+    return unavailableFile(requestedPath, "File is unavailable.");
+  }
+  const fileStat = await stat(filePath.targetPath).catch(() => null);
   if (!fileStat || !fileStat.isFile()) {
     return unavailableFile(requestedPath, "File is unavailable.");
   }
@@ -64,7 +75,7 @@ export async function readLocalFileContent(
     };
   }
 
-  const bytes = await readFile(filePath);
+  const bytes = await readFile(filePath.targetPath);
   if (bytes.includes(0)) {
     return {
       path: requestedPath,
@@ -93,6 +104,18 @@ function resolveInsideRoot(rootPath: string, requestedPath: string): string {
     throw new Error("Local file path escapes the repository root.");
   }
   return target;
+}
+
+async function resolveExistingPathInsideRoot(
+  rootPath: string,
+  requestedPath: string
+): Promise<{ rootPath: string; targetPath: string }> {
+  const target = resolveInsideRoot(rootPath, requestedPath);
+  const [rootRealPath, targetRealPath] = await Promise.all([realpath(rootPath), realpath(target)]);
+  if (targetRealPath !== rootRealPath && !targetRealPath.startsWith(`${rootRealPath}${sep}`)) {
+    throw new Error("Local file path escapes the repository root.");
+  }
+  return { rootPath: rootRealPath, targetPath: targetRealPath };
 }
 
 function unavailableFile(path: string, message: string): AreaFileContent {

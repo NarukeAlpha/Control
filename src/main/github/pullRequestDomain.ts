@@ -709,7 +709,7 @@ export class OctokitPullRequestDomain {
   }
 }
 
-export function mapPullRequest(pr: GitHubPullRequest): PullRequestSummary {
+function mapPullRequest(pr: GitHubPullRequest): PullRequestSummary {
   const headRepositoryNameWithOwner = pr.head?.repo?.full_name ?? null;
   const baseRepositoryNameWithOwner = pr.base?.repo?.full_name ?? null;
   return {
@@ -901,12 +901,22 @@ function mapPullRequestReview(review: GitHubPullRequestReview): PullRequestRevie
 }
 
 function latestPullRequestReviewState(reviews: PullRequestReviewSummary[]): string | null {
-  return (
-    reviews
-      .filter((review) => review.state !== "COMMENTED")
-      .sort((a, b) => (Date.parse(b.submittedAt ?? "") || 0) - (Date.parse(a.submittedAt ?? "") || 0))[0]
-      ?.state ?? null
-  );
+  let latestState: string | null = null;
+  let latestSubmittedAt = 0;
+
+  for (const review of reviews) {
+    if (review.state === "COMMENTED") {
+      continue;
+    }
+
+    const submittedAt = Date.parse(review.submittedAt ?? "") || 0;
+    if (submittedAt >= latestSubmittedAt) {
+      latestState = review.state;
+      latestSubmittedAt = submittedAt;
+    }
+  }
+
+  return latestState;
 }
 
 function mapPullRequestCheck(run: GitHubCheckRun): PullRequestCheckSummary {
@@ -934,8 +944,7 @@ function groupPullRequestReviewThreads(
   const stateByThreadId = new Map<number, GitHubPullRequestReviewThreadNode>();
 
   for (const threadState of threadStates) {
-    const rootComment = threadState.comments.nodes.find((comment) => comment.replyTo === null);
-    const rootCommentId = rootComment?.databaseId ?? threadState.comments.nodes[0]?.databaseId ?? null;
+    const rootCommentId = rootReviewThreadCommentId(threadState);
     if (rootCommentId !== null) {
       stateByThreadId.set(rootCommentId, threadState);
     }
@@ -949,8 +958,7 @@ function groupPullRequestReviewThreads(
   return Array.from(byThreadId.entries()).map(([threadId, commentsInThread]) => {
     const root = commentsInThread.find((comment) => comment.id === threadId) ?? commentsInThread[0]!;
     const threadState =
-      stateByThreadId.get(threadId) ??
-      commentsInThread.map((comment) => stateByThreadId.get(comment.id)).find((state) => state !== undefined);
+      stateByThreadId.get(threadId) ?? reviewThreadStateForComments(commentsInThread, stateByThreadId);
     return {
       id: threadId,
       path: threadState?.path ?? root.path,
@@ -961,6 +969,32 @@ function groupPullRequestReviewThreads(
       )
     };
   });
+}
+
+function rootReviewThreadCommentId(threadState: GitHubPullRequestReviewThreadNode): number | null {
+  const firstCommentId = threadState.comments.nodes[0]?.databaseId ?? null;
+
+  for (const comment of threadState.comments.nodes) {
+    if (comment.replyTo === null && comment.databaseId !== null) {
+      return comment.databaseId;
+    }
+  }
+
+  return firstCommentId;
+}
+
+function reviewThreadStateForComments(
+  comments: PullRequestReviewThreadCommentSummary[],
+  stateByThreadId: Map<number, GitHubPullRequestReviewThreadNode>
+): GitHubPullRequestReviewThreadNode | undefined {
+  for (const comment of comments) {
+    const threadState = stateByThreadId.get(comment.id);
+    if (threadState) {
+      return threadState;
+    }
+  }
+
+  return undefined;
 }
 
 function mapPullRequestReviewThreadComment(

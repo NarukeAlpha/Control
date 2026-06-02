@@ -5,7 +5,7 @@ import type { TimelineCommentSummary } from "@shared/github";
 import type { MarkdownUrlContext } from "@renderer/components/MarkdownBody";
 import { TimelineComment } from "@renderer/components/shared/TimelineComment";
 
-export interface TimelineThreadCommentActions {
+interface TimelineThreadCommentActions {
   getDisabledReason(comment: TimelineCommentSummary): string | null;
   onEdit(comment: TimelineCommentSummary, body: string): void;
   onDelete(comment: TimelineCommentSummary): void;
@@ -51,7 +51,7 @@ export function TimelineThread({
         onOpenExternal={onOpenExternal}
       />
       {loading ? (
-        <div className="loading-state">Loading discussion...</div>
+        <div className="loading-state">Loading discussion…</div>
       ) : availabilityMessage ? (
         <div className="error-state">{availabilityMessage}</div>
       ) : (

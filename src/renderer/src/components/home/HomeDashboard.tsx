@@ -95,6 +95,67 @@ type HomeTimelineItem =
       issue: IssueSummary;
     };
 
+interface HomeDashboardProps {
+  appState?: AppState;
+  profile?: GitHubAccountProfile;
+  profileAvailabilityMessage: string | null;
+  repositories: RepositorySummary[];
+  repositoryActivityLimit: number;
+  repositoriesLoading: boolean;
+  repositoriesError: Error | null;
+  repositoriesAvailabilityMessage: string | null;
+  pinnedRepositoryNames: string[];
+  recentItems: LocalRecentItem[];
+  issues: IssueSummary[];
+  issuesLoading: boolean;
+  issuesError: Error | null;
+  issuesAvailability: GitHubReadAvailability | null;
+  pulls: PullRequestSummary[];
+  pullsLoading: boolean;
+  pullsError: Error | null;
+  pullsAvailability: GitHubReadAvailability | null;
+  onOpenRepository(nameWithOwner: string): void;
+  onLoadMoreRepositories(): void;
+  onOpenRecent(item: LocalRecentItem): void;
+  onOpenIssue(issue: IssueSummary): void;
+  onOpenPullRequest(pullRequest: PullRequestSummary): void;
+  onOpenExternal(url: string): void;
+}
+
+interface HomeMetricModel {
+  label: string;
+  value: number;
+}
+
+interface HomeDashboardModel {
+  login: string;
+  viewerLoading: boolean;
+  displayName: string;
+  avatarUrl: string | null;
+  profileUrl: string;
+  metrics: HomeMetricModel[];
+  pinnedRepositories: RepositoryShortcut[];
+  recentGitHubItems: LocalRecentItem[];
+  activity: HomeActivityModel;
+}
+
+interface HomeActivityModel {
+  latestRepositories: RepositorySummary[];
+  canLoadMoreRepositories: boolean;
+  repositoriesAtLoadedLimit: boolean;
+  contributionCalendar: HomeContributionCalendarView;
+  contributionGridColumns: string;
+  contributionHeading: string;
+  activeContributionDays: number;
+  topActivityRepositories: HomeActivityRepositoryStat[];
+  maxActivityRepositoryCount: number;
+  activityTimelineItems: HomeTimelineItem[];
+  activityLoading: boolean;
+  activityErrors: string[];
+  activityAvailabilityMessages: string[];
+  timelineMonthLabel: string;
+}
+
 function homeActivityTime(value: string | null | undefined): number {
   if (!value) {
     return 0;
@@ -178,7 +239,14 @@ function buildHomeContributionFallbackCells(
   values: Array<string | null | undefined>
 ): HomeContributionCell[] {
   const counts = new Map<string, number>();
-  const times = values.map((value) => homeActivityTime(value)).filter((time) => time > 0);
+  const times: number[] = [];
+
+  for (const value of values) {
+    const time = homeActivityTime(value);
+    if (time > 0) {
+      times.push(time);
+    }
+  }
 
   for (const time of times) {
     const key = homeActivityDayKey(new Date(time));
@@ -217,8 +285,15 @@ function buildHomeContributionMonthLabels(cells: HomeContributionCell[]): HomeCo
   let lastMonthKey: string | null = null;
 
   for (let weekIndex = 0; weekIndex < weekCount; weekIndex += 1) {
-    const weekCells = cells.slice(weekIndex * 7, weekIndex * 7 + 7);
-    const monthStartCell = weekCells.find((cell) => homeDateFromDayKey(cell.date).getDate() <= 7);
+    let monthStartCell: HomeContributionCell | null = null;
+
+    for (let dayIndex = 0; dayIndex < 7; dayIndex += 1) {
+      const cell = cells[weekIndex * 7 + dayIndex];
+      if (cell && homeDateFromDayKey(cell.date).getDate() <= 7) {
+        monthStartCell = cell;
+        break;
+      }
+    }
 
     if (!monthStartCell) {
       continue;
@@ -282,81 +357,22 @@ function homeRepositoryShortcutMetadataParts(repository: RepositoryShortcut): st
   return repositoryShortcutMetadataParts(repository).filter((part) => part !== languageName);
 }
 
-export function HomeDashboard({
-  appState,
-  profile,
-  profileAvailabilityMessage,
-  repositories,
-  repositoryActivityLimit,
-  repositoriesLoading,
-  repositoriesError,
-  repositoriesAvailabilityMessage,
-  pinnedRepositoryNames,
-  recentItems,
-  issues,
-  issuesLoading,
-  issuesError,
-  issuesAvailability,
+function buildHomeActivityTimelineItems({
+  latestRepositories,
   pulls,
-  pullsLoading,
-  pullsError,
-  pullsAvailability,
-  onOpenRepository,
-  onLoadMoreRepositories,
-  onOpenRecent,
-  onOpenIssue,
-  onOpenPullRequest,
-  onOpenExternal
+  issues,
+  login
 }: {
-  appState?: AppState;
-  profile?: GitHubAccountProfile;
-  profileAvailabilityMessage: string | null;
-  repositories: RepositorySummary[];
-  repositoryActivityLimit: number;
-  repositoriesLoading: boolean;
-  repositoriesError: Error | null;
-  repositoriesAvailabilityMessage: string | null;
-  pinnedRepositoryNames: string[];
-  recentItems: LocalRecentItem[];
-  issues: IssueSummary[];
-  issuesLoading: boolean;
-  issuesError: Error | null;
-  issuesAvailability: GitHubReadAvailability | null;
+  latestRepositories: RepositorySummary[];
   pulls: PullRequestSummary[];
-  pullsLoading: boolean;
-  pullsError: Error | null;
-  pullsAvailability: GitHubReadAvailability | null;
-  onOpenRepository(nameWithOwner: string): void;
-  onLoadMoreRepositories(): void;
-  onOpenRecent(item: LocalRecentItem): void;
-  onOpenIssue(issue: IssueSummary): void;
-  onOpenPullRequest(pullRequest: PullRequestSummary): void;
-  onOpenExternal(url: string): void;
-}): JSX.Element {
-  const login = profile?.login ?? appState?.viewer?.login ?? "github";
-  const viewerLoading = Boolean(appState?.github.authenticated && !appState.viewer && !profile);
-  const displayName = viewerLoading
-    ? "Loading GitHub profile"
-    : (profile?.name ?? appState?.viewer?.name ?? login);
-  const sortedRepositories = sortRepositoriesByActivity(repositories);
-  const visibleRepositoryLimit = Math.min(
-    repositoryActivityLimit,
-    sortedRepositories.length,
-    maxRepositoryListLimit
-  );
-  const latestRepositories = sortedRepositories.slice(0, visibleRepositoryLimit);
-  const canLoadMoreRepositories =
-    sortedRepositories.length > latestRepositories.length && repositoryActivityLimit < maxRepositoryListLimit;
-  const repositoriesAtLoadedLimit =
-    !canLoadMoreRepositories &&
-    sortedRepositories.length > 0 &&
-    latestRepositories.length >= Math.min(sortedRepositories.length, maxRepositoryListLimit);
-  const pinnedRepositories = repositoryShortcutsFromPins(pinnedRepositoryNames, repositories);
-  const recentGitHubItems = recentItems.filter((item) => item.provider === "github").slice(0, 6);
-  const repositoryByName = new Map(repositories.map((repository) => [repository.nameWithOwner, repository]));
-  const activityTimelineItems: HomeTimelineItem[] = [
-    ...latestRepositories.map((repository) => ({
-      kind: "repository" as const,
+  issues: IssueSummary[];
+  login: string;
+}): HomeTimelineItem[] {
+  const timelineItems: HomeTimelineItem[] = [];
+
+  for (const repository of latestRepositories) {
+    timelineItems.push({
+      kind: "repository",
       id: `repository-${repository.id}`,
       title: displayRepositoryName(repository, login),
       subtitle:
@@ -365,41 +381,74 @@ export function HomeDashboard({
           : repository.nameWithOwner,
       date: repository.pushedAt ?? repository.updatedAt,
       repository
-    })),
-    ...pulls.map((pull) => ({
-      kind: "pull" as const,
+    });
+  }
+
+  for (const pull of pulls) {
+    timelineItems.push({
+      kind: "pull",
       id: `pull-${pull.repositoryNameWithOwner ?? "github"}-${pull.number}`,
       title: pull.title,
       subtitle: `${pull.repositoryNameWithOwner ?? "GitHub"} #${pull.number}`,
       date: pull.updatedAt,
       pull
-    })),
-    ...issues.map((issue) => ({
-      kind: "issue" as const,
+    });
+  }
+
+  for (const issue of issues) {
+    timelineItems.push({
+      kind: "issue",
       id: `issue-${issue.repositoryNameWithOwner ?? "github"}-${issue.number}`,
       title: issue.title,
       subtitle: `${issue.repositoryNameWithOwner ?? "GitHub"} #${issue.number}`,
       date: issue.updatedAt,
       issue
-    }))
-  ]
-    .sort((a, b) => homeActivityTime(b.date) - homeActivityTime(a.date))
-    .slice(0, 12);
-  const activityDates = [
-    ...latestRepositories.map((repository) => repository.pushedAt ?? repository.updatedAt),
-    ...pulls.map((pull) => pull.updatedAt),
-    ...issues.map((issue) => issue.updatedAt)
-  ];
-  const contributionCalendar = buildHomeContributionCalendarView(
-    profile?.contributionCalendar,
-    activityDates
-  );
-  const contributionCells = contributionCalendar.cells;
-  const activeContributionDays = contributionCalendar.activeDays;
-  const contributionWeekCount = Math.max(1, Math.ceil(contributionCells.length / 7));
-  const contributionGridStyle = {
-    gridTemplateColumns: `repeat(${contributionWeekCount}, 10px)`
-  };
+    });
+  }
+
+  timelineItems.sort((a, b) => homeActivityTime(b.date) - homeActivityTime(a.date));
+
+  return timelineItems.slice(0, 12);
+}
+
+function buildHomeActivityDates({
+  latestRepositories,
+  pulls,
+  issues
+}: {
+  latestRepositories: RepositorySummary[];
+  pulls: PullRequestSummary[];
+  issues: IssueSummary[];
+}): Array<string | null | undefined> {
+  const dates: Array<string | null | undefined> = [];
+
+  for (const repository of latestRepositories) {
+    dates.push(repository.pushedAt ?? repository.updatedAt);
+  }
+  for (const pull of pulls) {
+    dates.push(pull.updatedAt);
+  }
+  for (const issue of issues) {
+    dates.push(issue.updatedAt);
+  }
+
+  return dates;
+}
+
+function buildHomeActivityRepositoryStats({
+  latestRepositories,
+  pulls,
+  issues,
+  repositories,
+  login
+}: {
+  latestRepositories: RepositorySummary[];
+  pulls: PullRequestSummary[];
+  issues: IssueSummary[];
+  repositories: RepositorySummary[];
+  login: string;
+}): HomeActivityRepositoryStat[] {
+  const repositoryByName = new Map(repositories.map((repository) => [repository.nameWithOwner, repository]));
   const activityRepositoryStats = new Map<string, HomeActivityRepositoryStat>();
   const upsertActivityRepository = (
     nameWithOwner: string | null | undefined,
@@ -435,313 +484,583 @@ export function HomeDashboard({
     upsertActivityRepository(issue.repositoryNameWithOwner, 1, issue.updatedAt);
   }
 
-  const topActivityRepositories = [...activityRepositoryStats.values()]
-    .sort(
-      (a, b) =>
-        b.count - a.count ||
-        homeActivityTime(b.latestAt) - homeActivityTime(a.latestAt) ||
-        a.nameWithOwner.localeCompare(b.nameWithOwner)
-    )
-    .slice(0, 4);
+  const topActivityRepositories = Array.from(activityRepositoryStats.values());
+  topActivityRepositories.sort(
+    (a, b) =>
+      b.count - a.count ||
+      homeActivityTime(b.latestAt) - homeActivityTime(a.latestAt) ||
+      a.nameWithOwner.localeCompare(b.nameWithOwner)
+  );
+
+  return topActivityRepositories.slice(0, 4);
+}
+
+function buildHomeActivityModel({
+  profile,
+  repositories,
+  repositoryActivityLimit,
+  repositoriesLoading,
+  repositoriesError,
+  repositoriesAvailabilityMessage,
+  issues,
+  issuesLoading,
+  issuesError,
+  issuesAvailability,
+  pulls,
+  pullsLoading,
+  pullsError,
+  pullsAvailability,
+  login
+}: HomeDashboardProps & { login: string }): HomeActivityModel {
+  const sortedRepositories = sortRepositoriesByActivity(repositories);
+  const visibleRepositoryLimit = Math.min(
+    repositoryActivityLimit,
+    sortedRepositories.length,
+    maxRepositoryListLimit
+  );
+  const latestRepositories = sortedRepositories.slice(0, visibleRepositoryLimit);
+  const canLoadMoreRepositories =
+    sortedRepositories.length > latestRepositories.length && repositoryActivityLimit < maxRepositoryListLimit;
+  const repositoriesAtLoadedLimit =
+    !canLoadMoreRepositories &&
+    sortedRepositories.length > 0 &&
+    latestRepositories.length >= Math.min(sortedRepositories.length, maxRepositoryListLimit);
+  const activityTimelineItems = buildHomeActivityTimelineItems({ latestRepositories, pulls, issues, login });
+  const activityDates = buildHomeActivityDates({ latestRepositories, pulls, issues });
+  const contributionCalendar = buildHomeContributionCalendarView(
+    profile?.contributionCalendar,
+    activityDates
+  );
+  const contributionWeekCount = Math.max(1, Math.ceil(contributionCalendar.cells.length / 7));
+  const totalActivityUpdates = contributionCalendar.totalContributions;
+  const topActivityRepositories = buildHomeActivityRepositoryStats({
+    latestRepositories,
+    pulls,
+    issues,
+    repositories,
+    login
+  });
   const maxActivityRepositoryCount = Math.max(
     1,
     ...topActivityRepositories.map((repository) => repository.count)
   );
-  const totalActivityUpdates = contributionCalendar.totalContributions;
-  const contributionHeading = contributionCalendar.exact
-    ? `${formatCompactNumber(totalActivityUpdates)} contributions in the last year`
-    : `${formatCompactNumber(totalActivityUpdates)} visible updates`;
-  const activityLoading = repositoriesLoading || issuesLoading || pullsLoading;
-  const activityErrors = [
-    repositoriesError ? `Repositories unavailable: ${repositoriesError.message}` : null,
-    issuesError ? `Issues unavailable: ${issuesError.message}` : null,
-    pullsError ? `Pull requests unavailable: ${pullsError.message}` : null
-  ].filter((message): message is string => Boolean(message));
-  const activityAvailabilityMessages = [
-    repositoriesAvailabilityMessage,
-    readAvailabilityMessage("Account issues", issuesAvailability),
-    readAvailabilityMessage("Account pull requests", pullsAvailability)
-  ].filter((message): message is string => Boolean(message));
-  const timelineMonthLabel = homeTimelineMonthLabel(activityTimelineItems);
+
+  return {
+    latestRepositories,
+    canLoadMoreRepositories,
+    repositoriesAtLoadedLimit,
+    contributionCalendar,
+    contributionGridColumns: `repeat(${contributionWeekCount}, 10px)`,
+    contributionHeading: contributionCalendar.exact
+      ? `${formatCompactNumber(totalActivityUpdates)} contributions in the last year`
+      : `${formatCompactNumber(totalActivityUpdates)} visible updates`,
+    activeContributionDays: contributionCalendar.activeDays,
+    topActivityRepositories,
+    maxActivityRepositoryCount,
+    activityTimelineItems,
+    activityLoading: repositoriesLoading || issuesLoading || pullsLoading,
+    activityErrors: [
+      repositoriesError ? `Repositories unavailable: ${repositoriesError.message}` : null,
+      issuesError ? `Issues unavailable: ${issuesError.message}` : null,
+      pullsError ? `Pull requests unavailable: ${pullsError.message}` : null
+    ].filter((message): message is string => Boolean(message)),
+    activityAvailabilityMessages: [
+      repositoriesAvailabilityMessage,
+      readAvailabilityMessage("Account issues", issuesAvailability),
+      readAvailabilityMessage("Account pull requests", pullsAvailability)
+    ].filter((message): message is string => Boolean(message)),
+    timelineMonthLabel: homeTimelineMonthLabel(activityTimelineItems)
+  };
+}
+
+function buildHomeDashboardModel(props: HomeDashboardProps): HomeDashboardModel {
+  const { appState, profile, repositories, pinnedRepositoryNames, recentItems, issues, pulls } = props;
+  const login = profile?.login ?? appState?.viewer?.login ?? "github";
+  const viewerLoading = Boolean(appState?.github.authenticated && !appState.viewer && !profile);
+  const displayName = viewerLoading
+    ? "Loading GitHub profile"
+    : (profile?.name ?? appState?.viewer?.name ?? login);
+  const avatarUrl = profile?.avatarUrl ?? appState?.viewer?.avatarUrl ?? null;
+
+  return {
+    login,
+    viewerLoading,
+    displayName,
+    avatarUrl,
+    profileUrl: profile?.htmlUrl ?? appState?.viewer?.htmlUrl ?? "https://github.com",
+    metrics: [
+      { label: "Repositories", value: profile?.repositoryCount ?? repositories.length },
+      { label: "Starred", value: profile?.starredRepositoryCount ?? 0 },
+      { label: "Open issues", value: issues.length },
+      { label: "Open PRs", value: pulls.length }
+    ],
+    pinnedRepositories: repositoryShortcutsFromPins(pinnedRepositoryNames, repositories),
+    recentGitHubItems: recentItems.filter((item) => item.provider === "github").slice(0, 6),
+    activity: buildHomeActivityModel({ ...props, login })
+  };
+}
+
+export function HomeDashboard(props: HomeDashboardProps): JSX.Element {
+  const model = buildHomeDashboardModel(props);
 
   return (
     <section className="home-dashboard">
-      <header className="account-hero account-hero-with-metrics">
-        {(profile?.avatarUrl ?? appState?.viewer?.avatarUrl) ? (
-          <img src={profile?.avatarUrl ?? appState?.viewer?.avatarUrl ?? ""} alt="" />
-        ) : (
-          <span className={`avatar-placeholder ${viewerLoading ? "loading-avatar" : ""}`}>
-            {login.slice(0, 1).toUpperCase()}
-          </span>
-        )}
-        <div className="account-hero-copy">
-          <div className="account-hero-title-row">
-            <h1>{displayName}</h1>
-            <button
-              className="account-hero-profile-action"
-              type="button"
-              onClick={() =>
-                onOpenExternal(profile?.htmlUrl ?? appState?.viewer?.htmlUrl ?? "https://github.com")
-              }
-            >
-              <ExternalLink size={16} /> Open profile
-            </button>
-          </div>
-          <p>@{login}</p>
-          {profile?.bio && <small>{profile.bio}</small>}
-          {profileAvailabilityMessage && <small className="error-state">{profileAvailabilityMessage}</small>}
-        </div>
-        <div className="account-hero-metrics" aria-label="Account metrics">
-          <HeroMetric label="Repositories" value={profile?.repositoryCount ?? repositories.length} />
-          <HeroMetric label="Starred" value={profile?.starredRepositoryCount ?? 0} />
-          <HeroMetric label="Open issues" value={issues.length} />
-          <HeroMetric label="Open PRs" value={pulls.length} />
-        </div>
-      </header>
-
+      <HomeAccountHero
+        login={model.login}
+        model={model}
+        profile={props.profile}
+        profileAvailabilityMessage={props.profileAvailabilityMessage}
+        onOpenExternal={props.onOpenExternal}
+      />
       <section className="home-grid">
-        {pinnedRepositories.length > 0 && (
-          <article className="home-panel">
-            <header>
-              <h2>Pinned repositories</h2>
-            </header>
-            <div className="home-repo-grid">
-              {pinnedRepositories.map((repository) => {
-                const metadataParts = homeRepositoryShortcutMetadataParts(repository);
-                const chips = repositoryShortcutChips(repository);
-
-                return (
-                  <button
-                    key={repository.id}
-                    type="button"
-                    onClick={() => onOpenRepository(repository.nameWithOwner)}
-                  >
-                    <strong>{displayRepositoryShortcutName(repository, login)}</strong>
-                    <small>{repository.description ?? "Pinned locally in Control"}</small>
-                    {metadataParts.length > 0 && <span>{metadataParts.join(" · ")}</span>}
-                    <span className="home-repo-card-chips">
-                      {chips.map((chip) => (
-                        <span key={chip} className={`state-chip ${chip === "pinned" ? "success" : ""}`}>
-                          {chip}
-                        </span>
-                      ))}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </article>
-        )}
-
-        <article className="home-panel">
-          <header>
-            <h2>Recents</h2>
-          </header>
-          <div className="shortcut-list">
-            {recentGitHubItems.length > 0 ? (
-              recentGitHubItems.map((item) => (
-                <button
-                  key={`${item.kind}-${item.itemKey}`}
-                  type="button"
-                  className="shortcut-item"
-                  onClick={() => onOpenRecent(item)}
-                >
-                  <span className="repo-avatar">{item.kind.slice(0, 1).toUpperCase()}</span>
-                  <span>
-                    <strong>{item.title}</strong>
-                    <small>{item.subtitle ?? item.repositoryNameWithOwner ?? item.url ?? "Recent"}</small>
-                  </span>
-                </button>
-              ))
-            ) : (
-              <p className="muted-row">Open GitHub work to add it here.</p>
-            )}
-          </div>
-        </article>
-
-        <article className="home-panel home-activity-panel">
-          <header>
-            <h2>Latest repository activity</h2>
-          </header>
-
-          <div className="home-activity-overview">
-            <section className="home-contribution-graph-panel" aria-label="Contribution overview">
-              <div className="home-contribution-heading">
-                <strong>{contributionHeading}</strong>
-                <span>{formatCompactNumber(activeContributionDays)} active days</span>
-              </div>
-              <div className="home-contribution-calendar">
-                <div aria-hidden="true" className="home-contribution-months" style={contributionGridStyle}>
-                  {contributionCalendar.monthLabels.map((label) => (
-                    <span key={label.key} style={{ gridColumn: `${label.column} / span 4` }}>
-                      {label.label}
-                    </span>
-                  ))}
-                </div>
-                <div className="home-contribution-weekdays" aria-hidden="true">
-                  <span />
-                  <span>Mon</span>
-                  <span />
-                  <span>Wed</span>
-                  <span />
-                  <span>Fri</span>
-                  <span />
-                </div>
-                <div
-                  className="home-contribution-grid"
-                  style={contributionGridStyle}
-                  aria-label="Contribution activity in the last year"
-                >
-                  {contributionCells.map((cell) => (
-                    <span
-                      aria-label={cell.label}
-                      className={`home-contribution-cell level-${cell.level}`}
-                      key={`${cell.date}-${cell.weekday}`}
-                      style={{ backgroundColor: cell.color ?? undefined }}
-                      title={cell.label}
-                    />
-                  ))}
-                </div>
-              </div>
-              <div className="home-contribution-legend" aria-hidden="true">
-                <span>Less</span>
-                <span
-                  className="home-contribution-cell level-0"
-                  style={{ backgroundColor: homeContributionColors[0] }}
-                />
-                <span
-                  className="home-contribution-cell level-1"
-                  style={{ backgroundColor: homeContributionColors[1] }}
-                />
-                <span
-                  className="home-contribution-cell level-2"
-                  style={{ backgroundColor: homeContributionColors[2] }}
-                />
-                <span
-                  className="home-contribution-cell level-3"
-                  style={{ backgroundColor: homeContributionColors[3] }}
-                />
-                <span
-                  className="home-contribution-cell level-4"
-                  style={{ backgroundColor: homeContributionColors[4] }}
-                />
-                <span>More</span>
-              </div>
-            </section>
-
-            <section className="home-activity-repository-summary" aria-label="Activity overview">
-              <h3>Activity overview</h3>
-              {topActivityRepositories.length > 0 ? (
-                <div className="home-activity-repository-bars">
-                  {topActivityRepositories.map((repository) => (
-                    <div className="home-activity-repository-bar" key={repository.nameWithOwner}>
-                      <div>
-                        <strong>{repository.displayName}</strong>
-                        <small>
-                          {repository.latestAt
-                            ? `updated ${formatRelativeDate(repository.latestAt)}`
-                            : "Repository activity"}
-                        </small>
-                      </div>
-                      <span className="home-activity-bar-track" aria-hidden="true">
-                        <span
-                          style={{
-                            width: `${Math.max(8, (repository.count / maxActivityRepositoryCount) * 100)}%`
-                          }}
-                        />
-                      </span>
-                      <em>{formatCompactNumber(repository.count)}</em>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="muted-row">No repository activity loaded.</p>
-              )}
-            </section>
-          </div>
-
-          <section className="home-activity-timeline" aria-label="Contribution activity">
-            <div className="home-activity-timeline-heading">
-              <h3>Contribution activity</h3>
-              <span>{timelineMonthLabel}</span>
-            </div>
-            {activityLoading && activityTimelineItems.length === 0 && (
-              <div className="loading-state">Loading repository activity…</div>
-            )}
-            {activityErrors.map((message) => (
-              <div className="error-state" key={message}>
-                {message}
-              </div>
-            ))}
-            {activityAvailabilityMessages.map((message) => (
-              <div className="error-state" key={message}>
-                {message}
-              </div>
-            ))}
-            {activityTimelineItems.map((item) => {
-              const icon =
-                item.kind === "repository" ? (
-                  <Code2 size={16} />
-                ) : item.kind === "pull" ? (
-                  <GitPullRequest size={16} />
-                ) : (
-                  <CircleDot size={16} />
-                );
-              const onOpen = (): void => {
-                if (item.kind === "repository") {
-                  onOpenRepository(item.repository.nameWithOwner);
-                  return;
-                }
-                if (item.kind === "pull") {
-                  onOpenPullRequest(item.pull);
-                  return;
-                }
-                onOpenIssue(item.issue);
-              };
-              const ariaLabel =
-                item.kind === "repository"
-                  ? `Open ${item.repository.nameWithOwner}`
-                  : item.kind === "pull"
-                    ? `Open pull request #${item.pull.number}: ${item.pull.title}`
-                    : `Open issue #${item.issue.number}: ${item.issue.title}`;
-
-              return (
-                <button
-                  aria-label={ariaLabel}
-                  className={`home-activity-timeline-row ${item.kind}`}
-                  key={item.id}
-                  type="button"
-                  onClick={onOpen}
-                >
-                  <span className="home-activity-timeline-icon">{icon}</span>
-                  <span className="home-activity-timeline-copy">
-                    <strong>{item.title}</strong>
-                    <small>{item.subtitle}</small>
-                  </span>
-                  <time dateTime={item.date ?? undefined}>{formatRelativeDate(item.date)}</time>
-                </button>
-              );
-            })}
-            {!activityLoading &&
-              activityErrors.length === 0 &&
-              activityAvailabilityMessages.length === 0 &&
-              activityTimelineItems.length === 0 && <div className="empty-state">No activity loaded.</div>}
-            {canLoadMoreRepositories && (
-              <div className="table-action-row">
-                <button type="button" onClick={onLoadMoreRepositories}>
-                  Load more repository activity
-                </button>
-              </div>
-            )}
-            {repositoriesAtLoadedLimit && (
-              <div className="muted-row">
-                Showing {latestRepositories.length} loaded repositories for Home.
-              </div>
-            )}
-          </section>
-        </article>
+        <PinnedRepositoriesPanel
+          login={model.login}
+          repositories={model.pinnedRepositories}
+          onOpenRepository={props.onOpenRepository}
+        />
+        <RecentGitHubPanel items={model.recentGitHubItems} onOpenRecent={props.onOpenRecent} />
+        <HomeActivityPanel
+          activity={model.activity}
+          onLoadMoreRepositories={props.onLoadMoreRepositories}
+          onOpenIssue={props.onOpenIssue}
+          onOpenPullRequest={props.onOpenPullRequest}
+          onOpenRepository={props.onOpenRepository}
+        />
       </section>
     </section>
+  );
+}
+
+function HomeAccountHero({
+  login,
+  model,
+  profile,
+  profileAvailabilityMessage,
+  onOpenExternal
+}: {
+  login: string;
+  model: HomeDashboardModel;
+  profile?: GitHubAccountProfile;
+  profileAvailabilityMessage: string | null;
+  onOpenExternal(url: string): void;
+}): JSX.Element {
+  function openGitHubProfile(): void {
+    onOpenExternal(model.profileUrl);
+  }
+
+  return (
+    <header className="account-hero account-hero-with-metrics">
+      {model.avatarUrl ? (
+        <img src={model.avatarUrl} alt="" />
+      ) : (
+        <span className={`avatar-placeholder ${model.viewerLoading ? "loading-avatar" : ""}`}>
+          {login.slice(0, 1).toUpperCase()}
+        </span>
+      )}
+      <div className="account-hero-copy">
+        <div className="account-hero-title-row">
+          <h1>{model.displayName}</h1>
+          <button className="account-hero-profile-action" type="button" onClick={openGitHubProfile}>
+            <ExternalLink size={16} /> Open profile
+          </button>
+        </div>
+        <p>@{login}</p>
+        {profile?.bio && <small>{profile.bio}</small>}
+        {profileAvailabilityMessage && <small className="error-state">{profileAvailabilityMessage}</small>}
+      </div>
+      <div className="account-hero-metrics" aria-label="Account metrics">
+        {model.metrics.map((metric) => (
+          <HeroMetric key={metric.label} label={metric.label} value={metric.value} />
+        ))}
+      </div>
+    </header>
+  );
+}
+
+function PinnedRepositoriesPanel({
+  repositories,
+  login,
+  onOpenRepository
+}: {
+  repositories: RepositoryShortcut[];
+  login: string;
+  onOpenRepository(nameWithOwner: string): void;
+}): JSX.Element | null {
+  if (repositories.length === 0) {
+    return null;
+  }
+
+  return (
+    <article className="home-panel">
+      <header>
+        <h2>Pinned repositories</h2>
+      </header>
+      <div className="home-repo-grid">
+        {repositories.map((repository) => (
+          <PinnedRepositoryCard
+            key={repository.id}
+            login={login}
+            repository={repository}
+            onOpenRepository={onOpenRepository}
+          />
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function PinnedRepositoryCard({
+  repository,
+  login,
+  onOpenRepository
+}: {
+  repository: RepositoryShortcut;
+  login: string;
+  onOpenRepository(nameWithOwner: string): void;
+}): JSX.Element {
+  const metadataParts = homeRepositoryShortcutMetadataParts(repository);
+  const chips = repositoryShortcutChips(repository);
+
+  function openPinnedRepository(): void {
+    onOpenRepository(repository.nameWithOwner);
+  }
+
+  return (
+    <button type="button" onClick={openPinnedRepository}>
+      <strong>{displayRepositoryShortcutName(repository, login)}</strong>
+      <small>{repository.description ?? "Pinned locally in Control"}</small>
+      {metadataParts.length > 0 && <span>{metadataParts.join(" · ")}</span>}
+      <span className="home-repo-card-chips">
+        {chips.map((chip) => (
+          <span key={chip} className={`state-chip ${chip === "pinned" ? "success" : ""}`}>
+            {chip}
+          </span>
+        ))}
+      </span>
+    </button>
+  );
+}
+
+function RecentGitHubPanel({
+  items,
+  onOpenRecent
+}: {
+  items: LocalRecentItem[];
+  onOpenRecent(item: LocalRecentItem): void;
+}): JSX.Element {
+  return (
+    <article className="home-panel">
+      <header>
+        <h2>Recents</h2>
+      </header>
+      <div className="shortcut-list">
+        {items.length > 0 ? (
+          items.map((item) => (
+            <RecentGitHubItemButton
+              key={`${item.kind}-${item.itemKey}`}
+              item={item}
+              onOpenRecent={onOpenRecent}
+            />
+          ))
+        ) : (
+          <p className="muted-row">Open GitHub work to add it here.</p>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function RecentGitHubItemButton({
+  item,
+  onOpenRecent
+}: {
+  item: LocalRecentItem;
+  onOpenRecent(item: LocalRecentItem): void;
+}): JSX.Element {
+  function openRecentItem(): void {
+    onOpenRecent(item);
+  }
+
+  return (
+    <button type="button" className="shortcut-item" onClick={openRecentItem}>
+      <span className="repo-avatar">{item.kind.slice(0, 1).toUpperCase()}</span>
+      <span>
+        <strong>{item.title}</strong>
+        <small>{item.subtitle ?? item.repositoryNameWithOwner ?? item.url ?? "Recent"}</small>
+      </span>
+    </button>
+  );
+}
+
+function HomeActivityPanel({
+  activity,
+  onLoadMoreRepositories,
+  onOpenRepository,
+  onOpenIssue,
+  onOpenPullRequest
+}: {
+  activity: HomeActivityModel;
+  onLoadMoreRepositories(): void;
+  onOpenRepository(nameWithOwner: string): void;
+  onOpenIssue(issue: IssueSummary): void;
+  onOpenPullRequest(pullRequest: PullRequestSummary): void;
+}): JSX.Element {
+  return (
+    <article className="home-panel home-activity-panel">
+      <header>
+        <h2>Latest repository activity</h2>
+      </header>
+      <div className="home-activity-overview">
+        <HomeContributionGraph activity={activity} />
+        <HomeActivityRepositorySummary activity={activity} />
+      </div>
+      <HomeActivityTimeline
+        activity={activity}
+        onLoadMoreRepositories={onLoadMoreRepositories}
+        onOpenIssue={onOpenIssue}
+        onOpenPullRequest={onOpenPullRequest}
+        onOpenRepository={onOpenRepository}
+      />
+    </article>
+  );
+}
+
+function HomeContributionGraph({ activity }: { activity: HomeActivityModel }): JSX.Element {
+  const contributionGridStyle = { gridTemplateColumns: activity.contributionGridColumns };
+
+  return (
+    <section className="home-contribution-graph-panel" aria-label="Contribution overview">
+      <div className="home-contribution-heading">
+        <strong>{activity.contributionHeading}</strong>
+        <span>{formatCompactNumber(activity.activeContributionDays)} active days</span>
+      </div>
+      <div className="home-contribution-calendar">
+        <div aria-hidden="true" className="home-contribution-months" style={contributionGridStyle}>
+          {activity.contributionCalendar.monthLabels.map((label) => (
+            <HomeContributionMonthMarker key={label.key} label={label} />
+          ))}
+        </div>
+        <div className="home-contribution-weekdays" aria-hidden="true">
+          <span />
+          <span>Mon</span>
+          <span />
+          <span>Wed</span>
+          <span />
+          <span>Fri</span>
+          <span />
+        </div>
+        <div
+          className="home-contribution-grid"
+          style={contributionGridStyle}
+          aria-label="Contribution activity in the last year"
+        >
+          {activity.contributionCalendar.cells.map((cell) => (
+            <HomeContributionCellMarker key={`${cell.date}-${cell.weekday}`} cell={cell} />
+          ))}
+        </div>
+      </div>
+      <HomeContributionLegend />
+    </section>
+  );
+}
+
+function HomeContributionMonthMarker({ label }: { label: HomeContributionMonthLabel }): JSX.Element {
+  const style = { gridColumn: `${label.column} / span 4` };
+
+  return <span style={style}>{label.label}</span>;
+}
+
+function HomeContributionCellMarker({ cell }: { cell: HomeContributionCell }): JSX.Element {
+  const style = { backgroundColor: cell.color ?? undefined };
+
+  return (
+    <span
+      aria-label={cell.label}
+      className={`home-contribution-cell level-${cell.level}`}
+      style={style}
+      title={cell.label}
+    />
+  );
+}
+
+function HomeContributionLegend(): JSX.Element {
+  return (
+    <div className="home-contribution-legend" aria-hidden="true">
+      <span>Less</span>
+      {homeContributionColors.map((color, level) => (
+        <span
+          key={color}
+          className={`home-contribution-cell level-${level}`}
+          style={{ backgroundColor: color }}
+        />
+      ))}
+      <span>More</span>
+    </div>
+  );
+}
+
+function HomeActivityRepositorySummary({ activity }: { activity: HomeActivityModel }): JSX.Element {
+  return (
+    <section className="home-activity-repository-summary" aria-label="Activity overview">
+      <h3>Activity overview</h3>
+      {activity.topActivityRepositories.length > 0 ? (
+        <div className="home-activity-repository-bars">
+          {activity.topActivityRepositories.map((repository) => (
+            <HomeActivityRepositoryBar
+              key={repository.nameWithOwner}
+              maxCount={activity.maxActivityRepositoryCount}
+              repository={repository}
+            />
+          ))}
+        </div>
+      ) : (
+        <p className="muted-row">No repository activity loaded.</p>
+      )}
+    </section>
+  );
+}
+
+function HomeActivityRepositoryBar({
+  repository,
+  maxCount
+}: {
+  repository: HomeActivityRepositoryStat;
+  maxCount: number;
+}): JSX.Element {
+  const barStyle = { width: `${Math.max(8, (repository.count / maxCount) * 100)}%` };
+
+  return (
+    <div className="home-activity-repository-bar">
+      <div>
+        <strong>{repository.displayName}</strong>
+        <small>
+          {repository.latestAt ? `updated ${formatRelativeDate(repository.latestAt)}` : "Repository activity"}
+        </small>
+      </div>
+      <span className="home-activity-bar-track" aria-hidden="true">
+        <span style={barStyle} />
+      </span>
+      <em>{formatCompactNumber(repository.count)}</em>
+    </div>
+  );
+}
+
+function HomeActivityTimeline({
+  activity,
+  onLoadMoreRepositories,
+  onOpenRepository,
+  onOpenIssue,
+  onOpenPullRequest
+}: {
+  activity: HomeActivityModel;
+  onLoadMoreRepositories(): void;
+  onOpenRepository(nameWithOwner: string): void;
+  onOpenIssue(issue: IssueSummary): void;
+  onOpenPullRequest(pullRequest: PullRequestSummary): void;
+}): JSX.Element {
+  const showEmptyState =
+    !activity.activityLoading &&
+    activity.activityErrors.length === 0 &&
+    activity.activityAvailabilityMessages.length === 0 &&
+    activity.activityTimelineItems.length === 0;
+
+  return (
+    <section className="home-activity-timeline" aria-label="Contribution activity">
+      <div className="home-activity-timeline-heading">
+        <h3>Contribution activity</h3>
+        <span>{activity.timelineMonthLabel}</span>
+      </div>
+      {activity.activityLoading && activity.activityTimelineItems.length === 0 && (
+        <div className="loading-state">Loading repository activity…</div>
+      )}
+      {activity.activityErrors.map((message) => (
+        <div className="error-state" key={message}>
+          {message}
+        </div>
+      ))}
+      {activity.activityAvailabilityMessages.map((message) => (
+        <div className="error-state" key={message}>
+          {message}
+        </div>
+      ))}
+      {activity.activityTimelineItems.map((item) => (
+        <HomeActivityTimelineRow
+          item={item}
+          key={item.id}
+          onOpenIssue={onOpenIssue}
+          onOpenPullRequest={onOpenPullRequest}
+          onOpenRepository={onOpenRepository}
+        />
+      ))}
+      {showEmptyState && <div className="empty-state">No activity loaded.</div>}
+      {activity.canLoadMoreRepositories && (
+        <div className="table-action-row">
+          <button type="button" onClick={onLoadMoreRepositories}>
+            Load more repository activity
+          </button>
+        </div>
+      )}
+      {activity.repositoriesAtLoadedLimit && (
+        <div className="muted-row">
+          Showing {activity.latestRepositories.length} loaded repositories for Home.
+        </div>
+      )}
+    </section>
+  );
+}
+
+function HomeActivityTimelineRow({
+  item,
+  onOpenRepository,
+  onOpenIssue,
+  onOpenPullRequest
+}: {
+  item: HomeTimelineItem;
+  onOpenRepository(nameWithOwner: string): void;
+  onOpenIssue(issue: IssueSummary): void;
+  onOpenPullRequest(pullRequest: PullRequestSummary): void;
+}): JSX.Element {
+  const icon =
+    item.kind === "repository" ? (
+      <Code2 size={16} />
+    ) : item.kind === "pull" ? (
+      <GitPullRequest size={16} />
+    ) : (
+      <CircleDot size={16} />
+    );
+  const ariaLabel =
+    item.kind === "repository"
+      ? `Open ${item.repository.nameWithOwner}`
+      : item.kind === "pull"
+        ? `Open pull request #${item.pull.number}: ${item.pull.title}`
+        : `Open issue #${item.issue.number}: ${item.issue.title}`;
+
+  function openTimelineItem(): void {
+    if (item.kind === "repository") {
+      onOpenRepository(item.repository.nameWithOwner);
+      return;
+    }
+    if (item.kind === "pull") {
+      onOpenPullRequest(item.pull);
+      return;
+    }
+    onOpenIssue(item.issue);
+  }
+
+  return (
+    <button
+      aria-label={ariaLabel}
+      className={`home-activity-timeline-row ${item.kind}`}
+      type="button"
+      onClick={openTimelineItem}
+    >
+      <span className="home-activity-timeline-icon">{icon}</span>
+      <span className="home-activity-timeline-copy">
+        <strong>{item.title}</strong>
+        <small>{item.subtitle}</small>
+      </span>
+      <time dateTime={item.date ?? undefined}>{formatRelativeDate(item.date)}</time>
+    </button>
   );
 }
 

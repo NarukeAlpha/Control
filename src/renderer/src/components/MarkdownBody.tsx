@@ -173,7 +173,7 @@ function markdownBlockKey(prefix: string, lineNumber: number, content: string): 
   return `${prefix}-${lineNumber}-${content.slice(0, 80)}`;
 }
 
-function renderPlainMarkdownText(
+function plainMarkdownTextNodes(
   text: string,
   keyPrefix: string,
   onOpenExternal: (url: string) => void,
@@ -243,7 +243,36 @@ function renderPlainMarkdownText(
   return nodes;
 }
 
-function renderEmphasisMarkdown(
+function PlainMarkdownText({
+  text,
+  keyPrefix,
+  onOpenExternal,
+  onOpenMarkdownUrl,
+  urlContext,
+  interactiveReferences = true
+}: {
+  text: string;
+  keyPrefix: string;
+  onOpenExternal: (url: string) => void;
+  onOpenMarkdownUrl?: MarkdownUrlHandler;
+  urlContext?: MarkdownUrlContext;
+  interactiveReferences?: boolean;
+}): JSX.Element {
+  return (
+    <>
+      {plainMarkdownTextNodes(
+        text,
+        keyPrefix,
+        onOpenExternal,
+        onOpenMarkdownUrl,
+        urlContext,
+        interactiveReferences
+      )}
+    </>
+  );
+}
+
+function emphasisMarkdownNodes(
   text: string,
   keyPrefix: string,
   onOpenExternal: (url: string) => void,
@@ -259,7 +288,7 @@ function renderEmphasisMarkdown(
   while ((match = emphasisPattern.exec(text))) {
     if (match.index > lastIndex) {
       nodes.push(
-        ...renderPlainMarkdownText(
+        ...plainMarkdownTextNodes(
           text.slice(lastIndex, match.index),
           `${keyPrefix}-text-${lastIndex}`,
           onOpenExternal,
@@ -275,36 +304,36 @@ function renderEmphasisMarkdown(
     nodes.push(
       deletedText ? (
         <del key={`${keyPrefix}-del-${match.index}`}>
-          {renderPlainMarkdownText(
-            deletedText,
-            `${keyPrefix}-d`,
-            onOpenExternal,
-            onOpenMarkdownUrl,
-            urlContext,
-            interactiveReferences
-          )}
+          <PlainMarkdownText
+            interactiveReferences={interactiveReferences}
+            keyPrefix={`${keyPrefix}-d`}
+            onOpenExternal={onOpenExternal}
+            onOpenMarkdownUrl={onOpenMarkdownUrl}
+            text={deletedText}
+            urlContext={urlContext}
+          />
         </del>
       ) : strongText ? (
         <strong key={`${keyPrefix}-strong-${match.index}`}>
-          {renderPlainMarkdownText(
-            strongText,
-            `${keyPrefix}-s`,
-            onOpenExternal,
-            onOpenMarkdownUrl,
-            urlContext,
-            interactiveReferences
-          )}
+          <PlainMarkdownText
+            interactiveReferences={interactiveReferences}
+            keyPrefix={`${keyPrefix}-s`}
+            onOpenExternal={onOpenExternal}
+            onOpenMarkdownUrl={onOpenMarkdownUrl}
+            text={strongText}
+            urlContext={urlContext}
+          />
         </strong>
       ) : (
         <em key={`${keyPrefix}-em-${match.index}`}>
-          {renderPlainMarkdownText(
-            emphasisText,
-            `${keyPrefix}-e`,
-            onOpenExternal,
-            onOpenMarkdownUrl,
-            urlContext,
-            interactiveReferences
-          )}
+          <PlainMarkdownText
+            interactiveReferences={interactiveReferences}
+            keyPrefix={`${keyPrefix}-e`}
+            onOpenExternal={onOpenExternal}
+            onOpenMarkdownUrl={onOpenMarkdownUrl}
+            text={emphasisText}
+            urlContext={urlContext}
+          />
         </em>
       )
     );
@@ -313,7 +342,7 @@ function renderEmphasisMarkdown(
 
   if (lastIndex < text.length) {
     nodes.push(
-      ...renderPlainMarkdownText(
+      ...plainMarkdownTextNodes(
         text.slice(lastIndex),
         `${keyPrefix}-text-${lastIndex}`,
         onOpenExternal,
@@ -327,7 +356,36 @@ function renderEmphasisMarkdown(
   return nodes;
 }
 
-function renderInlineMarkdown(
+function EmphasisMarkdownText({
+  text,
+  keyPrefix,
+  onOpenExternal,
+  onOpenMarkdownUrl,
+  urlContext,
+  interactiveReferences = true
+}: {
+  text: string;
+  keyPrefix: string;
+  onOpenExternal: (url: string) => void;
+  onOpenMarkdownUrl?: MarkdownUrlHandler;
+  urlContext?: MarkdownUrlContext;
+  interactiveReferences?: boolean;
+}): JSX.Element {
+  return (
+    <>
+      {emphasisMarkdownNodes(
+        text,
+        keyPrefix,
+        onOpenExternal,
+        onOpenMarkdownUrl,
+        urlContext,
+        interactiveReferences
+      )}
+    </>
+  );
+}
+
+function inlineMarkdownNodes(
   text: string,
   onOpenExternal: (url: string) => void,
   keyPrefix: string,
@@ -342,7 +400,7 @@ function renderInlineMarkdown(
   while ((match = inlinePattern.exec(text))) {
     if (match.index > lastIndex) {
       nodes.push(
-        ...renderEmphasisMarkdown(
+        ...emphasisMarkdownNodes(
           text.slice(lastIndex, match.index),
           `${keyPrefix}-text-${lastIndex}`,
           onOpenExternal,
@@ -382,14 +440,14 @@ function renderInlineMarkdown(
             type="button"
             onClick={() => (onOpenMarkdownUrl ?? onOpenExternal)(safeUrl)}
           >
-            {renderEmphasisMarkdown(
-              match[5],
-              `${keyPrefix}-link-label-${match.index}`,
-              onOpenExternal,
-              onOpenMarkdownUrl,
-              urlContext,
-              false
-            )}
+            <EmphasisMarkdownText
+              interactiveReferences={false}
+              keyPrefix={`${keyPrefix}-link-label-${match.index}`}
+              onOpenExternal={onOpenExternal}
+              onOpenMarkdownUrl={onOpenMarkdownUrl}
+              text={match[5]}
+              urlContext={urlContext}
+            />
           </button>
         ) : (
           <span className="markdown-unsafe" key={`${keyPrefix}-link-${match.index}`}>
@@ -404,7 +462,7 @@ function renderInlineMarkdown(
 
   if (lastIndex < text.length) {
     nodes.push(
-      ...renderEmphasisMarkdown(
+      ...emphasisMarkdownNodes(
         text.slice(lastIndex),
         `${keyPrefix}-text-${lastIndex}`,
         onOpenExternal,
@@ -415,6 +473,22 @@ function renderInlineMarkdown(
   }
 
   return nodes;
+}
+
+function InlineMarkdownText({
+  text,
+  keyPrefix,
+  onOpenExternal,
+  onOpenMarkdownUrl,
+  urlContext
+}: {
+  text: string;
+  keyPrefix: string;
+  onOpenExternal: (url: string) => void;
+  onOpenMarkdownUrl?: MarkdownUrlHandler;
+  urlContext?: MarkdownUrlContext;
+}): JSX.Element {
+  return <>{inlineMarkdownNodes(text, onOpenExternal, keyPrefix, urlContext, onOpenMarkdownUrl)}</>;
 }
 
 export function MarkdownBody({
@@ -473,25 +547,29 @@ export function MarkdownBody({
       const Tag = `h${level}` as keyof JSX.IntrinsicElements;
       blocks.push(
         <Tag key={markdownBlockKey("heading", blockStartLine, heading[2].trim())}>
-          {renderInlineMarkdown(
-            heading[2].trim(),
-            onOpenExternal,
-            `heading-${blockStartLine}`,
-            urlContext,
-            markdownUrlHandler
-          )}
+          <InlineMarkdownText
+            keyPrefix={`heading-${blockStartLine}`}
+            onOpenExternal={onOpenExternal}
+            onOpenMarkdownUrl={markdownUrlHandler}
+            text={heading[2].trim()}
+            urlContext={urlContext}
+          />
         </Tag>
       );
       index += 1;
       continue;
     }
 
-    if (index + 1 < lines.length && line.includes("|") && isMarkdownTableDivider(lines[index + 1] ?? "")) {
+    if (
+      index + 1 < lines.length &&
+      line.indexOf("|") !== -1 &&
+      isMarkdownTableDivider(lines[index + 1] ?? "")
+    ) {
       const blockStartLine = index;
       const headers = splitTableCells(line);
       const rows: string[][] = [];
       index += 2;
-      while (index < lines.length && lines[index]?.includes("|")) {
+      while (index < lines.length && (lines[index]?.indexOf("|") ?? -1) !== -1) {
         rows.push(splitTableCells(lines[index] ?? ""));
         index += 1;
       }
@@ -501,13 +579,13 @@ export function MarkdownBody({
             <tr>
               {headers.map((header, cellIndex) => (
                 <th key={`h-${header}`}>
-                  {renderInlineMarkdown(
-                    header,
-                    onOpenExternal,
-                    `table-h-${index}-${cellIndex}`,
-                    urlContext,
-                    markdownUrlHandler
-                  )}
+                  <InlineMarkdownText
+                    keyPrefix={`table-h-${index}-${cellIndex}`}
+                    onOpenExternal={onOpenExternal}
+                    onOpenMarkdownUrl={markdownUrlHandler}
+                    text={header}
+                    urlContext={urlContext}
+                  />
                 </th>
               ))}
             </tr>
@@ -517,13 +595,13 @@ export function MarkdownBody({
               <tr key={`r-${row.join("|")}`}>
                 {headers.map((_, cellIndex) => (
                   <td key={`c-${headers[cellIndex] ?? ""}`}>
-                    {renderInlineMarkdown(
-                      row[cellIndex] ?? "",
-                      onOpenExternal,
-                      `table-c-${index}-${rowIndex}-${cellIndex}`,
-                      urlContext,
-                      markdownUrlHandler
-                    )}
+                    <InlineMarkdownText
+                      keyPrefix={`table-c-${index}-${rowIndex}-${cellIndex}`}
+                      onOpenExternal={onOpenExternal}
+                      onOpenMarkdownUrl={markdownUrlHandler}
+                      text={row[cellIndex] ?? ""}
+                      urlContext={urlContext}
+                    />
                   </td>
                 ))}
               </tr>
@@ -564,13 +642,13 @@ export function MarkdownBody({
           {items.map((item) => (
             <li key={markdownBlockKey("item", item.lineNumber, item.text)}>
               {item.checked !== null && <input checked={item.checked} readOnly type="checkbox" />}
-              {renderInlineMarkdown(
-                item.text,
-                onOpenExternal,
-                `list-${blockStartLine}-${item.lineNumber}`,
-                urlContext,
-                markdownUrlHandler
-              )}
+              <InlineMarkdownText
+                keyPrefix={`list-${blockStartLine}-${item.lineNumber}`}
+                onOpenExternal={onOpenExternal}
+                onOpenMarkdownUrl={markdownUrlHandler}
+                text={item.text}
+                urlContext={urlContext}
+              />
             </li>
           ))}
         </ListTag>
@@ -587,13 +665,13 @@ export function MarkdownBody({
       }
       blocks.push(
         <blockquote key={markdownBlockKey("quote", blockStartLine, quoteLines.join(" "))}>
-          {renderInlineMarkdown(
-            quoteLines.join(" "),
-            onOpenExternal,
-            `quote-${blockStartLine}`,
-            urlContext,
-            markdownUrlHandler
-          )}
+          <InlineMarkdownText
+            keyPrefix={`quote-${blockStartLine}`}
+            onOpenExternal={onOpenExternal}
+            onOpenMarkdownUrl={markdownUrlHandler}
+            text={quoteLines.join(" ")}
+            urlContext={urlContext}
+          />
         </blockquote>
       );
       continue;
@@ -615,13 +693,13 @@ export function MarkdownBody({
     }
     blocks.push(
       <p key={markdownBlockKey("paragraph", blockStartLine, paragraphLines.join(" "))}>
-        {renderInlineMarkdown(
-          paragraphLines.join(" "),
-          onOpenExternal,
-          `paragraph-${blockStartLine}`,
-          urlContext,
-          markdownUrlHandler
-        )}
+        <InlineMarkdownText
+          keyPrefix={`paragraph-${blockStartLine}`}
+          onOpenExternal={onOpenExternal}
+          onOpenMarkdownUrl={markdownUrlHandler}
+          text={paragraphLines.join(" ")}
+          urlContext={urlContext}
+        />
       </p>
     );
   }

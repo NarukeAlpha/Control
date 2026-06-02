@@ -17,7 +17,7 @@ export default defineConfig({
     video: "retain-on-failure"
   },
   webServer: {
-    command: "npm run dev:renderer -- --port 5173",
+    command: "bun run dev:renderer -- --port 5173",
     url: baseURL,
     reuseExistingServer: true,
     timeout: 120_000

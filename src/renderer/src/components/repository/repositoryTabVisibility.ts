@@ -3,7 +3,7 @@ import type { RepositoryDetail, RepositoryTabPreference, RepositoryTabPreference
 import type { AppRoute, RepositoryTab } from "../../stores/uiStore";
 import { repoTabs, type RepositoryTabDescriptor } from "./repositoryTabs";
 
-export type { RepositoryTabPreference, RepositoryTabPreferenceKey } from "@shared/github";
+export type { RepositoryTabPreferenceKey } from "@shared/github";
 
 export interface RepositoryTabVisibilityInput {
   repository: RepositoryDetail | null;
@@ -18,12 +18,7 @@ export interface RepositoryTabVisibilityResult {
   queryGates: Record<RepositoryTab, boolean>;
 }
 
-export const requiredRepositoryTabs = [
-  "code",
-  "issues",
-  "pulls",
-  "actions"
-] as const satisfies RepositoryTab[];
+const requiredRepositoryTabs = ["code", "issues", "pulls", "actions"] as const satisfies RepositoryTab[];
 
 export const repositoryTabPreferenceKeys = [
   "agents",

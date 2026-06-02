@@ -14,9 +14,9 @@ import {
   clearContributorsTabStateForTests,
   ContributorsTab,
   ContributorsTabBoundary,
-  prefetchContributorsTabData,
   type ContributorsTabProps
 } from "./ContributorsTab";
+import { prefetchContributorsTabData } from "./ContributorsTab.queries";
 import { useContributorsTabStateStore } from "./contributorsTabState";
 
 const available = { status: "available", message: null } satisfies GitHubReadAvailability;

@@ -642,7 +642,7 @@ interface GitHubBranchProtectionEnabledFlag {
   enabled?: boolean | null;
 }
 
-export interface GitHubBranchProtection {
+interface GitHubBranchProtection {
   url?: string | null;
   required_status_checks?: {
     contexts?: string[];
@@ -668,7 +668,7 @@ export interface GitHubBranchProtection {
   allow_fork_syncing?: GitHubBranchProtectionEnabledFlag | null;
 }
 
-export interface GitHubContentItem {
+interface GitHubContentItem {
   name: string;
   path: string;
   type: "file" | "dir" | "submodule" | "symlink";
@@ -678,7 +678,7 @@ export interface GitHubContentItem {
   download_url?: string | null;
 }
 
-export interface GitHubContentFile extends GitHubContentItem {
+interface GitHubContentFile extends GitHubContentItem {
   type: "file";
   content?: string;
   encoding?: string;
@@ -692,7 +692,7 @@ interface GitHubCommunityProfileFile {
   url?: string | null;
 }
 
-export interface GitHubCommunityProfile {
+interface GitHubCommunityProfile {
   health_percentage?: number | null;
   description?: string | null;
   documentation?: string | null;
@@ -706,7 +706,7 @@ export interface GitHubCommunityProfile {
   } | null;
 }
 
-export interface GitHubDependabotAlert {
+interface GitHubDependabotAlert {
   number: number;
   state: string;
   dependency?: {
@@ -728,7 +728,7 @@ export interface GitHubDependabotAlert {
   fixed_at?: string | null;
 }
 
-export interface GitHubCodeScanningAlert {
+interface GitHubCodeScanningAlert {
   number: number;
   state: string;
   rule?: {
@@ -757,7 +757,7 @@ export interface GitHubCodeScanningAlert {
   fixed_at?: string | null;
 }
 
-export interface GitHubSecretScanningAlert {
+interface GitHubSecretScanningAlert {
   number: number;
   state: string;
   resolution?: string | null;
@@ -779,7 +779,7 @@ export interface GitHubSecretScanningAlert {
   updated_at?: string | null;
 }
 
-export interface GitHubRepositoryRuleset {
+interface GitHubRepositoryRuleset {
   id: number;
   node_id?: string | null;
   name: string;
@@ -801,7 +801,7 @@ export interface GitHubRepositoryRuleset {
   updated_at?: string | null;
 }
 
-export interface GitHubRepositorySecurityAdvisory {
+interface GitHubRepositorySecurityAdvisory {
   ghsa_id: string;
   cve_id?: string | null;
   state: string;

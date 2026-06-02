@@ -8,7 +8,7 @@ import { readAvailabilityMessage } from "../repository/repositoryUi";
 
 const emptyRepoEntries: RepoEntry[] = [];
 
-export function codeBrowserContentsQueryKey(
+function codeBrowserContentsQueryKey(
   owner: string,
   repo: string,
   selectedRef: string | null,

@@ -59,11 +59,11 @@ export const mockNotifications: NotificationSummary[] = [
   }
 ];
 
-export function readMockNotifications(): NotificationSummary[] {
+function readMockNotifications(): NotificationSummary[] {
   return readMockArray(mockNotificationsKey, () => mockNotifications);
 }
 
-export function writeMockNotifications(items: NotificationSummary[]): void {
+function writeMockNotifications(items: NotificationSummary[]): void {
   writeMockArray(mockNotificationsKey, items);
 }
 

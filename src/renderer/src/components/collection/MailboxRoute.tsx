@@ -9,13 +9,14 @@ import {
   Search,
   X
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState, type ChangeEvent } from "react";
 import type { JSX } from "react";
 
 import type { IssueSummary, NotificationSummary, PullRequestSummary } from "@shared/github";
 import { useAccountWork } from "../../hooks/useAccountWork";
 import { useMailboxNotifications } from "../../hooks/useMailboxNotifications";
 import { formatRelativeDate } from "../../utils/format";
+import type { ConfirmAction } from "../dialogs/confirmation";
 import { readAvailabilityMessage } from "../repository/repositoryUi";
 import { matchesCollectionFilter } from "./collectionUi";
 import {
@@ -50,6 +51,340 @@ export interface MailboxRouteProps {
   onNotificationFilterChange(filter: MailboxNotificationFilter): void;
   onExpandMailboxWork(): void;
   onExpandMailboxNotifications(): void;
+  onConfirm: ConfirmAction;
+}
+
+type MailboxWorkItemRow = (IssueSummary & { kind: "issue" }) | (PullRequestSummary & { kind: "pull" });
+
+const notificationFilters: Array<{ value: MailboxNotificationFilter; label: string }> = [
+  { value: "unread", label: "Unread" },
+  { value: "all", label: "All" },
+  { value: "participating", label: "Participating" }
+];
+const emptyIssueSummaries: IssueSummary[] = [];
+const emptyPullRequestSummaries: PullRequestSummary[] = [];
+
+function collectUnreadNotificationIds(notifications: NotificationSummary[]): string[] {
+  const unreadIds: string[] = [];
+
+  for (const notification of notifications) {
+    if (notification.unread) {
+      unreadIds.push(notification.id);
+    }
+  }
+
+  return unreadIds;
+}
+
+function NotificationFilterButton({
+  filter,
+  selectedFilter,
+  onNotificationFilterChange
+}: {
+  filter: (typeof notificationFilters)[number];
+  selectedFilter: MailboxNotificationFilter;
+  onNotificationFilterChange(filter: MailboxNotificationFilter): void;
+}): JSX.Element {
+  function handleSelectFilter(): void {
+    onNotificationFilterChange(filter.value);
+  }
+
+  return (
+    <button
+      className={filter.value === selectedFilter ? "selected-action" : ""}
+      type="button"
+      aria-pressed={filter.value === selectedFilter}
+      onClick={handleSelectFilter}
+    >
+      {filter.label}
+    </button>
+  );
+}
+
+function MailboxNotificationRow({
+  notification,
+  markReadDisabledReason,
+  unsubscribeDisabledReason,
+  onOpenExternal,
+  onOpenNotification,
+  onMarkNotificationRead,
+  onUnsubscribeNotification
+}: {
+  notification: NotificationSummary;
+  markReadDisabledReason: string | null;
+  unsubscribeDisabledReason: string | null;
+  onOpenExternal(url: string): void;
+  onOpenNotification(notification: NotificationSummary): void;
+  onMarkNotificationRead(threadId: string): void;
+  onUnsubscribeNotification(notification: NotificationSummary): void;
+}): JSX.Element {
+  const metadataParts = notificationMetadataParts(notification);
+  const notificationTarget = notificationInAppTarget(notification);
+  const notificationExternalUrl = notificationTargetUrl(notification);
+  const latestCommentUrl = notification.subject.latestCommentHtmlUrl;
+
+  function handleOpenNotification(): void {
+    onOpenNotification(notification);
+  }
+
+  function handleOpenExternal(): void {
+    onOpenExternal(notificationExternalUrl);
+  }
+
+  function handleOpenLatestComment(): void {
+    if (latestCommentUrl) {
+      onOpenExternal(latestCommentUrl);
+    }
+  }
+
+  function handleMarkRead(): void {
+    onMarkNotificationRead(notification.id);
+  }
+
+  function handleUnsubscribe(): void {
+    onUnsubscribeNotification(notification);
+  }
+
+  return (
+    <div className={`issue-row notification-row ${notification.unread ? "unread-row" : ""}`}>
+      <button
+        className="notification-row-main"
+        type="button"
+        title={
+          notificationTarget ? "Open notification target in Control" : "Open notification target on GitHub"
+        }
+        onClick={handleOpenNotification}
+      >
+        {notification.unread ? <CircleDot size={17} /> : <Inbox size={17} />}
+        <div>
+          <strong>{notification.subject.title}</strong>
+          <small>
+            {notification.repositoryNameWithOwner} · {notification.subject.type} ·{" "}
+            {notificationReasonLabel(notification.reason)} · updated{" "}
+            {formatRelativeDate(notification.updatedAt)}
+          </small>
+          {metadataParts.length > 0 && (
+            <small className="notification-detail-line">{metadataParts.join(" · ")}</small>
+          )}
+        </div>
+      </button>
+      <span className="row-chip-stack">
+        <span className={`state-chip ${notification.unread ? "attention" : ""}`}>
+          {notification.unread ? "unread" : "read"}
+        </span>
+        <span className={`state-chip ${notificationTarget ? "success" : ""}`}>
+          {notificationTarget ? "in-app" : "external"}
+        </span>
+      </span>
+      <span className="row-action-stack">
+        <button
+          className="pin-row-button"
+          type="button"
+          aria-label="Open notification target on GitHub"
+          title="Open notification target on GitHub"
+          onClick={handleOpenExternal}
+        >
+          <ExternalLink size={15} />
+        </button>
+        {latestCommentUrl && (
+          <button
+            className="pin-row-button"
+            type="button"
+            aria-label={`Open latest comment for ${notification.subject.title} on GitHub`}
+            title="Open latest comment on GitHub"
+            onClick={handleOpenLatestComment}
+          >
+            <MessageSquare size={15} />
+          </button>
+        )}
+        <button
+          className="pin-row-button"
+          type="button"
+          aria-label={`Mark ${notification.subject.title} as read`}
+          disabled={Boolean(markReadDisabledReason)}
+          title={markReadDisabledReason ?? "Mark notification as read"}
+          onClick={handleMarkRead}
+        >
+          <CheckCircle2 size={15} />
+        </button>
+        <button
+          className="pin-row-button"
+          type="button"
+          aria-label={`Unsubscribe from ${notification.subject.title}`}
+          disabled={Boolean(unsubscribeDisabledReason)}
+          title={unsubscribeDisabledReason ?? "Unsubscribe from this notification thread"}
+          onClick={handleUnsubscribe}
+        >
+          <BellOff size={15} />
+        </button>
+      </span>
+    </div>
+  );
+}
+
+function MailboxWorkRow({
+  row,
+  onOpenExternal,
+  onOpenIssue,
+  onOpenPullRequest
+}: {
+  row: MailboxWorkItemRow;
+  onOpenExternal(url: string): void;
+  onOpenIssue(issue: IssueSummary): void;
+  onOpenPullRequest(pullRequest: PullRequestSummary): void;
+}): JSX.Element {
+  const reviewDecisionLabel = row.kind === "pull" ? pullRequestReviewDecisionLabel(row.reviewDecision) : null;
+  const reviewDecisionChipTone = row.kind === "pull" ? pullRequestReviewDecisionTone(row.reviewDecision) : "";
+  const mergeableStateLabel = row.kind === "pull" ? pullRequestMergeableStateLabel(row.mergeableState) : null;
+  const isCrossRepository =
+    row.kind === "pull"
+      ? (row.isCrossRepository ??
+        Boolean(
+          (row.headRepositoryNameWithOwner &&
+            row.headRepositoryNameWithOwner !== row.repositoryNameWithOwner) ||
+          (row.baseRepositoryNameWithOwner && row.baseRepositoryNameWithOwner !== row.repositoryNameWithOwner)
+        ))
+      : false;
+  const sourceRepositoryLabel =
+    row.kind === "pull" && row.headRepositoryNameWithOwner
+      ? `fork: ${row.headRepositoryNameWithOwner}`
+      : "fork";
+  const metadataParts =
+    row.kind === "pull" ? mailboxPullRequestMetadataParts(row) : mailboxIssueMetadataParts(row);
+
+  function handleOpenWorkItem(): void {
+    if (row.kind === "pull") {
+      onOpenPullRequest(row);
+      return;
+    }
+    onOpenIssue(row);
+  }
+
+  function handleOpenExternal(): void {
+    onOpenExternal(row.htmlUrl);
+  }
+
+  return (
+    <div className="issue-row mailbox-work-row">
+      <button className="mailbox-work-row-main" type="button" onClick={handleOpenWorkItem}>
+        {row.kind === "pull" ? <GitPullRequest size={17} /> : <CircleDot size={17} />}
+        <div>
+          <strong>{row.title}</strong>
+          <small>
+            {row.repositoryNameWithOwner ?? "GitHub"} #{row.number} · updated{" "}
+            {formatRelativeDate(row.updatedAt)}
+          </small>
+          <small className="notification-detail-line">{metadataParts.join(" · ")}</small>
+        </div>
+      </button>
+      <span className="row-chip-stack">
+        <span className={`state-chip ${row.state === "open" ? "success" : "attention"}`}>
+          {row.kind === "issue" ? issueStateLabel(row) : row.state}
+        </span>
+        {row.kind === "pull" && row.isDraft && <span className="state-chip attention">draft</span>}
+        {row.kind === "pull" && mergeableStateLabel && row.mergeableState !== "clean" && (
+          <span className="state-chip attention">{mergeableStateLabel}</span>
+        )}
+        {reviewDecisionLabel && (
+          <span className={`state-chip ${reviewDecisionChipTone}`}>{reviewDecisionLabel}</span>
+        )}
+        {isCrossRepository && (
+          <span className="state-chip attention" title={sourceRepositoryLabel}>
+            fork
+          </span>
+        )}
+        {row.locked && <span className="state-chip attention">locked</span>}
+        <span className="state-chip success">in-app</span>
+      </span>
+      <span className="row-action-stack">
+        <button
+          className="pin-row-button"
+          type="button"
+          aria-label={`Open ${row.title} on GitHub`}
+          title={`Open ${row.kind === "pull" ? "pull request" : "issue"} on GitHub`}
+          onClick={handleOpenExternal}
+        >
+          <ExternalLink size={15} />
+        </button>
+      </span>
+    </div>
+  );
+}
+
+function MailboxHeader({
+  title,
+  notificationFilter,
+  markVisibleNotificationsPending,
+  notificationBulkMarkReadDisabledReason,
+  onNotificationFilterChange,
+  onMarkVisibleNotificationsRead,
+  onOpenGitHubNotifications
+}: {
+  title: string;
+  notificationFilter: MailboxNotificationFilter;
+  markVisibleNotificationsPending: boolean;
+  notificationBulkMarkReadDisabledReason: string | null;
+  onNotificationFilterChange(filter: MailboxNotificationFilter): void;
+  onMarkVisibleNotificationsRead(): void;
+  onOpenGitHubNotifications(): void;
+}): JSX.Element {
+  return (
+    <header>
+      <h2>{title}</h2>
+      <div className="collection-actions">
+        <div className="notification-filter" role="group" aria-label="Notification filter">
+          {notificationFilters.map((filter) => (
+            <NotificationFilterButton
+              key={filter.value}
+              filter={filter}
+              selectedFilter={notificationFilter}
+              onNotificationFilterChange={onNotificationFilterChange}
+            />
+          ))}
+        </div>
+        <button
+          type="button"
+          disabled={Boolean(notificationBulkMarkReadDisabledReason)}
+          title={notificationBulkMarkReadDisabledReason ?? "Mark visible unread notifications as read"}
+          onClick={onMarkVisibleNotificationsRead}
+        >
+          <CheckCircle2 size={16} /> {markVisibleNotificationsPending ? "Marking…" : "Mark visible read"}
+        </button>
+        <button type="button" title="Open GitHub notifications" onClick={onOpenGitHubNotifications}>
+          <ExternalLink size={16} /> Open GitHub
+        </button>
+      </div>
+    </header>
+  );
+}
+
+function MailboxFilterRow({
+  collectionFilter,
+  onCollectionFilterChange,
+  onClearCollectionFilter
+}: {
+  collectionFilter: string;
+  onCollectionFilterChange(event: ChangeEvent<HTMLInputElement>): void;
+  onClearCollectionFilter(): void;
+}): JSX.Element {
+  return (
+    <div className="table-action-row surface-filter-row">
+      <label className="surface-filter">
+        <Search size={16} />
+        <input
+          aria-label="Filter mailbox"
+          placeholder="Filter mailbox"
+          value={collectionFilter}
+          onChange={onCollectionFilterChange}
+        />
+      </label>
+      {collectionFilter.trim() && (
+        <button type="button" onClick={onClearCollectionFilter}>
+          <X size={16} /> Clear
+        </button>
+      )}
+    </div>
+  );
 }
 
 export function MailboxRoute({
@@ -66,16 +401,17 @@ export function MailboxRoute({
   onOpenNotification,
   onNotificationFilterChange,
   onExpandMailboxWork,
-  onExpandMailboxNotifications
+  onExpandMailboxNotifications,
+  onConfirm
 }: MailboxRouteProps): JSX.Element {
   const [collectionFilter, setCollectionFilter] = useState("");
   const { issues: accountIssues, pulls: accountPulls } = useAccountWork(viewerLogin, accountWorkLimit, {
     enabled: appReady,
     githubReady
   });
-  const accountIssueItems = accountIssues.data?.items ?? [];
+  const accountIssueItems = accountIssues.data?.items ?? emptyIssueSummaries;
   const accountIssuesAvailability = accountIssues.data?.availability ?? null;
-  const accountPullItems = accountPulls.data?.items ?? [];
+  const accountPullItems = accountPulls.data?.items ?? emptyPullRequestSummaries;
   const accountPullsAvailability = accountPulls.data?.availability ?? null;
   const {
     notifications,
@@ -91,10 +427,14 @@ export function MailboxRoute({
     githubReady
   });
   const normalizedCollectionFilter = collectionFilter.trim().toLowerCase();
-  const workRows = [
-    ...accountIssueItems.map((issue) => ({ ...issue, kind: "issue" as const })),
-    ...accountPullItems.map((pull) => ({ ...pull, kind: "pull" as const }))
-  ].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  const workRows = useMemo(() => {
+    const rows: MailboxWorkItemRow[] = [
+      ...accountIssueItems.map((issue): MailboxWorkItemRow => ({ ...issue, kind: "issue" })),
+      ...accountPullItems.map((pull): MailboxWorkItemRow => ({ ...pull, kind: "pull" }))
+    ];
+    rows.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    return rows;
+  }, [accountIssueItems, accountPullItems]);
   const workRowsLoading =
     accountIssues.isLoading || accountIssues.isFetching || accountPulls.isLoading || accountPulls.isFetching;
   const workRowErrors = [
@@ -127,9 +467,7 @@ export function MailboxRoute({
   const accountWorkLimitHit =
     accountIssueItems.length >= accountWorkLimit || accountPullItems.length >= accountWorkLimit;
   const canExpandMailboxWork = accountWorkLimitHit && accountWorkLimit < maxMailboxListLimit;
-  const visibleUnreadNotificationIds = filteredNotifications
-    .filter((notification) => notification.unread)
-    .map((notification) => notification.id);
+  const visibleUnreadNotificationIds = collectUnreadNotificationIds(filteredNotifications);
   const notificationsAvailabilityMessage = readAvailabilityMessage(
     "Notifications",
     notificationsAvailability
@@ -145,65 +483,61 @@ export function MailboxRoute({
     (markNotificationRead.error instanceof Error ? markNotificationRead.error : null) ??
     (markVisibleNotificationsRead.error instanceof Error ? markVisibleNotificationsRead.error : null) ??
     (unsubscribeNotification.error instanceof Error ? unsubscribeNotification.error : null);
-  const notificationFilters: Array<{ value: MailboxNotificationFilter; label: string }> = [
-    { value: "unread", label: "Unread" },
-    { value: "all", label: "All" },
-    { value: "participating", label: "Participating" }
-  ];
+  function handleCollectionFilterChange(event: ChangeEvent<HTMLInputElement>): void {
+    setCollectionFilter(event.target.value);
+  }
+
+  function clearCollectionFilter(): void {
+    setCollectionFilter("");
+  }
+
+  function markVisibleNotificationsAsRead(): void {
+    markVisibleNotificationsRead.mutate({ threadIds: visibleUnreadNotificationIds });
+  }
+
+  function openGitHubNotifications(): void {
+    onOpenExternal("https://github.com/notifications");
+  }
+
+  function markNotificationAsRead(threadId: string): void {
+    markNotificationRead.mutate({ threadId });
+  }
+
+  async function unsubscribeFromNotification(notification: NotificationSummary): Promise<void> {
+    const confirmed = await onConfirm({
+      title: "Unsubscribe notification",
+      message: "Unsubscribe from this GitHub notification thread?",
+      details: notification.subject.title,
+      confirmLabel: "Unsubscribe",
+      tone: "danger"
+    });
+    if (!confirmed) {
+      return;
+    }
+    unsubscribeNotification.mutate({ threadId: notification.id });
+  }
+
+  function queueUnsubscribeFromNotification(notification: NotificationSummary): void {
+    void unsubscribeFromNotification(notification);
+  }
 
   return (
     <section className="collection-view">
-      <header>
-        <h2>{title}</h2>
-        <div className="collection-actions">
-          <div className="notification-filter" role="group" aria-label="Notification filter">
-            {notificationFilters.map((filter) => (
-              <button
-                className={filter.value === notificationFilter ? "selected-action" : ""}
-                key={filter.value}
-                type="button"
-                aria-pressed={filter.value === notificationFilter}
-                onClick={() => onNotificationFilterChange(filter.value)}
-              >
-                {filter.label}
-              </button>
-            ))}
-          </div>
-          <button
-            type="button"
-            disabled={Boolean(notificationBulkMarkReadDisabledReason)}
-            title={notificationBulkMarkReadDisabledReason ?? "Mark visible unread notifications as read"}
-            onClick={() => markVisibleNotificationsRead.mutate({ threadIds: visibleUnreadNotificationIds })}
-          >
-            <CheckCircle2 size={16} />{" "}
-            {markVisibleNotificationsRead.isPending ? "Marking…" : "Mark visible read"}
-          </button>
-          <button
-            type="button"
-            title="Open GitHub notifications"
-            onClick={() => onOpenExternal("https://github.com/notifications")}
-          >
-            <ExternalLink size={16} /> Open GitHub
-          </button>
-        </div>
-      </header>
+      <MailboxHeader
+        title={title}
+        notificationFilter={notificationFilter}
+        markVisibleNotificationsPending={markVisibleNotificationsRead.isPending}
+        notificationBulkMarkReadDisabledReason={notificationBulkMarkReadDisabledReason}
+        onNotificationFilterChange={onNotificationFilterChange}
+        onMarkVisibleNotificationsRead={markVisibleNotificationsAsRead}
+        onOpenGitHubNotifications={openGitHubNotifications}
+      />
       <div className="table-panel">
-        <div className="table-action-row surface-filter-row">
-          <label className="surface-filter">
-            <Search size={16} />
-            <input
-              aria-label="Filter mailbox"
-              placeholder="Filter mailbox"
-              value={collectionFilter}
-              onChange={(event) => setCollectionFilter(event.target.value)}
-            />
-          </label>
-          {collectionFilter.trim() && (
-            <button type="button" onClick={() => setCollectionFilter("")}>
-              <X size={16} /> Clear
-            </button>
-          )}
-        </div>
+        <MailboxFilterRow
+          collectionFilter={collectionFilter}
+          onCollectionFilterChange={handleCollectionFilterChange}
+          onClearCollectionFilter={clearCollectionFilter}
+        />
         {(notifications.isLoading || notifications.isFetching) && notificationItems.length === 0 && (
           <div className="loading-state">Loading GitHub notifications…</div>
         )}
@@ -221,9 +555,6 @@ export function MailboxRoute({
           </div>
         )}
         {filteredNotifications.map((notification) => {
-          const metadataParts = notificationMetadataParts(notification);
-          const notificationTarget = notificationInAppTarget(notification);
-          const notificationExternalUrl = notificationTargetUrl(notification);
           const markReadDisabledReason = !notification.unread
             ? "Notification is already read."
             : !githubReady
@@ -243,88 +574,16 @@ export function MailboxRoute({
                 : null;
 
           return (
-            <div
-              className={`issue-row notification-row ${notification.unread ? "unread-row" : ""}`}
+            <MailboxNotificationRow
               key={notification.id}
-            >
-              <button
-                className="notification-row-main"
-                type="button"
-                title={
-                  notificationTarget
-                    ? "Open notification target in Control"
-                    : "Open notification target on GitHub"
-                }
-                onClick={() => onOpenNotification(notification)}
-              >
-                {notification.unread ? <CircleDot size={17} /> : <Inbox size={17} />}
-                <div>
-                  <strong>{notification.subject.title}</strong>
-                  <small>
-                    {notification.repositoryNameWithOwner} · {notification.subject.type} ·{" "}
-                    {notificationReasonLabel(notification.reason)} · updated{" "}
-                    {formatRelativeDate(notification.updatedAt)}
-                  </small>
-                  {metadataParts.length > 0 && (
-                    <small className="notification-detail-line">{metadataParts.join(" · ")}</small>
-                  )}
-                </div>
-              </button>
-              <span className="row-chip-stack">
-                <span className={`state-chip ${notification.unread ? "attention" : ""}`}>
-                  {notification.unread ? "unread" : "read"}
-                </span>
-                <span className={`state-chip ${notificationTarget ? "success" : ""}`}>
-                  {notificationTarget ? "in-app" : "external"}
-                </span>
-              </span>
-              <span className="row-action-stack">
-                <button
-                  className="pin-row-button"
-                  type="button"
-                  aria-label="Open notification target on GitHub"
-                  title="Open notification target on GitHub"
-                  onClick={() => onOpenExternal(notificationExternalUrl)}
-                >
-                  <ExternalLink size={15} />
-                </button>
-                {notification.subject.latestCommentHtmlUrl && (
-                  <button
-                    className="pin-row-button"
-                    type="button"
-                    aria-label={`Open latest comment for ${notification.subject.title} on GitHub`}
-                    title="Open latest comment on GitHub"
-                    onClick={() => onOpenExternal(notification.subject.latestCommentHtmlUrl!)}
-                  >
-                    <MessageSquare size={15} />
-                  </button>
-                )}
-                <button
-                  className="pin-row-button"
-                  type="button"
-                  aria-label={`Mark ${notification.subject.title} as read`}
-                  disabled={Boolean(markReadDisabledReason)}
-                  title={markReadDisabledReason ?? "Mark notification as read"}
-                  onClick={() => markNotificationRead.mutate({ threadId: notification.id })}
-                >
-                  <CheckCircle2 size={15} />
-                </button>
-                <button
-                  className="pin-row-button"
-                  type="button"
-                  aria-label={`Unsubscribe from ${notification.subject.title}`}
-                  disabled={Boolean(unsubscribeDisabledReason)}
-                  title={unsubscribeDisabledReason ?? "Unsubscribe from this notification thread"}
-                  onClick={() => {
-                    if (window.confirm("Unsubscribe from this GitHub notification thread?")) {
-                      unsubscribeNotification.mutate({ threadId: notification.id });
-                    }
-                  }}
-                >
-                  <BellOff size={15} />
-                </button>
-              </span>
-            </div>
+              notification={notification}
+              markReadDisabledReason={markReadDisabledReason}
+              unsubscribeDisabledReason={unsubscribeDisabledReason}
+              onOpenExternal={onOpenExternal}
+              onOpenNotification={onOpenNotification}
+              onMarkNotificationRead={markNotificationAsRead}
+              onUnsubscribeNotification={queueUnsubscribeFromNotification}
+            />
           );
         })}
         {canExpandMailboxNotifications && (
@@ -358,80 +617,15 @@ export function MailboxRoute({
             {message}
           </div>
         ))}
-        {filteredWorkRows.map((row) => {
-          const reviewDecisionLabel =
-            row.kind === "pull" ? pullRequestReviewDecisionLabel(row.reviewDecision) : null;
-          const reviewDecisionChipTone =
-            row.kind === "pull" ? pullRequestReviewDecisionTone(row.reviewDecision) : "";
-          const mergeableStateLabel =
-            row.kind === "pull" ? pullRequestMergeableStateLabel(row.mergeableState) : null;
-          const isCrossRepository =
-            row.kind === "pull"
-              ? (row.isCrossRepository ??
-                Boolean(
-                  (row.headRepositoryNameWithOwner &&
-                    row.headRepositoryNameWithOwner !== row.repositoryNameWithOwner) ||
-                  (row.baseRepositoryNameWithOwner &&
-                    row.baseRepositoryNameWithOwner !== row.repositoryNameWithOwner)
-                ))
-              : false;
-          const sourceRepositoryLabel =
-            row.kind === "pull" && row.headRepositoryNameWithOwner
-              ? `fork: ${row.headRepositoryNameWithOwner}`
-              : "fork";
-          const metadataParts =
-            row.kind === "pull" ? mailboxPullRequestMetadataParts(row) : mailboxIssueMetadataParts(row);
-
-          return (
-            <div className="issue-row mailbox-work-row" key={`${row.kind}-${row.id}`}>
-              <button
-                className="mailbox-work-row-main"
-                type="button"
-                onClick={() => (row.kind === "pull" ? onOpenPullRequest(row) : onOpenIssue(row))}
-              >
-                {row.kind === "pull" ? <GitPullRequest size={17} /> : <CircleDot size={17} />}
-                <div>
-                  <strong>{row.title}</strong>
-                  <small>
-                    {row.repositoryNameWithOwner ?? "GitHub"} #{row.number} · updated{" "}
-                    {formatRelativeDate(row.updatedAt)}
-                  </small>
-                  <small className="notification-detail-line">{metadataParts.join(" · ")}</small>
-                </div>
-              </button>
-              <span className="row-chip-stack">
-                <span className={`state-chip ${row.state === "open" ? "success" : "attention"}`}>
-                  {row.kind === "issue" ? issueStateLabel(row) : row.state}
-                </span>
-                {row.kind === "pull" && row.isDraft && <span className="state-chip attention">draft</span>}
-                {row.kind === "pull" && mergeableStateLabel && row.mergeableState !== "clean" && (
-                  <span className="state-chip attention">{mergeableStateLabel}</span>
-                )}
-                {reviewDecisionLabel && (
-                  <span className={`state-chip ${reviewDecisionChipTone}`}>{reviewDecisionLabel}</span>
-                )}
-                {isCrossRepository && (
-                  <span className="state-chip attention" title={sourceRepositoryLabel}>
-                    fork
-                  </span>
-                )}
-                {row.locked && <span className="state-chip attention">locked</span>}
-                <span className="state-chip success">in-app</span>
-              </span>
-              <span className="row-action-stack">
-                <button
-                  className="pin-row-button"
-                  type="button"
-                  aria-label={`Open ${row.title} on GitHub`}
-                  title={`Open ${row.kind === "pull" ? "pull request" : "issue"} on GitHub`}
-                  onClick={() => onOpenExternal(row.htmlUrl)}
-                >
-                  <ExternalLink size={15} />
-                </button>
-              </span>
-            </div>
-          );
-        })}
+        {filteredWorkRows.map((row) => (
+          <MailboxWorkRow
+            key={`${row.kind}-${row.id}`}
+            row={row}
+            onOpenExternal={onOpenExternal}
+            onOpenIssue={onOpenIssue}
+            onOpenPullRequest={onOpenPullRequest}
+          />
+        ))}
         {canExpandMailboxWork && (
           <div className="table-action-row">
             <button type="button" onClick={onExpandMailboxWork}>

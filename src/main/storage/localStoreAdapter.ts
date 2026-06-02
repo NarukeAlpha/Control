@@ -95,6 +95,7 @@ import {
 import { runStorageSync } from "./runtime";
 import { bootstrapSqliteSchema } from "./schema";
 import { readSettings, writeSettings } from "./settingsStore";
+import { UnavailableDatabaseError } from "./errors";
 import { setGatewayCredentials } from "../areas/gatewayCredentials";
 
 export type { CachedRepositoryList, CachedRepositoryValue } from "./githubRepositoryStore";
@@ -209,7 +210,14 @@ export interface LocalStore {
   close(): void;
 }
 
-export async function createLocalStore(userDataPath: string): Promise<LocalStore> {
+export interface CreateLocalStoreOptions {
+  allowMemoryFallback?: boolean;
+}
+
+export async function createLocalStore(
+  userDataPath: string,
+  options: CreateLocalStoreOptions = {}
+): Promise<LocalStore> {
   const dbDir = join(userDataPath, "Control");
   mkdirSync(dbDir, { recursive: true });
 
@@ -221,8 +229,11 @@ export async function createLocalStore(userDataPath: string): Promise<LocalStore
     await migrateLegacyAreaGatewayTokens(db, setGatewayCredentials);
     return store;
   } catch (error) {
-    console.warn("Control SQLite store unavailable; using in-memory storage for this session.", error);
-    return new MemoryLocalStore();
+    if (options.allowMemoryFallback) {
+      console.warn("Control SQLite store unavailable; using explicitly allowed in-memory storage.", error);
+      return new MemoryLocalStore();
+    }
+    throw new UnavailableDatabaseError("storage.bootstrap", error);
   }
 }
 

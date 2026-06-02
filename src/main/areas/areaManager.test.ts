@@ -350,6 +350,64 @@ describe("AreaManager GitHub enrichment", () => {
 });
 
 describe("AreaManager gateway lifecycle", () => {
+  it("rejects unconfirmed gateway operation runs before resolving the gateway client", async () => {
+    const gateway = {
+      getClient: vi.fn()
+    };
+    const areaManager = createAreaManager(null, createGithub(), {}, gateway as never);
+
+    await expect(
+      areaManager.runGatewayOperation({
+        areaId: "local:workspace",
+        operationId: "operation:fetch",
+        confirmed: false
+      })
+    ).rejects.toThrow("Gateway operation confirmation is required.");
+
+    expect(gateway.getClient).not.toHaveBeenCalled();
+  });
+
+  it("runs confirmed gateway operations through the gateway client", async () => {
+    const operationResult = {
+      id: "operation:fetch",
+      areaId: "local:workspace",
+      repositoryId: "repo:local-control",
+      kind: "git.fetch" as const,
+      status: "succeeded" as const,
+      message: "Fetch complete.",
+      stdout: null,
+      stderr: null,
+      recoveryOperationId: null,
+      completedAt: now
+    };
+    const gatewayClient = {
+      runOperation: vi.fn(async () => operationResult)
+    };
+    const gateway = {
+      getClient: vi.fn(async () => gatewayClient)
+    };
+    const area = createArea("local:workspace");
+    const areaManager = createAreaManager(
+      null,
+      createGithub(),
+      {
+        getArea: vi.fn((areaId) => (areaId === area.id ? area : null)),
+        getAreaRepository: vi.fn(() => null)
+      },
+      gateway as never
+    );
+    const input = {
+      areaId: area.id,
+      operationId: "operation:fetch",
+      confirmed: true
+    };
+
+    await expect(areaManager.runGatewayOperation(input)).resolves.toEqual(operationResult);
+
+    expect(gateway.getClient).toHaveBeenCalledWith(area.id);
+    expect(gatewayClient.runOperation).toHaveBeenCalledWith(input);
+  });
+
   it("preserves existing local read models when staged local refresh fails", async () => {
     const area = createArea("local:workspace");
     const replaceAreaReadModels = vi.fn();

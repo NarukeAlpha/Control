@@ -157,7 +157,7 @@ export function RightRail({
           )}
         </div>
         {!repository ? (
-          <small className="rail-muted">Loading language data...</small>
+          <small className="rail-muted">Loading language data…</small>
         ) : languages.length > 0 ? (
           <>
             <div className="language-bar" aria-label="Repository language breakdown">
@@ -195,7 +195,7 @@ export function RightRail({
             </div>
           </div>
           {releasesLoading && releases.length === 0 && (
-            <small className="rail-muted">Loading releases...</small>
+            <small className="rail-muted">Loading releases…</small>
           )}
           {releasesError && (
             <small className="rail-error">Releases unavailable: {releasesError.message}</small>
@@ -240,7 +240,7 @@ export function RightRail({
             </div>
           </div>
           {contributorsLoading && contributors.length === 0 && (
-            <small className="rail-muted">Loading contributors...</small>
+            <small className="rail-muted">Loading contributors…</small>
           )}
           {contributorsError && (
             <small className="rail-error">Contributors unavailable: {contributorsError.message}</small>

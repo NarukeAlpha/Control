@@ -362,7 +362,7 @@ export function readMockWorkflowRuns(): WorkflowRunDetail[] {
   return readMockArray(mockWorkflowRunsKey, () => mockActions.map(buildMockWorkflowRunDetail));
 }
 
-export function writeMockWorkflowRuns(items: WorkflowRunDetail[]): void {
+function writeMockWorkflowRuns(items: WorkflowRunDetail[]): void {
   writeMockArray(mockWorkflowRunsKey, items);
 }
 

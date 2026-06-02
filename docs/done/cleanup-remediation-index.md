@@ -1,12 +1,11 @@
-# Cleanup Remediation Index
+# Cleanup Remediation Record
 
 ## Purpose
 
-This folder tracks the open cleanup work found by the current repository audit. The older cleanup plans were moved to
-`docs/done` because they describe completed foundation work. These files are the active remediation backlog for the
-remaining infrastructure, renderer, query, validation, and dead-code issues.
+This file records the cleanup work found by the repository audit and now implemented. The older cleanup plans also live
+in `docs/done` because they describe completed foundation work.
 
-The scope is intentionally task-like. Every item should identify:
+The scope was intentionally task-like. Every item identified:
 
 - the source lines or functions that currently carry the problem
 - the failure mode or architecture violation
@@ -15,13 +14,14 @@ The scope is intentionally task-like. Every item should identify:
 
 ## Documents
 
-| File                                  | Scope                                                                                                                                               |
-| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `main-process-infrastructure.md`      | Gateway operation safety, gateway lifecycle cleanup, durable storage, keychain errors, local file boundaries, and IPC helper ownership.             |
-| `renderer-query-and-components.md`    | Branch protection, query fan-out, component decomposition, inline callback cleanup, derived-state ownership, and renderer confirmation flows.       |
-| `validation-dead-code-and-tooling.md` | Dead/stale files, dependency/tooling drift, dev audit vulnerabilities, React Doctor follow-up, Shiki bundle pressure, and docs command consistency. |
+| File                                          | Scope                                                                                                                                               |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `main-process-infrastructure-cleanup.md`      | Gateway operation safety, gateway lifecycle cleanup, durable storage, keychain errors, local file boundaries, and IPC helper ownership.             |
+| `renderer-query-and-components-cleanup.md`    | Branch protection, query fan-out, component decomposition, inline callback cleanup, derived-state ownership, and renderer confirmation flows.       |
+| `tooling-triage-cleanup.md`                   | Current Knip and React Doctor baselines, ownership rules, and actionable must-fix/deferred diagnostic buckets.                                      |
+| `validation-dead-code-and-tooling-cleanup.md` | Dead/stale files, dependency/tooling drift, dev audit vulnerabilities, React Doctor follow-up, Shiki bundle pressure, and docs command consistency. |
 
-## Recommended Order
+## Completed Order
 
 1. Fix destructive or unsafe main-process behavior first:
    - `MAIN-01` enforce gateway confirmation in main.
@@ -44,7 +44,7 @@ The scope is intentionally task-like. Every item should identify:
 
 ## Evidence Used
 
-The current audit used these commands and source inspections:
+The cleanup audit used these commands and source inspections:
 
 - `bun run format:check`
 - `bun run lint`

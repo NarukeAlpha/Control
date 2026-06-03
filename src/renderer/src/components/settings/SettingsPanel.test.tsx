@@ -19,12 +19,23 @@ const authController: ProviderAuthController = {
   clearError: vi.fn()
 };
 
-function renderSettingsPanel(
-  props: Omit<Parameters<typeof SettingsPanel>[0], "appState" | "authController">
-): void {
+type SettingsPanelProps = Parameters<typeof SettingsPanel>[0];
+type SettingsPanelTestProps = Omit<
+  SettingsPanelProps,
+  "appState" | "authController" | "onAddLocalArea" | "onAddSshArea"
+> &
+  Partial<Pick<SettingsPanelProps, "onAddLocalArea" | "onAddSshArea">>;
+
+function renderSettingsPanel(props: SettingsPanelTestProps): void {
   render(
     <QueryClientProvider client={new QueryClient()}>
-      <SettingsPanel appState={mockAppState} authController={authController} {...props} />
+      <SettingsPanel
+        appState={mockAppState}
+        authController={authController}
+        onAddLocalArea={vi.fn()}
+        onAddSshArea={vi.fn()}
+        {...props}
+      />
     </QueryClientProvider>
   );
 }

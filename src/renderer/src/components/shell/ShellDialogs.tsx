@@ -46,6 +46,7 @@ interface ShellDialogsProps {
   selectedCodeRef: string | null;
   effectiveRepository: string;
   onOpenRepository(nameWithOwner: string): void;
+  onAddLocalArea(): Promise<void> | void;
   onCreateSshArea(input: CreateSshAreaInput): Promise<void>;
   onUpdateArea(input: UpdateAreaInput): Promise<void>;
   onDeleteArea(area: Parameters<ShellDialogState["openAreaDelete"]>[0]): Promise<void>;
@@ -90,6 +91,7 @@ export function ShellDialogs({
   selectedCodeRef,
   effectiveRepository,
   onOpenRepository,
+  onAddLocalArea,
   onCreateSshArea,
   onUpdateArea,
   onDeleteArea,
@@ -114,38 +116,6 @@ export function ShellDialogs({
           githubReady={githubReady}
           onClose={dialogs.closeAddRepository}
           onOpenRepository={onOpenRepository}
-        />
-      )}
-
-      {dialogs.sshAreaOpen && (
-        <SshAreaDialog
-          onClose={dialogs.closeSshArea}
-          onCreate={async (input) => {
-            await onCreateSshArea(input);
-            dialogs.closeSshArea();
-          }}
-        />
-      )}
-
-      {editingArea && (
-        <AreaEditDialog
-          area={editingArea}
-          onClose={dialogs.closeAreaEdit}
-          onSave={async (input) => {
-            await onUpdateArea(input);
-            dialogs.closeAreaEdit();
-          }}
-        />
-      )}
-
-      {deletingArea && (
-        <AreaDeleteDialog
-          area={deletingArea}
-          onClose={dialogs.closeAreaDelete}
-          onDelete={async () => {
-            await onDeleteArea(deletingArea);
-            dialogs.closeAreaDelete();
-          }}
         />
       )}
 
@@ -196,9 +166,43 @@ export function ShellDialogs({
           authController={authController}
           onClose={onCloseSettings}
           onOpenExternal={onOpenExternal}
+          onAddLocalArea={onAddLocalArea}
+          onAddSshArea={dialogs.openSshArea}
           onPreviewSettings={onPreviewSettings}
           onSave={onSaveSettings}
           systemColorScheme={systemColorScheme}
+        />
+      )}
+
+      {dialogs.sshAreaOpen && (
+        <SshAreaDialog
+          onClose={dialogs.closeSshArea}
+          onCreate={async (input) => {
+            await onCreateSshArea(input);
+            dialogs.closeSshArea();
+          }}
+        />
+      )}
+
+      {editingArea && (
+        <AreaEditDialog
+          area={editingArea}
+          onClose={dialogs.closeAreaEdit}
+          onSave={async (input) => {
+            await onUpdateArea(input);
+            dialogs.closeAreaEdit();
+          }}
+        />
+      )}
+
+      {deletingArea && (
+        <AreaDeleteDialog
+          area={deletingArea}
+          onClose={dialogs.closeAreaDelete}
+          onDelete={async () => {
+            await onDeleteArea(deletingArea);
+            dialogs.closeAreaDelete();
+          }}
         />
       )}
 

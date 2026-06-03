@@ -177,7 +177,10 @@ function mergeMockSettings(
         }
       : currentSettings.theme,
     repositoryTabPreferences:
-      settingsPatch.repositoryTabPreferences ?? currentSettings.repositoryTabPreferences
+      settingsPatch.repositoryTabPreferences ?? currentSettings.repositoryTabPreferences,
+    repositoryTabPreferencesByRepository:
+      settingsPatch.repositoryTabPreferencesByRepository ??
+      currentSettings.repositoryTabPreferencesByRepository
   };
 }
 

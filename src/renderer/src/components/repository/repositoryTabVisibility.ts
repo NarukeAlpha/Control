@@ -18,7 +18,13 @@ export interface RepositoryTabVisibilityResult {
   queryGates: Record<RepositoryTab, boolean>;
 }
 
-const requiredRepositoryTabs = ["code", "issues", "pulls", "actions"] as const satisfies RepositoryTab[];
+const requiredRepositoryTabs = [
+  "code",
+  "issues",
+  "pulls",
+  "actions",
+  "settings"
+] as const satisfies RepositoryTab[];
 
 export const repositoryTabPreferenceKeys = [
   "agents",
@@ -27,8 +33,7 @@ export const repositoryTabPreferenceKeys = [
   "releases",
   "contributors",
   "wiki",
-  "securityQuality",
-  "settings"
+  "securityQuality"
 ] as const satisfies RepositoryTabPreferenceKey[];
 
 export const repositoryTabPreferenceLabels: Record<RepositoryTabPreferenceKey, string> = {
@@ -38,8 +43,7 @@ export const repositoryTabPreferenceLabels: Record<RepositoryTabPreferenceKey, s
   releases: "Releases",
   contributors: "Contributors",
   wiki: "Wiki",
-  securityQuality: "Security and Quality",
-  settings: "Settings"
+  securityQuality: "Security and Quality"
 };
 
 const repositoryTabPreferenceKeySet = new Set<RepositoryTabPreferenceKey>(repositoryTabPreferenceKeys);
@@ -143,14 +147,6 @@ function autoRepositoryTabVisibility(
         : { visible: false, reason: "Releases are hidden in Auto because this repository has no releases." };
     case "securityQuality":
       return securityQualityVisibility(repository);
-    case "settings":
-      return repository.viewerState.canAdminister ||
-        repository.administration.viewerPermissions.admin === true
-        ? { visible: true, reason: "" }
-        : {
-            visible: false,
-            reason: "Settings is hidden in Auto because the viewer cannot administer this repository."
-          };
   }
 }
 

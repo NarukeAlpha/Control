@@ -7,7 +7,8 @@ const baseSettings: ControlSettings = {
   credentialProvider: "github-oauth",
   glassMode: "glass-shell",
   theme: DEFAULT_CONTROL_THEME_SETTINGS,
-  repositoryTabPreferences: {}
+  repositoryTabPreferences: {},
+  repositoryTabPreferencesByRepository: {}
 };
 
 describe("applyNativeThemeSource", () => {

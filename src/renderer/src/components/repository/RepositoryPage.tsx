@@ -18,6 +18,7 @@ import type {
   RepoEntry,
   RepositoryCollaboratorSummary,
   RepositoryDetail,
+  RepositoryTabPreferenceMap,
   RepositoryTabPreferenceKey,
   RepositoryRef,
   TeamSummary,
@@ -241,6 +242,7 @@ interface RepositoryPageProps {
   pinError: Error | null;
   error: Error | null;
   tabVisibility: RepositoryTabVisibilityResult;
+  tabPreferences: RepositoryTabPreferenceMap;
   onOpenCodeBrowser(entry: RepoEntry): void;
   onOpenReleaseTarget(ref: string): void;
   onOpenPullRequestCommit(
@@ -278,6 +280,7 @@ interface RepositoryPageProps {
   onOpenFileFinder(): void;
   onSelectTab(tab: RepositoryTab): void;
   onShowHiddenTab(tab: RepositoryTabPreferenceKey): void;
+  onSaveTabPreferences(preferences: RepositoryTabPreferenceMap): Promise<void>;
   onOpenFilteredSurface(tab: "issues" | "pulls" | "actions", filter: string): void;
   onSelectIssue(issue: IssueSummary): void;
   onSelectPullRequest(pullRequest: PullRequestSummary): void;
@@ -393,6 +396,8 @@ interface RepositoryActiveTabSurfaceProps {
   onOpenTeam(team: TeamSummary): void;
   onOpenFileFinder(): void;
   onSelectTab(tab: RepositoryTab): void;
+  tabPreferences: RepositoryTabPreferenceMap;
+  onSaveTabPreferences(preferences: RepositoryTabPreferenceMap): Promise<void>;
   onOpenFilteredSurface(tab: "issues" | "pulls" | "actions", filter: string): void;
   onSelectIssue(issue: IssueSummary): void;
   onSelectPullRequest(pullRequest: PullRequestSummary): void;
@@ -637,6 +642,8 @@ export function RepositoryPage(props: RepositoryPageProps): JSX.Element {
         onOpenTeam={props.onOpenTeam}
         onOpenFileFinder={props.onOpenFileFinder}
         onSelectTab={props.onSelectTab}
+        tabPreferences={props.tabPreferences}
+        onSaveTabPreferences={props.onSaveTabPreferences}
         onOpenFilteredSurface={props.onOpenFilteredSurface}
         onSelectIssue={props.onSelectIssue}
         onSelectPullRequest={props.onSelectPullRequest}
@@ -1576,7 +1583,9 @@ function RepositorySettingsTabSurface({
   onOpenExternal,
   onOpenRepository,
   onOpenTeam,
-  onSelectSettingsCollaborator
+  onSelectSettingsCollaborator,
+  tabPreferences,
+  onSaveTabPreferences
 }: RepositoryActiveTabSurfaceProps): JSX.Element {
   return (
     <RepositorySettingsTab
@@ -1596,7 +1605,9 @@ function RepositorySettingsTabSurface({
       mutationPending={mutation.pending}
       mutationSucceeded={mutation.succeeded}
       mutationError={mutation.error}
+      tabPreferences={tabPreferences}
       onMutate={mutation.onMutate}
+      onTabPreferencesChange={onSaveTabPreferences}
       onOpenExternal={onOpenExternal}
       onOpenRepository={onOpenRepository}
       onOpenTeam={onOpenTeam}

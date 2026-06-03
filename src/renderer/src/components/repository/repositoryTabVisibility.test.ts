@@ -71,7 +71,8 @@ describe("visibleRepositoryTabs", () => {
       "actions",
       "discussions",
       "releases",
-      "wiki"
+      "wiki",
+      "settings"
     ]);
     expect(visibility.queryGates.code).toBe(true);
     expect(visibility.queryGates.projects).toBe(false);
@@ -85,7 +86,8 @@ describe("visibleRepositoryTabs", () => {
       "pulls",
       "actions",
       "projects",
-      "contributors"
+      "contributors",
+      "settings"
     ]);
   });
 
@@ -123,7 +125,7 @@ describe("visibleRepositoryTabs", () => {
     expect(repositoryTabQueryEnabled("wiki", route, visibility)).toBe(false);
   });
 
-  it("uses only admin and maintain predicates for Security and Quality and Settings auto visibility", () => {
+  it("uses only admin and maintain predicates for Security and Quality auto visibility", () => {
     const repository = minimalAutoRepository();
     repository.administration.viewerPermissions = {
       admin: false,
@@ -135,12 +137,12 @@ describe("visibleRepositoryTabs", () => {
 
     const visibility = visibleRepositoryTabs({ repository, activeRoute: null, preferences: {} });
     expect(visibility.tabs.map((tab) => tab.key)).toContain("securityQuality");
-    expect(visibility.tabs.map((tab) => tab.key)).not.toContain("settings");
+    expect(visibility.tabs.map((tab) => tab.key)).toContain("settings");
 
     repository.administration.viewerPermissions.maintain = false;
     const readOnlyVisibility = visibleRepositoryTabs({ repository, activeRoute: null, preferences: {} });
     expect(readOnlyVisibility.tabs.map((tab) => tab.key)).not.toContain("securityQuality");
-    expect(readOnlyVisibility.tabs.map((tab) => tab.key)).not.toContain("settings");
+    expect(readOnlyVisibility.tabs.map((tab) => tab.key)).toContain("settings");
 
     repository.viewerState.canAdminister = true;
     const adminVisibility = visibleRepositoryTabs({ repository, activeRoute: null, preferences: {} });
@@ -168,7 +170,14 @@ describe("visibleRepositoryTabs", () => {
       preferences: { releases: "show", wiki: "hide" }
     });
 
-    expect(visibility.tabs.map((tab) => tab.key)).toEqual(["code", "issues", "pulls", "actions", "releases"]);
+    expect(visibility.tabs.map((tab) => tab.key)).toEqual([
+      "code",
+      "issues",
+      "pulls",
+      "actions",
+      "releases",
+      "settings"
+    ]);
     expect(visibility.hiddenReasons.discussions).toBe("Repository details are still loading.");
     expect(visibility.hiddenReasons.wiki).toBe("Hidden by preference.");
     expect(visibility.routeOnlyTab).toMatchObject({ key: "discussions", routeOnly: true });

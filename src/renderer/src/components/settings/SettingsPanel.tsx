@@ -1,14 +1,15 @@
 import {
   ChevronDown,
   Database,
-  GitBranch,
-  LogIn,
+  FolderPlus,
   Monitor,
   Moon,
   Palette,
+  Server,
   Settings as SettingsIcon,
   Sun,
   User,
+  UserPlus,
   X,
   type LucideIcon
 } from "lucide-react";
@@ -24,9 +25,7 @@ import type {
   ControlThemePaletteSettings,
   ControlThemePreset,
   ControlUiFont,
-  GlassMode,
-  RepositoryTabPreference,
-  RepositoryTabPreferenceKey
+  GlassMode
 } from "@shared/github";
 import {
   CONTROL_ACCENT_COLORS,
@@ -41,13 +40,9 @@ import {
   DEFAULT_CONTROL_THEME_SETTINGS
 } from "@shared/github";
 import type { ProviderAuthController } from "../auth/providerAuthAdapters";
-import {
-  repositoryTabPreferenceKeys,
-  repositoryTabPreferenceLabels
-} from "../repository/repositoryTabVisibility";
 import { DataSyncPanel } from "./DataSyncPanel";
 
-type SettingsCategory = "account" | "appearance" | "repository" | "data";
+type SettingsCategory = "account" | "appearance" | "data";
 type SignOutStatus = "idle" | "running" | "signedOut" | "error";
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 
@@ -58,7 +53,6 @@ const settingsCategories: Array<{
 }> = [
   { id: "account", label: "Account", icon: User },
   { id: "appearance", label: "Appearance", icon: Palette },
-  { id: "repository", label: "Repository", icon: GitBranch },
   { id: "data", label: "Data", icon: Database }
 ];
 
@@ -150,7 +144,6 @@ interface SettingsDraftState {
   themePreset: ControlThemePreset;
   themeAccent: ControlAccentColor;
   customTheme: ControlThemeCustomSettings;
-  repositoryTabPreferences: Partial<Record<RepositoryTabPreferenceKey, RepositoryTabPreference>>;
 }
 
 type SettingsDraftAction =
@@ -172,18 +165,15 @@ type SettingsDraftAction =
       value: string;
     }
   | { type: "setUiFont"; value: ControlUiFont }
-  | { type: "setCodeFont"; value: ControlCodeFont }
-  | {
-      type: "setRepositoryTabPreference";
-      tab: RepositoryTabPreferenceKey;
-      preference: RepositoryTabPreference;
-    };
+  | { type: "setCodeFont"; value: ControlCodeFont };
 
 interface SettingsPanelProps {
   appState?: AppState;
   authController: ProviderAuthController;
   onClose(): void;
   onOpenExternal(url: string): void;
+  onAddLocalArea(): Promise<void> | void;
+  onAddSshArea(): void;
   onPreviewSettings?(settings: Partial<ControlSettings> | null): void;
   onSave(settings: Partial<AppState["settings"]>): Promise<void>;
   systemColorScheme?: "light" | "dark";
@@ -202,8 +192,7 @@ function createSettingsDraftState(appState?: AppState): SettingsDraftState {
     themeAccent: appState?.settings.theme.accent ?? DEFAULT_CONTROL_THEME_SETTINGS.accent,
     customTheme: cloneCustomThemeSettings(
       appState?.settings.theme.custom ?? DEFAULT_CONTROL_THEME_SETTINGS.custom
-    ),
-    repositoryTabPreferences: appState?.settings.repositoryTabPreferences ?? {}
+    )
   };
 }
 
@@ -265,13 +254,6 @@ function settingsDraftReducer(state: SettingsDraftState, action: SettingsDraftAc
       return withUnsavedChange(state, {
         customTheme: { ...state.customTheme, codeFont: action.value }
       });
-    case "setRepositoryTabPreference":
-      return withUnsavedChange(state, {
-        repositoryTabPreferences: {
-          ...state.repositoryTabPreferences,
-          [action.tab]: action.preference
-        }
-      });
   }
 }
 
@@ -280,6 +262,8 @@ export function SettingsPanel({
   authController,
   onClose,
   onOpenExternal,
+  onAddLocalArea,
+  onAddSshArea,
   onPreviewSettings,
   onSave,
   systemColorScheme = "light"
@@ -400,8 +384,7 @@ export function SettingsPanel({
           preset: draft.themePreset,
           accent: draft.themeAccent,
           custom: draft.customTheme
-        },
-        repositoryTabPreferences: draft.repositoryTabPreferences
+        }
       });
       dispatch({ type: "finishSave" });
     } catch (error) {
@@ -418,13 +401,6 @@ export function SettingsPanel({
 
   function handleCancelSignIn(): void {
     void authController.cancelSignIn();
-  }
-
-  function updateRepositoryTabPreference(
-    tab: RepositoryTabPreferenceKey,
-    preference: RepositoryTabPreference
-  ): void {
-    dispatch({ type: "setRepositoryTabPreference", tab, preference });
   }
 
   return (
@@ -490,18 +466,13 @@ export function SettingsPanel({
                 onSignOut={startClearToken}
                 onCancelSignIn={handleCancelSignIn}
                 onOpenExternal={onOpenExternal}
+                onAddLocalArea={onAddLocalArea}
+                onAddSshArea={onAddSshArea}
               />
             )}
 
             {draft.activeCategory === "appearance" && (
               <AppearanceSettingsSection activeScheme={activeThemeScheme} draft={draft} dispatch={dispatch} />
-            )}
-
-            {draft.activeCategory === "repository" && (
-              <RepositoryTabPreferencesSection
-                preferences={draft.repositoryTabPreferences}
-                onPreferenceChange={updateRepositoryTabPreference}
-              />
             )}
 
             {draft.activeCategory === "data" && <DataSyncPanel />}
@@ -529,7 +500,9 @@ function AccountSettingsSection({
   onSignIn,
   onSignOut,
   onCancelSignIn,
-  onOpenExternal
+  onOpenExternal,
+  onAddLocalArea,
+  onAddSshArea
 }: {
   connectionLabel: string;
   signInDisabledReason: string | null;
@@ -541,7 +514,13 @@ function AccountSettingsSection({
   onSignOut(): void;
   onCancelSignIn(): void;
   onOpenExternal(url: string): void;
+  onAddLocalArea(): Promise<void> | void;
+  onAddSshArea(): void;
 }): JSX.Element {
+  function addLocalArea(): void {
+    void onAddLocalArea();
+  }
+
   return (
     <section className="settings-section" aria-label="Account settings">
       <div className="settings-account-card">
@@ -556,7 +535,7 @@ function AccountSettingsSection({
             title={signInDisabledReason ?? undefined}
             onClick={onSignIn}
           >
-            <LogIn size={15} /> Sign in with GitHub
+            <UserPlus size={15} /> Add GitHub account
           </button>
           <button
             type="button"
@@ -565,6 +544,30 @@ function AccountSettingsSection({
             onClick={onSignOut}
           >
             {signOutBusy ? "Signing out..." : "Sign out"}
+          </button>
+        </div>
+      </div>
+
+      <div className="settings-account-card">
+        <div>
+          <span>Local</span>
+          <strong>Folder-backed Area</strong>
+        </div>
+        <div className="settings-inline-actions">
+          <button type="button" onClick={addLocalArea}>
+            <FolderPlus size={15} /> Add local Area
+          </button>
+        </div>
+      </div>
+
+      <div className="settings-account-card">
+        <div>
+          <span>SSH</span>
+          <strong>Remote gateway Area</strong>
+        </div>
+        <div className="settings-inline-actions">
+          <button type="button" onClick={onAddSshArea}>
+            <Server size={15} /> Add SSH Area
           </button>
         </div>
       </div>
@@ -930,40 +933,6 @@ function ThemeDetailCard({
         </div>
       </AppearanceValueRow>
     </div>
-  );
-}
-
-function RepositoryTabPreferencesSection({
-  preferences,
-  onPreferenceChange
-}: {
-  preferences: Partial<Record<RepositoryTabPreferenceKey, RepositoryTabPreference>>;
-  onPreferenceChange(tab: RepositoryTabPreferenceKey, preference: RepositoryTabPreference): void;
-}): JSX.Element {
-  return (
-    <section className="settings-section" aria-label="Repository settings">
-      <div className="settings-preference-grid">
-        {repositoryTabPreferenceKeys.map((tab) => (
-          <label key={tab} className="settings-preference-row">
-            <span>{repositoryTabPreferenceLabels[tab]}</span>
-            <select
-              aria-label={`${repositoryTabPreferenceLabels[tab]} tab visibility`}
-              value={preferences[tab] ?? "auto"}
-              onChange={(event) =>
-                onPreferenceChange(
-                  tab,
-                  readOptionValue(event.target.value, ["auto", "show", "hide"] as const, "auto")
-                )
-              }
-            >
-              <option value="auto">Auto</option>
-              <option value="show">Show</option>
-              <option value="hide">Hide</option>
-            </select>
-          </label>
-        ))}
-      </div>
-    </section>
   );
 }
 

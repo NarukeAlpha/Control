@@ -394,7 +394,7 @@ describe("Control renderer routing", () => {
     expect(listRepositoryPins).toHaveBeenCalled();
   });
 
-  it("renders the topbar Area selector selects a local Area and adds a local folder Area", async () => {
+  it("renders the topbar Area selector, selects a local Area, and adds a local Area from settings", async () => {
     const selectArea = vi.fn<ControlApi["areas"]["selectArea"]>(async () => [
       { ...githubArea, selected: false },
       { ...localArea, selected: true }
@@ -440,8 +440,8 @@ describe("Control renderer routing", () => {
     expect(screen.getByRole("button", { name: /Open Control App/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Open Control JJ/i })).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: /Select Area/ }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "Add local folder Area" }));
+    await userEvent.click(await screen.findByTitle("Account settings"));
+    await userEvent.click(screen.getByRole("button", { name: "Add local Area" }));
 
     await waitFor(() => {
       expect(openLocalFolderPicker).toHaveBeenCalledWith();
@@ -492,7 +492,7 @@ describe("Control renderer routing", () => {
     expect(screen.queryByRole("button", { name: "Mailbox" })).not.toBeInTheDocument();
   });
 
-  it("opens an in-app SSH Area dialog from the topbar selector", async () => {
+  it("opens an in-app SSH Area dialog from account settings", async () => {
     const createSshArea = vi.fn<ControlApi["areas"]["createSshArea"]>(async (input) => ({
       ...localArea,
       id: "ssh:delta-wsl",
@@ -524,15 +524,17 @@ describe("Control renderer routing", () => {
       }
     });
 
-    await userEvent.click(await screen.findByRole("button", { name: /Select Area/ }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "Add SSH Area" }));
+    await userEvent.click(await screen.findByTitle("Account settings"));
+    await userEvent.click(screen.getByRole("button", { name: "Add SSH Area" }));
 
-    expect(await screen.findByRole("heading", { name: "Add SSH Area" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Host")).toHaveValue("delta-wsl");
-    expect(screen.getByLabelText("Root path")).toHaveValue("~/controltest");
+    const dialogTitle = await screen.findByRole("heading", { name: "Add SSH Area" });
+    const dialog = dialogTitle.closest("form");
+    expect(dialog).not.toBeNull();
+    expect(within(dialog as HTMLElement).getByLabelText("Host")).toHaveValue("delta-wsl");
+    expect(within(dialog as HTMLElement).getByLabelText("Root path")).toHaveValue("~/controltest");
     expect(createSshArea).not.toHaveBeenCalled();
 
-    await userEvent.click(screen.getByRole("button", { name: "Add SSH Area" }));
+    await userEvent.click(within(dialog as HTMLElement).getByRole("button", { name: "Add SSH Area" }));
 
     await waitFor(() => {
       expect(createSshArea).toHaveBeenCalledWith({
@@ -1882,6 +1884,10 @@ describe("Control renderer routing", () => {
 
   it("renders repository settings in-app with GitHub as a fallback", async () => {
     const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
+    const updateSettings = vi.fn<ControlApi["updateSettings"]>(async (settings) => ({
+      ...mockAppState.settings,
+      ...settings
+    }));
     useUiStore.setState({
       ...defaultUiState,
       route: { kind: "repository", nameWithOwner: "apple/swift", tab: "code" }
@@ -1889,17 +1895,31 @@ describe("Control renderer routing", () => {
 
     renderControl({
       ...makeApi(),
-      openExternal
+      openExternal,
+      updateSettings
     });
 
     await userEvent.click(await screen.findByRole("button", { name: "Repository settings" }));
 
     expect(await screen.findByRole("heading", { name: "Repository settings" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Tab visibility" })).toBeInTheDocument();
     expect(screen.getByText(/default branch main/i)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Features" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Merge policy" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Your access" })).toBeInTheDocument();
     expect(openExternal).not.toHaveBeenCalled();
+
+    await userEvent.selectOptions(screen.getByLabelText("Discussions tab visibility"), "show");
+
+    await waitFor(() =>
+      expect(updateSettings).toHaveBeenCalledWith({
+        repositoryTabPreferencesByRepository: {
+          "apple/swift": {
+            discussions: "show"
+          }
+        }
+      })
+    );
 
     await userEvent.click(screen.getAllByRole("button", { name: /Open GitHub fallback/i })[0]);
 
@@ -2037,7 +2057,7 @@ describe("Control renderer routing", () => {
     renderControl({ ...makeApi(), signInWithGitHub, getGitHubSignIn });
 
     await userEvent.click(await screen.findByTitle("Account settings"));
-    await userEvent.click(screen.getByRole("button", { name: "Sign in with GitHub" }));
+    await userEvent.click(screen.getByRole("button", { name: "Add GitHub account" }));
 
     expect(signInWithGitHub).toHaveBeenCalledWith();
     expect(await screen.findByText("WDJB-MJHT")).toBeInTheDocument();
@@ -2060,7 +2080,7 @@ describe("Control renderer routing", () => {
     renderControl({ ...makeApi(), signInWithGitHub });
 
     await userEvent.click(await screen.findByTitle("Account settings"));
-    await userEvent.click(screen.getByRole("button", { name: "Sign in with GitHub" }));
+    await userEvent.click(screen.getByRole("button", { name: "Add GitHub account" }));
 
     expect((await screen.findAllByText(/Enter (the code|WDJB-MJHT) in GitHub\./)).length).toBeGreaterThan(0);
     expect(await screen.findByText("WDJB-MJHT")).toBeInTheDocument();
@@ -2076,7 +2096,7 @@ describe("Control renderer routing", () => {
     expect(screen.queryByLabelText("GitHub token")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("GitHub OAuth client ID")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("GitHub OAuth client secret")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sign in with GitHub" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add GitHub account" })).toBeInTheDocument();
   });
 
   it("applies resolved theme attributes to the app shell", async () => {
@@ -2195,7 +2215,7 @@ describe("Control renderer routing", () => {
 
     expect(screen.getAllByText("GitHub sign-in is not configured in this build.").length).toBeGreaterThan(0);
 
-    await userEvent.click(screen.getByRole("button", { name: "Sign in with GitHub" }));
+    await userEvent.click(screen.getByRole("button", { name: "Add GitHub account" }));
 
     expect(signInWithGitHub).not.toHaveBeenCalled();
     expect(screen.getAllByText("GitHub sign-in is not configured in this build.").length).toBeGreaterThan(0);
@@ -3813,8 +3833,10 @@ describe("Control renderer routing", () => {
 
     await waitFor(() =>
       expect(updateSettings).toHaveBeenCalledWith({
-        repositoryTabPreferences: {
-          discussions: "show"
+        repositoryTabPreferencesByRepository: {
+          "apple/swift": {
+            discussions: "show"
+          }
         }
       })
     );

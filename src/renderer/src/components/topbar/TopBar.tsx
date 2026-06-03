@@ -40,8 +40,6 @@ interface TopBarProps {
   repositories: RepositorySummary[];
   githubReady: boolean;
   onSelectArea(areaId: string): void;
-  onAddLocalArea(): void;
-  onAddSshArea(): void;
   onEditArea(area: AreaSummary): void;
   onDeleteArea(area: AreaSummary): void;
   onGoRepository(): void;
@@ -72,8 +70,6 @@ export function TopBar({
   repositories,
   githubReady,
   onSelectArea,
-  onAddLocalArea,
-  onAddSshArea,
   onEditArea,
   onDeleteArea,
   onGoRepository,
@@ -104,8 +100,6 @@ export function TopBar({
           areas={areas}
           selectedAreaId={selectedAreaId}
           onSelectArea={onSelectArea}
-          onAddLocalArea={onAddLocalArea}
-          onAddSshArea={onAddSshArea}
           onEditArea={onEditArea}
           onDeleteArea={onDeleteArea}
         />

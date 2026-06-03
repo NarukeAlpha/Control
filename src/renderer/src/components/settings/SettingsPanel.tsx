@@ -30,13 +30,11 @@ import type {
 } from "@shared/github";
 import {
   CONTROL_ACCENT_COLORS,
-  CONTROL_ACCENT_COLOR_LABELS,
   CONTROL_CODE_FONTS,
   CONTROL_CODE_FONT_LABELS,
   CONTROL_GLASS_MODES,
   CONTROL_GLASS_MODE_LABELS,
   CONTROL_THEME_MODES,
-  CONTROL_THEME_PRESETS,
   CONTROL_THEME_PRESET_LABELS,
   CONTROL_UI_FONTS,
   CONTROL_UI_FONT_LABELS,
@@ -77,6 +75,7 @@ const themePresetPreview: Record<
     foreground: string;
     surface: string;
     accent: string;
+    texture: string;
     contrast: number;
   }
 > = {
@@ -85,6 +84,7 @@ const themePresetPreview: Record<
     foreground: "#0F172A",
     surface: "rgba(234, 242, 252, 0.82)",
     accent: "#2563EB",
+    texture: "#F7FBFF",
     contrast: 62
   },
   "control-dark": {
@@ -92,6 +92,7 @@ const themePresetPreview: Record<
     foreground: "#E5EDF7",
     surface: "rgba(30, 41, 59, 0.76)",
     accent: "#60A5FA",
+    texture: "#263449",
     contrast: 60
   },
   "control-dim": {
@@ -99,6 +100,7 @@ const themePresetPreview: Record<
     foreground: "#D8DEE8",
     surface: "rgba(37, 49, 67, 0.78)",
     accent: "#7DD3FC",
+    texture: "#273447",
     contrast: 52
   },
   "control-high-contrast-dark": {
@@ -106,6 +108,7 @@ const themePresetPreview: Record<
     foreground: "#FFFFFF",
     surface: "rgba(15, 23, 42, 0.92)",
     accent: "#BFDBFE",
+    texture: "#1E293B",
     contrast: 82
   }
 };
@@ -128,6 +131,13 @@ const themeModeIcons: Record<ControlThemeMode, LucideIcon> = {
   dark: Moon,
   system: Monitor
 };
+
+const lightThemePresetOptions: ControlThemePreset[] = ["control-light"];
+const darkThemePresetOptions: ControlThemePreset[] = [
+  "control-dark",
+  "control-dim",
+  "control-high-contrast-dark"
+];
 
 interface SettingsDraftState {
   activeCategory: SettingsCategory;
@@ -155,7 +165,6 @@ type SettingsDraftAction =
   | { type: "setGlassMode"; value: GlassMode }
   | { type: "setThemeMode"; value: ControlThemeMode }
   | { type: "setThemePreset"; value: ControlThemePreset }
-  | { type: "setThemeAccent"; scheme: "light" | "dark"; value: ControlAccentColor }
   | {
       type: "setThemePalette";
       scheme: "light" | "dark";
@@ -177,6 +186,7 @@ interface SettingsPanelProps {
   onOpenExternal(url: string): void;
   onPreviewSettings?(settings: Partial<ControlSettings> | null): void;
   onSave(settings: Partial<AppState["settings"]>): Promise<void>;
+  systemColorScheme?: "light" | "dark";
 }
 
 function createSettingsDraftState(appState?: AppState): SettingsDraftState {
@@ -239,20 +249,14 @@ function settingsDraftReducer(state: SettingsDraftState, action: SettingsDraftAc
         customTheme: applyPresetToCustomTheme(state.customTheme, action.value)
       });
     }
-    case "setThemeAccent":
+    case "setThemePalette": {
+      const nextThemeAccent =
+        action.key === "accent" ? (readAccentForColor(action.value) ?? state.themeAccent) : state.themeAccent;
       return withUnsavedChange(state, {
-        themeAccent: action.value,
-        customTheme: updateCustomThemePalette(
-          state.customTheme,
-          action.scheme,
-          "accent",
-          accentPreview[action.value]
-        )
-      });
-    case "setThemePalette":
-      return withUnsavedChange(state, {
+        themeAccent: nextThemeAccent,
         customTheme: updateCustomThemePalette(state.customTheme, action.scheme, action.key, action.value)
       });
+    }
     case "setUiFont":
       return withUnsavedChange(state, {
         customTheme: { ...state.customTheme, uiFont: action.value }
@@ -277,7 +281,8 @@ export function SettingsPanel({
   onClose,
   onOpenExternal,
   onPreviewSettings,
-  onSave
+  onSave,
+  systemColorScheme = "light"
 }: SettingsPanelProps): JSX.Element {
   const [draft, dispatch] = useReducer(settingsDraftReducer, appState, createSettingsDraftState);
   const observedCompletedAt = useRef(authController.completedAt);
@@ -310,11 +315,7 @@ export function SettingsPanel({
   const saveDisabledReason = saveBusy ? "Settings save is still running." : null;
   const activeCategoryLabel =
     settingsCategories.find((category) => category.id === draft.activeCategory)?.label ?? "Settings";
-  const previewScheme =
-    draft.themeMode === "dark" || (draft.themeMode === "system" && draft.themePreset !== "control-light")
-      ? "dark"
-      : "light";
-  const selectedAccent = draft.customTheme[previewScheme].accent;
+  const activeThemeScheme = resolveActiveThemeScheme(draft.themeMode, systemColorScheme);
 
   useEffect(() => {
     if (!authController.completedAt || authController.completedAt === observedCompletedAt.current) {
@@ -493,7 +494,7 @@ export function SettingsPanel({
             )}
 
             {draft.activeCategory === "appearance" && (
-              <AppearanceSettingsSection draft={draft} selectedAccent={selectedAccent} dispatch={dispatch} />
+              <AppearanceSettingsSection activeScheme={activeThemeScheme} draft={draft} dispatch={dispatch} />
             )}
 
             {draft.activeCategory === "repository" && (
@@ -618,14 +619,19 @@ function GitHubSignInSession({
 }
 
 function AppearanceSettingsSection({
+  activeScheme,
   draft,
-  selectedAccent,
   dispatch
 }: {
+  activeScheme: "light" | "dark";
   draft: SettingsDraftState;
-  selectedAccent: string;
   dispatch(action: SettingsDraftAction): void;
 }): JSX.Element {
+  const activePalette = draft.customTheme[activeScheme];
+  const activePresetOptions = getPresetOptionsForScheme(activeScheme);
+  const activePreset = getVisiblePresetForScheme(draft.themePreset, activeScheme);
+  const activeThemeTitle = activeScheme === "light" ? "Light theme" : "Dark theme";
+
   return (
     <section className="settings-section settings-appearance-section" aria-label="Appearance settings">
       <div className="settings-theme-composer">
@@ -653,29 +659,16 @@ function AppearanceSettingsSection({
           </div>
         </div>
 
-        <ThemeCodePreview accent={selectedAccent} />
+        <ThemeCodePreview palette={activePalette} scheme={activeScheme} />
       </div>
 
       <ThemeDetailCard
-        title="Light theme"
-        selectLabel="Light theme"
-        scheme="light"
-        preset={draft.themePreset === "control-light" ? draft.themePreset : "control-light"}
-        presetOptions={["control-light"]}
-        palette={draft.customTheme.light}
-        uiFont={draft.customTheme.uiFont}
-        codeFont={draft.customTheme.codeFont}
-        glassMode={draft.glassMode}
-        dispatch={dispatch}
-      />
-
-      <ThemeDetailCard
-        title="Dark theme"
-        selectLabel="Dark theme"
-        scheme="dark"
-        preset={draft.themePreset === "control-light" ? "control-dark" : draft.themePreset}
-        presetOptions={["control-dark", "control-dim", "control-high-contrast-dark"]}
-        palette={draft.customTheme.dark}
+        title={activeThemeTitle}
+        selectLabel={activeThemeTitle}
+        scheme={activeScheme}
+        preset={activePreset}
+        presetOptions={activePresetOptions}
+        palette={activePalette}
         uiFont={draft.customTheme.uiFont}
         codeFont={draft.customTheme.codeFont}
         glassMode={draft.glassMode}
@@ -683,21 +676,6 @@ function AppearanceSettingsSection({
       />
 
       <div className="settings-appearance-list">
-        <AppearanceValueRow label="Active preset">
-          <div className="settings-theme-pill-group" role="group" aria-label="Theme">
-            {CONTROL_THEME_PRESETS.map((preset) => (
-              <button
-                key={preset}
-                className={draft.themePreset === preset ? "active" : ""}
-                type="button"
-                aria-pressed={draft.themePreset === preset}
-                onClick={() => dispatch({ type: "setThemePreset", value: preset })}
-              >
-                {CONTROL_THEME_PRESET_LABELS[preset]}
-              </button>
-            ))}
-          </div>
-        </AppearanceValueRow>
         <AppearanceValueRow label="Glass mode">
           <div className="settings-glass-segments" role="group" aria-label="Glass mode">
             {CONTROL_GLASS_MODES.map((mode) => (
@@ -719,9 +697,28 @@ function AppearanceSettingsSection({
   );
 }
 
-function ThemeCodePreview({ accent }: { accent: string }): JSX.Element {
+function ThemeCodePreview({
+  palette,
+  scheme
+}: {
+  palette: ControlThemePaletteSettings;
+  scheme: "light" | "dark";
+}): JSX.Element {
+  const contrast = calculateContrastScore(palette);
+  const surface = scheme === "light" ? "sidebar" : "sidebar-elevated";
+
   return (
-    <div className="settings-code-preview" style={{ "--settings-preview-accent": accent } as CSSProperties}>
+    <div
+      className="settings-code-preview"
+      style={
+        {
+          "--settings-preview-accent": palette.accent,
+          "--settings-preview-background": palette.background,
+          "--settings-preview-foreground": palette.foreground,
+          "--settings-preview-texture": palette.texture
+        } as CSSProperties
+      }
+    >
       <div className="settings-code-pane settings-code-pane-light" aria-hidden="true">
         <div>
           <span>1</span>
@@ -731,17 +728,21 @@ function ThemeCodePreview({ accent }: { accent: string }): JSX.Element {
         </div>
         <div>
           <span>2</span>
-          <code>surface: "sidebar",</code>
+          <code>
+            background: <em>"{palette.background}"</em>,
+          </code>
         </div>
         <div>
           <span>3</span>
           <code>
-            accent: <em>"{accent}"</em>,
+            foreground: <em>"{palette.foreground}"</em>,
           </code>
         </div>
         <div>
           <span>4</span>
-          <code>contrast: 42,</code>
+          <code>
+            texture: <em>"{palette.texture}"</em>,
+          </code>
         </div>
         <div>
           <span>5</span>
@@ -757,17 +758,19 @@ function ThemeCodePreview({ accent }: { accent: string }): JSX.Element {
         </div>
         <div>
           <span>2</span>
-          <code>surface: "sidebar-elevated",</code>
+          <code>
+            surface: <em>"{surface}"</em>,
+          </code>
         </div>
         <div>
           <span>3</span>
           <code>
-            accent: <em>"{accent}"</em>,
+            accent: <em>"{palette.accent}"</em>,
           </code>
         </div>
         <div>
           <span>4</span>
-          <code>contrast: 68,</code>
+          <code>contrast: {contrast},</code>
         </div>
         <div>
           <span>5</span>
@@ -839,26 +842,11 @@ function ThemeDetailCard({
       </header>
 
       <AppearanceValueRow label="Accent">
-        <div className="settings-theme-swatch-group" role="group" aria-label={`${title} accent`}>
-          {CONTROL_ACCENT_COLORS.map((nextAccent) => (
-            <button
-              key={nextAccent}
-              className={palette.accent === accentPreview[nextAccent] ? "active" : ""}
-              type="button"
-              aria-pressed={palette.accent === accentPreview[nextAccent]}
-              aria-label={`${CONTROL_ACCENT_COLOR_LABELS[nextAccent]} accent`}
-              style={{ "--settings-swatch": accentPreview[nextAccent] } as CSSProperties}
-              onClick={() => dispatch({ type: "setThemeAccent", scheme, value: nextAccent })}
-            >
-              <span aria-hidden="true" />
-            </button>
-          ))}
-          <ColorField
-            label={`${title} accent color`}
-            value={palette.accent}
-            onChange={(value) => dispatch({ type: "setThemePalette", scheme, key: "accent", value })}
-          />
-        </div>
+        <ColorField
+          label={`${title} accent color`}
+          value={palette.accent}
+          onChange={(value) => dispatch({ type: "setThemePalette", scheme, key: "accent", value })}
+        />
       </AppearanceValueRow>
 
       <AppearanceValueRow label="Background">
@@ -873,6 +861,13 @@ function ThemeDetailCard({
           label={`${title} foreground color`}
           value={palette.foreground}
           onChange={(value) => dispatch({ type: "setThemePalette", scheme, key: "foreground", value })}
+        />
+      </AppearanceValueRow>
+      <AppearanceValueRow label="Texture">
+        <ColorField
+          label={`${title} texture color`}
+          value={palette.texture}
+          onChange={(value) => dispatch({ type: "setThemePalette", scheme, key: "texture", value })}
         />
       </AppearanceValueRow>
       <AppearanceValueRow label="UI font">
@@ -1183,6 +1178,25 @@ function cloneCustomThemeSettings(customTheme: ControlThemeCustomSettings): Cont
   };
 }
 
+function resolveActiveThemeScheme(
+  themeMode: ControlThemeMode,
+  systemColorScheme: "light" | "dark"
+): "light" | "dark" {
+  return themeMode === "system" ? systemColorScheme : themeMode;
+}
+
+function getPresetOptionsForScheme(scheme: "light" | "dark"): ControlThemePreset[] {
+  return scheme === "light" ? lightThemePresetOptions : darkThemePresetOptions;
+}
+
+function getVisiblePresetForScheme(preset: ControlThemePreset, scheme: "light" | "dark"): ControlThemePreset {
+  if (scheme === "light") {
+    return "control-light";
+  }
+
+  return preset === "control-light" ? "control-dark" : preset;
+}
+
 function updateCustomThemePalette(
   customTheme: ControlThemeCustomSettings,
   scheme: "light" | "dark",
@@ -1207,7 +1221,12 @@ function applyPresetToCustomTheme(
 
   return updateCustomThemePalette(
     updateCustomThemePalette(
-      updateCustomThemePalette(customTheme, scheme, "accent", presetPreview.accent),
+      updateCustomThemePalette(
+        updateCustomThemePalette(customTheme, scheme, "accent", presetPreview.accent),
+        scheme,
+        "texture",
+        presetPreview.texture
+      ),
       scheme,
       "background",
       presetPreview.background

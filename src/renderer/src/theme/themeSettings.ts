@@ -57,11 +57,13 @@ export function resolveControlThemeStyleVars(
   const theme = settings ?? DEFAULT_CONTROL_THEME_SETTINGS;
   const custom = theme.custom ?? DEFAULT_CONTROL_THEME_SETTINGS.custom;
   const palette = resolvedMode === "dark" ? custom.dark : custom.light;
-  const surfaceLift = resolvedMode === "dark" ? "#FFFFFF" : "#F7FBFF";
-  const surfaceShadow = resolvedMode === "dark" ? "#000000" : "#D6E4F3";
+  const darkMode = resolvedMode === "dark";
+  const surfaceShadow = darkMode ? "#000000" : "#D6E4F3";
   const text = palette.foreground;
   const background = palette.background;
   const accent = palette.accent;
+  const texture = palette.texture;
+  const dataColors = darkMode ? darkActivityDataColors : lightActivityDataColors;
 
   return {
     "--font-ui-family": uiFontStacks[custom.uiFont],
@@ -72,28 +74,37 @@ export function resolveControlThemeStyleVars(
     "--color-text-subtle": colorMix(text, 50, background),
     "--color-disabled-text": colorMix(text, 54, background),
     "--color-app-background": background,
+    "--color-texture": texture,
+    "--color-texture-muted": colorMix(texture, darkMode ? 30 : 28, "transparent"),
     "--color-surface-solid": background,
-    "--color-surface-glass": colorMix(background, resolvedMode === "dark" ? 72 : 74, "transparent"),
-    "--color-surface-glass-strong": colorMix(background, resolvedMode === "dark" ? 86 : 82, surfaceLift),
-    "--color-surface-elevated": colorMix(background, resolvedMode === "dark" ? 92 : 86, surfaceLift),
-    "--color-surface-row": colorMix(background, resolvedMode === "dark" ? 82 : 78, surfaceLift),
-    "--color-surface-row-hover": colorMix(background, resolvedMode === "dark" ? 74 : 68, surfaceLift),
-    "--color-surface-control": colorMix(background, resolvedMode === "dark" ? 78 : 76, surfaceLift),
-    "--color-surface-control-hover": colorMix(background, resolvedMode === "dark" ? 70 : 66, surfaceLift),
-    "--color-border": colorMix(text, resolvedMode === "dark" ? 22 : 14, "transparent"),
-    "--color-border-strong": colorMix(text, resolvedMode === "dark" ? 34 : 28, "transparent"),
-    "--color-glass-border": colorMix(text, resolvedMode === "dark" ? 20 : 18, "transparent"),
-    "--color-shell-border": colorMix(surfaceLift, resolvedMode === "dark" ? 18 : 76, "transparent"),
+    "--color-surface-glass": colorMix(texture, darkMode ? 58 : 46, "transparent"),
+    "--color-surface-glass-strong": colorMix(texture, darkMode ? 76 : 70, background),
+    "--color-surface-elevated": colorMix(texture, darkMode ? 86 : 82, background),
+    "--color-surface-row": colorMix(texture, darkMode ? 66 : 60, background),
+    "--color-surface-row-hover": colorMix(texture, darkMode ? 78 : 74, background),
+    "--color-surface-control": colorMix(texture, darkMode ? 72 : 66, background),
+    "--color-surface-control-hover": colorMix(texture, darkMode ? 84 : 80, background),
+    "--color-surface-highlight": colorMix(text, darkMode ? 14 : 12, "transparent"),
+    "--color-border": colorMix(text, darkMode ? 22 : 14, "transparent"),
+    "--color-border-strong": colorMix(text, darkMode ? 34 : 28, "transparent"),
+    "--color-glass-border": colorMix(text, darkMode ? 20 : 18, "transparent"),
+    "--color-shell-border": colorMix(texture, darkMode ? 44 : 76, "transparent"),
     "--color-accent": accent,
-    "--color-accent-strong": colorMix(accent, resolvedMode === "dark" ? 72 : 82, text),
-    "--color-accent-muted": colorMix(accent, resolvedMode === "dark" ? 22 : 14, "transparent"),
+    "--color-accent-strong": colorMix(accent, darkMode ? 72 : 82, text),
+    "--color-accent-muted": colorMix(accent, darkMode ? 22 : 14, "transparent"),
     "--color-focus-ring": accent,
-    "--color-surface-selected": colorMix(accent, resolvedMode === "dark" ? 24 : 10, "transparent"),
-    "--color-selection-background": colorMix(accent, resolvedMode === "dark" ? 36 : 22, "transparent"),
-    "--color-selection-text": resolvedMode === "dark" ? "#F8FAFC" : "#08111F",
-    "--color-code-background": colorMix(background, resolvedMode === "dark" ? 86 : 88, surfaceShadow),
+    "--color-surface-selected": colorMix(accent, darkMode ? 22 : 16, texture),
+    "--color-selection-background": colorMix(accent, darkMode ? 36 : 22, "transparent"),
+    "--color-selection-text": darkMode ? "#F8FAFC" : "#08111F",
+    "--color-data-muted": dataColors.muted,
+    "--color-data-low": dataColors.low,
+    "--color-data-medium": dataColors.medium,
+    "--color-data-strong": dataColors.strong,
+    "--color-data-peak": dataColors.peak,
+    "--color-data-line": dataColors.line,
+    "--color-code-background": colorMix(background, darkMode ? 86 : 88, surfaceShadow),
     "--color-code-text": text,
-    "--color-overlay": colorMix(background, resolvedMode === "dark" ? 62 : 22, "transparent")
+    "--color-overlay": colorMix(background, darkMode ? 62 : 22, "transparent")
   };
 }
 
@@ -121,6 +132,24 @@ export function useResolvedControlTheme(settings: ControlThemeSettings | undefin
   const systemPrefersDark = useSystemPrefersDark();
   return useMemo(() => resolveControlTheme(settings, systemPrefersDark), [settings, systemPrefersDark]);
 }
+
+const lightActivityDataColors = {
+  muted: "#EBEDF0",
+  low: "#9BE9A8",
+  medium: "#40C463",
+  strong: "#30A14E",
+  peak: "#216E39",
+  line: "#2DA44E"
+} as const;
+
+const darkActivityDataColors = {
+  muted: "#161B22",
+  low: "#0E4429",
+  medium: "#006D32",
+  strong: "#26A641",
+  peak: "#39D353",
+  line: "#2DA44E"
+} as const;
 
 function readSystemPrefersDark(): boolean {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") {

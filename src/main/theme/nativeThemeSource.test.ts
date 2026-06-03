@@ -1,16 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import type { ControlSettings } from "@shared/github";
+import { DEFAULT_CONTROL_THEME_SETTINGS, type ControlSettings } from "@shared/github";
 import { applyNativeThemeSource } from "./nativeThemeSource";
 
 const baseSettings: ControlSettings = {
   credentialProvider: "github-oauth",
   glassMode: "glass-shell",
-  theme: {
-    mode: "system",
-    preset: "control-light",
-    accent: "blue"
-  },
+  theme: DEFAULT_CONTROL_THEME_SETTINGS,
   repositoryTabPreferences: {}
 };
 

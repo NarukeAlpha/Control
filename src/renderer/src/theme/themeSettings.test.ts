@@ -2,7 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_CONTROL_THEME_SETTINGS, type ControlThemeSettings } from "@shared/github";
-import { resolveControlTheme, useResolvedControlTheme } from "./themeSettings";
+import { resolveControlTheme, resolveControlThemeStyleVars, useResolvedControlTheme } from "./themeSettings";
 
 describe("themeSettings", () => {
   afterEach(() => {
@@ -11,19 +11,20 @@ describe("themeSettings", () => {
   });
 
   it.each([
-    ["light", false, "light", "light"],
-    ["dark", false, "dark", "dark"],
-    ["system", false, "light", "light"],
-    ["system", true, "dark", "dark"]
+    ["light", false, "light", "light", "control-light"],
+    ["dark", false, "dark", "dark", "control-high-contrast-dark"],
+    ["system", false, "light", "light", "control-light"],
+    ["system", true, "dark", "dark", "control-high-contrast-dark"]
   ] as const)(
     "resolves %s mode with systemPrefersDark=%s",
-    (mode, systemPrefersDark, resolvedMode, colorScheme) => {
+    (mode, systemPrefersDark, resolvedMode, colorScheme, preset) => {
       expect(
         resolveControlTheme(
           {
             mode,
             preset: "control-high-contrast-dark",
-            accent: "purple"
+            accent: "purple",
+            custom: DEFAULT_CONTROL_THEME_SETTINGS.custom
           },
           systemPrefersDark
         )
@@ -31,18 +32,32 @@ describe("themeSettings", () => {
         requestedMode: mode,
         resolvedMode,
         colorScheme,
-        preset: "control-high-contrast-dark",
+        preset,
         accent: "purple"
       });
     }
   );
+
+  it("maps light presets away from dark mode", () => {
+    expect(
+      resolveControlTheme(
+        {
+          mode: "dark",
+          preset: "control-light",
+          accent: "blue",
+          custom: DEFAULT_CONTROL_THEME_SETTINGS.custom
+        },
+        false
+      ).preset
+    ).toBe("control-dark");
+  });
 
   it("falls back to default theme settings when settings are missing", () => {
     expect(resolveControlTheme(undefined, true)).toEqual({
       requestedMode: DEFAULT_CONTROL_THEME_SETTINGS.mode,
       resolvedMode: "dark",
       colorScheme: "dark",
-      preset: DEFAULT_CONTROL_THEME_SETTINGS.preset,
+      preset: "control-dark",
       accent: DEFAULT_CONTROL_THEME_SETTINGS.accent
     });
   });
@@ -71,7 +86,8 @@ describe("themeSettings", () => {
     const settings: ControlThemeSettings = {
       mode: "system",
       preset: "control-dark",
-      accent: "blue"
+      accent: "blue",
+      custom: DEFAULT_CONTROL_THEME_SETTINGS.custom
     };
 
     const { result } = renderHook(() => useResolvedControlTheme(settings));
@@ -89,6 +105,35 @@ describe("themeSettings", () => {
       colorScheme: "dark",
       preset: "control-dark",
       accent: "blue"
+    });
+  });
+
+  it("maps custom palette and font settings to shell CSS variables", () => {
+    expect(
+      resolveControlThemeStyleVars(
+        {
+          mode: "dark",
+          preset: "control-dark",
+          accent: "purple",
+          custom: {
+            light: DEFAULT_CONTROL_THEME_SETTINGS.custom.light,
+            dark: {
+              accent: "#FF5C5C",
+              background: "#111827",
+              foreground: "#E4E4E7"
+            },
+            uiFont: "satoshi",
+            codeFont: "jetbrains-mono"
+          }
+        },
+        "dark"
+      )
+    ).toMatchObject({
+      "--color-accent": "#FF5C5C",
+      "--color-surface-solid": "#111827",
+      "--color-text": "#E4E4E7",
+      "--font-ui-family": expect.stringContaining("Satoshi"),
+      "--font-code-family": expect.stringContaining("JetBrains Mono")
     });
   });
 });

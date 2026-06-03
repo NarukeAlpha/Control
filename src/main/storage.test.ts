@@ -303,7 +303,21 @@ describe("LocalStore repository pins", () => {
         theme: {
           mode: "dark",
           preset: "unknown-preset",
-          accent: "purple"
+          accent: "purple",
+          custom: {
+            light: {
+              accent: "#ff6363",
+              background: "#bad",
+              foreground: "#030303"
+            },
+            dark: {
+              accent: "60a5fa",
+              background: "#111827",
+              foreground: "#e4e4e7"
+            },
+            uiFont: "satoshi",
+            codeFont: "unknown"
+          }
         },
         repositoryTabPreferences: {
           agents: "show",
@@ -316,7 +330,21 @@ describe("LocalStore repository pins", () => {
       theme: {
         mode: "dark",
         preset: "control-light",
-        accent: "purple"
+        accent: "purple",
+        custom: {
+          light: {
+            accent: "#FF6363",
+            background: defaultSettings.theme.custom.light.background,
+            foreground: "#030303"
+          },
+          dark: {
+            accent: defaultSettings.theme.custom.dark.accent,
+            background: "#111827",
+            foreground: "#E4E4E7"
+          },
+          uiFont: "satoshi",
+          codeFont: defaultSettings.theme.custom.codeFont
+        }
       },
       repositoryTabPreferences: {
         agents: "show"
@@ -331,7 +359,16 @@ describe("LocalStore repository pins", () => {
     const theme: ControlSettings["theme"] = {
       mode: "dark",
       preset: "control-high-contrast-dark",
-      accent: "green"
+      accent: "green",
+      custom: {
+        ...defaultSettings.theme.custom,
+        dark: {
+          accent: "#FF5C5C",
+          background: "#111827",
+          foreground: "#E4E4E7"
+        },
+        codeFont: "jetbrains-mono"
+      }
     };
 
     for (const store of stores) {
@@ -342,6 +379,33 @@ describe("LocalStore repository pins", () => {
           theme
         })
       );
+      store.close();
+    }
+  });
+
+  it("deep merges custom theme palette writes", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "control-store-"));
+    tempDirs.push(tempDir);
+    const stores: LocalStore[] = [new MemoryLocalStore(), await createLocalStore(tempDir)];
+
+    for (const store of stores) {
+      const result = store.updateSettings({
+        theme: {
+          custom: {
+            light: {
+              accent: "#22C55E"
+            }
+          }
+        }
+      } as Partial<ControlSettings>);
+
+      expect(result.theme.custom).toEqual({
+        ...defaultSettings.theme.custom,
+        light: {
+          ...defaultSettings.theme.custom.light,
+          accent: "#22C55E"
+        }
+      });
       store.close();
     }
   });

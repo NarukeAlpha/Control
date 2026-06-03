@@ -493,11 +493,7 @@ export function SettingsPanel({
             )}
 
             {draft.activeCategory === "appearance" && (
-              <AppearanceSettingsSection
-                draft={draft}
-                selectedAccent={selectedAccent}
-                dispatch={dispatch}
-              />
+              <AppearanceSettingsSection draft={draft} selectedAccent={selectedAccent} dispatch={dispatch} />
             )}
 
             {draft.activeCategory === "repository" && (
@@ -923,7 +919,9 @@ function ThemeDetailCard({
           type="button"
           role="switch"
           aria-checked={translucentShell}
-          onClick={() => dispatch({ type: "setGlassMode", value: translucentShell ? "solid" : "glass-shell" })}
+          onClick={() =>
+            dispatch({ type: "setGlassMode", value: translucentShell ? "solid" : "glass-shell" })
+          }
         >
           <span />
         </button>

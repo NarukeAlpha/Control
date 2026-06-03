@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { githubIpcRouteChannels, ipcChannels } from "@shared/ipc";
-import type { ControlSettings } from "@shared/github";
+import { DEFAULT_CONTROL_THEME_SETTINGS, type ControlSettings } from "@shared/github";
 import type { GitHubProviderManager } from "../github/provider";
 import type { LocalStore } from "../storage";
 import { createControlIpcRoutes, registerControlIpc } from "./registerControlIpc";
@@ -23,11 +23,7 @@ vi.mock("electron", () => ({
 const settings: ControlSettings = {
   credentialProvider: "github-oauth",
   glassMode: "glass-shell",
-  theme: {
-    mode: "system",
-    preset: "control-light",
-    accent: "blue"
-  },
+  theme: DEFAULT_CONTROL_THEME_SETTINGS,
   repositoryTabPreferences: {}
 };
 
@@ -39,7 +35,21 @@ function createStore(): LocalStore {
       ...settingsPatch,
       theme: {
         ...settings.theme,
-        ...settingsPatch.theme
+        ...settingsPatch.theme,
+        custom: settingsPatch.theme?.custom
+          ? {
+              ...settings.theme.custom,
+              ...settingsPatch.theme.custom,
+              light: {
+                ...settings.theme.custom.light,
+                ...settingsPatch.theme.custom.light
+              },
+              dark: {
+                ...settings.theme.custom.dark,
+                ...settingsPatch.theme.custom.dark
+              }
+            }
+          : settings.theme.custom
       }
     })),
     listAreas: vi.fn(() => []),

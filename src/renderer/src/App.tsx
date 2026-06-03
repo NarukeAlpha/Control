@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef } from "react";
-import type { ComponentProps, JSX } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ComponentProps, CSSProperties, JSX } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import type { AppState, RepositoryTabPreferenceKey } from "@shared/github";
+import type { AppState, ControlSettings, RepositoryTabPreferenceKey } from "@shared/github";
 
 import { MarkdownUrlHandlerContext } from "./components/MarkdownBody";
 import { LocalAreaHome } from "./components/areas/LocalAreaHome";
@@ -41,7 +41,7 @@ import { useCollectionSurfaceState } from "./hooks/useCollectionSurfaceState";
 import { useRepositoryRouteState } from "./hooks/useRepositoryRouteState";
 import { useStoredRepositoryRefs } from "./hooks/useStoredRepositoryRefs";
 import { useUiStore, type AppRoute } from "./stores/uiStore";
-import { useResolvedControlTheme } from "./theme/themeSettings";
+import { resolveControlThemeStyleVars, useResolvedControlTheme } from "./theme/themeSettings";
 
 function routeTitle(route: AppRoute): string {
   switch (route.kind) {
@@ -61,6 +61,42 @@ function routeTitle(route: AppRoute): string {
     default:
       return "Home";
   }
+}
+
+function mergeSettingsPreview(
+  settings: ControlSettings | undefined,
+  preview: Partial<ControlSettings> | null
+): ControlSettings | undefined {
+  if (!settings || !preview) {
+    return settings;
+  }
+
+  const previewTheme = preview.theme;
+  return {
+    ...settings,
+    ...preview,
+    theme: previewTheme
+      ? {
+          ...settings.theme,
+          ...previewTheme,
+          custom: previewTheme.custom
+            ? {
+                ...settings.theme.custom,
+                ...previewTheme.custom,
+                light: {
+                  ...settings.theme.custom.light,
+                  ...previewTheme.custom.light
+                },
+                dark: {
+                  ...settings.theme.custom.dark,
+                  ...previewTheme.custom.dark
+                }
+              }
+            : settings.theme.custom
+        }
+      : settings.theme,
+    repositoryTabPreferences: preview.repositoryTabPreferences ?? settings.repositoryTabPreferences
+  };
 }
 
 function useContentScrollReset(route: AppRoute) {
@@ -95,6 +131,7 @@ function useAppShellState() {
   const commandPalette = useCommandPaletteController();
   const dialogs = useShellDialogState();
   const [repositoryRefs, setRepositoryRefs] = useStoredRepositoryRefs();
+  const [settingsPreview, setSettingsPreview] = useState<Partial<ControlSettings> | null>(null);
 
   const appState = useQuery({
     queryKey: ["app-state"],
@@ -430,11 +467,19 @@ function useAppShellState() {
     onSelectOrganizationProject: selectOrganizationProjectInApp
   });
 
-  const resolvedTheme = useResolvedControlTheme(appState.data?.settings.theme);
+  const effectiveSettings = useMemo(
+    () => mergeSettingsPreview(appState.data?.settings, settingsPreview),
+    [appState.data?.settings, settingsPreview]
+  );
+  const resolvedTheme = useResolvedControlTheme(effectiveSettings?.theme);
+  const themeStyleVars = useMemo(
+    () => resolveControlThemeStyleVars(effectiveSettings?.theme, resolvedTheme.resolvedMode),
+    [effectiveSettings?.theme, resolvedTheme.resolvedMode]
+  );
   const shellClass = [
     "app-shell",
-    appState.data?.settings.glassMode === "solid" ? "solid-shell" : null,
-    appState.data?.settings.glassMode === "reduced" ? "reduced-glass" : null
+    effectiveSettings?.glassMode === "solid" ? "solid-shell" : null,
+    effectiveSettings?.glassMode === "reduced" ? "reduced-glass" : null
   ]
     .filter(Boolean)
     .join(" ");
@@ -448,12 +493,15 @@ function useAppShellState() {
   }
 
   function closeSettingsPanel(): void {
+    setSettingsPreview(null);
     setSettingsOpen(false);
   }
 
   async function saveSettings(settings: Partial<AppState["settings"]>): Promise<void> {
+    setSettingsPreview(settings);
     await api.updateSettings(settings);
     await queryClient.invalidateQueries({ queryKey: ["app-state"] });
+    setSettingsPreview(null);
   }
 
   return {
@@ -558,7 +606,9 @@ function useAppShellState() {
     mutation,
     commandPaletteItems,
     resolvedTheme,
+    themeStyleVars,
     shellClass,
+    setSettingsPreview,
     showRepositoryTab,
     openExternal,
     openSettingsPanel,
@@ -587,6 +637,21 @@ function AppShell({
   state: AppShellState;
   contentScrollRef: ReturnType<typeof useContentScrollReset>;
 }): JSX.Element {
+  useEffect(() => {
+    const background = state.themeStyleVars["--color-app-background"];
+    const color = state.themeStyleVars["--color-text"];
+
+    document.documentElement.style.background = background;
+    document.body.style.background = background;
+    document.body.style.color = color;
+
+    return () => {
+      document.documentElement.style.removeProperty("background");
+      document.body.style.removeProperty("background");
+      document.body.style.removeProperty("color");
+    };
+  }, [state.themeStyleVars]);
+
   return (
     <MarkdownUrlHandlerContext.Provider value={state.openMarkdownUrl}>
       <AppEventBridge activeRepository={state.activeRepositoryScope} />
@@ -596,6 +661,7 @@ function AppShell({
         data-color-scheme={state.resolvedTheme.colorScheme}
         data-theme-mode={state.resolvedTheme.requestedMode}
         data-theme-preset={state.resolvedTheme.preset}
+        style={state.themeStyleVars as CSSProperties}
       >
         <AppSidebar state={state} />
         <AppTopBar state={state} />
@@ -1034,6 +1100,7 @@ function AppShellDialogHost({ state }: { state: AppShellState }): JSX.Element {
       onCloseSettings={state.closeSettingsPanel}
       onOpenExternal={state.openExternal}
       onSaveSettings={state.saveSettings}
+      onPreviewSettings={state.setSettingsPreview}
       onSelectRepositoryRef={state.selectRepositoryRefInApp}
       repositoryRefKindForName={state.repositoryRefKindForName}
       onExpandRefs={state.expandActiveRepositoryRefs}

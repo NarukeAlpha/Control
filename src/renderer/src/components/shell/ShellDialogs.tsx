@@ -13,6 +13,7 @@ import type { JSX } from "react";
 import { AreaDeleteDialog, AreaEditDialog, SshAreaDialog } from "../areas/AreaDialogs";
 import type { ProviderAuthController } from "../auth/providerAuthAdapters";
 import { AddRepositoryDialog } from "../dialogs/AddRepositoryDialog";
+import { ConfirmDialog } from "../dialogs/ConfirmDialog";
 import { FileFinder } from "../file-finder/FileFinder";
 import { SettingsPanel } from "../settings/SettingsPanel";
 import type { AppRoute } from "../../stores/uiStore";
@@ -191,6 +192,15 @@ export function ShellDialogs({
           onClose={onCloseSettings}
           onOpenExternal={onOpenExternal}
           onSave={onSaveSettings}
+        />
+      )}
+
+      {dialogs.confirmation && (
+        <ConfirmDialog
+          key={dialogs.confirmation.id}
+          prompt={dialogs.confirmation}
+          onCancel={dialogs.cancelConfirmation}
+          onConfirm={dialogs.acceptConfirmation}
         />
       )}
     </>

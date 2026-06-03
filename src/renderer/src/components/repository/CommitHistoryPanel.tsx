@@ -70,7 +70,7 @@ export function CommitHistoryPanel({
           <ExternalLink size={14} /> Open GitHub fallback
         </button>
       </header>
-      {loading && commits.length === 0 && <div className="loading-state">Loading commits...</div>}
+      {loading && commits.length === 0 && <div className="loading-state">Loading commits…</div>}
       {error && <div className="error-state">Commit history unavailable: {error.message}</div>}
       {!loading && !error && availabilityMessage && <div className="error-state">{availabilityMessage}</div>}
       {!loading && !error && !availabilityMessage && commits.length === 0 && (

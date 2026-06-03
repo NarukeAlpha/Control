@@ -46,4 +46,40 @@ describe("GitHub credential storage", () => {
     expect(keytar.setPassword).toHaveBeenCalledWith("Control GitHub Token", "github.com", "gho_default");
     expect(keytar.deletePassword).toHaveBeenCalledWith("Control GitHub Token", "github.com");
   });
+
+  it("returns null when no GitHub token is stored", async () => {
+    const keytar = {
+      getPassword: vi.fn().mockResolvedValue(null),
+      setPassword: vi.fn().mockResolvedValue(undefined),
+      deletePassword: vi.fn().mockResolvedValue(true)
+    };
+
+    vi.doMock("keytar", () => keytar);
+
+    const { getGitHubToken } = await import("./credentials");
+
+    await expect(getGitHubToken()).resolves.toBeNull();
+    expect(keytar.getPassword).toHaveBeenCalledWith("Control GitHub Token", "github.com");
+  });
+
+  it("throws a typed error when the keychain cannot be read", async () => {
+    const keytar = {
+      getPassword: vi.fn().mockRejectedValue(new Error("native keychain unavailable")),
+      setPassword: vi.fn().mockResolvedValue(undefined),
+      deletePassword: vi.fn().mockResolvedValue(true)
+    };
+
+    vi.doMock("keytar", () => keytar);
+
+    const { getGitHubToken, GitHubCredentialStoreUnavailableError } = await import("./credentials");
+
+    await expect(getGitHubToken()).rejects.toEqual(
+      expect.objectContaining({
+        name: "GitHubCredentialStoreUnavailableError",
+        code: "github-credential-store-unavailable",
+        message: "native keychain unavailable"
+      })
+    );
+    await expect(getGitHubToken()).rejects.toBeInstanceOf(GitHubCredentialStoreUnavailableError);
+  });
 });

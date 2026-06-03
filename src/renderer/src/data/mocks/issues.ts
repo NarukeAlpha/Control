@@ -175,7 +175,7 @@ export function readMockIssues(): IssueDetail[] {
   return readMockArray(mockIssuesKey, () => mockIssues.map(buildMockIssueDetail));
 }
 
-export function writeMockIssues(items: IssueDetail[]): void {
+function writeMockIssues(items: IssueDetail[]): void {
   writeMockArray(mockIssuesKey, items);
 }
 

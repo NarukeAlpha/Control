@@ -70,11 +70,23 @@ import { githubIpcRouteChannels } from "@shared/ipc";
 import type { GitHubProviderManager } from "../github/provider";
 
 import {
-  createIpcInvokeRoute,
-  registerIpcRoutes,
-  type IpcInvokeRoute,
-  type IpcMainHandleTarget
-} from "./ipcRouter";
+  isJsonObject,
+  isRecord,
+  optionalBoolean,
+  optionalJsonArray as parseOptionalJsonArray,
+  optionalJsonObject as parseOptionalJsonObject,
+  optionalJsonValue as parseOptionalJsonValue,
+  optionalNullableBoolean as parseOptionalNullableBoolean,
+  optionalNullableString,
+  optionalPositiveInteger,
+  optionalString,
+  optionalTrimmedString,
+  requireJsonValue,
+  requirePositiveInteger,
+  requireStringArray as parseStringArray,
+  requireTrimmedString
+} from "./ipcInput";
+import { createIpcInvokeRoute, type IpcInvokeRoute } from "./ipcRouter";
 
 type GitHubIpcDependencies = Pick<
   GitHubProviderManager,
@@ -285,10 +297,6 @@ const projectMutationActions = new Set<GitHubAction>([
   "deleteProjectV2Item"
 ]);
 const wikiMutationActions = new Set<GitHubAction>(["createWikiPage", "editWikiPage", "deleteWikiPage"]);
-
-export function registerGithubIpc(ipcMain: IpcMainHandleTarget, github: GitHubIpcDependencies): void {
-  registerIpcRoutes(ipcMain, createGithubIpcRoutes(github));
-}
 
 export function createGithubIpcRoutes(github: GitHubIpcDependencies): IpcInvokeRoute[] {
   return [
@@ -644,13 +652,13 @@ export function requireRepoListInput(input: unknown = {}): RepoListInput {
   }
 
   return {
-    limit: optionalInteger(input.limit, "Repository list limit must be a positive integer."),
+    limit: optionalPositiveInteger(input.limit, "Repository list limit must be a positive integer."),
     cacheOnly: optionalBoolean(input.cacheOnly, "Repository list cacheOnly must be a boolean."),
     forceRefresh: optionalBoolean(input.forceRefresh, "Repository list forceRefresh must be a boolean.")
   };
 }
 
-export function requireOrganizationListInput(input: unknown = {}): OrganizationListInput {
+function requireOrganizationListInput(input: unknown = {}): OrganizationListInput {
   if (input === undefined) {
     return {};
   }
@@ -661,7 +669,7 @@ export function requireOrganizationListInput(input: unknown = {}): OrganizationL
   return normalizeGitHubReadFields(input, "Organization list");
 }
 
-export function requireOrganizationInput<TInput extends { org: string }>(input: unknown): TInput {
+function requireOrganizationInput<TInput extends { org: string }>(input: unknown): TInput {
   if (!isRecord(input)) {
     throw new Error("GitHub organization input must be an object.");
   }
@@ -672,7 +680,7 @@ export function requireOrganizationInput<TInput extends { org: string }>(input: 
   } as TInput;
 }
 
-export function requireOrganizationTeamInput<TInput extends { org: string; teamSlug: string }>(
+function requireOrganizationTeamInput<TInput extends { org: string; teamSlug: string }>(
   input: unknown
 ): TInput {
   if (!isRecord(input)) {
@@ -686,7 +694,7 @@ export function requireOrganizationTeamInput<TInput extends { org: string; teamS
   } as TInput;
 }
 
-export function requireRepositoryInput<TInput extends RepoDetailInput>(input: unknown): TInput {
+function requireRepositoryInput<TInput extends RepoDetailInput>(input: unknown): TInput {
   if (!isRecord(input)) {
     throw new Error("GitHub repository input must be an object.");
   }
@@ -698,7 +706,7 @@ export function requireRepositoryInput<TInput extends RepoDetailInput>(input: un
   };
 }
 
-export function requireOptionalReadInput<TInput extends object>(input: unknown = {}): TInput {
+function requireOptionalReadInput<TInput extends object>(input: unknown = {}): TInput {
   if (input === undefined) {
     return normalizeGitHubReadFields({}, "GitHub");
   }
@@ -708,7 +716,7 @@ export function requireOptionalReadInput<TInput extends object>(input: unknown =
   return normalizeGitHubReadFields(input, "GitHub");
 }
 
-export function requireNotificationThreadInput(input: unknown): NotificationThreadInput {
+function requireNotificationThreadInput(input: unknown): NotificationThreadInput {
   if (!isRecord(input)) {
     throw new Error("GitHub notification thread input must be an object.");
   }
@@ -717,7 +725,7 @@ export function requireNotificationThreadInput(input: unknown): NotificationThre
   };
 }
 
-export function requireFileContentInput(input: unknown): RepoFileContentInput {
+function requireFileContentInput(input: unknown): RepoFileContentInput {
   const record = requireRepositoryInput<RepoFileContentInput>(input);
   return {
     ...record,
@@ -725,16 +733,16 @@ export function requireFileContentInput(input: unknown): RepoFileContentInput {
   };
 }
 
-export function requireFileBlameInput(input: unknown): RepoFileBlameInput {
+function requireFileBlameInput(input: unknown): RepoFileBlameInput {
   const record = requireRepositoryInput<RepoFileBlameInput>(input);
   return {
     ...record,
     path: requireTrimmedString(record.path, "GitHub file input requires a path."),
-    maxRanges: optionalInteger(record.maxRanges, "GitHub file blame range limit must be positive.")
+    maxRanges: optionalPositiveInteger(record.maxRanges, "GitHub file blame range limit must be positive.")
   };
 }
 
-export function requireIssueDetailInput(input: unknown): IssueDetailInput {
+function requireIssueDetailInput(input: unknown): IssueDetailInput {
   const record = requireRepositoryInput<IssueDetailInput>(input);
   return {
     ...record,
@@ -742,7 +750,7 @@ export function requireIssueDetailInput(input: unknown): IssueDetailInput {
   };
 }
 
-export function requirePullRequestDetailInput(input: unknown): PullRequestDetailReadInput {
+function requirePullRequestDetailInput(input: unknown): PullRequestDetailReadInput {
   const record = requireRepositoryInput<PullRequestDetailReadInput>(input);
   return {
     ...record,
@@ -750,19 +758,19 @@ export function requirePullRequestDetailInput(input: unknown): PullRequestDetail
   };
 }
 
-export function requirePullRequestPageInput(input: unknown): PullRequestCommentsInput {
+function requirePullRequestPageInput(input: unknown): PullRequestCommentsInput {
   const record = requirePullRequestDetailInput(input);
   if (!isRecord(input)) {
     throw new Error("GitHub pull request input must be an object.");
   }
   return {
     ...record,
-    limit: optionalInteger(input.limit, "GitHub pull request limit must be a positive integer."),
+    limit: optionalPositiveInteger(input.limit, "GitHub pull request limit must be a positive integer."),
     cursor: optionalCursor(input.cursor)
   };
 }
 
-export function requireDiscussionDetailInput(input: unknown): DiscussionDetailInput {
+function requireDiscussionDetailInput(input: unknown): DiscussionDetailInput {
   const record = requireRepositoryInput<DiscussionDetailInput>(input);
   return {
     ...record,
@@ -770,15 +778,18 @@ export function requireDiscussionDetailInput(input: unknown): DiscussionDetailIn
       record.discussionNumber,
       "GitHub discussion input requires a number."
     ),
-    commentsLimit: optionalInteger(
+    commentsLimit: optionalPositiveInteger(
       record.commentsLimit,
       "GitHub discussion comments limit must be positive."
     ),
-    repliesLimit: optionalInteger(record.repliesLimit, "GitHub discussion replies limit must be positive.")
+    repliesLimit: optionalPositiveInteger(
+      record.repliesLimit,
+      "GitHub discussion replies limit must be positive."
+    )
   };
 }
 
-export function requireWorkflowRunDetailInput(input: unknown): WorkflowRunDetailInput {
+function requireWorkflowRunDetailInput(input: unknown): WorkflowRunDetailInput {
   const record = requireRepositoryInput<WorkflowRunDetailInput>(input);
   return {
     ...record,
@@ -786,19 +797,19 @@ export function requireWorkflowRunDetailInput(input: unknown): WorkflowRunDetail
   };
 }
 
-export function requireWorkflowJobLogsInput(input: unknown): WorkflowJobLogsInput {
+function requireWorkflowJobLogsInput(input: unknown): WorkflowJobLogsInput {
   const record = requireRepositoryInput<WorkflowJobLogsInput>(input);
   return {
     ...record,
     jobId: requirePositiveInteger(record.jobId, "GitHub workflow job logs input requires a job id."),
-    maxCharacters: optionalInteger(
+    maxCharacters: optionalPositiveInteger(
       record.maxCharacters,
       "GitHub workflow job logs maxCharacters must be positive."
     )
   };
 }
 
-export function requireBranchProtectionInput(input: unknown): BranchProtectionInput {
+function requireBranchProtectionInput(input: unknown): BranchProtectionInput {
   const record = requireRepositoryInput<BranchProtectionInput>(input);
   return {
     ...record,
@@ -806,9 +817,9 @@ export function requireBranchProtectionInput(input: unknown): BranchProtectionIn
   };
 }
 
-export function requireReleaseDetailInput(input: unknown): ReleaseDetailInput {
+function requireReleaseDetailInput(input: unknown): ReleaseDetailInput {
   const record = requireRepositoryInput<ReleaseDetailInput>(input);
-  const releaseId = optionalInteger(
+  const releaseId = optionalPositiveInteger(
     record.releaseId,
     "GitHub release detail input releaseId must be a positive integer."
   );
@@ -823,7 +834,7 @@ export function requireReleaseDetailInput(input: unknown): ReleaseDetailInput {
   };
 }
 
-export function requireSearchInput(input: unknown): SearchInput {
+function requireSearchInput(input: unknown): SearchInput {
   if (!isRecord(input)) {
     throw new Error("GitHub search input must be an object.");
   }
@@ -924,9 +935,13 @@ function validateRepositoryMutationPayload(input: Record<string, unknown> & { ac
   }
 
   if (input.action === "editRepository") {
-    optionalNullableString(input, "description", "Repository description must be a string or null.");
-    optionalNullableString(input, "homepage", "Repository homepage must be a string or null.");
-    optionalNullableString(input, "default_branch", "Default branch must be a string or null.");
+    validateOptionalNullableStringField(
+      input,
+      "description",
+      "Repository description must be a string or null."
+    );
+    validateOptionalNullableStringField(input, "homepage", "Repository homepage must be a string or null.");
+    validateOptionalNullableStringField(input, "default_branch", "Default branch must be a string or null.");
     optionalBoolean(input.archived, "Repository archived flag must be a boolean.");
     optionalBoolean(input.has_issues, "Repository issues flag must be a boolean.");
     optionalBoolean(input.has_projects, "Repository projects flag must be a boolean.");
@@ -940,7 +955,7 @@ function validateRepositoryMutationPayload(input: Record<string, unknown> & { ac
     optionalBoolean(input.allow_update_branch, "Repository update-branch flag must be a boolean.");
     optionalBoolean(input.allow_forking, "Repository forking flag must be a boolean.");
     optionalBoolean(input.web_commit_signoff_required, "Repository commit-signoff flag must be a boolean.");
-    optionalStringArray(input, "topics", "Repository topics must be an array of strings.");
+    validateOptionalStringArrayField(input, "topics", "Repository topics must be an array of strings.");
   }
 }
 
@@ -949,25 +964,25 @@ function validateIssueMutationPayload(input: Record<string, unknown> & { action:
     case "createIssue":
       requireStringField(input, "title", "Issue creation requires a title.");
       optionalStringField(input, "body", "Issue body must be a string.");
-      optionalStringArray(input, "labels", "Issue labels must be an array of strings.");
-      optionalStringArray(input, "assignees", "Issue assignees must be an array of strings.");
-      optionalNullablePositiveInteger(
+      validateOptionalStringArrayField(input, "labels", "Issue labels must be an array of strings.");
+      validateOptionalStringArrayField(input, "assignees", "Issue assignees must be an array of strings.");
+      validateOptionalNullablePositiveIntegerField(
         input,
         "milestone",
         "Issue milestone must be a positive integer or null."
       );
       return;
     case "editIssue":
-      requirePositiveIntegerField(
+      parsePositiveIntegerField(
         input,
         "issueNumber",
         "Issue mutation issueNumber must be a positive integer."
       );
       optionalNonEmptyString(input, "title", "Issue title must be a non-empty string.");
       optionalStringField(input, "body", "Issue body must be a string.");
-      optionalStringArray(input, "labels", "Issue labels must be an array of strings.");
-      optionalStringArray(input, "assignees", "Issue assignees must be an array of strings.");
-      optionalNullablePositiveInteger(
+      validateOptionalStringArrayField(input, "labels", "Issue labels must be an array of strings.");
+      validateOptionalStringArrayField(input, "assignees", "Issue assignees must be an array of strings.");
+      validateOptionalNullablePositiveIntegerField(
         input,
         "milestone",
         "Issue milestone must be a positive integer or null."
@@ -975,7 +990,7 @@ function validateIssueMutationPayload(input: Record<string, unknown> & { action:
       optionalNonEmptyString(input, "state", "Issue state must be a non-empty string.");
       return;
     case "closeIssue":
-      requirePositiveIntegerField(
+      parsePositiveIntegerField(
         input,
         "issueNumber",
         "Issue mutation issueNumber must be a positive integer."
@@ -983,35 +998,35 @@ function validateIssueMutationPayload(input: Record<string, unknown> & { action:
       optionalNonEmptyString(input, "stateReason", "Issue state reason must be a non-empty string.");
       return;
     case "reopenIssue":
-      requirePositiveIntegerField(
+      parsePositiveIntegerField(
         input,
         "issueNumber",
         "Issue mutation issueNumber must be a positive integer."
       );
       return;
     case "addComment":
-      requirePositiveIntegerField(input, "issueNumber", "Issue comment requires an issue number.");
+      parsePositiveIntegerField(input, "issueNumber", "Issue comment requires an issue number.");
       requireStringField(input, "body", "Issue comment requires a body.", { allowEmpty: true });
       return;
     case "editComment":
-      requireNumericIdField(input, "commentId", "Issue comment mutation requires a comment id.");
+      parseNumericIdField(input, "commentId", "Issue comment mutation requires a comment id.");
       requireStringField(input, "body", "Issue comment requires a body.", { allowEmpty: true });
       return;
     case "deleteComment":
-      requireNumericIdField(input, "commentId", "Issue comment mutation requires a comment id.");
+      parseNumericIdField(input, "commentId", "Issue comment mutation requires a comment id.");
       return;
     case "addLabels":
-      requirePositiveIntegerField(input, "issueNumber", "Issue label mutation requires an issue number.");
-      requireStringArray(input, "labels", "Issue label mutation requires labels.");
+      parsePositiveIntegerField(input, "issueNumber", "Issue label mutation requires an issue number.");
+      parseStringArrayField(input, "labels", "Issue label mutation requires labels.");
       return;
     case "removeLabel":
-      requirePositiveIntegerField(input, "issueNumber", "Issue label mutation requires an issue number.");
+      parsePositiveIntegerField(input, "issueNumber", "Issue label mutation requires an issue number.");
       requireStringField(input, "name", "Issue label mutation requires a label name.");
       return;
     case "setAssignees":
     case "removeAssignees":
-      requirePositiveIntegerField(input, "issueNumber", "Issue assignee mutation requires an issue number.");
-      requireStringArray(input, "assignees", "Issue assignee mutation requires assignees.");
+      parsePositiveIntegerField(input, "issueNumber", "Issue assignee mutation requires an issue number.");
+      parseStringArrayField(input, "assignees", "Issue assignee mutation requires assignees.");
       return;
     default:
       return;
@@ -1032,7 +1047,7 @@ function validatePullRequestMutationPayload(input: Record<string, unknown> & { a
       );
       return;
     case "mergePullRequest":
-      requirePositiveIntegerField(
+      parsePositiveIntegerField(
         input,
         "pullNumber",
         "Pull request mutation pullNumber must be a positive integer."
@@ -1044,7 +1059,7 @@ function validatePullRequestMutationPayload(input: Record<string, unknown> & { a
       return;
     case "closePullRequest":
     case "reopenPullRequest":
-      requirePositiveIntegerField(
+      parsePositiveIntegerField(
         input,
         "pullNumber",
         "Pull request mutation pullNumber must be a positive integer."
@@ -1053,29 +1068,33 @@ function validatePullRequestMutationPayload(input: Record<string, unknown> & { a
     case "approvePullRequest":
     case "commentPullRequestReview":
     case "requestChanges":
-      requirePositiveIntegerField(
-        input,
-        "pullNumber",
-        "Pull request review mutation requires a pull number."
-      );
+      parsePositiveIntegerField(input, "pullNumber", "Pull request review mutation requires a pull number.");
       optionalStringField(input, "body", "Pull request review body must be a string.");
       return;
     case "requestReviewers":
     case "removeReviewers":
-      requirePositiveIntegerField(
+      parsePositiveIntegerField(
         input,
         "pullNumber",
         "Pull request reviewer mutation requires a pull number."
       );
-      optionalStringArray(input, "reviewers", "Pull request reviewers must be an array of strings.");
-      optionalStringArray(input, "teamReviewers", "Pull request team reviewers must be an array of strings.");
+      validateOptionalStringArrayField(
+        input,
+        "reviewers",
+        "Pull request reviewers must be an array of strings."
+      );
+      validateOptionalStringArrayField(
+        input,
+        "teamReviewers",
+        "Pull request team reviewers must be an array of strings."
+      );
       return;
     case "editReviewComment":
-      requireNumericIdField(input, "commentId", "Review comment mutation requires a comment id.");
+      parseNumericIdField(input, "commentId", "Review comment mutation requires a comment id.");
       requireStringField(input, "body", "Review comment mutation requires a body.", { allowEmpty: true });
       return;
     case "deleteReviewComment":
-      requireNumericIdField(input, "commentId", "Review comment mutation requires a comment id.");
+      parseNumericIdField(input, "commentId", "Review comment mutation requires a comment id.");
       return;
     default:
       return;
@@ -1088,12 +1107,12 @@ function validateWorkflowMutationPayload(input: Record<string, unknown> & { acti
     input.action === "rerunFailedWorkflowJobs" ||
     input.action === "cancelWorkflow"
   ) {
-    requirePositiveIntegerField(input, "runId", "Workflow mutation runId must be a positive integer.");
+    parsePositiveIntegerField(input, "runId", "Workflow mutation runId must be a positive integer.");
     return;
   }
 
   if (input.action === "rerunWorkflowJob") {
-    requirePositiveIntegerField(input, "jobId", "Workflow mutation jobId must be a positive integer.");
+    parsePositiveIntegerField(input, "jobId", "Workflow mutation jobId must be a positive integer.");
     return;
   }
 
@@ -1111,35 +1130,27 @@ function validateReleaseMutationPayload(input: Record<string, unknown> & { actio
     case "createRelease":
       requireStringField(input, "tag_name", "Release creation requires a tag name.");
       optionalStringField(input, "target_commitish", "Release target must be a string.");
-      optionalNullableString(input, "name", "Release name must be a string or null.");
+      validateOptionalNullableStringField(input, "name", "Release name must be a string or null.");
       optionalStringField(input, "body", "Release body must be a string.");
       optionalBoolean(input.draft, "Release draft flag must be a boolean.");
       optionalBoolean(input.prerelease, "Release prerelease flag must be a boolean.");
       optionalNonEmptyString(input, "make_latest", "Release make_latest must be a non-empty string.");
       return;
     case "editRelease":
-      requirePositiveIntegerField(
-        input,
-        "releaseId",
-        "Release mutation releaseId must be a positive integer."
-      );
+      parsePositiveIntegerField(input, "releaseId", "Release mutation releaseId must be a positive integer.");
       optionalNonEmptyString(input, "tag_name", "Release tag name must be a non-empty string.");
       optionalStringField(input, "target_commitish", "Release target must be a string.");
-      optionalNullableString(input, "name", "Release name must be a string or null.");
+      validateOptionalNullableStringField(input, "name", "Release name must be a string or null.");
       optionalStringField(input, "body", "Release body must be a string.");
       optionalBoolean(input.draft, "Release draft flag must be a boolean.");
       optionalBoolean(input.prerelease, "Release prerelease flag must be a boolean.");
       optionalNonEmptyString(input, "make_latest", "Release make_latest must be a non-empty string.");
       return;
     case "deleteRelease":
-      requirePositiveIntegerField(
-        input,
-        "releaseId",
-        "Release mutation releaseId must be a positive integer."
-      );
+      parsePositiveIntegerField(input, "releaseId", "Release mutation releaseId must be a positive integer.");
       return;
     case "deleteReleaseAsset":
-      requirePositiveIntegerField(
+      parsePositiveIntegerField(
         input,
         "assetId",
         "Release asset mutation assetId must be a positive integer."
@@ -1156,14 +1167,22 @@ function validateRepositoryAdministrationMutationPayload(
   switch (input.action) {
     case "updateBranchProtection":
       requireStringField(input, "branch", "Branch protection mutation requires a branch.");
-      optionalJsonValue(input, "required_status_checks", "Required status checks must be JSON-safe.");
-      optionalNullableBoolean(input.enforce_admins, "Enforce admins must be a boolean or null.");
-      optionalJsonValue(
+      validateOptionalJsonValueField(
+        input,
+        "required_status_checks",
+        "Required status checks must be JSON-safe."
+      );
+      parseOptionalNullableBoolean(input.enforce_admins, "Enforce admins must be a boolean or null.");
+      validateOptionalJsonValueField(
         input,
         "required_pull_request_reviews",
         "Required pull request reviews must be JSON-safe."
       );
-      optionalJsonValue(input, "restrictions", "Branch protection restrictions must be JSON-safe.");
+      validateOptionalJsonValueField(
+        input,
+        "restrictions",
+        "Branch protection restrictions must be JSON-safe."
+      );
       optionalBoolean(input.required_linear_history, "Required linear history must be a boolean.");
       optionalBoolean(input.allow_force_pushes, "Allow force pushes must be a boolean.");
       optionalBoolean(input.allow_deletions, "Allow deletions must be a boolean.");
@@ -1208,21 +1227,37 @@ function validateRepositoryAdministrationMutationPayload(
       requireStringField(input, "name", "Repository ruleset mutation requires a name.");
       requireStringField(input, "enforcement", "Repository ruleset mutation requires enforcement.");
       optionalNonEmptyString(input, "target", "Repository ruleset target must be a non-empty string.");
-      optionalJsonArray(input, "bypass_actors", "Repository ruleset bypass actors must be JSON-safe.");
-      optionalJsonObjectField(input, "conditions", "Repository ruleset conditions must be a JSON object.");
-      optionalJsonArray(input, "rules", "Repository ruleset rules must be JSON-safe.");
+      validateOptionalJsonArrayField(
+        input,
+        "bypass_actors",
+        "Repository ruleset bypass actors must be JSON-safe."
+      );
+      validateOptionalJsonObjectField(
+        input,
+        "conditions",
+        "Repository ruleset conditions must be a JSON object."
+      );
+      validateOptionalJsonArrayField(input, "rules", "Repository ruleset rules must be JSON-safe.");
       return;
     case "updateRepositoryRuleset":
-      requirePositiveIntegerField(input, "rulesetId", "Repository ruleset mutation requires a ruleset id.");
+      parsePositiveIntegerField(input, "rulesetId", "Repository ruleset mutation requires a ruleset id.");
       requireStringField(input, "name", "Repository ruleset mutation requires a name.");
       requireStringField(input, "enforcement", "Repository ruleset mutation requires enforcement.");
       optionalNonEmptyString(input, "target", "Repository ruleset target must be a non-empty string.");
-      optionalJsonArray(input, "bypass_actors", "Repository ruleset bypass actors must be JSON-safe.");
-      optionalJsonObjectField(input, "conditions", "Repository ruleset conditions must be a JSON object.");
-      optionalJsonArray(input, "rules", "Repository ruleset rules must be JSON-safe.");
+      validateOptionalJsonArrayField(
+        input,
+        "bypass_actors",
+        "Repository ruleset bypass actors must be JSON-safe."
+      );
+      validateOptionalJsonObjectField(
+        input,
+        "conditions",
+        "Repository ruleset conditions must be a JSON object."
+      );
+      validateOptionalJsonArrayField(input, "rules", "Repository ruleset rules must be JSON-safe.");
       return;
     case "deleteRepositoryRuleset":
-      requirePositiveIntegerField(input, "rulesetId", "Repository ruleset mutation requires a ruleset id.");
+      parsePositiveIntegerField(input, "rulesetId", "Repository ruleset mutation requires a ruleset id.");
       return;
     default:
       return;
@@ -1269,12 +1304,12 @@ function validateProjectMutationPayload(input: Record<string, unknown> & { actio
     case "updateProjectV2":
       requireStringField(input, "projectId", "Project mutation requires a project id.");
       requireStringField(input, "title", "Project mutation requires a title.");
-      optionalNullableString(
+      validateOptionalNullableStringField(
         input,
         "shortDescription",
         "Project short description must be a string or null."
       );
-      optionalNullableString(input, "readme", "Project README must be a string or null.");
+      validateOptionalNullableStringField(input, "readme", "Project README must be a string or null.");
       return;
     case "deleteProjectV2":
       requireStringField(input, "projectId", "Project mutation requires a project id.");
@@ -1287,7 +1322,7 @@ function validateProjectMutationPayload(input: Record<string, unknown> & { actio
       requireStringField(input, "projectId", "Project item mutation requires a project id.");
       requireStringField(input, "itemId", "Project item mutation requires an item id.");
       requireStringField(input, "fieldId", "Project item mutation requires a field id.");
-      requireJsonValueField(input, "value", "Project item value must be JSON-safe.");
+      validateJsonValueField(input, "value", "Project item value must be JSON-safe.");
       return;
     case "deleteProjectV2Item":
       requireStringField(input, "projectId", "Project item mutation requires a project id.");
@@ -1316,54 +1351,41 @@ function validateWikiMutationPayload(input: Record<string, unknown> & { action: 
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function requireTrimmedString(value: unknown, message: string): string {
-  if (typeof value !== "string" || !value.trim()) {
-    throw new Error(message);
-  }
-  return value.trim();
-}
-
 function normalizeGitHubReadFields<TInput extends object>(
   input: Record<string, unknown>,
   label: string
 ): TInput {
   const normalized: Record<string, unknown> = {
     ...input,
-    limit: optionalInteger(input.limit, `${label} limit must be a positive integer.`),
+    limit: optionalPositiveInteger(input.limit, `${label} limit must be a positive integer.`),
     cacheOnly: optionalBoolean(input.cacheOnly, `${label} cacheOnly must be a boolean.`),
     forceRefresh: optionalBoolean(input.forceRefresh, `${label} forceRefresh must be a boolean.`)
   };
 
   setOptional(normalized, input, "commentsLimit", (value) =>
-    optionalInteger(value, "GitHub comments limit must be a positive integer.")
+    optionalPositiveInteger(value, "GitHub comments limit must be a positive integer.")
   );
   setOptional(normalized, input, "repliesLimit", (value) =>
-    optionalInteger(value, "GitHub replies limit must be a positive integer.")
+    optionalPositiveInteger(value, "GitHub replies limit must be a positive integer.")
   );
   setOptional(normalized, input, "maxRanges", (value) =>
-    optionalInteger(value, "GitHub maxRanges must be a positive integer.")
+    optionalPositiveInteger(value, "GitHub maxRanges must be a positive integer.")
   );
   setOptional(normalized, input, "maxCharacters", (value) =>
-    optionalInteger(value, "GitHub maxCharacters must be a positive integer.")
+    optionalPositiveInteger(value, "GitHub maxCharacters must be a positive integer.")
   );
   setOptional(normalized, input, "ref", (value) =>
-    optionalNullableStringValue(value, "GitHub ref must be a string or null.")
+    optionalNullableString(value, "GitHub ref must be a string or null.")
   );
-  setOptional(normalized, input, "path", (value) =>
-    optionalStringValue(value, "GitHub path must be a string.")
-  );
+  setOptional(normalized, input, "path", (value) => optionalString(value, "GitHub path must be a string."));
   setOptional(normalized, input, "pagePath", (value) =>
-    optionalNullableStringValue(value, "GitHub wiki page path must be a string or null.")
+    optionalNullableString(value, "GitHub wiki page path must be a string or null.")
   );
   setOptional(normalized, input, "since", (value) =>
-    optionalNullableStringValue(value, "GitHub since cursor must be a string or null.")
+    optionalNullableString(value, "GitHub since cursor must be a string or null.")
   );
   setOptional(normalized, input, "before", (value) =>
-    optionalNullableStringValue(value, "GitHub before cursor must be a string or null.")
+    optionalNullableString(value, "GitHub before cursor must be a string or null.")
   );
   setOptional(normalized, input, "recursive", (value) =>
     optionalBoolean(value, "GitHub recursive flag must be a boolean.")
@@ -1407,13 +1429,6 @@ function normalizeGitHubReadFields<TInput extends object>(
   return normalized as TInput;
 }
 
-function requirePositiveInteger(value: unknown, message: string): number {
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
-    throw new Error(message);
-  }
-  return value;
-}
-
 function requireStringField(
   input: Record<string, unknown>,
   key: string,
@@ -1448,25 +1463,24 @@ function optionalNonEmptyString(input: Record<string, unknown>, key: string, mes
   requireStringField(input, key, message);
 }
 
-function optionalNullableString(input: Record<string, unknown>, key: string, message: string): void {
-  if (input[key] === undefined || input[key] === null) {
-    return;
-  }
-  if (typeof input[key] !== "string") {
-    throw new Error(message);
-  }
+function validateOptionalNullableStringField(
+  input: Record<string, unknown>,
+  key: string,
+  message: string
+): void {
+  optionalNullableString(input[key], message);
 }
 
-function requirePositiveIntegerField(input: Record<string, unknown>, key: string, message: string): number {
+function parsePositiveIntegerField(input: Record<string, unknown>, key: string, message: string): number {
   const value = requirePositiveInteger(input[key], message);
   input[key] = value;
   return value;
 }
 
-function requireNumericIdField(input: Record<string, unknown>, key: string, message: string): number {
+function parseNumericIdField(input: Record<string, unknown>, key: string, message: string): number {
   const value = input[key];
   if (typeof value === "number") {
-    return requirePositiveIntegerField(input, key, message);
+    return parsePositiveIntegerField(input, key, message);
   }
   if (typeof value === "string" && /^\d+$/.test(value.trim())) {
     const normalized = Number(value.trim());
@@ -1478,141 +1492,54 @@ function requireNumericIdField(input: Record<string, unknown>, key: string, mess
   throw new Error(message);
 }
 
-function optionalNullablePositiveInteger(input: Record<string, unknown>, key: string, message: string): void {
+function validateOptionalNullablePositiveIntegerField(
+  input: Record<string, unknown>,
+  key: string,
+  message: string
+): void {
   if (input[key] === undefined || input[key] === null) {
     return;
   }
-  requirePositiveIntegerField(input, key, message);
+  parsePositiveIntegerField(input, key, message);
 }
 
-function requireStringArray(input: Record<string, unknown>, key: string, message: string): string[] {
-  const value = input[key];
-  if (!Array.isArray(value)) {
-    throw new Error(message);
-  }
-  const normalized = value.map((item) => requireTrimmedString(item, message));
+function parseStringArrayField(input: Record<string, unknown>, key: string, message: string): string[] {
+  const normalized = parseStringArray(input[key], message);
   input[key] = normalized;
   return normalized;
 }
 
-function optionalStringArray(input: Record<string, unknown>, key: string, message: string): void {
+function validateOptionalStringArrayField(
+  input: Record<string, unknown>,
+  key: string,
+  message: string
+): void {
   if (input[key] === undefined) {
     return;
   }
-  requireStringArray(input, key, message);
+  parseStringArrayField(input, key, message);
 }
 
-function optionalNullableBoolean(value: unknown, message: string): void {
-  if (value === undefined || value === null) {
-    return;
-  }
-  if (typeof value !== "boolean") {
-    throw new Error(message);
-  }
+function validateJsonValueField(input: Record<string, unknown>, key: string, message: string): void {
+  input[key] = requireJsonValue(input[key], message);
 }
 
-function requireJsonValueField(input: Record<string, unknown>, key: string, message: string): void {
-  if (!isJsonValue(input[key])) {
-    throw new Error(message);
+function validateOptionalJsonValueField(input: Record<string, unknown>, key: string, message: string): void {
+  if (input[key] !== undefined) {
+    input[key] = parseOptionalJsonValue(input[key], message);
   }
 }
 
-function optionalJsonValue(input: Record<string, unknown>, key: string, message: string): void {
-  if (input[key] === undefined) {
-    return;
-  }
-  requireJsonValueField(input, key, message);
-}
-
-function optionalJsonArray(input: Record<string, unknown>, key: string, message: string): void {
-  if (input[key] === undefined) {
-    return;
-  }
-  const value = input[key];
-  if (!Array.isArray(value) || !value.every(isJsonValue)) {
-    throw new Error(message);
+function validateOptionalJsonArrayField(input: Record<string, unknown>, key: string, message: string): void {
+  if (input[key] !== undefined) {
+    input[key] = parseOptionalJsonArray(input[key], message);
   }
 }
 
-function optionalJsonObjectField(input: Record<string, unknown>, key: string, message: string): void {
-  if (input[key] === undefined) {
-    return;
+function validateOptionalJsonObjectField(input: Record<string, unknown>, key: string, message: string): void {
+  if (input[key] !== undefined) {
+    input[key] = parseOptionalJsonObject(input[key], message);
   }
-  if (!isJsonObject(input[key])) {
-    throw new Error(message);
-  }
-}
-
-function isJsonObject(value: unknown): value is Record<string, unknown> {
-  if (!isRecord(value)) {
-    return false;
-  }
-  const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null) {
-    return false;
-  }
-
-  return Object.values(value).every(isJsonValue);
-}
-
-function isJsonValue(value: unknown): boolean {
-  if (value === null || typeof value === "string" || typeof value === "boolean") {
-    return true;
-  }
-  if (typeof value === "number") {
-    return Number.isFinite(value);
-  }
-  if (Array.isArray(value)) {
-    return value.every(isJsonValue);
-  }
-  return isJsonObject(value);
-}
-
-function optionalBoolean(value: unknown, message: string): boolean | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (typeof value !== "boolean") {
-    throw new Error(message);
-  }
-  return value;
-}
-
-function optionalInteger(value: unknown, message: string): number | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
-    throw new Error(message);
-  }
-  return value;
-}
-
-function optionalStringValue(value: unknown, message: string): string | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (typeof value !== "string") {
-    throw new Error(message);
-  }
-  return value;
-}
-
-function optionalNullableStringValue(value: unknown, message: string): string | null | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (value === null) {
-    return null;
-  }
-  if (typeof value !== "string") {
-    throw new Error(message);
-  }
-  return value;
-}
-
-function optionalTrimmedString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
 function optionalCursor(value: unknown): string | null | undefined {

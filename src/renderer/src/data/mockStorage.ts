@@ -7,7 +7,7 @@ export type MockStorageWriteResult =
 
 export type MockStorageValueGuard<T> = (value: unknown) => value is T;
 
-export function isMockArray<T = unknown>(value: unknown): value is T[] {
+function isMockArray<T = unknown>(value: unknown): value is T[] {
   return Array.isArray(value);
 }
 

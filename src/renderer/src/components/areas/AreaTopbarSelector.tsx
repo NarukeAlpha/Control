@@ -1,5 +1,5 @@
 import { ChevronDown, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
-import { useEffect, useRef, useState, type JSX } from "react";
+import { useEffect, useRef, useState, type JSX, type KeyboardEvent } from "react";
 
 import type { AreaSummary } from "@shared/areas";
 
@@ -32,21 +32,26 @@ export function AreaTopbarSelector({
   const label = selectedArea?.label ?? "GitHub";
   const mark = selectedArea?.kind === "local" ? "L" : selectedArea?.kind === "ssh" ? "S" : "GH";
 
+  function closeMenus(): void {
+    setOpen(false);
+    setActionAreaId(null);
+  }
+
+  function closeOnEscape(event: KeyboardEvent): void {
+    if (event.key === "Escape") {
+      closeMenus();
+    }
+  }
+
   return (
-    <div
-      className="area-topbar-selector"
-      onKeyDown={(event) => {
-        if (event.key === "Escape") {
-          setOpen(false);
-        }
-      }}
-    >
+    <div className="area-topbar-selector">
       <button
         className="titlebar-provider-button area-topbar-button"
         type="button"
         aria-label={`Select Area: ${label}`}
         aria-expanded={open}
         aria-haspopup="menu"
+        onKeyDown={closeOnEscape}
         onClick={() => setOpen((current) => !current)}
       >
         <span className="brand-mark">{mark}</span>
@@ -54,7 +59,7 @@ export function AreaTopbarSelector({
         <ChevronDown size={14} />
       </button>
       {open && (
-        <div className="area-topbar-menu" role="menu">
+        <div className="area-topbar-menu" role="menu" onKeyDown={closeOnEscape}>
           {areas.map((area) => {
             const actionsOpen = actionAreaId === area.id;
             return (
@@ -96,7 +101,7 @@ export function AreaTopbarSelector({
                   <MoreHorizontal size={15} />
                 </button>
                 {actionsOpen && (
-                  <div className="area-actions-menu" role="menu" onClick={(event) => event.stopPropagation()}>
+                  <div className="area-actions-menu" role="menu">
                     <button
                       type="button"
                       role="menuitem"

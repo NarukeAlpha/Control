@@ -5,13 +5,31 @@ import {
   isPreviewableImagePath,
   maxPreviewBytes
 } from "@shared/filePreviewPolicy";
+import type { CodeLanguage } from "./codeLanguage";
 
 export { isMarkdownPath, isPreviewableImagePath, maxPreviewBytes };
 
-export const maxRenderedLines = 20_000;
+const maxRenderedLines = 20_000;
 export const maxHighlightBytes = 300 * 1024;
-export const maxHighlightLines = 5_000;
-export const maxLineNumberedLines = 20_000;
+const maxHighlightLines = 5_000;
+const supportedCodeLanguages = [
+  "bash",
+  "css",
+  "go",
+  "html",
+  "javascript",
+  "json",
+  "jsonc",
+  "markdown",
+  "python",
+  "rust",
+  "toml",
+  "tsx",
+  "typescript",
+  "yaml"
+] as const satisfies readonly CodeLanguage[];
+
+const supportedCodeLanguageSet = new Set<string>(supportedCodeLanguages);
 
 export type CodeHighlightDecision =
   | { kind: "eligible" }
@@ -31,7 +49,7 @@ export function highlightDecision(input: {
   content: string;
   language: string | null;
 }): CodeHighlightDecision {
-  if (!input.language) {
+  if (!input.language || !isSupportedCodeLanguage(input.language)) {
     return { kind: "unsupported", message: "Syntax highlighting unavailable for this file type." };
   }
 
@@ -48,10 +66,14 @@ export function highlightDecision(input: {
   return { kind: "eligible" };
 }
 
-export function lineCountForSource(content: string): number {
+export function isSupportedCodeLanguage(language: string | null | undefined): language is CodeLanguage {
+  return typeof language === "string" && supportedCodeLanguageSet.has(language);
+}
+
+function lineCountForSource(content: string): number {
   return content.split("\n").length;
 }
 
-export function byteLength(content: string): number {
+function byteLength(content: string): number {
   return new TextEncoder().encode(content).byteLength;
 }

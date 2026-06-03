@@ -1,0 +1,18 @@
+{
+  "$schema": "https://unpkg.com/knip/schema.json",
+  "entry": [
+    "electron.vite.config.ts",
+    "eslint.config.mjs",
+    "playwright.config.ts",
+    "playwright.github.config.ts",
+    "prettier.config.cjs",
+    "src/main/index.ts",
+    "src/renderer/src/main.tsx",
+    "vite.renderer.config.ts",
+    "vitest.config.ts",
+    "scripts/**/*.cjs",
+    "tests/e2e/**/*.ts"
+  ],
+  "project": ["*.config.{cjs,mjs,ts}", "scripts/**/*.cjs", "src/**/*.{ts,tsx}", "tests/**/*.{ts,tsx}"],
+  "ignoreDependencies": ["electron-liquid-glass"]
+}

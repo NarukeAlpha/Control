@@ -5,7 +5,6 @@ const repositoryScopedQueryKeyPrefixes = [
   "contents",
   "readme",
   "file-content",
-  "file-blame",
   "commits",
   "tree",
   "issues",

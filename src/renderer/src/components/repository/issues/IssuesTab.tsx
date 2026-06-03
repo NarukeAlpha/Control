@@ -1,24 +1,21 @@
-import { ArrowLeft, CircleDot, ExternalLink, Plus, Search, X } from "lucide-react";
-import { useEffect, useRef, useState, type JSX } from "react";
-import { useQuery, type QueryClient } from "@tanstack/react-query";
+import { ArrowLeft, CircleDot, ExternalLink, Plus, Search } from "lucide-react";
+import { useEffect, useReducer, useRef, type ChangeEvent, type JSX } from "react";
 
 import type {
   GitHubAction,
   GitHubMutationFields,
-  IssueDetailResult,
-  IssueListResult,
+  IssueDetail,
   IssueSummary,
   RepositoryDetail,
   TimelineCommentSummary
 } from "@shared/github";
-import type { ControlApi } from "@shared/ipc";
 
 import {
   MarkdownBody,
   markdownRepositoryUrlContext,
   type MarkdownUrlContext
 } from "@renderer/components/MarkdownBody";
-import { issueDetailQueryKey, useIssueDetail } from "@renderer/components/repository/issues/useIssueDetail";
+import { useIssueDetail } from "@renderer/components/repository/issues/useIssueDetail";
 import {
   fieldsMatchSearchParts,
   githubActionLabel,
@@ -27,160 +24,135 @@ import {
   repositoryMutationDisabledReason
 } from "@renderer/components/repository/repositoryUi";
 import { TimelineThread } from "@renderer/components/shared/TimelineThread";
-import { useControlApi } from "@renderer/hooks/useControlApi";
-import {
-  repositoryAssignableUsersQueryKey,
-  repositoryLabelsQueryKey,
-  repositoryMilestonesQueryKey,
-  refreshRepositoryIssueResources,
-  useRepositoryIssueResources
-} from "@renderer/hooks/useRepositoryIssueResources";
 
 import { formatRelativeDate } from "@renderer/utils/format";
+import { IssueActionFooter } from "./IssueActionFooter";
+import { IssueCommentComposer } from "./IssueCommentComposer";
+import { IssueCreateForm } from "./IssueCreateForm";
+import { IssueEditForm } from "./IssueEditForm";
+import { IssueMetadataControls } from "./IssueMetadataControls";
+import { useIssuesTabQueries } from "./IssuesTab.queries";
+
 const maxIssueListLimit = 100;
+type IssueCloseReason = "completed" | "not_planned";
+type IssueStateAction = "closeIssue" | "reopenIssue";
 
-export interface IssuesTabQueryInput {
-  owner: string;
-  repo: string;
-  issueListLimit: number;
-  issuesEnabled: boolean;
-  resourcesEnabled: boolean;
-  githubReady: boolean;
+interface IssuesTabUiState {
+  selectedIssueNumber: number | null;
+  filter: string;
+  creating: boolean;
+  editingIssue: boolean;
+  title: string;
+  body: string;
+  createLabelEntry: string;
+  createAssigneeEntry: string;
+  createMilestoneNumber: string;
+  editTitle: string;
+  editBody: string;
+  editMilestoneNumber: string;
+  commentBody: string;
+  labelEntry: string;
+  assigneeEntry: string;
+  closeReason: IssueCloseReason;
+  submittedIssueAction: GitHubAction | null;
+  showAllIssueLabels: boolean;
+  showAllIssueAssignableUsers: boolean;
+  showAllIssueMilestones: boolean;
 }
 
-export interface IssuesTabPrefetchInput {
-  api: ControlApi;
-  owner: string;
-  repo: string;
-  issueListLimit: number;
-  githubReady: boolean;
+type IssuesTabUiAction =
+  | { type: "set"; values: Partial<IssuesTabUiState> }
+  | { type: "startCreating" }
+  | { type: "cancelCreating" }
+  | { type: "selectIssue"; issueNumber: number }
+  | {
+      type: "startEditing";
+      title: string;
+      body: string;
+      milestoneNumber: string;
+    }
+  | { type: "cancelEditing" };
+
+function createIssuesTabUiState({
+  initialFilter,
+  initialCreating
+}: {
+  initialFilter: string;
+  initialCreating: boolean;
+}): IssuesTabUiState {
+  return {
+    selectedIssueNumber: null,
+    filter: initialFilter,
+    creating: initialCreating,
+    editingIssue: false,
+    title: "",
+    body: "",
+    createLabelEntry: "",
+    createAssigneeEntry: "",
+    createMilestoneNumber: "",
+    editTitle: "",
+    editBody: "",
+    editMilestoneNumber: "",
+    commentBody: "",
+    labelEntry: "",
+    assigneeEntry: "",
+    closeReason: "completed",
+    submittedIssueAction: null,
+    showAllIssueLabels: false,
+    showAllIssueAssignableUsers: false,
+    showAllIssueMilestones: false
+  };
 }
 
-export interface IssuesTabRefreshInput extends IssuesTabPrefetchInput {
-  focusedIssueNumber: number | null;
-}
-
-export function issuesTabQueryKey(
-  owner: string,
-  repo: string,
-  issueListLimit: number
-): readonly ["issues", string, string, number] {
-  return ["issues", owner, repo, issueListLimit] as const;
-}
-
-export function useIssuesTabQueries({
-  owner,
-  repo,
-  issueListLimit,
-  issuesEnabled,
-  resourcesEnabled,
-  githubReady
-}: IssuesTabQueryInput) {
-  const api = useControlApi();
-  const issues = useQuery<IssueListResult>({
-    queryKey: issuesTabQueryKey(owner, repo, issueListLimit),
-    queryFn: () =>
-      api.github.listIssuesWithStatus({
-        owner,
-        repo,
-        state: "all",
-        limit: issueListLimit,
-        cacheOnly: !githubReady
-      }),
-    enabled: issuesEnabled,
-    staleTime: 60_000
-  });
-  const resources = useRepositoryIssueResources(owner, repo, resourcesEnabled, { githubReady });
-
-  return { issues, ...resources };
-}
-
-export async function prefetchIssuesTabData(
-  queryClient: QueryClient,
-  { api, owner, repo, issueListLimit, githubReady }: IssuesTabPrefetchInput
-): Promise<void> {
-  await Promise.all([
-    queryClient.prefetchQuery({
-      queryKey: issuesTabQueryKey(owner, repo, issueListLimit),
-      queryFn: () =>
-        api.github.listIssuesWithStatus({
-          owner,
-          repo,
-          state: "all",
-          limit: issueListLimit,
-          cacheOnly: !githubReady
-        }),
-      staleTime: 60_000
-    }),
-    queryClient.prefetchQuery({
-      queryKey: repositoryLabelsQueryKey(owner, repo),
-      queryFn: () => api.github.listLabelsWithStatus({ owner, repo, limit: 100, cacheOnly: !githubReady }),
-      staleTime: 120_000
-    }),
-    queryClient.prefetchQuery({
-      queryKey: repositoryAssignableUsersQueryKey(owner, repo),
-      queryFn: () =>
-        api.github.listAssignableUsersWithStatus({ owner, repo, limit: 100, cacheOnly: !githubReady }),
-      staleTime: 120_000
-    }),
-    queryClient.prefetchQuery({
-      queryKey: repositoryMilestonesQueryKey(owner, repo),
-      queryFn: () =>
-        api.github.listMilestonesWithStatus({
-          owner,
-          repo,
-          state: "all",
-          limit: 100,
-          cacheOnly: !githubReady
-        }),
-      staleTime: 120_000
-    })
-  ]);
-}
-
-export async function refreshIssuesTabData(
-  queryClient: QueryClient,
-  { api, owner, repo, issueListLimit, focusedIssueNumber, githubReady }: IssuesTabRefreshInput
-): Promise<void> {
-  const cachedRead = !githubReady;
-  const refreshes: Array<Promise<unknown>> = [
-    queryClient.fetchQuery({
-      queryKey: issuesTabQueryKey(owner, repo, issueListLimit),
-      staleTime: 0,
-      queryFn: () =>
-        api.github.listIssuesWithStatus({
-          owner,
-          repo,
-          state: "all",
-          limit: issueListLimit,
-          cacheOnly: cachedRead,
-          forceRefresh: !cachedRead
-        })
-    }),
-    refreshRepositoryIssueResources(queryClient, { api, owner, repo, githubReady })
-  ];
-
-  if (focusedIssueNumber !== null) {
-    refreshes.push(
-      queryClient.fetchQuery<IssueDetailResult>({
-        queryKey: issueDetailQueryKey(owner, repo, focusedIssueNumber),
-        staleTime: 0,
-        queryFn: () =>
-          api.github.getIssueDetailWithStatus({
-            owner,
-            repo,
-            issueNumber: focusedIssueNumber,
-            cacheOnly: cachedRead,
-            forceRefresh: !cachedRead
-          })
-      })
-    );
-  }
-
-  try {
-    await Promise.all(refreshes);
-  } catch {
-    // React Query owns the visible error state for this refresh.
+function issuesTabUiReducer(state: IssuesTabUiState, action: IssuesTabUiAction): IssuesTabUiState {
+  switch (action.type) {
+    case "set":
+      return { ...state, ...action.values };
+    case "startCreating":
+      return {
+        ...state,
+        editingIssue: false,
+        submittedIssueAction: null,
+        title: "",
+        body: "",
+        createLabelEntry: "",
+        createAssigneeEntry: "",
+        createMilestoneNumber: "",
+        creating: true
+      };
+    case "cancelCreating":
+      return {
+        ...state,
+        submittedIssueAction: null,
+        title: "",
+        body: "",
+        createLabelEntry: "",
+        createAssigneeEntry: "",
+        createMilestoneNumber: "",
+        creating: false
+      };
+    case "selectIssue":
+      return {
+        ...state,
+        creating: false,
+        editingIssue: false,
+        selectedIssueNumber: action.issueNumber
+      };
+    case "startEditing":
+      return {
+        ...state,
+        submittedIssueAction: null,
+        editTitle: action.title,
+        editBody: action.body,
+        editMilestoneNumber: action.milestoneNumber,
+        editingIssue: true
+      };
+    case "cancelEditing":
+      return {
+        ...state,
+        submittedIssueAction: null,
+        editingIssue: false
+      };
   }
 }
 
@@ -209,14 +181,19 @@ function githubNumericId(id: number | string): number | null {
 }
 
 function commaSeparatedValues(value: string): string[] {
-  return Array.from(
-    new Set(
-      value
-        .split(",")
-        .map((item) => item.trim())
-        .filter(Boolean)
-    )
-  );
+  const values: string[] = [];
+  const seenValues = new Set<string>();
+
+  for (const item of value.split(",")) {
+    const trimmed = item.trim();
+    if (!trimmed || seenValues.has(trimmed)) {
+      continue;
+    }
+    seenValues.add(trimmed);
+    values.push(trimmed);
+  }
+
+  return values;
 }
 
 function appendCommaSeparatedValue(current: string, value: string): string {
@@ -268,6 +245,14 @@ function IssueSummaryTile({
   const hiddenLabelCount = issue.labels.length - labels.length;
   const assignees = (issue.assignees ?? []).slice(0, 3);
   const hiddenAssigneeCount = (issue.assignees ?? []).length - assignees.length;
+
+  function handleOpenIssue(): void {
+    onOpenIssue(issue);
+  }
+
+  function handleOpenExternal(): void {
+    onOpenExternal(issue.htmlUrl);
+  }
 
   return (
     <article className="issue-summary-tile" aria-label={`Issue ${issue.number} summary`}>
@@ -322,10 +307,10 @@ function IssueSummaryTile({
       </section>
       {availabilityMessage && <div className="error-state">{availabilityMessage}</div>}
       <div className="thread-actions">
-        <button className="dark-action" type="button" onClick={() => onOpenIssue(issue)}>
+        <button className="dark-action" type="button" onClick={handleOpenIssue}>
           Open issue
         </button>
-        <button type="button" onClick={() => onOpenExternal(issue.htmlUrl)}>
+        <button type="button" onClick={handleOpenExternal}>
           <ExternalLink size={16} /> GitHub fallback
         </button>
       </div>
@@ -333,23 +318,212 @@ function IssueSummaryTile({
   );
 }
 
-export function IssuesTab({
-  repository,
-  githubReady,
-  issueListLimit,
-  focusedIssueNumber,
-  initialFilter,
-  initialCreating,
-  mutationAction,
-  mutationPending,
-  mutationSucceeded,
-  mutationError,
-  onOpenExternal,
-  onSelectIssue,
-  onOpenIssueList,
-  onExpandIssues,
-  onMutate
+function IssueListRow({
+  issue,
+  active,
+  onSelectIssueNumber,
+  onOpenExternal
 }: {
+  issue: IssueSummary;
+  active: boolean;
+  onSelectIssueNumber(issueNumber: number): void;
+  onOpenExternal(url: string): void;
+}): JSX.Element {
+  const visibleLabels = issue.labels.slice(0, 2);
+  const hiddenLabels = issue.labels.slice(2);
+  const visibleAssignees = (issue.assignees ?? []).slice(0, 2);
+  const hiddenAssignees = (issue.assignees ?? []).slice(2);
+
+  function handleSelectIssue(): void {
+    onSelectIssueNumber(issue.number);
+  }
+
+  function handleOpenExternal(): void {
+    onOpenExternal(issue.htmlUrl);
+  }
+
+  return (
+    <div className={`issue-row thread-list-action-row ${active ? "active" : ""}`}>
+      <button className="thread-list-row-main" type="button" onClick={handleSelectIssue}>
+        <CircleDot size={17} />
+        <div>
+          <strong>{issue.title}</strong>
+          <small>
+            #{issue.number} opened by {issue.authorLogin ?? "unknown"} · {issue.comments} comments
+          </small>
+        </div>
+        <div className="thread-list-row-badges">
+          <div className="label-stack">
+            {visibleLabels.map((label) => (
+              <span key={label.id}>{label.name}</span>
+            ))}
+            {hiddenLabels.length > 0 && (
+              <span title={`Hidden labels: ${hiddenLabels.map((label) => label.name).join(", ")}`}>
+                +{hiddenLabels.length} {hiddenLabels.length === 1 ? "label" : "labels"}
+              </span>
+            )}
+            {issue.milestone && (
+              <span title={`Milestone ${issue.milestone.title}`}>{issue.milestone.title}</span>
+            )}
+            {visibleAssignees.map((assignee) => (
+              <span key={assignee.id}>@{assignee.login}</span>
+            ))}
+            {hiddenAssignees.length > 0 && (
+              <span
+                title={`Hidden assignees: ${hiddenAssignees
+                  .map((assignee) => `@${assignee.login}`)
+                  .join(", ")}`}
+              >
+                +{hiddenAssignees.length} {hiddenAssignees.length === 1 ? "assignee" : "assignees"}
+              </span>
+            )}
+          </div>
+          <span className={`state-chip ${issue.state === "open" ? "success" : ""}`}>
+            {issueStateLabel(issue)}
+          </span>
+          {issue.locked && <span className="state-chip attention">locked</span>}
+        </div>
+      </button>
+      <button
+        className="pin-row-button"
+        type="button"
+        aria-label={`Open issue ${issue.number} GitHub fallback`}
+        title={`GitHub fallback for issue #${issue.number}`}
+        onClick={handleOpenExternal}
+      >
+        <ExternalLink size={15} />
+      </button>
+    </div>
+  );
+}
+
+function IssueList({
+  issues,
+  selectedIssueNumber,
+  creating,
+  loading,
+  availabilityMessage,
+  filter,
+  issueListLimit,
+  unfilteredIssueListLimitHit,
+  onSelectIssueNumber,
+  onOpenExternal,
+  onExpandIssues
+}: {
+  issues: IssueSummary[];
+  selectedIssueNumber: number | null;
+  creating: boolean;
+  loading: boolean;
+  availabilityMessage: string | null;
+  filter: string;
+  issueListLimit: number;
+  unfilteredIssueListLimitHit: boolean;
+  onSelectIssueNumber(issueNumber: number): void;
+  onOpenExternal(url: string): void;
+  onExpandIssues(): void;
+}): JSX.Element {
+  return (
+    <div className="thread-list">
+      {loading && issues.length === 0 && <div className="loading-state">Loading issues…</div>}
+      {!loading && availabilityMessage && <div className="error-state">{availabilityMessage}</div>}
+      {issues.map((issue) => (
+        <IssueListRow
+          key={issue.id}
+          issue={issue}
+          active={selectedIssueNumber === issue.number && !creating}
+          onSelectIssueNumber={onSelectIssueNumber}
+          onOpenExternal={onOpenExternal}
+        />
+      ))}
+      {!loading && issues.length === 0 && (
+        <div className="empty-state">
+          {filter.trim() ? "No issues match this filter." : "No issues returned for this repository."}
+        </div>
+      )}
+      {unfilteredIssueListLimitHit && issueListLimit < maxIssueListLimit && (
+        <div className="table-action-row">
+          <button type="button" onClick={onExpandIssues}>
+            Load more issues
+          </button>
+        </div>
+      )}
+      {unfilteredIssueListLimitHit && issueListLimit >= maxIssueListLimit && (
+        <div className="muted-row">Showing the first {issueListLimit} issues returned by GitHub.</div>
+      )}
+    </div>
+  );
+}
+
+function IssueDiscussionThread({
+  repository,
+  selectedIssue,
+  detail,
+  loading,
+  markdownUrlContext,
+  issueActionPendingReason,
+  liveIssueDisabledReason,
+  onOpenExternal,
+  onEditComment,
+  onDeleteComment
+}: {
+  repository: RepositoryDetail;
+  selectedIssue: IssueSummary;
+  detail: IssueDetail | null;
+  loading: boolean;
+  markdownUrlContext: MarkdownUrlContext;
+  issueActionPendingReason: string | null;
+  liveIssueDisabledReason: string | null;
+  onOpenExternal(url: string): void;
+  onEditComment(commentId: number, body: string): void;
+  onDeleteComment(commentId: number): void;
+}): JSX.Element {
+  function getCommentDisabledReason(comment: TimelineCommentSummary): string | null {
+    return (
+      issueActionPendingReason ??
+      liveIssueDisabledReason ??
+      commentMutationDisabledReason(repository, comment)
+    );
+  }
+
+  function handleEditComment(comment: TimelineCommentSummary, body: string): void {
+    const commentId = githubNumericId(comment.id);
+    if (commentId === null) {
+      return;
+    }
+    onEditComment(commentId, body);
+  }
+
+  function handleDeleteComment(comment: TimelineCommentSummary): void {
+    const commentId = githubNumericId(comment.id);
+    if (commentId === null) {
+      return;
+    }
+    onDeleteComment(commentId);
+  }
+
+  return (
+    <TimelineThread
+      title={`Issue ${selectedIssue.number} discussion`}
+      authorLogin={detail?.authorLogin ?? selectedIssue.authorLogin}
+      authorAvatarUrl={detail?.authorAvatarUrl ?? selectedIssue.authorAvatarUrl}
+      createdAt={detail?.createdAt ?? selectedIssue.createdAt}
+      body={detail?.body}
+      comments={detail?.commentsList ?? []}
+      loading={loading}
+      availabilityMessage={readAvailabilityMessage("Issue comments", detail?.commentsAvailability ?? null)}
+      emptyBody="No description provided."
+      markdownUrlContext={markdownUrlContext}
+      onOpenExternal={onOpenExternal}
+      commentActions={{
+        getDisabledReason: getCommentDisabledReason,
+        onEdit: handleEditComment,
+        onDelete: handleDeleteComment
+      }}
+    />
+  );
+}
+
+interface IssuesTabProps {
   repository: RepositoryDetail;
   githubReady: boolean;
   issueListLimit: number;
@@ -365,28 +539,53 @@ export function IssuesTab({
   onOpenIssueList(): void;
   onExpandIssues(): void;
   onMutate(action: GitHubAction, dangerous: boolean, payload?: GitHubMutationFields): void;
-}): JSX.Element {
+}
+
+function useIssuesTabModel({
+  repository,
+  githubReady,
+  issueListLimit,
+  focusedIssueNumber,
+  initialFilter,
+  initialCreating,
+  mutationAction,
+  mutationPending,
+  mutationSucceeded,
+  mutationError,
+  onOpenExternal,
+  onSelectIssue,
+  onOpenIssueList,
+  onExpandIssues,
+  onMutate
+}: IssuesTabProps) {
   const surfaceRef = useRef<HTMLElement | null>(null);
-  const [selectedIssueNumber, setSelectedIssueNumber] = useState<number | null>(null);
-  const [filter, setFilter] = useState(initialFilter);
-  const [creating, setCreating] = useState(initialCreating);
-  const [editingIssue, setEditingIssue] = useState(false);
-  const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
-  const [createLabelEntry, setCreateLabelEntry] = useState("");
-  const [createAssigneeEntry, setCreateAssigneeEntry] = useState("");
-  const [createMilestoneNumber, setCreateMilestoneNumber] = useState("");
-  const [editTitle, setEditTitle] = useState("");
-  const [editBody, setEditBody] = useState("");
-  const [editMilestoneNumber, setEditMilestoneNumber] = useState("");
-  const [commentBody, setCommentBody] = useState("");
-  const [labelEntry, setLabelEntry] = useState("");
-  const [assigneeEntry, setAssigneeEntry] = useState("");
-  const [closeReason, setCloseReason] = useState<"completed" | "not_planned">("completed");
-  const [submittedIssueAction, setSubmittedIssueAction] = useState<GitHubAction | null>(null);
-  const [showAllIssueLabels, setShowAllIssueLabels] = useState(false);
-  const [showAllIssueAssignableUsers, setShowAllIssueAssignableUsers] = useState(false);
-  const [showAllIssueMilestones, setShowAllIssueMilestones] = useState(false);
+  const [uiState, dispatchUiState] = useReducer(
+    issuesTabUiReducer,
+    { initialFilter, initialCreating },
+    createIssuesTabUiState
+  );
+  const {
+    selectedIssueNumber,
+    filter,
+    creating,
+    editingIssue,
+    title,
+    body,
+    createLabelEntry,
+    createAssigneeEntry,
+    createMilestoneNumber,
+    editTitle,
+    editBody,
+    editMilestoneNumber,
+    commentBody,
+    labelEntry,
+    assigneeEntry,
+    closeReason,
+    submittedIssueAction,
+    showAllIssueLabels,
+    showAllIssueAssignableUsers,
+    showAllIssueMilestones
+  } = uiState;
   const {
     issues: issuesQuery,
     labels: labelsQuery,
@@ -456,7 +655,7 @@ export function IssuesTab({
   const selectedLabels = detail?.labels ?? selectedIssue?.labels ?? [];
   const selectedAssignees = detail?.assignees ?? selectedIssue?.assignees ?? [];
   const selectedMilestone = detail?.milestone ?? selectedIssue?.milestone ?? null;
-  const issueAction = selectedIssue?.state === "closed" ? "reopenIssue" : "closeIssue";
+  const issueAction: IssueStateAction = selectedIssue?.state === "closed" ? "reopenIssue" : "closeIssue";
   const issueActionLabel = selectedIssue?.state === "closed" ? "Reopen issue" : "Close issue";
   const issueMutationAction =
     mutationAction === "createIssue" ||
@@ -516,15 +715,217 @@ export function IssuesTab({
     repository.defaultBranch ?? "HEAD"
   );
 
+  function updateUiState(values: Partial<IssuesTabUiState>): void {
+    dispatchUiState({ type: "set", values });
+  }
+
+  function setTitle(value: string): void {
+    updateUiState({ title: value });
+  }
+
+  function setBody(value: string): void {
+    updateUiState({ body: value });
+  }
+
+  function setCreateLabelEntry(value: string): void {
+    updateUiState({ createLabelEntry: value });
+  }
+
+  function setCreateAssigneeEntry(value: string): void {
+    updateUiState({ createAssigneeEntry: value });
+  }
+
+  function setCreateMilestoneNumber(value: string): void {
+    updateUiState({ createMilestoneNumber: value });
+  }
+
+  function setEditTitle(value: string): void {
+    updateUiState({ editTitle: value });
+  }
+
+  function setEditBody(value: string): void {
+    updateUiState({ editBody: value });
+  }
+
+  function setEditMilestoneNumber(value: string): void {
+    updateUiState({ editMilestoneNumber: value });
+  }
+
+  function setLabelEntry(value: string): void {
+    updateUiState({ labelEntry: value });
+  }
+
+  function setAssigneeEntry(value: string): void {
+    updateUiState({ assigneeEntry: value });
+  }
+
+  function setCommentBody(value: string): void {
+    updateUiState({ commentBody: value });
+  }
+
+  function setCloseReason(value: IssueCloseReason): void {
+    updateUiState({ closeReason: value });
+  }
+
+  function handleShowAllIssueLabels(): void {
+    updateUiState({ showAllIssueLabels: true });
+  }
+
+  function handleShowAllIssueAssignableUsers(): void {
+    updateUiState({ showAllIssueAssignableUsers: true });
+  }
+
+  function handleShowAllIssueMilestones(): void {
+    updateUiState({ showAllIssueMilestones: true });
+  }
+
   function startEditingIssue(): void {
     if (!selectedIssue) {
       return;
     }
-    setSubmittedIssueAction(null);
-    setEditTitle(selectedIssue.title);
-    setEditBody(detail?.body ?? "");
-    setEditMilestoneNumber(selectedMilestone ? String(selectedMilestone.number) : "");
-    setEditingIssue(true);
+    dispatchUiState({
+      type: "startEditing",
+      title: selectedIssue.title,
+      body: detail?.body ?? "",
+      milestoneNumber: selectedMilestone ? String(selectedMilestone.number) : ""
+    });
+  }
+
+  function submitEditIssue(): void {
+    if (!selectedIssue || editIssueSubmitDisabledReason) {
+      return;
+    }
+    updateUiState({ submittedIssueAction: "editIssue" });
+    onMutate("editIssue", false, {
+      issueNumber: selectedIssue.number,
+      title: editTitle.trim(),
+      body: editBody.trim(),
+      milestone: editMilestoneNumber ? Number(editMilestoneNumber) : null
+    });
+    updateUiState({ editingIssue: false });
+  }
+
+  function cancelEditIssue(): void {
+    dispatchUiState({ type: "cancelEditing" });
+  }
+
+  function handleFilterChange(event: ChangeEvent<HTMLInputElement>): void {
+    updateUiState({ filter: event.target.value });
+  }
+
+  function startCreatingIssue(): void {
+    dispatchUiState({ type: "startCreating" });
+  }
+
+  function submitCreateIssue(): void {
+    if (createIssueSubmitDisabledReason) {
+      return;
+    }
+    updateUiState({ submittedIssueAction: "createIssue" });
+    onMutate("createIssue", false, {
+      title: title.trim(),
+      body: body.trim(),
+      ...(parsedCreateLabels.length > 0 ? { labels: parsedCreateLabels } : {}),
+      ...(parsedCreateAssignees.length > 0 ? { assignees: parsedCreateAssignees } : {}),
+      ...(createMilestoneNumber ? { milestone: Number(createMilestoneNumber) } : {})
+    });
+  }
+
+  function cancelCreateIssue(): void {
+    dispatchUiState({ type: "cancelCreating" });
+  }
+
+  function addCreateLabel(labelName: string): void {
+    updateUiState({ createLabelEntry: appendCommaSeparatedValue(createLabelEntry, labelName) });
+  }
+
+  function addCreateAssignee(login: string): void {
+    updateUiState({ createAssigneeEntry: appendCommaSeparatedValue(createAssigneeEntry, login) });
+  }
+
+  function removeIssueLabel(name: string): void {
+    if (!selectedIssue) {
+      return;
+    }
+    onMutate("removeLabel", false, {
+      issueNumber: selectedIssue.number,
+      name
+    });
+  }
+
+  function removeIssueAssignee(login: string): void {
+    if (!selectedIssue) {
+      return;
+    }
+    onMutate("removeAssignees", false, {
+      issueNumber: selectedIssue.number,
+      assignees: [login]
+    });
+  }
+
+  function addIssueLabelSuggestion(name: string): void {
+    updateUiState({ labelEntry: appendCommaSeparatedValue(labelEntry, name) });
+  }
+
+  function addIssueAssigneeSuggestion(login: string): void {
+    updateUiState({ assigneeEntry: appendCommaSeparatedValue(assigneeEntry, login) });
+  }
+
+  function submitIssueLabels(): void {
+    if (!selectedIssue || issueLabelSubmitDisabledReason) {
+      return;
+    }
+    updateUiState({ submittedIssueAction: "addLabels" });
+    onMutate("addLabels", false, {
+      issueNumber: selectedIssue.number,
+      labels: parsedLabels
+    });
+  }
+
+  function submitIssueAssignees(): void {
+    if (!selectedIssue || issueAssigneeSubmitDisabledReason) {
+      return;
+    }
+    updateUiState({ submittedIssueAction: "setAssignees" });
+    onMutate("setAssignees", false, {
+      issueNumber: selectedIssue.number,
+      assignees: parsedAssignees
+    });
+  }
+
+  function submitIssueComment(): void {
+    if (!selectedIssue || !commentBody.trim() || issueCommentDisabledReason) {
+      return;
+    }
+    updateUiState({ submittedIssueAction: "addComment" });
+    onMutate("addComment", false, {
+      issueNumber: selectedIssue.number,
+      body: commentBody.trim()
+    });
+  }
+
+  function runIssueStateAction(): void {
+    if (!selectedIssue || issueActionDisabledReason) {
+      return;
+    }
+    onMutate(issueAction, issueAction === "closeIssue", {
+      issueNumber: selectedIssue.number,
+      ...(issueAction === "closeIssue" ? { stateReason: closeReason } : {})
+    });
+  }
+
+  function selectIssueNumber(issueNumber: number): void {
+    dispatchUiState({ type: "selectIssue", issueNumber });
+  }
+
+  function editComment(commentId: number, commentBody: string): void {
+    updateUiState({ submittedIssueAction: "editComment" });
+    onMutate("editComment", false, { commentId, body: commentBody });
+  }
+
+  function deleteComment(commentId: number): void {
+    updateUiState({ submittedIssueAction: "deleteComment" });
+    onMutate("deleteComment", true, { commentId });
   }
 
   useEffect(() => {
@@ -538,6 +939,521 @@ export function IssuesTab({
     }
   }, [issueDetailRoute, focusedIssueNumber]);
 
+  return {
+    surfaceRef,
+    issueDetailRoute,
+    filter,
+    handleFilterChange,
+    createIssueDisabledReason,
+    startCreatingIssue,
+    filteredIssues,
+    selectedIssue,
+    creating,
+    loading,
+    issuesAvailabilityMessage,
+    issueListLimit,
+    unfilteredIssueListLimitHit,
+    selectIssueNumber,
+    onOpenExternal,
+    onExpandIssues,
+    title,
+    body,
+    createLabelEntry,
+    createAssigneeEntry,
+    createMilestoneNumber,
+    createIssueSubmitDisabledReason,
+    createIssueMutationActive,
+    mutationPending,
+    mutationSucceeded,
+    mutationError,
+    visibleLabels,
+    labelsLoading,
+    labelsError,
+    labelsAvailabilityMessage,
+    hiddenIssueLabelCount,
+    showAllIssueLabels,
+    labels,
+    visibleAssignableUsers,
+    assignableUsersLoading,
+    assignableUsersError,
+    assignableUsersAvailabilityMessage,
+    hiddenIssueAssignableUserCount,
+    showAllIssueAssignableUsers,
+    assignableUsers,
+    visibleMilestones,
+    milestonesLoading,
+    milestonesError,
+    milestonesAvailabilityMessage,
+    hiddenIssueMilestoneCount,
+    showAllIssueMilestones,
+    milestones,
+    setTitle,
+    setBody,
+    setCreateLabelEntry,
+    setCreateAssigneeEntry,
+    setCreateMilestoneNumber,
+    addCreateLabel,
+    addCreateAssignee,
+    handleShowAllIssueLabels,
+    handleShowAllIssueAssignableUsers,
+    handleShowAllIssueMilestones,
+    submitCreateIssue,
+    cancelCreateIssue,
+    detail,
+    issueDetail,
+    issueDetailAvailabilityMessage,
+    issueMarkdownUrlContext,
+    onSelectIssue,
+    onOpenIssueList,
+    selectedMilestone,
+    selectedAssignees,
+    selectedLabels,
+    editingIssue,
+    editTitle,
+    editBody,
+    editMilestoneNumber,
+    issueActionDisabledReason,
+    editIssueSubmitDisabledReason,
+    editIssueMutationActive,
+    setEditTitle,
+    setEditBody,
+    setEditMilestoneNumber,
+    submitEditIssue,
+    cancelEditIssue,
+    repository,
+    issueActionPendingReason,
+    liveIssueDisabledReason,
+    editComment,
+    deleteComment,
+    labelEntry,
+    assigneeEntry,
+    issueLabelSubmitDisabledReason,
+    issueAssigneeSubmitDisabledReason,
+    removeIssueLabel,
+    removeIssueAssignee,
+    setLabelEntry,
+    setAssigneeEntry,
+    addIssueLabelSuggestion,
+    addIssueAssigneeSuggestion,
+    submitIssueLabels,
+    submitIssueAssignees,
+    commentBody,
+    issueCommentDisabledReason,
+    issueCommentMutationActive,
+    setCommentBody,
+    submitIssueComment,
+    issueAction,
+    issueActionLabel,
+    closeReason,
+    startEditingIssue,
+    runIssueStateAction,
+    setCloseReason,
+    requestedIssueNumber
+  };
+}
+
+type IssuesTabModel = ReturnType<typeof useIssuesTabModel>;
+type IssueRouteProps = IssuesTabModel & {
+  selectedIssue: NonNullable<IssuesTabModel["selectedIssue"]>;
+};
+
+function IssueCreatePane({
+  title,
+  body,
+  createLabelEntry,
+  createAssigneeEntry,
+  createMilestoneNumber,
+  createIssueDisabledReason,
+  createIssueSubmitDisabledReason,
+  createIssueMutationActive,
+  mutationPending,
+  mutationSucceeded,
+  mutationError,
+  visibleLabels,
+  labelsLoading,
+  labelsError,
+  labelsAvailabilityMessage,
+  hiddenIssueLabelCount,
+  showAllIssueLabels,
+  labels,
+  visibleAssignableUsers,
+  assignableUsersLoading,
+  assignableUsersError,
+  assignableUsersAvailabilityMessage,
+  hiddenIssueAssignableUserCount,
+  showAllIssueAssignableUsers,
+  assignableUsers,
+  visibleMilestones,
+  milestonesLoading,
+  milestonesError,
+  milestonesAvailabilityMessage,
+  hiddenIssueMilestoneCount,
+  showAllIssueMilestones,
+  milestones,
+  setTitle,
+  setBody,
+  setCreateLabelEntry,
+  setCreateAssigneeEntry,
+  setCreateMilestoneNumber,
+  addCreateLabel,
+  addCreateAssignee,
+  handleShowAllIssueLabels,
+  handleShowAllIssueAssignableUsers,
+  handleShowAllIssueMilestones,
+  submitCreateIssue,
+  cancelCreateIssue
+}: IssuesTabModel): JSX.Element {
+  return (
+    <IssueCreateForm
+      title={title}
+      body={body}
+      labelEntry={createLabelEntry}
+      assigneeEntry={createAssigneeEntry}
+      milestoneNumber={createMilestoneNumber}
+      disabledReason={createIssueDisabledReason}
+      submitDisabledReason={createIssueSubmitDisabledReason}
+      mutationActive={createIssueMutationActive}
+      mutationPending={mutationPending}
+      mutationSucceeded={mutationSucceeded}
+      mutationError={mutationError}
+      labels={visibleLabels}
+      labelsLoading={labelsLoading}
+      labelsError={labelsError}
+      labelsAvailabilityMessage={labelsAvailabilityMessage}
+      hiddenLabelCount={hiddenIssueLabelCount}
+      showAllLabels={showAllIssueLabels}
+      totalLabelCount={labels.length}
+      assignableUsers={visibleAssignableUsers}
+      assignableUsersLoading={assignableUsersLoading}
+      assignableUsersError={assignableUsersError}
+      assignableUsersAvailabilityMessage={assignableUsersAvailabilityMessage}
+      hiddenAssignableUserCount={hiddenIssueAssignableUserCount}
+      showAllAssignableUsers={showAllIssueAssignableUsers}
+      totalAssignableUserCount={assignableUsers.length}
+      milestones={visibleMilestones}
+      milestonesLoading={milestonesLoading}
+      milestonesError={milestonesError}
+      milestonesAvailabilityMessage={milestonesAvailabilityMessage}
+      hiddenMilestoneCount={hiddenIssueMilestoneCount}
+      showAllMilestones={showAllIssueMilestones}
+      totalMilestoneCount={milestones.length}
+      onTitleChange={setTitle}
+      onBodyChange={setBody}
+      onLabelEntryChange={setCreateLabelEntry}
+      onAssigneeEntryChange={setCreateAssigneeEntry}
+      onMilestoneNumberChange={setCreateMilestoneNumber}
+      onAddLabel={addCreateLabel}
+      onAddAssignee={addCreateAssignee}
+      onShowAllLabels={handleShowAllIssueLabels}
+      onShowAllAssignableUsers={handleShowAllIssueAssignableUsers}
+      onShowAllMilestones={handleShowAllIssueMilestones}
+      onSubmit={submitCreateIssue}
+      onCancel={cancelCreateIssue}
+    />
+  );
+}
+
+function IssueSummaryPane({
+  selectedIssue,
+  detail,
+  issueDetail,
+  issueDetailAvailabilityMessage,
+  issueMarkdownUrlContext,
+  onSelectIssue,
+  onOpenExternal
+}: IssueRouteProps): JSX.Element {
+  return (
+    <IssueSummaryTile
+      issue={selectedIssue}
+      body={detail?.body}
+      commentsAvailable={detail?.commentsList.length ?? selectedIssue.comments}
+      loading={issueDetail.isLoading || issueDetail.isFetching}
+      availabilityMessage={issueDetail.error?.message ?? issueDetailAvailabilityMessage}
+      markdownUrlContext={issueMarkdownUrlContext}
+      onOpenIssue={onSelectIssue}
+      onOpenExternal={onOpenExternal}
+    />
+  );
+}
+
+function IssueDetailHeader({
+  selectedIssue,
+  selectedMilestone,
+  selectedAssignees,
+  selectedLabels,
+  onOpenIssueList,
+  onOpenExternal
+}: Pick<
+  IssueRouteProps,
+  | "selectedIssue"
+  | "selectedMilestone"
+  | "selectedAssignees"
+  | "selectedLabels"
+  | "onOpenIssueList"
+  | "onOpenExternal"
+>): JSX.Element {
+  function handleOpenExternal(): void {
+    onOpenExternal(selectedIssue.htmlUrl);
+  }
+
+  return (
+    <>
+      <div className="issue-detail-toolbar">
+        <button type="button" onClick={onOpenIssueList}>
+          <ArrowLeft size={16} /> Back to issues
+        </button>
+        <button type="button" onClick={handleOpenExternal}>
+          <ExternalLink size={16} /> GitHub fallback
+        </button>
+      </div>
+      <header className="thread-header">
+        <h2>{selectedIssue.title}</h2>
+        <small>
+          #{selectedIssue.number} opened by {selectedIssue.authorLogin ?? "unknown"} ·{" "}
+          {formatRelativeDate(selectedIssue.createdAt)}
+        </small>
+        <span className={`state-chip ${selectedIssue.state === "open" ? "success" : ""}`}>
+          {issueStateLabel(selectedIssue)}
+        </span>
+        {selectedMilestone && (
+          <span className="state-chip" title={selectedMilestone.description ?? undefined}>
+            Milestone {selectedMilestone.title}
+          </span>
+        )}
+        {selectedIssue.locked && <span className="state-chip attention">Locked</span>}
+        {selectedAssignees.length > 0 && (
+          <div className="label-stack label-row">
+            {selectedAssignees.map((assignee) => (
+              <span key={assignee.id}>Assigned @{assignee.login}</span>
+            ))}
+          </div>
+        )}
+        {selectedLabels.length > 0 && (
+          <div className="label-stack label-row">
+            {selectedLabels.map((label) => (
+              <span key={label.id}>{label.name}</span>
+            ))}
+          </div>
+        )}
+      </header>
+    </>
+  );
+}
+
+function IssueDetailRouteView({
+  selectedIssue,
+  detail,
+  issueDetail,
+  issueDetailAvailabilityMessage,
+  issueMarkdownUrlContext,
+  onOpenExternal,
+  onOpenIssueList,
+  selectedMilestone,
+  selectedAssignees,
+  selectedLabels,
+  editingIssue,
+  editTitle,
+  editBody,
+  editMilestoneNumber,
+  issueActionDisabledReason,
+  editIssueSubmitDisabledReason,
+  editIssueMutationActive,
+  mutationPending,
+  mutationSucceeded,
+  mutationError,
+  visibleMilestones,
+  milestonesLoading,
+  milestonesError,
+  milestonesAvailabilityMessage,
+  hiddenIssueMilestoneCount,
+  handleShowAllIssueMilestones,
+  setEditTitle,
+  setEditBody,
+  setEditMilestoneNumber,
+  submitEditIssue,
+  cancelEditIssue,
+  repository,
+  issueActionPendingReason,
+  liveIssueDisabledReason,
+  editComment,
+  deleteComment,
+  visibleLabels,
+  visibleAssignableUsers,
+  labelEntry,
+  assigneeEntry,
+  issueLabelSubmitDisabledReason,
+  issueAssigneeSubmitDisabledReason,
+  labelsLoading,
+  labelsError,
+  labelsAvailabilityMessage,
+  assignableUsersLoading,
+  assignableUsersError,
+  assignableUsersAvailabilityMessage,
+  hiddenIssueLabelCount,
+  hiddenIssueAssignableUserCount,
+  removeIssueLabel,
+  removeIssueAssignee,
+  setLabelEntry,
+  setAssigneeEntry,
+  addIssueLabelSuggestion,
+  addIssueAssigneeSuggestion,
+  handleShowAllIssueLabels,
+  handleShowAllIssueAssignableUsers,
+  submitIssueLabels,
+  submitIssueAssignees,
+  commentBody,
+  issueCommentDisabledReason,
+  issueCommentMutationActive,
+  setCommentBody,
+  submitIssueComment,
+  issueAction,
+  issueActionLabel,
+  closeReason,
+  startEditingIssue,
+  runIssueStateAction,
+  setCloseReason
+}: IssueRouteProps): JSX.Element {
+  return (
+    <>
+      <IssueDetailHeader
+        selectedIssue={selectedIssue}
+        selectedMilestone={selectedMilestone}
+        selectedAssignees={selectedAssignees}
+        selectedLabels={selectedLabels}
+        onOpenIssueList={onOpenIssueList}
+        onOpenExternal={onOpenExternal}
+      />
+      {issueDetail.error && <div className="error-state">{issueDetail.error.message}</div>}
+      {issueDetailAvailabilityMessage && <div className="error-state">{issueDetailAvailabilityMessage}</div>}
+      {editingIssue ? (
+        <IssueEditForm
+          title={editTitle}
+          body={editBody}
+          milestoneNumber={editMilestoneNumber}
+          disabledReason={issueActionDisabledReason}
+          submitDisabledReason={editIssueSubmitDisabledReason}
+          mutationActive={editIssueMutationActive}
+          mutationPending={mutationPending}
+          mutationSucceeded={mutationSucceeded}
+          mutationError={mutationError}
+          milestones={visibleMilestones}
+          milestonesLoading={milestonesLoading}
+          milestonesError={milestonesError}
+          milestonesAvailabilityMessage={milestonesAvailabilityMessage}
+          hiddenMilestoneCount={hiddenIssueMilestoneCount}
+          onTitleChange={setEditTitle}
+          onBodyChange={setEditBody}
+          onMilestoneNumberChange={setEditMilestoneNumber}
+          onShowAllMilestones={handleShowAllIssueMilestones}
+          onSubmit={submitEditIssue}
+          onCancel={cancelEditIssue}
+        />
+      ) : (
+        <IssueDiscussionThread
+          repository={repository}
+          selectedIssue={selectedIssue}
+          detail={detail}
+          loading={issueDetail.isLoading || issueDetail.isFetching}
+          markdownUrlContext={issueMarkdownUrlContext}
+          issueActionPendingReason={issueActionPendingReason}
+          liveIssueDisabledReason={liveIssueDisabledReason}
+          onOpenExternal={onOpenExternal}
+          onEditComment={editComment}
+          onDeleteComment={deleteComment}
+        />
+      )}
+      <IssueMetadataControls
+        selectedLabels={selectedLabels}
+        selectedAssignees={selectedAssignees}
+        visibleLabels={visibleLabels}
+        visibleAssignableUsers={visibleAssignableUsers}
+        labelEntry={labelEntry}
+        assigneeEntry={assigneeEntry}
+        disabledReason={issueActionDisabledReason}
+        labelSubmitDisabledReason={issueLabelSubmitDisabledReason}
+        assigneeSubmitDisabledReason={issueAssigneeSubmitDisabledReason}
+        labelsLoading={labelsLoading}
+        labelsError={labelsError}
+        labelsAvailabilityMessage={labelsAvailabilityMessage}
+        assignableUsersLoading={assignableUsersLoading}
+        assignableUsersError={assignableUsersError}
+        assignableUsersAvailabilityMessage={assignableUsersAvailabilityMessage}
+        hiddenLabelCount={hiddenIssueLabelCount}
+        hiddenAssignableUserCount={hiddenIssueAssignableUserCount}
+        onRemoveLabel={removeIssueLabel}
+        onRemoveAssignee={removeIssueAssignee}
+        onLabelEntryChange={setLabelEntry}
+        onAssigneeEntryChange={setAssigneeEntry}
+        onAddLabelSuggestion={addIssueLabelSuggestion}
+        onAddAssigneeSuggestion={addIssueAssigneeSuggestion}
+        onShowAllLabels={handleShowAllIssueLabels}
+        onShowAllAssignableUsers={handleShowAllIssueAssignableUsers}
+        onSubmitLabels={submitIssueLabels}
+        onSubmitAssignees={submitIssueAssignees}
+      />
+      <IssueCommentComposer
+        commentBody={commentBody}
+        disabledReason={issueCommentDisabledReason}
+        mutationActive={issueCommentMutationActive}
+        mutationPending={mutationPending}
+        mutationSucceeded={mutationSucceeded}
+        mutationError={mutationError}
+        onCommentBodyChange={setCommentBody}
+        onSubmit={submitIssueComment}
+      />
+      <IssueActionFooter
+        issueAction={issueAction}
+        issueActionLabel={issueActionLabel}
+        closeReason={closeReason}
+        disabledReason={issueActionDisabledReason}
+        onStartEditing={startEditingIssue}
+        onRunIssueAction={runIssueStateAction}
+        onCloseReasonChange={setCloseReason}
+      />
+    </>
+  );
+}
+
+function IssueDetailPane(model: IssuesTabModel): JSX.Element {
+  const { creating, selectedIssue, issueDetailRoute, issueDetail, requestedIssueNumber } = model;
+
+  return (
+    <div className={`thread-detail${issueDetailRoute ? " issue-detail-page" : " issue-summary-pane"}`}>
+      {creating ? (
+        <IssueCreatePane {...model} />
+      ) : selectedIssue && !issueDetailRoute ? (
+        <IssueSummaryPane {...model} selectedIssue={selectedIssue} />
+      ) : selectedIssue ? (
+        <IssueDetailRouteView {...model} selectedIssue={selectedIssue} />
+      ) : issueDetail.isLoading && requestedIssueNumber !== null ? (
+        <div className="loading-state">Loading issue #{requestedIssueNumber}…</div>
+      ) : (
+        <div className="empty-state">No issues found.</div>
+      )}
+    </div>
+  );
+}
+
+function IssuesTabContent(model: IssuesTabModel): JSX.Element {
+  const {
+    surfaceRef,
+    issueDetailRoute,
+    filter,
+    handleFilterChange,
+    createIssueDisabledReason,
+    startCreatingIssue,
+    filteredIssues,
+    selectedIssue,
+    creating,
+    loading,
+    issuesAvailabilityMessage,
+    issueListLimit,
+    unfilteredIssueListLimitHit,
+    selectIssueNumber,
+    onOpenExternal,
+    onExpandIssues
+  } = model;
+
   return (
     <section className="table-panel github-surface" ref={surfaceRef}>
       {!issueDetailRoute && (
@@ -547,7 +1463,7 @@ export function IssuesTab({
             <input
               aria-label="Filter issues"
               value={filter}
-              onChange={(event) => setFilter(event.target.value)}
+              onChange={handleFilterChange}
               placeholder="Filter issues"
             />
           </label>
@@ -555,16 +1471,7 @@ export function IssuesTab({
             type="button"
             disabled={Boolean(createIssueDisabledReason)}
             title={createIssueDisabledReason ?? undefined}
-            onClick={() => {
-              setEditingIssue(false);
-              setSubmittedIssueAction(null);
-              setTitle("");
-              setBody("");
-              setCreateLabelEntry("");
-              setCreateAssigneeEntry("");
-              setCreateMilestoneNumber("");
-              setCreating(true);
-            }}
+            onClick={startCreatingIssue}
           >
             <Plus size={16} /> New issue
           </button>
@@ -572,775 +1479,28 @@ export function IssuesTab({
       )}
       <div className={`github-split${issueDetailRoute ? " issue-detail-route" : ""}`}>
         {!issueDetailRoute && (
-          <div className="thread-list">
-            {loading && issues.length === 0 && <div className="loading-state">Loading issues…</div>}
-            {!loading && issuesAvailabilityMessage && (
-              <div className="error-state">{issuesAvailabilityMessage}</div>
-            )}
-            {filteredIssues.map((issue) => {
-              const visibleLabels = issue.labels.slice(0, 2);
-              const hiddenLabels = issue.labels.slice(2);
-              const visibleAssignees = (issue.assignees ?? []).slice(0, 2);
-              const hiddenAssignees = (issue.assignees ?? []).slice(2);
-
-              return (
-                <div
-                  className={`issue-row thread-list-action-row ${
-                    selectedIssue?.number === issue.number && !creating ? "active" : ""
-                  }`}
-                  key={issue.id}
-                >
-                  <button
-                    className="thread-list-row-main"
-                    type="button"
-                    onClick={() => {
-                      setCreating(false);
-                      setEditingIssue(false);
-                      setSelectedIssueNumber(issue.number);
-                    }}
-                  >
-                    <CircleDot size={17} />
-                    <div>
-                      <strong>{issue.title}</strong>
-                      <small>
-                        #{issue.number} opened by {issue.authorLogin ?? "unknown"} · {issue.comments} comments
-                      </small>
-                    </div>
-                    <div className="thread-list-row-badges">
-                      <div className="label-stack">
-                        {visibleLabels.map((label) => (
-                          <span key={label.id}>{label.name}</span>
-                        ))}
-                        {hiddenLabels.length > 0 && (
-                          <span
-                            title={`Hidden labels: ${hiddenLabels.map((label) => label.name).join(", ")}`}
-                          >
-                            +{hiddenLabels.length} {hiddenLabels.length === 1 ? "label" : "labels"}
-                          </span>
-                        )}
-                        {issue.milestone && (
-                          <span title={`Milestone ${issue.milestone.title}`}>{issue.milestone.title}</span>
-                        )}
-                        {visibleAssignees.map((assignee) => (
-                          <span key={assignee.id}>@{assignee.login}</span>
-                        ))}
-                        {hiddenAssignees.length > 0 && (
-                          <span
-                            title={`Hidden assignees: ${hiddenAssignees
-                              .map((assignee) => `@${assignee.login}`)
-                              .join(", ")}`}
-                          >
-                            +{hiddenAssignees.length}{" "}
-                            {hiddenAssignees.length === 1 ? "assignee" : "assignees"}
-                          </span>
-                        )}
-                      </div>
-                      <span className={`state-chip ${issue.state === "open" ? "success" : ""}`}>
-                        {issueStateLabel(issue)}
-                      </span>
-                      {issue.locked && <span className="state-chip attention">locked</span>}
-                    </div>
-                  </button>
-                  <button
-                    className="pin-row-button"
-                    type="button"
-                    aria-label={`Open issue ${issue.number} GitHub fallback`}
-                    title={`GitHub fallback for issue #${issue.number}`}
-                    onClick={() => onOpenExternal(issue.htmlUrl)}
-                  >
-                    <ExternalLink size={15} />
-                  </button>
-                </div>
-              );
-            })}
-            {!loading && filteredIssues.length === 0 && (
-              <div className="empty-state">
-                {filter.trim() ? "No issues match this filter." : "No issues returned for this repository."}
-              </div>
-            )}
-            {unfilteredIssueListLimitHit && issueListLimit < maxIssueListLimit && (
-              <div className="table-action-row">
-                <button type="button" onClick={onExpandIssues}>
-                  Load more issues
-                </button>
-              </div>
-            )}
-            {unfilteredIssueListLimitHit && issueListLimit >= maxIssueListLimit && (
-              <div className="muted-row">Showing the first {issueListLimit} issues returned by GitHub.</div>
-            )}
-          </div>
+          <IssueList
+            issues={filteredIssues}
+            selectedIssueNumber={selectedIssue?.number ?? null}
+            creating={creating}
+            loading={loading}
+            availabilityMessage={issuesAvailabilityMessage}
+            filter={filter}
+            issueListLimit={issueListLimit}
+            unfilteredIssueListLimitHit={unfilteredIssueListLimitHit}
+            onSelectIssueNumber={selectIssueNumber}
+            onOpenExternal={onOpenExternal}
+            onExpandIssues={onExpandIssues}
+          />
         )}
 
-        <div className={`thread-detail${issueDetailRoute ? " issue-detail-page" : " issue-summary-pane"}`}>
-          {creating ? (
-            <form
-              className="compose-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                if (createIssueSubmitDisabledReason) {
-                  return;
-                }
-                setSubmittedIssueAction("createIssue");
-                onMutate("createIssue", false, {
-                  title: title.trim(),
-                  body: body.trim(),
-                  ...(parsedCreateLabels.length > 0 ? { labels: parsedCreateLabels } : {}),
-                  ...(parsedCreateAssignees.length > 0 ? { assignees: parsedCreateAssignees } : {}),
-                  ...(createMilestoneNumber ? { milestone: Number(createMilestoneNumber) } : {})
-                });
-              }}
-            >
-              <h2>Open a new issue</h2>
-              {createIssueMutationActive && mutationPending && (
-                <div className="loading-state">
-                  {githubActionLabel("createIssue")} is running. The draft is locked until GitHub responds.
-                </div>
-              )}
-              {createIssueMutationActive && !mutationPending && mutationSucceeded && (
-                <div className="success-state">
-                  {githubActionLabel("createIssue")} completed. Issue data is refreshing.
-                </div>
-              )}
-              {createIssueMutationActive && !mutationPending && mutationError && (
-                <div className="error-state">
-                  {githubActionLabel("createIssue")} failed: {mutationError.message}
-                </div>
-              )}
-              <input
-                value={title}
-                disabled={Boolean(createIssueDisabledReason)}
-                title={createIssueDisabledReason ?? undefined}
-                onChange={(event) => setTitle(event.target.value)}
-                placeholder="Issue title"
-              />
-              <textarea
-                value={body}
-                disabled={Boolean(createIssueDisabledReason)}
-                title={createIssueDisabledReason ?? undefined}
-                onChange={(event) => setBody(event.target.value)}
-                placeholder="Describe the problem"
-              />
-              <label>
-                Labels
-                <input
-                  value={createLabelEntry}
-                  disabled={Boolean(createIssueDisabledReason)}
-                  title={createIssueDisabledReason ?? undefined}
-                  onChange={(event) => setCreateLabelEntry(event.target.value)}
-                  placeholder="Labels for this issue"
-                />
-              </label>
-              <div className="metadata-picker-options" aria-label="Issue labels for new issue">
-                {labelsLoading && <small>Loading labels…</small>}
-                {labelsError && <small>Could not load labels.</small>}
-                {!labelsError && labelsAvailabilityMessage && <small>{labelsAvailabilityMessage}</small>}
-                {!labelsLoading &&
-                  !labelsError &&
-                  visibleLabels.map((label) => (
-                    <button
-                      key={label.id}
-                      type="button"
-                      disabled={Boolean(createIssueDisabledReason)}
-                      title={label.description ?? `Add ${label.name}`}
-                      onClick={() =>
-                        setCreateLabelEntry((current) => appendCommaSeparatedValue(current, label.name))
-                      }
-                    >
-                      <span style={{ backgroundColor: `#${label.color}` }} />
-                      {label.name}
-                    </button>
-                  ))}
-              </div>
-              {!labelsLoading && !labelsError && hiddenIssueLabelCount > 0 && (
-                <div className="table-action-row">
-                  <button type="button" onClick={() => setShowAllIssueLabels(true)}>
-                    Show all labels
-                  </button>
-                </div>
-              )}
-              {!labelsLoading && !labelsError && showAllIssueLabels && labels.length > 10 && (
-                <div className="muted-row">Showing all {labels.length} labels.</div>
-              )}
-              <label>
-                Assignees
-                <input
-                  value={createAssigneeEntry}
-                  disabled={Boolean(createIssueDisabledReason)}
-                  title={createIssueDisabledReason ?? undefined}
-                  onChange={(event) => setCreateAssigneeEntry(event.target.value)}
-                  placeholder="Assignees for this issue"
-                />
-              </label>
-              <div className="metadata-picker-options" aria-label="Assignees for new issue">
-                {assignableUsersLoading && <small>Loading assignable users…</small>}
-                {assignableUsersError && <small>Could not load assignable users.</small>}
-                {!assignableUsersError && assignableUsersAvailabilityMessage && (
-                  <small>{assignableUsersAvailabilityMessage}</small>
-                )}
-                {!assignableUsersLoading &&
-                  !assignableUsersError &&
-                  visibleAssignableUsers.map((user) => (
-                    <button
-                      key={user.id}
-                      type="button"
-                      disabled={Boolean(createIssueDisabledReason)}
-                      title={`Assign ${user.login}`}
-                      onClick={() =>
-                        setCreateAssigneeEntry((current) => appendCommaSeparatedValue(current, user.login))
-                      }
-                    >
-                      {user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : null}
-                      {user.login}
-                    </button>
-                  ))}
-              </div>
-              {!assignableUsersLoading && !assignableUsersError && hiddenIssueAssignableUserCount > 0 && (
-                <div className="table-action-row">
-                  <button type="button" onClick={() => setShowAllIssueAssignableUsers(true)}>
-                    Show all assignable users
-                  </button>
-                </div>
-              )}
-              {!assignableUsersLoading &&
-                !assignableUsersError &&
-                showAllIssueAssignableUsers &&
-                assignableUsers.length > 10 && (
-                  <div className="muted-row">Showing all {assignableUsers.length} assignable users.</div>
-                )}
-              <label>
-                Milestone
-                <select
-                  value={createMilestoneNumber}
-                  disabled={Boolean(createIssueDisabledReason)}
-                  title={createIssueDisabledReason ?? undefined}
-                  onChange={(event) => setCreateMilestoneNumber(event.target.value)}
-                >
-                  <option value="">No milestone</option>
-                  {visibleMilestones.map((milestone) => (
-                    <option key={milestone.id} value={milestone.number}>
-                      {milestone.title}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {milestonesLoading && <small className="action-disabled-note">Loading milestones…</small>}
-              {milestonesError && (
-                <small className="action-disabled-note">
-                  Could not load milestones: {milestonesError.message}
-                </small>
-              )}
-              {!milestonesError && milestonesAvailabilityMessage && (
-                <small className="action-disabled-note">{milestonesAvailabilityMessage}</small>
-              )}
-              {!milestonesLoading && !milestonesError && hiddenIssueMilestoneCount > 0 && (
-                <div className="table-action-row">
-                  <button type="button" onClick={() => setShowAllIssueMilestones(true)}>
-                    Show all milestones
-                  </button>
-                </div>
-              )}
-              {!milestonesLoading && !milestonesError && showAllIssueMilestones && milestones.length > 10 && (
-                <div className="muted-row">Showing all {milestones.length} milestones.</div>
-              )}
-              <div>
-                <button
-                  className="dark-action"
-                  type="submit"
-                  disabled={Boolean(createIssueSubmitDisabledReason)}
-                  title={createIssueSubmitDisabledReason ?? undefined}
-                >
-                  <Plus size={16} /> Create issue
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSubmittedIssueAction(null);
-                    setTitle("");
-                    setBody("");
-                    setCreateLabelEntry("");
-                    setCreateAssigneeEntry("");
-                    setCreateMilestoneNumber("");
-                    setCreating(false);
-                  }}
-                >
-                  Cancel
-                </button>
-                {createIssueSubmitDisabledReason && (
-                  <small className="action-disabled-note">
-                    Issue creation unavailable: {createIssueSubmitDisabledReason}
-                  </small>
-                )}
-              </div>
-            </form>
-          ) : selectedIssue && !issueDetailRoute ? (
-            <IssueSummaryTile
-              issue={selectedIssue}
-              body={detail?.body}
-              commentsAvailable={detail?.commentsList.length ?? selectedIssue.comments}
-              loading={issueDetail.isLoading || issueDetail.isFetching}
-              availabilityMessage={issueDetail.error?.message ?? issueDetailAvailabilityMessage}
-              markdownUrlContext={issueMarkdownUrlContext}
-              onOpenIssue={onSelectIssue}
-              onOpenExternal={onOpenExternal}
-            />
-          ) : selectedIssue ? (
-            <>
-              <div className="issue-detail-toolbar">
-                <button type="button" onClick={onOpenIssueList}>
-                  <ArrowLeft size={16} /> Back to issues
-                </button>
-                <button type="button" onClick={() => onOpenExternal(selectedIssue.htmlUrl)}>
-                  <ExternalLink size={16} /> GitHub fallback
-                </button>
-              </div>
-              <header className="thread-header">
-                <h2>{selectedIssue.title}</h2>
-                <small>
-                  #{selectedIssue.number} opened by {selectedIssue.authorLogin ?? "unknown"} ·{" "}
-                  {formatRelativeDate(selectedIssue.createdAt)}
-                </small>
-                <span className={`state-chip ${selectedIssue.state === "open" ? "success" : ""}`}>
-                  {issueStateLabel(selectedIssue)}
-                </span>
-                {selectedMilestone && (
-                  <span className="state-chip" title={selectedMilestone.description ?? undefined}>
-                    Milestone {selectedMilestone.title}
-                  </span>
-                )}
-                {selectedIssue.locked && <span className="state-chip attention">Locked</span>}
-                {selectedAssignees.length > 0 && (
-                  <div className="label-stack label-row">
-                    {selectedAssignees.map((assignee) => (
-                      <span key={assignee.id}>Assigned @{assignee.login}</span>
-                    ))}
-                  </div>
-                )}
-                {selectedLabels.length > 0 && (
-                  <div className="label-stack label-row">
-                    {selectedLabels.map((label) => (
-                      <span key={label.id}>{label.name}</span>
-                    ))}
-                  </div>
-                )}
-              </header>
-              {issueDetail.error && <div className="error-state">{issueDetail.error.message}</div>}
-              {issueDetailAvailabilityMessage && (
-                <div className="error-state">{issueDetailAvailabilityMessage}</div>
-              )}
-              {editingIssue ? (
-                <form
-                  className="compose-form"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    if (editIssueSubmitDisabledReason) {
-                      return;
-                    }
-                    setSubmittedIssueAction("editIssue");
-                    onMutate("editIssue", false, {
-                      issueNumber: selectedIssue.number,
-                      title: editTitle.trim(),
-                      body: editBody.trim(),
-                      milestone: editMilestoneNumber ? Number(editMilestoneNumber) : null
-                    });
-                    setEditingIssue(false);
-                  }}
-                >
-                  {editIssueMutationActive && mutationPending && (
-                    <div className="loading-state">
-                      {githubActionLabel("editIssue")} is running. The edit is locked until GitHub responds.
-                    </div>
-                  )}
-                  {editIssueMutationActive && !mutationPending && mutationSucceeded && (
-                    <div className="success-state">
-                      {githubActionLabel("editIssue")} completed. Issue data is refreshing.
-                    </div>
-                  )}
-                  {editIssueMutationActive && !mutationPending && mutationError && (
-                    <div className="error-state">
-                      {githubActionLabel("editIssue")} failed: {mutationError.message}
-                    </div>
-                  )}
-                  <input
-                    value={editTitle}
-                    disabled={Boolean(issueActionDisabledReason)}
-                    title={issueActionDisabledReason ?? undefined}
-                    onChange={(event) => setEditTitle(event.target.value)}
-                    placeholder="Edit issue title"
-                  />
-                  <textarea
-                    value={editBody}
-                    disabled={Boolean(issueActionDisabledReason)}
-                    title={issueActionDisabledReason ?? undefined}
-                    onChange={(event) => setEditBody(event.target.value)}
-                    placeholder="Edit issue body"
-                  />
-                  <label>
-                    Milestone
-                    <select
-                      value={editMilestoneNumber}
-                      disabled={Boolean(issueActionDisabledReason) || milestonesLoading}
-                      title={issueActionDisabledReason ?? undefined}
-                      onChange={(event) => setEditMilestoneNumber(event.target.value)}
-                    >
-                      <option value="">No milestone</option>
-                      {visibleMilestones.map((milestone) => (
-                        <option key={milestone.id} value={milestone.number}>
-                          {milestone.title}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {milestonesLoading && <small className="action-disabled-note">Loading milestones…</small>}
-                  {milestonesError && (
-                    <small className="action-disabled-note">
-                      Could not load milestones: {milestonesError.message}
-                    </small>
-                  )}
-                  {!milestonesError && milestonesAvailabilityMessage && (
-                    <small className="action-disabled-note">{milestonesAvailabilityMessage}</small>
-                  )}
-                  {!milestonesLoading && !milestonesError && hiddenIssueMilestoneCount > 0 && (
-                    <div className="table-action-row">
-                      <button type="button" onClick={() => setShowAllIssueMilestones(true)}>
-                        Show all milestones
-                      </button>
-                    </div>
-                  )}
-                  <div>
-                    <button
-                      className="dark-action"
-                      type="submit"
-                      disabled={Boolean(editIssueSubmitDisabledReason)}
-                      title={editIssueSubmitDisabledReason ?? undefined}
-                    >
-                      Save issue
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSubmittedIssueAction(null);
-                        setEditingIssue(false);
-                      }}
-                    >
-                      Cancel
-                    </button>
-                    {editIssueSubmitDisabledReason && (
-                      <small className="action-disabled-note">{editIssueSubmitDisabledReason}</small>
-                    )}
-                  </div>
-                </form>
-              ) : (
-                <TimelineThread
-                  title={`Issue ${selectedIssue.number} discussion`}
-                  authorLogin={detail?.authorLogin ?? selectedIssue.authorLogin}
-                  authorAvatarUrl={detail?.authorAvatarUrl ?? selectedIssue.authorAvatarUrl}
-                  createdAt={detail?.createdAt ?? selectedIssue.createdAt}
-                  body={detail?.body}
-                  comments={detail?.commentsList ?? []}
-                  loading={issueDetail.isLoading || issueDetail.isFetching}
-                  availabilityMessage={readAvailabilityMessage(
-                    "Issue comments",
-                    detail?.commentsAvailability ?? null
-                  )}
-                  emptyBody="No description provided."
-                  markdownUrlContext={issueMarkdownUrlContext}
-                  onOpenExternal={onOpenExternal}
-                  commentActions={{
-                    getDisabledReason: (comment) =>
-                      issueActionPendingReason ??
-                      liveIssueDisabledReason ??
-                      commentMutationDisabledReason(repository, comment),
-                    onEdit: (comment, body) => {
-                      const commentId = githubNumericId(comment.id);
-                      if (commentId === null) {
-                        return;
-                      }
-                      setSubmittedIssueAction("editComment");
-                      onMutate("editComment", false, { commentId, body });
-                    },
-                    onDelete: (comment) => {
-                      const commentId = githubNumericId(comment.id);
-                      if (commentId === null) {
-                        return;
-                      }
-                      setSubmittedIssueAction("deleteComment");
-                      onMutate("deleteComment", true, { commentId });
-                    }
-                  }}
-                />
-              )}
-              <div className="issue-metadata-controls">
-                {selectedLabels.length > 0 && (
-                  <div className="metadata-picker-options" aria-label="Current labels">
-                    {selectedLabels.map((label) => (
-                      <button
-                        key={label.id}
-                        type="button"
-                        aria-label={`Remove label ${label.name}`}
-                        title={issueActionDisabledReason ?? `Remove label ${label.name}`}
-                        disabled={Boolean(issueActionDisabledReason)}
-                        onClick={() =>
-                          onMutate("removeLabel", false, {
-                            issueNumber: selectedIssue.number,
-                            name: label.name
-                          })
-                        }
-                      >
-                        <X size={13} />
-                        {label.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {selectedAssignees.length > 0 && (
-                  <div className="metadata-picker-options" aria-label="Current assignees">
-                    {selectedAssignees.map((assignee) => (
-                      <button
-                        key={assignee.id}
-                        type="button"
-                        aria-label={`Remove assignee ${assignee.login}`}
-                        title={issueActionDisabledReason ?? `Remove assignee ${assignee.login}`}
-                        disabled={Boolean(issueActionDisabledReason)}
-                        onClick={() =>
-                          onMutate("removeAssignees", false, {
-                            issueNumber: selectedIssue.number,
-                            assignees: [assignee.login]
-                          })
-                        }
-                      >
-                        <X size={13} />
-                        {assignee.login}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <form
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    if (issueLabelSubmitDisabledReason) {
-                      return;
-                    }
-                    setSubmittedIssueAction("addLabels");
-                    onMutate("addLabels", false, {
-                      issueNumber: selectedIssue.number,
-                      labels: parsedLabels
-                    });
-                  }}
-                >
-                  <label>
-                    Labels
-                    <input
-                      value={labelEntry}
-                      onChange={(event) => setLabelEntry(event.target.value)}
-                      placeholder="Add labels"
-                      disabled={Boolean(issueActionDisabledReason)}
-                      title={issueActionDisabledReason ?? undefined}
-                    />
-                  </label>
-                  <div className="metadata-picker-options" aria-label="Available labels">
-                    {labelsLoading && <small>Loading labels…</small>}
-                    {labelsError && <small>Could not load labels.</small>}
-                    {!labelsError && labelsAvailabilityMessage && <small>{labelsAvailabilityMessage}</small>}
-                    {!labelsLoading &&
-                      !labelsError &&
-                      visibleLabels.map((label) => (
-                        <button
-                          key={label.id}
-                          type="button"
-                          disabled={Boolean(issueActionDisabledReason)}
-                          title={issueActionDisabledReason ?? label.description ?? `Add ${label.name}`}
-                          onClick={() =>
-                            setLabelEntry((current) => appendCommaSeparatedValue(current, label.name))
-                          }
-                        >
-                          <span style={{ backgroundColor: `#${label.color}` }} />
-                          {label.name}
-                        </button>
-                      ))}
-                  </div>
-                  {!labelsLoading && !labelsError && hiddenIssueLabelCount > 0 && (
-                    <div className="table-action-row">
-                      <button type="button" onClick={() => setShowAllIssueLabels(true)}>
-                        Show all labels
-                      </button>
-                    </div>
-                  )}
-                  <button
-                    type="submit"
-                    disabled={Boolean(issueLabelSubmitDisabledReason)}
-                    title={issueLabelSubmitDisabledReason ?? undefined}
-                  >
-                    Add labels
-                  </button>
-                  {issueLabelSubmitDisabledReason && (
-                    <small className="action-disabled-note">{issueLabelSubmitDisabledReason}</small>
-                  )}
-                </form>
-                <form
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    if (issueAssigneeSubmitDisabledReason) {
-                      return;
-                    }
-                    setSubmittedIssueAction("setAssignees");
-                    onMutate("setAssignees", false, {
-                      issueNumber: selectedIssue.number,
-                      assignees: parsedAssignees
-                    });
-                  }}
-                >
-                  <label>
-                    Assignees
-                    <input
-                      value={assigneeEntry}
-                      onChange={(event) => setAssigneeEntry(event.target.value)}
-                      placeholder="Add assignees"
-                      disabled={Boolean(issueActionDisabledReason)}
-                      title={issueActionDisabledReason ?? undefined}
-                    />
-                  </label>
-                  <div className="metadata-picker-options" aria-label="Assignable users">
-                    {assignableUsersLoading && <small>Loading assignable users…</small>}
-                    {assignableUsersError && <small>Could not load assignable users.</small>}
-                    {!assignableUsersError && assignableUsersAvailabilityMessage && (
-                      <small>{assignableUsersAvailabilityMessage}</small>
-                    )}
-                    {!assignableUsersLoading &&
-                      !assignableUsersError &&
-                      visibleAssignableUsers.map((user) => (
-                        <button
-                          key={user.id}
-                          type="button"
-                          disabled={Boolean(issueActionDisabledReason)}
-                          title={issueActionDisabledReason ?? `Assign ${user.login}`}
-                          onClick={() =>
-                            setAssigneeEntry((current) => appendCommaSeparatedValue(current, user.login))
-                          }
-                        >
-                          {user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : null}
-                          {user.login}
-                        </button>
-                      ))}
-                  </div>
-                  {!assignableUsersLoading && !assignableUsersError && hiddenIssueAssignableUserCount > 0 && (
-                    <div className="table-action-row">
-                      <button type="button" onClick={() => setShowAllIssueAssignableUsers(true)}>
-                        Show all assignable users
-                      </button>
-                    </div>
-                  )}
-                  <button
-                    type="submit"
-                    disabled={Boolean(issueAssigneeSubmitDisabledReason)}
-                    title={issueAssigneeSubmitDisabledReason ?? undefined}
-                  >
-                    Add assignees
-                  </button>
-                  {issueAssigneeSubmitDisabledReason && (
-                    <small className="action-disabled-note">{issueAssigneeSubmitDisabledReason}</small>
-                  )}
-                </form>
-              </div>
-              <form
-                className="comment-composer"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  if (!commentBody.trim() || issueCommentDisabledReason) {
-                    return;
-                  }
-                  setSubmittedIssueAction("addComment");
-                  onMutate("addComment", false, {
-                    issueNumber: selectedIssue.number,
-                    body: commentBody.trim()
-                  });
-                }}
-              >
-                {issueCommentMutationActive && mutationPending && (
-                  <div className="loading-state">
-                    {githubActionLabel("addComment")} is running. The comment draft is locked until GitHub
-                    responds.
-                  </div>
-                )}
-                {issueCommentMutationActive && !mutationPending && mutationSucceeded && (
-                  <div className="success-state">
-                    {githubActionLabel("addComment")} completed. Issue comments are refreshing.
-                  </div>
-                )}
-                {issueCommentMutationActive && !mutationPending && mutationError && (
-                  <div className="error-state">
-                    {githubActionLabel("addComment")} failed: {mutationError.message}
-                  </div>
-                )}
-                <textarea
-                  value={commentBody}
-                  disabled={Boolean(issueCommentDisabledReason)}
-                  onChange={(event) => setCommentBody(event.target.value)}
-                  placeholder="Leave a comment"
-                />
-                <button
-                  className="dark-action"
-                  type="submit"
-                  disabled={!commentBody.trim() || Boolean(issueCommentDisabledReason)}
-                  title={
-                    issueCommentDisabledReason ??
-                    (!commentBody.trim() ? "Comment body is required." : undefined)
-                  }
-                >
-                  Comment
-                </button>
-                {issueCommentDisabledReason && (
-                  <small className="action-disabled-note">
-                    Comment unavailable: {issueCommentDisabledReason}
-                  </small>
-                )}
-              </form>
-              <div className="thread-actions">
-                <button
-                  type="button"
-                  disabled={Boolean(issueActionDisabledReason)}
-                  title={issueActionDisabledReason ?? undefined}
-                  onClick={startEditingIssue}
-                >
-                  Edit issue
-                </button>
-                <button
-                  type="button"
-                  disabled={Boolean(issueActionDisabledReason)}
-                  title={issueActionDisabledReason ?? undefined}
-                  onClick={() =>
-                    onMutate(issueAction, issueAction === "closeIssue", {
-                      issueNumber: selectedIssue.number,
-                      ...(issueAction === "closeIssue" ? { stateReason: closeReason } : {})
-                    })
-                  }
-                >
-                  {issueActionLabel}
-                </button>
-                {issueAction === "closeIssue" && (
-                  <select
-                    aria-label="Issue close reason"
-                    disabled={Boolean(issueActionDisabledReason)}
-                    value={closeReason}
-                    onChange={(event) =>
-                      setCloseReason(event.target.value === "not_planned" ? "not_planned" : "completed")
-                    }
-                  >
-                    <option value="completed">Completed</option>
-                    <option value="not_planned">Not planned</option>
-                  </select>
-                )}
-                {issueActionDisabledReason && (
-                  <small className="action-disabled-note">{issueActionDisabledReason}</small>
-                )}
-              </div>
-            </>
-          ) : issueDetail.isLoading && requestedIssueNumber !== null ? (
-            <div className="loading-state">Loading issue #{requestedIssueNumber}…</div>
-          ) : (
-            <div className="empty-state">No issues found.</div>
-          )}
-        </div>
+        <IssueDetailPane {...model} />
       </div>
     </section>
   );
+}
+
+export function IssuesTab(props: IssuesTabProps): JSX.Element {
+  const model = useIssuesTabModel(props);
+  return <IssuesTabContent {...model} />;
 }

@@ -7,7 +7,7 @@ export const maxRepositoryListLimit = 100;
 export const defaultRepositorySearchLocalLimit = 5;
 export const defaultRepositorySearchRemoteLimit = 8;
 
-export function titleCaseRepositoryName(name: string): string {
+function titleCaseRepositoryName(name: string): string {
   return name
     .split(/[-_\s]+/)
     .filter(Boolean)

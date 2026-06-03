@@ -96,7 +96,7 @@ export const mockPullRequests: PullRequestSummary[] = Array.from({ length: 12 },
   };
 });
 
-export function mockTeamForSlug(slug: string): PullRequestRequestedTeamSummary {
+function mockTeamForSlug(slug: string): PullRequestRequestedTeamSummary {
   const team = mockTeams.find((item) => item.slug.toLowerCase() === slug.toLowerCase());
   if (team) {
     return {
@@ -303,7 +303,7 @@ export function readMockPullRequests(): PullRequestDetail[] {
   return readMockArray(mockPullRequestsKey, () => mockPullRequests.map(buildMockPullRequestDetail));
 }
 
-export function writeMockPullRequests(items: PullRequestDetail[]): void {
+function writeMockPullRequests(items: PullRequestDetail[]): void {
   writeMockArray(mockPullRequestsKey, items);
 }
 

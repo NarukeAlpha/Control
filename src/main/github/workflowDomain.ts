@@ -960,7 +960,7 @@ function encodePath(path: string): string {
   return path.split("/").map(encodeURIComponent).join("/");
 }
 
-export interface GitHubWorkflowRun {
+interface GitHubWorkflowRun {
   id: number;
   name: string;
   display_title?: string | null;
@@ -985,7 +985,7 @@ export interface GitHubWorkflowRun {
   previous_attempt_url?: string | null;
 }
 
-export interface GitHubWorkflowDefinition {
+interface GitHubWorkflowDefinition {
   id: number;
   node_id?: string | null;
   name: string;
@@ -997,7 +997,7 @@ export interface GitHubWorkflowDefinition {
   updated_at?: string | null;
 }
 
-export interface GitHubWorkflowJob {
+interface GitHubWorkflowJob {
   id: number;
   name: string;
   status: string | null;
@@ -1033,7 +1033,7 @@ interface GitHubCheckApp {
   html_url?: string | null;
 }
 
-export interface GitHubCheckSuite {
+interface GitHubCheckSuite {
   id: number;
   status?: string | null;
   conclusion?: string | null;
@@ -1047,7 +1047,7 @@ export interface GitHubCheckSuite {
   updated_at?: string | null;
 }
 
-export interface GitHubCheckRun {
+interface GitHubCheckRun {
   id: number;
   name: string;
   status?: string | null;
@@ -1066,7 +1066,7 @@ export interface GitHubCheckRun {
   } | null;
 }
 
-export interface GitHubCheckRunAnnotation {
+interface GitHubCheckRunAnnotation {
   path: string;
   start_line?: number | null;
   end_line?: number | null;

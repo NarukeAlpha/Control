@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
-export type LocalRepositoryCandidateKind = "git" | "jj";
+type LocalRepositoryCandidateKind = "git" | "jj";
 
 export interface LocalRepositoryCandidate {
   kind: LocalRepositoryCandidateKind;

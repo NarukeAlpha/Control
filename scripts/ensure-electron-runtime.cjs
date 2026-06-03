@@ -135,6 +135,19 @@ function repairRuntime() {
 
   console.log("[electron-runtime] Rebuilding Electron native dependencies...");
   runNodeScript("node_modules/electron-builder/cli.js", ["install-app-deps"]);
+
+  if (checkRuntime().ok) {
+    return;
+  }
+
+  console.log("[electron-runtime] Forcing Electron native dependency rebuild...");
+  runExecutable(electronRebuildPath(), [
+    "--version",
+    electronVersion(),
+    "--force",
+    "--module-dir",
+    projectRoot
+  ]);
 }
 
 function repairElectronPathMetadata() {
@@ -177,6 +190,33 @@ function runNodeScript(scriptPath, scriptArgs) {
     console.error(`[electron-runtime] Command failed: node ${scriptPath} ${scriptArgs.join(" ")}`.trim());
     process.exit(exitCode);
   }
+}
+
+function runExecutable(executablePath, executableArgs) {
+  const result = spawnSync(executablePath, executableArgs, {
+    cwd: projectRoot,
+    env: {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: undefined,
+      ELECTRON_SKIP_BINARY_DOWNLOAD: undefined
+    },
+    stdio: "inherit"
+  });
+
+  if (result.status !== 0) {
+    const exitCode = typeof result.status === "number" ? result.status : 1;
+    console.error(`[electron-runtime] Command failed: ${executablePath} ${executableArgs.join(" ")}`);
+    process.exit(exitCode);
+  }
+}
+
+function electronRebuildPath() {
+  const executable = process.platform === "win32" ? "electron-rebuild.cmd" : "electron-rebuild";
+  return path.join(projectRoot, "node_modules", ".bin", executable);
+}
+
+function electronVersion() {
+  return require(path.join(projectRoot, "node_modules", "electron", "package.json")).version;
 }
 
 function electronPlatformPath() {

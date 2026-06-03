@@ -3,8 +3,8 @@ import type { QueryClient } from "@tanstack/react-query";
 import type { GitHubSignInSession } from "@shared/github";
 import type { ControlApi } from "@shared/ipc";
 
-export type ProviderAuthId = "github";
-export type ProviderAuthStatus = "idle" | "waiting" | "error";
+type ProviderAuthId = "github";
+type ProviderAuthStatus = "idle" | "waiting" | "error";
 
 export interface ProviderAuthController {
   provider: ProviderAuthId;
@@ -18,7 +18,7 @@ export interface ProviderAuthController {
   clearError(): void;
 }
 
-export async function invalidateProviderAuthQueries(queryClient: QueryClient): Promise<void> {
+async function invalidateProviderAuthQueries(queryClient: QueryClient): Promise<void> {
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: ["app-state"] }),
     queryClient.invalidateQueries({ queryKey: ["repositories"] }),

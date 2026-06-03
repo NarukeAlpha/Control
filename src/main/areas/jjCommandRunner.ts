@@ -19,7 +19,7 @@ export interface JjCommandRunnerOptions {
   executor?: JjCommandExecutor;
 }
 
-export type JjCommandExecutor = (
+type JjCommandExecutor = (
   command: string,
   args: string[],
   options: ExecFileOptions

@@ -26,7 +26,7 @@ export function resolveControlTheme(
   };
 }
 
-export function useSystemPrefersDark(): boolean {
+function useSystemPrefersDark(): boolean {
   const [prefersDark, setPrefersDark] = useState(() => readSystemPrefersDark());
 
   useEffect(() => {

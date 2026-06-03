@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, use, useCallback, useEffect, useMemo, useReducer } from "react";
 import type { JSX, ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -12,20 +12,56 @@ interface ProviderAuthContextValue {
 
 const ProviderAuthContext = createContext<ProviderAuthContextValue | null>(null);
 
+interface AuthProviderState {
+  status: ProviderAuthController["status"];
+  session: GitHubSignInSession | null;
+  error: string | null;
+  completedAt: number | null;
+}
+
+type AuthProviderAction =
+  | { type: "signInStarted" }
+  | { type: "sessionReceived"; session: GitHubSignInSession }
+  | { type: "signInCompleted"; completedAt: number }
+  | { type: "signedOut" }
+  | { type: "signInFailed"; error: string }
+  | { type: "errorCleared" };
+
+const initialAuthProviderState: AuthProviderState = {
+  status: "idle",
+  session: null,
+  error: null,
+  completedAt: null
+};
+
+function authProviderReducer(state: AuthProviderState, action: AuthProviderAction): AuthProviderState {
+  switch (action.type) {
+    case "signInStarted":
+      return { ...state, status: "waiting", session: null, error: null };
+    case "sessionReceived":
+      return { ...state, session: action.session };
+    case "signInCompleted":
+      return { status: "idle", session: null, error: null, completedAt: action.completedAt };
+    case "signedOut":
+      return { ...state, status: "idle", session: null, error: null };
+    case "signInFailed":
+      return { ...state, status: "error", error: action.error };
+    case "errorCleared":
+      return { ...state, status: state.status === "error" ? "idle" : state.status, error: null };
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }): JSX.Element {
   const api = useControlApi();
   const queryClient = useQueryClient();
   const githubAdapter = useMemo(() => createGitHubAuthAdapter(api, queryClient), [api, queryClient]);
-  const [status, setStatus] = useState<ProviderAuthController["status"]>("idle");
-  const [session, setSession] = useState<GitHubSignInSession | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [completedAt, setCompletedAt] = useState<number | null>(null);
+  const [{ status, session, error, completedAt }, dispatch] = useReducer(
+    authProviderReducer,
+    initialAuthProviderState
+  );
 
   const markSignInComplete = useCallback((): void => {
-    setStatus("idle");
-    setSession(null);
-    setError(null);
-    setCompletedAt(Date.now());
+    dispatch({ type: "signInCompleted", completedAt: Date.now() });
   }, []);
 
   const completeSignIn = useCallback(async (): Promise<void> => {
@@ -49,12 +85,11 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
         }
 
         if (!nextSession) {
-          setStatus("idle");
-          setSession(null);
+          dispatch({ type: "signedOut" });
           return;
         }
 
-        setSession(nextSession);
+        dispatch({ type: "sessionReceived", session: nextSession });
 
         if (nextSession.status === "complete") {
           await githubAdapter.invalidate();
@@ -65,15 +100,12 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
         }
 
         if (nextSession.status === "error") {
-          setStatus("error");
-          setError(nextSession.error ?? "GitHub sign-in failed.");
+          dispatch({ type: "signInFailed", error: nextSession.error ?? "GitHub sign-in failed." });
           return;
         }
 
         if (nextSession.status === "cancelled") {
-          setStatus("idle");
-          setSession(null);
-          setError(null);
+          dispatch({ type: "signedOut" });
           return;
         }
 
@@ -84,8 +116,10 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
         if (!active) {
           return;
         }
-        setStatus("error");
-        setError(pollError instanceof Error ? pollError.message : "GitHub sign-in failed.");
+        dispatch({
+          type: "signInFailed",
+          error: pollError instanceof Error ? pollError.message : "GitHub sign-in failed."
+        });
       }
     };
 
@@ -109,13 +143,11 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
       error,
       completedAt,
       signIn: async () => {
-        setStatus("waiting");
-        setSession(null);
-        setError(null);
+        dispatch({ type: "signInStarted" });
 
         try {
           const nextSession = await githubAdapter.start();
-          setSession(nextSession);
+          dispatch({ type: "sessionReceived", session: nextSession });
 
           if (nextSession.status === "complete") {
             await completeSignIn();
@@ -123,38 +155,31 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
           }
 
           if (nextSession.status === "error") {
-            setStatus("error");
-            setError(nextSession.error ?? "GitHub sign-in failed.");
+            dispatch({ type: "signInFailed", error: nextSession.error ?? "GitHub sign-in failed." });
             return;
           }
 
           if (nextSession.status === "cancelled") {
-            setStatus("idle");
-            setSession(null);
+            dispatch({ type: "signedOut" });
           }
         } catch (signInError) {
-          setStatus("error");
-          setError(signInError instanceof Error ? signInError.message : "GitHub sign-in failed.");
+          dispatch({
+            type: "signInFailed",
+            error: signInError instanceof Error ? signInError.message : "GitHub sign-in failed."
+          });
         }
       },
       cancelSignIn: async () => {
         await githubAdapter.cancel();
-        setStatus("idle");
-        setSession(null);
-        setError(null);
+        dispatch({ type: "signedOut" });
       },
       clearToken: async () => {
         await githubAdapter.clearToken();
         await githubAdapter.invalidate();
-        setStatus("idle");
-        setSession(null);
-        setError(null);
+        dispatch({ type: "signedOut" });
       },
       clearError: () => {
-        setError(null);
-        if (status === "error") {
-          setStatus("idle");
-        }
+        dispatch({ type: "errorCleared" });
       }
     }),
     [completeSignIn, completedAt, githubAdapter, error, session, status]
@@ -166,7 +191,7 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
 }
 
 export function useProviderAuth(): ProviderAuthContextValue {
-  const value = useContext(ProviderAuthContext);
+  const value = use(ProviderAuthContext);
   if (!value) {
     throw new Error("useProviderAuth must be used inside AuthProvider.");
   }

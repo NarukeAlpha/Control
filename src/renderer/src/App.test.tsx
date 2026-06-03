@@ -75,6 +75,12 @@ function appStateWithRepositoryTabPreferences(
   };
 }
 
+async function acceptRepositoryMutationConfirmation(title: string): Promise<void> {
+  const dialog = await screen.findByRole("dialog", { name: title });
+  expect(within(dialog).getByText("Run this GitHub mutation on apple/swift?")).toBeInTheDocument();
+  await userEvent.click(within(dialog).getByRole("button", { name: "Run mutation" }));
+}
+
 describe("Control renderer routing", () => {
   it("opens repositories from the sidebar pinned list", async () => {
     useUiStore.setState(defaultUiState);
@@ -2860,8 +2866,6 @@ describe("Control renderer routing", () => {
     const getPullRequestOverviewWithStatus = vi.fn<GitHubTestApi["getPullRequestOverviewWithStatus"]>(
       mockControlApi.github.getPullRequestOverviewWithStatus
     );
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
-
     useUiStore.setState({
       ...defaultUiState,
       route: { kind: "repository", nameWithOwner: "apple/swift", tab: "issues" }
@@ -2936,6 +2940,7 @@ describe("Control renderer routing", () => {
     await userEvent.click(
       within(workflowForm as HTMLElement).getByRole("button", { name: /^Run workflow$/i })
     );
+    await acceptRepositoryMutationConfirmation("Dispatch workflow");
 
     await waitFor(() =>
       expect(mutate).toHaveBeenCalledWith(
@@ -2953,7 +2958,6 @@ describe("Control renderer routing", () => {
         expect.anything()
       )
     );
-    expect(confirm).toHaveBeenCalledWith("Run Dispatch workflow on apple/swift?");
   });
 
   it("runs provider-backed issue and pull request management actions from repository tabs", async () => {
@@ -2962,8 +2966,6 @@ describe("Control renderer routing", () => {
       action: input.action,
       message: `${input.action} ok`
     }));
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
-
     useUiStore.setState({
       ...defaultUiState,
       route: {
@@ -2997,6 +2999,7 @@ describe("Control renderer routing", () => {
     const issueSummary = await screen.findByRole("article", { name: "Issue 1199 summary" });
     await userEvent.click(within(issueSummary).getByRole("button", { name: "Open issue" }));
     await userEvent.click(await screen.findByRole("button", { name: "Close issue" }));
+    await acceptRepositoryMutationConfirmation("Close issue");
 
     await waitFor(() =>
       expect(mutate).toHaveBeenCalledWith(
@@ -3019,10 +3022,12 @@ describe("Control renderer routing", () => {
     await userEvent.click(
       (await screen.findAllByRole("button", { name: /Update concurrency runtime tests/i }))[0]
     );
+    await userEvent.click(screen.getByRole("button", { name: "Load discussion" }));
     await screen.findByText("CI is running. Review the changed files and merge status before landing.");
     await userEvent.type(screen.getByPlaceholderText("GitHub usernames"), "octocat, applebot");
     await userEvent.type(screen.getByPlaceholderText("team slugs"), "compiler");
     await userEvent.click(screen.getByRole("button", { name: "Request review" }));
+    await acceptRepositoryMutationConfirmation("Request reviewers");
     await waitFor(() =>
       expect(mutate).toHaveBeenCalledWith(
         {
@@ -3084,6 +3089,7 @@ describe("Control renderer routing", () => {
     );
 
     await userEvent.click(screen.getByRole("button", { name: "Request changes" }));
+    await acceptRepositoryMutationConfirmation("Request pull request changes");
     await waitFor(() =>
       expect(mutate).toHaveBeenCalledWith(
         {
@@ -3098,6 +3104,7 @@ describe("Control renderer routing", () => {
     );
 
     await userEvent.click(screen.getByRole("button", { name: "Close pull request" }));
+    await acceptRepositoryMutationConfirmation("Close pull request");
     await waitFor(() =>
       expect(mutate).toHaveBeenCalledWith(
         {
@@ -3109,10 +3116,6 @@ describe("Control renderer routing", () => {
         expect.anything()
       )
     );
-    expect(confirm).toHaveBeenCalledWith("Run Close issue on apple/swift?");
-    expect(confirm).toHaveBeenCalledWith("Run Request reviewers on apple/swift?");
-    expect(confirm).toHaveBeenCalledWith("Run Request pull request changes on apple/swift?");
-    expect(confirm).toHaveBeenCalledWith("Run Close pull request on apple/swift?");
   });
 
   it("renders pull request reviews, timeline events, checks, commits, and changed files from rich PR detail", async () => {
@@ -3140,12 +3143,25 @@ describe("Control renderer routing", () => {
       openExternal
     });
 
-    expect(await screen.findByText("Add repository management controls")).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        "This pull request updates the repository surface and keeps the change small enough to review in Control."
+      )
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Load reviews" }));
+    await userEvent.click(screen.getByRole("button", { name: "Load linked issues" }));
+    await userEvent.click(screen.getByRole("button", { name: "Load timeline events" }));
+    await userEvent.click(screen.getByRole("button", { name: "Load review threads" }));
+    await userEvent.click(screen.getByRole("button", { name: "Load checks" }));
+    await userEvent.click(screen.getByRole("button", { name: "Load commits" }));
+    await userEvent.click(screen.getByRole("button", { name: "Load changed files" }));
+
     expect(await screen.findByText("APPROVED by reviewer")).toBeInTheDocument();
     expect(await screen.findByText("connected apple/swift #1200 Crash on build")).toBeInTheDocument();
     expect(await screen.findByText(/Can this be a typed helper/)).toBeInTheDocument();
     expect(await screen.findByText("macOS build")).toBeInTheDocument();
     expect(screen.getByText(/All tests passed/)).toBeInTheDocument();
+    expect(await screen.findByText("Add repository management controls")).toBeInTheDocument();
     expect((await screen.findAllByText("src/renderer/src/App.tsx")).length).toBeGreaterThan(0);
     expect(getPullRequestOverviewWithStatus).toHaveBeenCalledWith({
       owner: "apple",
@@ -3194,6 +3210,8 @@ describe("Control renderer routing", () => {
     renderControl(makeApi({ listPullRequestChecksWithStatus }));
 
     expect(await screen.findByText(/This pull request updates/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Load checks" }));
+
     expect(
       await screen.findByText("GitHub rate-limited the pull request checks request. Try again later.")
     ).toBeInTheDocument();
@@ -3418,8 +3436,6 @@ describe("Control renderer routing", () => {
         availability: { status: "available", message: null }
       };
     });
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
-
     useUiStore.setState({
       ...defaultUiState,
       route: {
@@ -3452,6 +3468,7 @@ describe("Control renderer routing", () => {
     );
 
     await userEvent.click(screen.getByRole("button", { name: "Delete comment" }));
+    await acceptRepositoryMutationConfirmation("Delete comment");
 
     await waitFor(() =>
       expect(mutate).toHaveBeenCalledWith(
@@ -3464,7 +3481,6 @@ describe("Control renderer routing", () => {
         expect.anything()
       )
     );
-    expect(confirm).toHaveBeenCalledWith("Run Delete comment on apple/swift?");
   });
 
   it("cancels in-progress workflow runs and explains completed workflow limits", async () => {
@@ -3473,7 +3489,6 @@ describe("Control renderer routing", () => {
       action: input.action,
       message: `${input.action} ok`
     }));
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     const listActions = vi.fn<GitHubTestApi["listActions"]>(async () => [
       {
         ...mockActions[0],
@@ -3520,6 +3535,7 @@ describe("Control renderer routing", () => {
     expect(await screen.findByRole("heading", { name: "Deploy preview" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Rerun" })).toBeDisabled();
     await userEvent.click(screen.getByRole("button", { name: "Cancel run" }));
+    await acceptRepositoryMutationConfirmation("Cancel workflow");
 
     await waitFor(() =>
       expect(mutate).toHaveBeenCalledWith(
@@ -3532,7 +3548,6 @@ describe("Control renderer routing", () => {
         expect.anything()
       )
     );
-    expect(confirm).toHaveBeenCalledWith("Run Cancel workflow on apple/swift?");
 
     await userEvent.click((await screen.findAllByRole("button", { name: /Release validation/i }))[0]);
 
@@ -3548,8 +3563,6 @@ describe("Control renderer routing", () => {
       action: input.action,
       message: `${input.action} ok`
     }));
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
-
     useUiStore.setState({
       ...defaultUiState,
       route: { kind: "repository", nameWithOwner: "apple/swift", tab: "actions" }
@@ -3560,6 +3573,7 @@ describe("Control renderer routing", () => {
       await screen.findByRole("heading", { name: mockActions[0].displayTitle ?? mockActions[0].name })
     ).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Rerun failed jobs" }));
+    await acceptRepositoryMutationConfirmation("Rerun failed workflow jobs");
 
     await waitFor(() =>
       expect(mutate).toHaveBeenCalledWith(
@@ -3572,7 +3586,6 @@ describe("Control renderer routing", () => {
         expect.anything()
       )
     );
-    expect(confirm).toHaveBeenCalledWith("Run Rerun failed workflow jobs on apple/swift?");
 
     await userEvent.click((await screen.findAllByRole("button", { name: /^Publish docs preview/ }))[0]);
 
@@ -3599,7 +3612,6 @@ describe("Control renderer routing", () => {
       action: input.action,
       message: `${input.action} ok`
     }));
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
 
     useUiStore.setState({
@@ -3636,6 +3648,7 @@ describe("Control renderer routing", () => {
     expect(openExternal).toHaveBeenCalledWith("https://pipelines.actions.githubusercontent.com/logs.zip");
 
     await userEvent.click(screen.getByRole("button", { name: "Rerun job" }));
+    await acceptRepositoryMutationConfirmation("Rerun workflow job");
 
     await waitFor(() =>
       expect(mutate).toHaveBeenCalledWith(
@@ -3648,7 +3661,6 @@ describe("Control renderer routing", () => {
         expect.anything()
       )
     );
-    expect(confirm).toHaveBeenCalledWith("Run Rerun workflow job on apple/swift?");
   });
 
   it("loads focused workflow run detail when the run is absent from the loaded list", async () => {
@@ -4028,7 +4040,6 @@ describe("Control renderer routing", () => {
       action: input.action,
       message: `${input.action} ok`
     }));
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
 
     useUiStore.setState({
@@ -4049,6 +4060,7 @@ describe("Control renderer routing", () => {
     await userEvent.type(screen.getByPlaceholderText("Release notes"), "Release notes from Control");
     await userEvent.click(screen.getByLabelText("Prerelease"));
     await userEvent.click(screen.getByRole("button", { name: /Create release/i }));
+    await acceptRepositoryMutationConfirmation("Create release");
 
     await waitFor(() =>
       expect(mutate).toHaveBeenCalledWith(
@@ -4076,6 +4088,7 @@ describe("Control renderer routing", () => {
     await userEvent.type(screen.getByPlaceholderText("Release notes"), "Edited release notes from Control");
     await userEvent.click(screen.getByLabelText("Draft"));
     await userEvent.click(screen.getByRole("button", { name: /Save release/i }));
+    await acceptRepositoryMutationConfirmation("Edit release");
 
     await waitFor(() =>
       expect(mutate).toHaveBeenCalledWith(
@@ -4097,6 +4110,7 @@ describe("Control renderer routing", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await userEvent.click(screen.getByRole("button", { name: "Delete release" }));
+    await acceptRepositoryMutationConfirmation("Delete release");
 
     await waitFor(() =>
       expect(mutate).toHaveBeenCalledWith(
@@ -4109,7 +4123,6 @@ describe("Control renderer routing", () => {
         expect.anything()
       )
     );
-    expect(confirm).toHaveBeenCalledWith("Run Delete release on apple/swift?");
   });
 
   it("keeps duplicate GitHub local and JJ Area search results addressable", async () => {

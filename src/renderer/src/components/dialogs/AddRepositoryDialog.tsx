@@ -275,7 +275,7 @@ export function AddRepositoryDialog({
           {!githubReady && normalizedQuery.length > 1 && (
             <div className="muted-row">Remote GitHub search is unavailable in cached mode.</div>
           )}
-          {githubReady && remoteSearch.isFetching && <div className="muted-row">Searching GitHub...</div>}
+          {githubReady && remoteSearch.isFetching && <div className="muted-row">Searching GitHub…</div>}
           {remoteSearch.error && (
             <div className="error-state">
               GitHub repository search unavailable: {remoteSearch.error.message}

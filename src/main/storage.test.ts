@@ -15,7 +15,7 @@ import type {
 import { getAreaGateway, migrateLegacyAreaGatewayTokens } from "./storage/areaGatewayStore";
 import { writeCacheEntry } from "./storage/cacheStore";
 import { createStorageDatabaseAdapter, type SqliteDatabase, type StorageDatabase } from "./storage/database";
-import { DatabaseError } from "./storage/errors";
+import { DatabaseError, UnavailableDatabaseError } from "./storage/errors";
 import { MemoryLocalStore } from "./storage/memoryStore";
 import { defaultSettings, normalizeSettings } from "./storage/localStoreHelpers";
 import { runStorageSync } from "./storage/runtime";
@@ -900,6 +900,29 @@ describe("LocalStore repository pins", () => {
         workspaceId: "workspace:docs"
       })
     ]);
+  });
+
+  it("fails typed instead of silently using memory when SQLite cannot open", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "control-storage-open-failure-"));
+    tempDirs.push(tempDir);
+    mkdirSync(join(tempDir, "Control", "control.sqlite"), { recursive: true });
+
+    await expect(createLocalStore(tempDir)).rejects.toThrow(UnavailableDatabaseError);
+    await expect(createLocalStore(tempDir)).rejects.toMatchObject({
+      code: "STORAGE_UNAVAILABLE",
+      kind: "unavailable",
+      operation: "storage.bootstrap"
+    });
+  });
+
+  it("uses memory storage for SQLite bootstrap failures only when explicitly allowed", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "control-storage-memory-fallback-"));
+    tempDirs.push(tempDir);
+    mkdirSync(join(tempDir, "Control", "control.sqlite"), { recursive: true });
+
+    await expect(createLocalStore(tempDir, { allowMemoryFallback: true })).resolves.toBeInstanceOf(
+      MemoryLocalStore
+    );
   });
 });
 

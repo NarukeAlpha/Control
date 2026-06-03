@@ -138,7 +138,17 @@ export function parseGitHubCodeUrl(
     .sort((left, right) => right.split("/").length - left.split("/").length || right.length - left.length);
   const matchedRef = normalizedRefs.find((ref) => {
     const refSegments = ref.split("/").filter(Boolean);
-    return refSegments.length > 0 && refSegments.every((segment, index) => codeSegments[index] === segment);
+    if (refSegments.length === 0 || codeSegments.length < refSegments.length) {
+      return false;
+    }
+
+    for (let index = 0; index < refSegments.length; index += 1) {
+      if (codeSegments[index] !== refSegments[index]) {
+        return false;
+      }
+    }
+
+    return true;
   });
   const refSegmentCount = matchedRef?.split("/").filter(Boolean).length ?? 1;
   const ref = matchedRef ?? normalizeGitHubCodeRef(fallbackRef) ?? codeSegments[0] ?? null;

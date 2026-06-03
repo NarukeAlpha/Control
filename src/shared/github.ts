@@ -69,6 +69,7 @@ export interface ControlThemePaletteSettings {
   accent: string;
   background: string;
   foreground: string;
+  texture: string;
 }
 
 export interface ControlThemeCustomSettings {
@@ -93,12 +94,14 @@ export const DEFAULT_CONTROL_THEME_SETTINGS: ControlThemeSettings = {
     light: {
       accent: "#2563EB",
       background: "#EAF2FC",
-      foreground: "#0F172A"
+      foreground: "#0F172A",
+      texture: "#F7FBFF"
     },
     dark: {
       accent: "#60A5FA",
       background: "#101827",
-      foreground: "#E5EDF7"
+      foreground: "#E5EDF7",
+      texture: "#263449"
     },
     uiFont: "inter",
     codeFont: "sf-mono"
@@ -363,6 +366,17 @@ export type RepositoryListResult = GitHubListResult<RepositorySummary>;
 
 export type AccountRepositoryListResult = GitHubListResult<RepositorySummary>;
 
+export interface AccountCommitContributionSummary {
+  id: string;
+  repositoryNameWithOwner: string;
+  repositoryUrl: string;
+  occurredAt: string;
+  commitCount: number;
+  restricted: boolean;
+}
+
+export type AccountContributionListResult = GitHubListResult<AccountCommitContributionSummary>;
+
 export type RepositorySearchResult = GitHubListResult<RepositorySummary>;
 
 export interface AccountProfileInput {
@@ -381,6 +395,13 @@ export interface AccountRepositoryInput {
   limit?: number;
   cacheOnly?: boolean;
   forceRefresh?: boolean;
+}
+
+export interface AccountContributionListInput {
+  login?: string | null;
+  limit?: number;
+  forceRefresh?: boolean;
+  cacheOnly?: boolean;
 }
 
 export interface OrganizationListInput {
@@ -2133,6 +2154,9 @@ export interface GitHubProvider {
   getAccountProfileWithStatus(input?: AccountProfileInput): Promise<AccountProfileResult>;
   listRepositoriesWithStatus(input: RepoListInput): Promise<RepositoryListResult>;
   listAccountRepositoriesWithStatus(input: AccountRepositoryInput): Promise<AccountRepositoryListResult>;
+  listAccountContributionsWithStatus(
+    input?: AccountContributionListInput
+  ): Promise<AccountContributionListResult>;
   listOrganizationsWithStatus(input?: OrganizationListInput): Promise<OrganizationListResult>;
   listOrganizationTeamsWithStatus(input: OrganizationTeamsInput): Promise<OrganizationTeamsResult>;
   listOrganizationRepositoriesWithStatus(

@@ -1,6 +1,9 @@
 import { Octokit } from "octokit";
 
 import type {
+  AccountContributionListInput,
+  AccountContributionListResult,
+  AccountCommitContributionSummary,
   AccountIssueListInput,
   AccountIssueListResult,
   AccountProfileInput,
@@ -330,6 +333,18 @@ export class OctokitProvider implements GitHubProvider {
     input: AccountRepositoryInput = {}
   ): Promise<AccountRepositoryListResult> {
     return this.accountDomain.listAccountRepositoriesWithStatus(input);
+  }
+
+  async listAccountContributions(
+    input: AccountContributionListInput = {}
+  ): Promise<AccountCommitContributionSummary[]> {
+    return this.accountDomain.listAccountContributions(input);
+  }
+
+  async listAccountContributionsWithStatus(
+    input: AccountContributionListInput = {}
+  ): Promise<AccountContributionListResult> {
+    return this.accountDomain.listAccountContributionsWithStatus(input);
   }
 
   async listOrganizations(input: OrganizationListInput = {}): Promise<OrganizationSummary[]> {

@@ -309,12 +309,14 @@ describe("LocalStore repository pins", () => {
             light: {
               accent: "#ff6363",
               background: "#bad",
-              foreground: "#030303"
+              foreground: "#030303",
+              texture: "not-a-color"
             },
             dark: {
               accent: "60a5fa",
               background: "#111827",
-              foreground: "#e4e4e7"
+              foreground: "#e4e4e7",
+              texture: "#263449"
             },
             uiFont: "satoshi",
             codeFont: "unknown"
@@ -347,12 +349,14 @@ describe("LocalStore repository pins", () => {
           light: {
             accent: "#FF6363",
             background: defaultSettings.theme.custom.light.background,
-            foreground: "#030303"
+            foreground: "#030303",
+            texture: defaultSettings.theme.custom.light.texture
           },
           dark: {
             accent: defaultSettings.theme.custom.dark.accent,
             background: "#111827",
-            foreground: "#E4E4E7"
+            foreground: "#E4E4E7",
+            texture: "#263449"
           },
           uiFont: "satoshi",
           codeFont: defaultSettings.theme.custom.codeFont
@@ -383,7 +387,8 @@ describe("LocalStore repository pins", () => {
         dark: {
           accent: "#FF5C5C",
           background: "#111827",
-          foreground: "#E4E4E7"
+          foreground: "#E4E4E7",
+          texture: "#263449"
         },
         codeFont: "jetbrains-mono"
       }

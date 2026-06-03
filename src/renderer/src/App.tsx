@@ -34,6 +34,7 @@ import { TopBar } from "./components/topbar/TopBar";
 import { readAvailabilityMessage } from "./components/repository/repositoryUi";
 
 import { useAccountProfile } from "./hooks/useAccountProfile";
+import { useAccountContributions } from "./hooks/useAccountContributions";
 import { useAccountWork } from "./hooks/useAccountWork";
 import { useCollectionRefreshActions } from "./hooks/useCollectionRefreshActions";
 import { useControlApi } from "./hooks/useControlApi";
@@ -167,7 +168,6 @@ function useAppShellState() {
 
   const {
     repositoryListLimit,
-    homeRepositoryActivityLimit,
     mailboxWorkLimit,
     recentItemLimit,
     notificationFilter,
@@ -176,7 +176,6 @@ function useAppShellState() {
     maxHomeWorkLimit,
     setNotificationFilter,
     expandMailboxWork,
-    loadMoreHomeRepositoryActivity,
     expandMailboxNotifications,
     expandRepositoryList
   } = useCollectionSurfaceState({
@@ -215,6 +214,13 @@ function useAppShellState() {
     "Account profile",
     accountProfile.data?.availability ?? null
   );
+
+  const accountContributions = useAccountContributions(authenticatedViewerLogin, accountWorkLimit, {
+    enabled: appState.isSuccess && route.kind === "home",
+    githubReady
+  });
+  const accountContributionItems = accountContributions.data?.items ?? [];
+  const accountContributionsAvailability = accountContributions.data?.availability ?? null;
 
   const { issues: accountIssues, pulls: accountPulls } = useAccountWork(
     authenticatedViewerLogin,
@@ -556,14 +562,12 @@ function useAppShellState() {
     refreshSelectedArea,
     stopSelectedAreaGateway,
     repositoryListLimit,
-    homeRepositoryActivityLimit,
     mailboxWorkLimit,
     notificationFilter,
     accountWorkLimit,
     notificationLimit,
     setNotificationFilter,
     expandMailboxWork,
-    loadMoreHomeRepositoryActivity,
     expandMailboxNotifications,
     expandRepositoryList,
     repositories,
@@ -580,6 +584,9 @@ function useAppShellState() {
     recentItems,
     accountProfileData,
     accountProfileAvailabilityMessage,
+    accountContributions,
+    accountContributionItems,
+    accountContributionsAvailability,
     accountIssues,
     accountIssueItems,
     accountIssuesAvailability,
@@ -809,10 +816,6 @@ function AppHomeRoute({ state }: { state: AppShellState }): JSX.Element | null {
     return null;
   }
 
-  function loadMoreHomeRepositories(): void {
-    state.loadMoreHomeRepositoryActivity(state.repositoryItems.length);
-  }
-
   if (state.selectedArea && state.selectedAreaIsGateway) {
     return (
       <LocalAreaHome
@@ -836,11 +839,11 @@ function AppHomeRoute({ state }: { state: AppShellState }): JSX.Element | null {
       profile={state.accountProfileData ?? undefined}
       profileAvailabilityMessage={state.accountProfileAvailabilityMessage}
       repositories={state.repositoryItems}
-      repositoryActivityLimit={state.homeRepositoryActivityLimit}
-      repositoriesLoading={state.repositories.isLoading || state.repositories.isFetching}
-      repositoriesError={state.repositories.error}
-      repositoriesAvailabilityMessage={state.repositoriesAvailabilityMessage}
       pinnedRepositoryNames={state.pinnedRepositoryNames}
+      contributions={state.accountContributionItems}
+      contributionsLoading={state.accountContributions.isLoading || state.accountContributions.isFetching}
+      contributionsError={state.accountContributions.error}
+      contributionsAvailability={state.accountContributionsAvailability}
       issues={state.accountIssueItems}
       issuesLoading={state.accountIssues.isLoading || state.accountIssues.isFetching}
       issuesError={state.accountIssues.error}
@@ -850,7 +853,6 @@ function AppHomeRoute({ state }: { state: AppShellState }): JSX.Element | null {
       pullsError={state.accountPulls.error}
       pullsAvailability={state.accountPullsAvailability}
       onOpenRepository={state.openRepositoryInApp}
-      onLoadMoreRepositories={loadMoreHomeRepositories}
       onOpenIssue={state.openIssueSummaryInApp}
       onOpenPullRequest={state.openPullRequestSummaryInApp}
       onOpenExternal={state.openExternal}
@@ -1095,6 +1097,7 @@ function AppShellDialogHost({ state }: { state: AppShellState }): JSX.Element {
       appState={state.appState.data}
       authController={state.providerAuth.github}
       settingsOpen={state.settingsOpen}
+      systemColorScheme={state.resolvedTheme.resolvedMode}
       route={state.route}
       repository={state.repositoryDetail}
       repositoryTree={state.repositoryTreeItem}

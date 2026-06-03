@@ -174,7 +174,8 @@ function normalizePaletteSettings(
   return {
     accent: normalizeHexColor(rawPalette.accent, fallback.accent),
     background: normalizeHexColor(rawPalette.background, fallback.background),
-    foreground: normalizeHexColor(rawPalette.foreground, fallback.foreground)
+    foreground: normalizeHexColor(rawPalette.foreground, fallback.foreground),
+    texture: normalizeHexColor(rawPalette.texture, fallback.texture)
   };
 }
 

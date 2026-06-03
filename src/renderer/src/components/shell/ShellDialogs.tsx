@@ -28,6 +28,7 @@ interface ShellDialogsProps {
   appState?: AppState;
   authController: ProviderAuthController;
   settingsOpen: boolean;
+  systemColorScheme: "light" | "dark";
   route: AppRoute;
   repository: RepositoryDetail | null;
   repositoryTree: RepoTreeResult | null;
@@ -72,6 +73,7 @@ export function ShellDialogs({
   appState,
   authController,
   settingsOpen,
+  systemColorScheme,
   route,
   repository,
   repositoryTree,
@@ -168,6 +170,7 @@ export function ShellDialogs({
           onAddSshArea={dialogs.openSshArea}
           onPreviewSettings={onPreviewSettings}
           onSave={onSaveSettings}
+          systemColorScheme={systemColorScheme}
         />
       )}
 

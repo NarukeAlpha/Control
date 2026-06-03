@@ -120,7 +120,8 @@ describe("themeSettings", () => {
             dark: {
               accent: "#FF5C5C",
               background: "#111827",
-              foreground: "#E4E4E7"
+              foreground: "#E4E4E7",
+              texture: "#263449"
             },
             uiFont: "satoshi",
             codeFont: "jetbrains-mono"
@@ -131,7 +132,13 @@ describe("themeSettings", () => {
     ).toMatchObject({
       "--color-accent": "#FF5C5C",
       "--color-surface-solid": "#111827",
+      "--color-surface-row": "color-mix(in srgb, #263449 66%, #111827)",
+      "--color-surface-selected": "color-mix(in srgb, #FF5C5C 22%, #263449)",
       "--color-text": "#E4E4E7",
+      "--color-texture": "#263449",
+      "--color-data-strong": "#26A641",
+      "--color-data-peak": "#39D353",
+      "--color-data-line": "#2DA44E",
       "--font-ui-family": expect.stringContaining("Satoshi"),
       "--font-code-family": expect.stringContaining("JetBrains Mono")
     });

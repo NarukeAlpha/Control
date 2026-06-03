@@ -272,7 +272,8 @@ describe("LocalStore repository pins", () => {
       credentialProvider: "github-oauth",
       glassMode: "solid",
       theme: defaultSettings.theme,
-      repositoryTabPreferences: {}
+      repositoryTabPreferences: {},
+      repositoryTabPreferencesByRepository: {}
     });
 
     store.setGitHubRepositoriesWithStatusCache({
@@ -322,6 +323,17 @@ describe("LocalStore repository pins", () => {
         repositoryTabPreferences: {
           agents: "show",
           releases: "invalid"
+        },
+        repositoryTabPreferencesByRepository: {
+          "apple/swift": {
+            discussions: "hide",
+            wiki: "auto",
+            settings: "show"
+          },
+          "bad/key/extra": {
+            projects: "show"
+          },
+          "golang/go": "invalid"
         }
       })
     ).toEqual({
@@ -348,6 +360,12 @@ describe("LocalStore repository pins", () => {
       },
       repositoryTabPreferences: {
         agents: "show"
+      },
+      repositoryTabPreferencesByRepository: {
+        "apple/swift": {
+          discussions: "hide",
+          wiki: "auto"
+        }
       }
     });
   });

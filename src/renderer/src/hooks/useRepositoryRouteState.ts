@@ -12,7 +12,7 @@ import { usePullRequestsTabQueries } from "../components/repository/pull-request
 import { useReleasesTabQueries } from "../components/repository/releases/ReleasesTab.queries";
 import { visibleRepositoryTabs } from "../components/repository/repositoryTabVisibility";
 import { readAvailabilityMessage } from "../components/repository/repositoryUi";
-import type { RepositoryTabPreference, RepositoryTabPreferenceKey } from "@shared/github";
+import type { RepositoryTabPreferenceMap, RepositoryTabPreferencesByRepository } from "@shared/github";
 import type { AppRoute, RepositoryTab } from "../stores/uiStore";
 import { useCodeBrowserQueries } from "../components/code-browser/codeBrowserQueries";
 import type { RepositoryQueryScope } from "../components/shell/appInvalidations";
@@ -23,6 +23,8 @@ import { useRepositoryRefreshActions } from "./useRepositoryRefreshActions";
 import { useRepositorySurfaceLimits } from "./useRepositorySurfaceLimits";
 import { useRepositoryWarmPrefetch } from "./useRepositoryWarmPrefetch";
 
+const emptyRepositoryTabPreferences: RepositoryTabPreferenceMap = {};
+
 interface UseRepositoryRouteStateInput {
   appReady: boolean;
   githubReady: boolean;
@@ -30,7 +32,8 @@ interface UseRepositoryRouteStateInput {
   selectedRepository: string | null;
   repositoryRefs: Record<string, string | null>;
   fileFinderOpen: boolean;
-  repositoryTabPreferences: Partial<Record<RepositoryTabPreferenceKey, RepositoryTabPreference>>;
+  repositoryTabPreferences: RepositoryTabPreferenceMap;
+  repositoryTabPreferencesByRepository: RepositoryTabPreferencesByRepository;
 }
 
 export function useRepositoryRouteState({
@@ -40,7 +43,8 @@ export function useRepositoryRouteState({
   selectedRepository,
   repositoryRefs,
   fileFinderOpen,
-  repositoryTabPreferences
+  repositoryTabPreferences,
+  repositoryTabPreferencesByRepository
 }: UseRepositoryRouteStateInput) {
   const api = useControlApi();
   const queryClient = useQueryClient();
@@ -52,6 +56,15 @@ export function useRepositoryRouteState({
   const activeLocalRepositoryTab = isLocalRepositoryRoute ? route.tab : "overview";
   const activeLocalRepositoryPath = isLocalRepositoryRoute ? (route.path ?? ".") : ".";
   const effectiveRepository = isRepositoryContext ? route.nameWithOwner : (selectedRepository ?? "");
+  const repositoryScopedTabPreferences =
+    repositoryTabPreferencesByRepository[effectiveRepository] ?? emptyRepositoryTabPreferences;
+  const effectiveRepositoryTabPreferences = useMemo(
+    () => ({
+      ...repositoryTabPreferences,
+      ...repositoryScopedTabPreferences
+    }),
+    [repositoryScopedTabPreferences, repositoryTabPreferences]
+  );
   const [owner = "", repo = ""] = effectiveRepository.split("/");
   const hasRepositoryParts = Boolean(owner && repo);
   const activeRepositoryScope = useMemo<RepositoryQueryScope | null>(
@@ -100,9 +113,9 @@ export function useRepositoryRouteState({
       visibleRepositoryTabs({
         repository: repositoryDetail,
         activeRoute: isRepositoryRoute ? route : null,
-        preferences: repositoryTabPreferences
+        preferences: effectiveRepositoryTabPreferences
       }),
-    [isRepositoryRoute, repositoryDetail, repositoryTabPreferences, route]
+    [effectiveRepositoryTabPreferences, isRepositoryRoute, repositoryDetail, route]
   );
   const repositoryTabReady = appReady && isRepositoryRoute && hasRepositoryParts;
   const activeTabQueryEnabled = (tab: RepositoryTab): boolean =>
@@ -278,6 +291,8 @@ export function useRepositoryRouteState({
     activeLocalRepositoryTab,
     activeLocalRepositoryPath,
     effectiveRepository,
+    effectiveRepositoryTabPreferences,
+    repositoryScopedTabPreferences,
     owner,
     repo,
     hasRepositoryParts,

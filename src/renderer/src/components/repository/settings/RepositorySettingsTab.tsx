@@ -1,11 +1,14 @@
 import { ExternalLink, GitFork } from "lucide-react";
-import { type JSX } from "react";
+import { useState, type JSX } from "react";
 
 import type {
   GitHubAction,
   GitHubMutationFields,
   RepositoryCollaboratorSummary,
   RepositoryDetail,
+  RepositoryTabPreference,
+  RepositoryTabPreferenceKey,
+  RepositoryTabPreferenceMap,
   TeamSummary
 } from "@shared/github";
 
@@ -17,6 +20,7 @@ import {
 } from "@renderer/components/repository/repositoryUi";
 
 import type { RepositoryTab } from "@renderer/stores/uiStore";
+import { repositoryTabPreferenceKeys, repositoryTabPreferenceLabels } from "../repositoryTabVisibility";
 import { RepositoryAccessSection } from "./RepositoryAccessSection";
 import { BranchProtectionSection } from "./BranchProtectionSection";
 import {
@@ -39,6 +43,79 @@ function repositoryStatusMutationDisabledReason(repository: RepositoryDetail): s
   return null;
 }
 
+function readRepositoryTabPreference(value: string): RepositoryTabPreference {
+  return value === "show" || value === "hide" ? value : "auto";
+}
+
+function RepositoryTabVisibilityPreferencesSection({
+  preferences,
+  onPreferencesChange
+}: {
+  preferences: RepositoryTabPreferenceMap;
+  onPreferencesChange(preferences: RepositoryTabPreferenceMap): Promise<void>;
+}): JSX.Element {
+  const [draftState, setDraftState] = useState({ source: preferences, draft: preferences });
+  const draft = draftState.source === preferences ? draftState.draft : preferences;
+  const [savingTab, setSavingTab] = useState<RepositoryTabPreferenceKey | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  async function updatePreference(
+    tab: RepositoryTabPreferenceKey,
+    preference: RepositoryTabPreference
+  ): Promise<void> {
+    const nextPreferences = {
+      ...draft,
+      [tab]: preference
+    };
+    setDraftState({ source: preferences, draft: nextPreferences });
+    setSavingTab(tab);
+    setSaveError(null);
+
+    try {
+      await onPreferencesChange(nextPreferences);
+    } catch (error) {
+      setDraftState({ source: preferences, draft: preferences });
+      setSaveError(error instanceof Error ? error.message : "Repository tab visibility could not be saved.");
+    } finally {
+      setSavingTab(null);
+    }
+  }
+
+  function changePreference(tab: RepositoryTabPreferenceKey, value: string): void {
+    void updatePreference(tab, readRepositoryTabPreference(value));
+  }
+
+  return (
+    <section className="repository-tab-visibility-section">
+      <header>
+        <div>
+          <h3>Tab visibility</h3>
+          <small>Per-repository Control overrides</small>
+        </div>
+        {savingTab && <span className="state-chip">Saving {repositoryTabPreferenceLabels[savingTab]}</span>}
+      </header>
+      <div className="settings-preference-grid">
+        {repositoryTabPreferenceKeys.map((tab) => (
+          <label key={tab} className="settings-preference-row">
+            <span>{repositoryTabPreferenceLabels[tab]}</span>
+            <select
+              aria-label={`${repositoryTabPreferenceLabels[tab]} tab visibility`}
+              disabled={savingTab !== null}
+              value={draft[tab] ?? "auto"}
+              onChange={(event) => changePreference(tab, event.target.value)}
+            >
+              <option value="auto">Auto</option>
+              <option value="show">Show</option>
+              <option value="hide">Hide</option>
+            </select>
+          </label>
+        ))}
+      </div>
+      {saveError && <div className="error-state">Could not save tab visibility: {saveError}</div>}
+    </section>
+  );
+}
+
 export function RepositorySettingsTab({
   repository,
   githubReady,
@@ -55,7 +132,9 @@ export function RepositorySettingsTab({
   mutationPending,
   mutationSucceeded,
   mutationError,
+  tabPreferences,
   onMutate,
+  onTabPreferencesChange,
   onOpenExternal,
   onOpenRepository,
   onOpenTeam,
@@ -78,7 +157,9 @@ export function RepositorySettingsTab({
   mutationPending: boolean;
   mutationSucceeded: boolean;
   mutationError: Error | null;
+  tabPreferences: RepositoryTabPreferenceMap;
   onMutate(action: GitHubAction, dangerous: boolean, payload?: GitHubMutationFields): void;
+  onTabPreferencesChange(preferences: RepositoryTabPreferenceMap): Promise<void>;
   onOpenExternal(url: string): void;
   onOpenRepository(nameWithOwner: string, tab?: RepositoryTab): void;
   onOpenTeam(team: TeamSummary): void;
@@ -213,6 +294,11 @@ export function RepositorySettingsTab({
       {administrationAvailabilityMessage && (
         <div className="error-state">{administrationAvailabilityMessage}</div>
       )}
+
+      <RepositoryTabVisibilityPreferencesSection
+        preferences={tabPreferences}
+        onPreferencesChange={onTabPreferencesChange}
+      />
 
       <RepositoryFeatureSettingsForm
         repository={repository}

@@ -2,7 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ComponentProps, CSSProperties, JSX } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import type { AppState, ControlSettings, RepositoryTabPreferenceKey } from "@shared/github";
+import type {
+  AppState,
+  ControlSettings,
+  RepositoryTabPreferenceKey,
+  RepositoryTabPreferenceMap
+} from "@shared/github";
 
 import { MarkdownUrlHandlerContext } from "./components/MarkdownBody";
 import { LocalAreaHome } from "./components/areas/LocalAreaHome";
@@ -95,7 +100,9 @@ function mergeSettingsPreview(
             : settings.theme.custom
         }
       : settings.theme,
-    repositoryTabPreferences: preview.repositoryTabPreferences ?? settings.repositoryTabPreferences
+    repositoryTabPreferences: preview.repositoryTabPreferences ?? settings.repositoryTabPreferences,
+    repositoryTabPreferencesByRepository:
+      preview.repositoryTabPreferencesByRepository ?? settings.repositoryTabPreferencesByRepository
   };
 }
 
@@ -140,6 +147,8 @@ function useAppShellState() {
   const githubAuthenticated = appState.data?.github.authenticated ?? false;
   const githubReady = appState.isSuccess && githubAuthenticated;
   const repositoryTabPreferences = appState.data?.settings.repositoryTabPreferences ?? {};
+  const repositoryTabPreferencesByRepository =
+    appState.data?.settings.repositoryTabPreferencesByRepository ?? {};
   const authenticatedViewerLogin = appState.data?.github.user ?? appState.data?.viewer?.login ?? null;
   const {
     areaItems,
@@ -242,7 +251,8 @@ function useAppShellState() {
     selectedRepository,
     repositoryRefs,
     fileFinderOpen: dialogs.fileFinderOpen,
-    repositoryTabPreferences
+    repositoryTabPreferences,
+    repositoryTabPreferencesByRepository
   });
   const {
     isRepositoryRoute,
@@ -289,10 +299,24 @@ function useAppShellState() {
   const { refreshRepositorySurface } = refreshActions;
 
   async function showRepositoryTab(tab: RepositoryTabPreferenceKey): Promise<void> {
+    if (!effectiveRepository) {
+      return;
+    }
+
+    await saveRepositoryTabPreferences(effectiveRepository, {
+      ...repositoryRouteState.repositoryScopedTabPreferences,
+      [tab]: "show"
+    });
+  }
+
+  async function saveRepositoryTabPreferences(
+    nameWithOwner: string,
+    preferences: RepositoryTabPreferenceMap
+  ): Promise<void> {
     await api.updateSettings({
-      repositoryTabPreferences: {
-        ...repositoryTabPreferences,
-        [tab]: "show"
+      repositoryTabPreferencesByRepository: {
+        ...repositoryTabPreferencesByRepository,
+        [nameWithOwner]: preferences
       }
     });
     await queryClient.invalidateQueries({ queryKey: ["app-state"] });
@@ -610,6 +634,7 @@ function useAppShellState() {
     shellClass,
     setSettingsPreview,
     showRepositoryTab,
+    saveRepositoryTabPreferences,
     openExternal,
     openSettingsPanel,
     closeSettingsPanel,
@@ -706,10 +731,6 @@ function AppTopBar({ state }: { state: AppShellState }): JSX.Element {
     void state.selectArea(areaId);
   }
 
-  function addTopBarLocalArea(): void {
-    void state.addLocalArea();
-  }
-
   function openTopBarRepository(): void {
     if (state.topbarRepository) {
       state.openRepositoryInApp(state.topbarRepository);
@@ -730,8 +751,6 @@ function AppTopBar({ state }: { state: AppShellState }): JSX.Element {
       repositories={state.repositoryItems}
       githubReady={state.githubReady}
       onSelectArea={selectTopBarArea}
-      onAddLocalArea={addTopBarLocalArea}
-      onAddSshArea={state.dialogs.openSshArea}
       onEditArea={state.dialogs.openAreaEdit}
       onDeleteArea={state.dialogs.openAreaDelete}
       onGoRepository={openTopBarRepository}
@@ -910,6 +929,7 @@ function AppRepositoryRoute({ state }: { state: AppShellState }): JSX.Element {
       isRepositoryPinned={state.isRepositoryPinned}
       toggleRepositoryPin={state.toggleRepositoryPin}
       onShowRepositoryTab={showRepositoryTab}
+      onSaveRepositoryTabPreferences={state.saveRepositoryTabPreferences}
       onOpenExternal={state.openExternal}
     />
   );
@@ -1094,6 +1114,7 @@ function AppShellDialogHost({ state }: { state: AppShellState }): JSX.Element {
       selectedCodeRef={state.contentsRef ?? state.repositoryDetail?.defaultBranch ?? null}
       effectiveRepository={state.effectiveRepository}
       onOpenRepository={state.openRepositoryInApp}
+      onAddLocalArea={state.addLocalArea}
       onCreateSshArea={state.createSshArea}
       onUpdateArea={state.updateArea}
       onDeleteArea={state.deleteArea}

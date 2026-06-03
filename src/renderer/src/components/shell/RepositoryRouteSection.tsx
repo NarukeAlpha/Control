@@ -4,7 +4,8 @@ import type {
   GitHubAction,
   GitHubMutationFields,
   GitHubMutationInput,
-  RepositoryTabPreferenceKey
+  RepositoryTabPreferenceKey,
+  RepositoryTabPreferenceMap
 } from "@shared/github";
 import { CodeBrowserPage } from "../code-browser/CodeBrowserPage";
 import { RepositoryContextProvider } from "../repository/RepositoryContext";
@@ -38,6 +39,10 @@ interface RepositoryRouteSectionProps {
   isRepositoryPinned(nameWithOwner: string): boolean;
   toggleRepositoryPin(nameWithOwner: string): void;
   onShowRepositoryTab(tab: RepositoryTabPreferenceKey): void;
+  onSaveRepositoryTabPreferences(
+    nameWithOwner: string,
+    preferences: RepositoryTabPreferenceMap
+  ): Promise<void>;
   onOpenExternal(url: string): void;
 }
 
@@ -287,6 +292,7 @@ function RepositoryPageRoute({
   isRepositoryPinned,
   toggleRepositoryPin,
   onShowRepositoryTab,
+  onSaveRepositoryTabPreferences,
   onOpenExternal,
   rightRail
 }: {
@@ -300,6 +306,10 @@ function RepositoryPageRoute({
   isRepositoryPinned(nameWithOwner: string): boolean;
   toggleRepositoryPin(nameWithOwner: string): void;
   onShowRepositoryTab(tab: RepositoryTabPreferenceKey): void;
+  onSaveRepositoryTabPreferences(
+    nameWithOwner: string,
+    preferences: RepositoryTabPreferenceMap
+  ): Promise<void>;
   onOpenExternal(url: string): void;
   rightRail: RepositoryPageProps["rightRail"];
 }): JSX.Element {
@@ -311,6 +321,7 @@ function RepositoryPageRoute({
     repository,
     repositoryDetail,
     repositoryTabVisibility,
+    effectiveRepositoryTabPreferences,
     repositoryAvailabilityMessage,
     contributorItems
   } = routeState;
@@ -344,6 +355,9 @@ function RepositoryPageRoute({
   const selectTab: RepositoryPageProps["onSelectTab"] = (tab) => {
     navigation.selectRepositoryTabInApp(effectiveRepository, tab);
   };
+
+  const saveTabPreferences: RepositoryPageProps["onSaveTabPreferences"] = (preferences) =>
+    onSaveRepositoryTabPreferences(effectiveRepository, preferences);
 
   const openFilteredSurface: RepositoryPageProps["onOpenFilteredSurface"] = (tab, filter) => {
     navigation.openFilteredRepositorySurfaceInApp(effectiveRepository, tab, filter);
@@ -432,6 +446,7 @@ function RepositoryPageRoute({
       pinError={repositoryPinError}
       error={repository.error}
       tabVisibility={repositoryTabVisibility}
+      tabPreferences={effectiveRepositoryTabPreferences}
       onOpenCodeBrowser={openCodeBrowser}
       onOpenReleaseTarget={openReleaseTarget}
       onOpenPullRequestCommit={openPullRequestCommit}
@@ -447,6 +462,7 @@ function RepositoryPageRoute({
       onOpenFileFinder={dialogs.openFileFinder}
       onSelectTab={selectTab}
       onShowHiddenTab={onShowRepositoryTab}
+      onSaveTabPreferences={saveTabPreferences}
       onOpenFilteredSurface={openFilteredSurface}
       onSelectIssue={selectIssue}
       onSelectPullRequest={selectPullRequest}
@@ -605,6 +621,7 @@ export function RepositoryRouteSection({
   isRepositoryPinned,
   toggleRepositoryPin,
   onShowRepositoryTab,
+  onSaveRepositoryTabPreferences,
   onOpenExternal
 }: RepositoryRouteSectionProps): JSX.Element | null {
   const repositoryRightRail = (
@@ -631,6 +648,7 @@ export function RepositoryRouteSection({
             isRepositoryPinned={isRepositoryPinned}
             toggleRepositoryPin={toggleRepositoryPin}
             onShowRepositoryTab={onShowRepositoryTab}
+            onSaveRepositoryTabPreferences={onSaveRepositoryTabPreferences}
             onOpenExternal={onOpenExternal}
             rightRail={repositoryRightRail}
           />

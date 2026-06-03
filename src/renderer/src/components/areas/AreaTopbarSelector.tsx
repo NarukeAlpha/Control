@@ -1,4 +1,4 @@
-import { ChevronDown, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState, type JSX, type KeyboardEvent } from "react";
 
 import type { AreaSummary } from "@shared/areas";
@@ -9,16 +9,12 @@ export function AreaTopbarSelector({
   areas,
   selectedAreaId,
   onSelectArea,
-  onAddLocalArea,
-  onAddSshArea,
   onEditArea,
   onDeleteArea
 }: {
   areas: AreaSummary[];
   selectedAreaId: string | null;
   onSelectArea(areaId: string): void;
-  onAddLocalArea(): void;
-  onAddSshArea(): void;
   onEditArea(area: AreaSummary): void;
   onDeleteArea(area: AreaSummary): void;
 }): JSX.Element {
@@ -140,30 +136,6 @@ export function AreaTopbarSelector({
               </div>
             );
           })}
-          <button
-            className="area-menu-add"
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              onAddLocalArea();
-              setOpen(false);
-            }}
-          >
-            <Plus size={15} />
-            <span>Add local folder Area</span>
-          </button>
-          <button
-            className="area-menu-add"
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              onAddSshArea();
-              setOpen(false);
-            }}
-          >
-            <Plus size={15} />
-            <span>Add SSH Area</span>
-          </button>
         </div>
       )}
     </div>

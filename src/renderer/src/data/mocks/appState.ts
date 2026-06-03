@@ -9,7 +9,8 @@ export const mockAppState: AppState = {
     credentialProvider: "github-oauth",
     glassMode: "glass-shell",
     theme: DEFAULT_CONTROL_THEME_SETTINGS,
-    repositoryTabPreferences: {}
+    repositoryTabPreferences: {},
+    repositoryTabPreferencesByRepository: {}
   },
   github: {
     available: true,

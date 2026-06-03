@@ -5186,6 +5186,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
   object-fit: cover;
 }
 
+.repository-tab-visibility-section,
 .settings-network-section {
   display: grid;
   gap: 10px;
@@ -5195,6 +5196,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
   padding: 16px;
 }
 
+.repository-tab-visibility-section header,
 .settings-network-section header,
 .fork-network-row,
 .fork-network-row > button:first-child {
@@ -5203,13 +5205,20 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
   gap: 12px;
 }
 
+.repository-tab-visibility-section header,
 .settings-network-section header,
 .fork-network-row {
   justify-content: space-between;
 }
 
+.repository-tab-visibility-section h3,
 .settings-network-section h3 {
   font-size: 16px;
+}
+
+.repository-tab-visibility-section small {
+  color: var(--color-text-muted);
+  font-size: 12px;
 }
 
 .fork-network-list {

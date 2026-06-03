@@ -13,8 +13,9 @@ import {
   type ControlThemePaletteSettings,
   type ControlThemePreset,
   type ControlUiFont,
-  type RepositoryTabPreference,
-  type RepositoryTabPreferenceKey
+  type RepositoryTabPreferenceKey,
+  type RepositoryTabPreferenceMap,
+  type RepositoryTabPreferencesByRepository
 } from "@shared/github";
 
 const repositoryTabPreferenceKeys = [
@@ -24,15 +25,15 @@ const repositoryTabPreferenceKeys = [
   "releases",
   "contributors",
   "wiki",
-  "securityQuality",
-  "settings"
+  "securityQuality"
 ] satisfies RepositoryTabPreferenceKey[];
 
 export const defaultSettings: ControlSettings = {
   credentialProvider: "github-oauth",
   glassMode: "glass-shell",
   theme: cloneDefaultThemeSettings(),
-  repositoryTabPreferences: {}
+  repositoryTabPreferences: {},
+  repositoryTabPreferencesByRepository: {}
 };
 
 export function cacheExpiresAtIsExpired(expiresAt: string | null): boolean {
@@ -51,7 +52,10 @@ export function normalizeSettings(settings: Record<string, unknown>): ControlSet
     credentialProvider,
     glassMode: normalizeLiteral(settings.glassMode, CONTROL_GLASS_MODES, defaultSettings.glassMode),
     theme: normalizeThemeSettings(settings.theme),
-    repositoryTabPreferences: normalizeRepositoryTabPreferences(settings.repositoryTabPreferences)
+    repositoryTabPreferences: normalizeRepositoryTabPreferences(settings.repositoryTabPreferences),
+    repositoryTabPreferencesByRepository: normalizeRepositoryTabPreferencesByRepository(
+      settings.repositoryTabPreferencesByRepository
+    )
   };
 }
 
@@ -190,14 +194,12 @@ function cloneDefaultThemeSettings(): ControlSettings["theme"] {
   };
 }
 
-function normalizeRepositoryTabPreferences(
-  preferences: unknown
-): Partial<Record<RepositoryTabPreferenceKey, RepositoryTabPreference>> {
+function normalizeRepositoryTabPreferences(preferences: unknown): RepositoryTabPreferenceMap {
   if (!preferences || typeof preferences !== "object" || Array.isArray(preferences)) {
     return defaultSettings.repositoryTabPreferences;
   }
 
-  const normalized: Partial<Record<RepositoryTabPreferenceKey, RepositoryTabPreference>> = {};
+  const normalized: RepositoryTabPreferenceMap = {};
   for (const key of repositoryTabPreferenceKeys) {
     const value = (preferences as Partial<Record<RepositoryTabPreferenceKey, unknown>>)[key];
     if (value === "auto" || value === "show" || value === "hide") {
@@ -206,4 +208,38 @@ function normalizeRepositoryTabPreferences(
   }
 
   return normalized;
+}
+
+function normalizeRepositoryTabPreferencesByRepository(
+  preferencesByRepository: unknown
+): RepositoryTabPreferencesByRepository {
+  if (
+    !preferencesByRepository ||
+    typeof preferencesByRepository !== "object" ||
+    Array.isArray(preferencesByRepository)
+  ) {
+    return defaultSettings.repositoryTabPreferencesByRepository;
+  }
+
+  const normalized: RepositoryTabPreferencesByRepository = {};
+  for (const [rawNameWithOwner, rawPreferences] of Object.entries(preferencesByRepository)) {
+    const nameWithOwner = normalizeRepositoryNameWithOwner(rawNameWithOwner);
+    if (!nameWithOwner) {
+      continue;
+    }
+    const preferences = normalizeRepositoryTabPreferences(rawPreferences);
+    if (Object.keys(preferences).length > 0) {
+      normalized[nameWithOwner] = preferences;
+    }
+  }
+
+  return normalized;
+}
+
+function normalizeRepositoryNameWithOwner(value: string): string | null {
+  const [owner = "", name = "", ...extra] = value.trim().split("/");
+  if (!owner || !name || extra.length > 0) {
+    return null;
+  }
+  return `${owner}/${name}`;
 }

@@ -24,7 +24,8 @@ const settings: ControlSettings = {
   credentialProvider: "github-oauth",
   glassMode: "glass-shell",
   theme: DEFAULT_CONTROL_THEME_SETTINGS,
-  repositoryTabPreferences: {}
+  repositoryTabPreferences: {},
+  repositoryTabPreferencesByRepository: {}
 };
 
 function createStore(): LocalStore {

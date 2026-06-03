@@ -27,7 +27,8 @@ const settings: ControlSettings = {
   credentialProvider: "github-oauth",
   glassMode: "glass-shell",
   theme: DEFAULT_CONTROL_THEME_SETTINGS,
-  repositoryTabPreferences: {}
+  repositoryTabPreferences: {},
+  repositoryTabPreferencesByRepository: {}
 };
 
 function createRuntime(overrides: Partial<LocalStore> = {}, openExternal = vi.fn(async () => undefined)) {

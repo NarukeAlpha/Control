@@ -35,13 +35,15 @@ describe("preload control bridge", () => {
       credentialProvider: "github-oauth",
       glassMode: "solid",
       theme: DEFAULT_CONTROL_THEME_SETTINGS,
-      repositoryTabPreferences: {}
+      repositoryTabPreferences: {},
+      repositoryTabPreferencesByRepository: {}
     });
     await expect(controlApi.getSettings()).resolves.toEqual({
       credentialProvider: "github-oauth",
       glassMode: "solid",
       theme: DEFAULT_CONTROL_THEME_SETTINGS,
-      repositoryTabPreferences: {}
+      repositoryTabPreferences: {},
+      repositoryTabPreferencesByRepository: {}
     });
     expect(invoke).toHaveBeenCalledWith(ipcChannels.getSettings);
 

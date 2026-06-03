@@ -114,14 +114,18 @@ export type RepositoryTabPreferenceKey =
   | "releases"
   | "contributors"
   | "wiki"
-  | "securityQuality"
-  | "settings";
+  | "securityQuality";
+
+export type RepositoryTabPreferenceMap = Partial<Record<RepositoryTabPreferenceKey, RepositoryTabPreference>>;
+
+export type RepositoryTabPreferencesByRepository = Record<string, RepositoryTabPreferenceMap>;
 
 export interface ControlSettings {
   credentialProvider: CredentialProvider;
   glassMode: GlassMode;
   theme: ControlThemeSettings;
-  repositoryTabPreferences: Partial<Record<RepositoryTabPreferenceKey, RepositoryTabPreference>>;
+  repositoryTabPreferences: RepositoryTabPreferenceMap;
+  repositoryTabPreferencesByRepository: RepositoryTabPreferencesByRepository;
 }
 
 export interface GitHubAuthStatus {

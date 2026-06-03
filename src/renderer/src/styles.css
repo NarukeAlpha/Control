@@ -1567,7 +1567,8 @@ body:not(.no-liquid-glass) .workspace-home {
   color: var(--color-text-muted);
 }
 
-.home-activity-timeline-row.repository .home-activity-timeline-icon {
+.home-activity-timeline-row.repository .home-activity-timeline-icon,
+.home-activity-timeline-row.contribution .home-activity-timeline-icon {
   border-color: var(--color-accent);
   background: var(--color-accent-muted);
   color: var(--color-accent);

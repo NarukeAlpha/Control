@@ -8,6 +8,7 @@ import type { RepositoryDetail, RepositoryTabPreference, RepositoryTabPreference
 import type { LocalRecentItem } from "@shared/local";
 import {
   mockActions,
+  mockAccountContributions,
   mockAccountProfile,
   mockAssignableUsers,
   mockAppState,
@@ -115,7 +116,7 @@ describe("Control renderer routing", () => {
     useUiStore.setState(defaultUiState);
     renderControl(makeApi());
 
-    const homeActivity = await screen.findByRole("heading", { name: "Latest repository activity" });
+    const homeActivity = await screen.findByRole("heading", { name: "Latest activity" });
     const homePanel = homeActivity.closest(".home-panel");
     expect(homePanel).not.toBeNull();
 
@@ -149,7 +150,7 @@ describe("Control renderer routing", () => {
       })
     );
 
-    const homeActivity = await screen.findByRole("heading", { name: "Latest repository activity" });
+    const homeActivity = await screen.findByRole("heading", { name: "Latest activity" });
     const homePanel = homeActivity.closest(".home-panel");
     expect(homePanel).not.toBeNull();
 
@@ -332,6 +333,14 @@ describe("Control renderer routing", () => {
             owner: "NarukeAlpha",
             name: "blog",
             nameWithOwner: "NarukeAlpha/blog"
+          }
+        ],
+        listAccountContributions: async () => [
+          {
+            ...mockAccountContributions[0],
+            id: "commit-contribution-NarukeAlpha/blog",
+            repositoryNameWithOwner: "NarukeAlpha/blog",
+            repositoryUrl: "https://github.com/NarukeAlpha/blog"
           }
         ],
         getAccountProfile: async () => ({
@@ -1153,7 +1162,7 @@ describe("Control renderer routing", () => {
     useUiStore.setState(defaultUiState);
     renderControl({ ...makeApi(), recordRecentItem });
 
-    const homeActivity = await screen.findByRole("heading", { name: "Latest repository activity" });
+    const homeActivity = await screen.findByRole("heading", { name: "Latest activity" });
     const homePanel = homeActivity.closest(".home-panel");
     expect(homePanel).not.toBeNull();
     await waitFor(() =>
@@ -2088,7 +2097,7 @@ describe("Control renderer routing", () => {
       })
     });
 
-    expect(await screen.findByRole("heading", { name: "Latest repository activity" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Latest activity" })).toBeInTheDocument();
     await waitFor(() => {
       expect(document.querySelector(".app-shell")).toMatchObject({
         dataset: {
@@ -4303,12 +4312,46 @@ describe("Control renderer routing", () => {
     expect(await screen.findByRole("heading", { name: "Ashley Rico" })).toBeInTheDocument();
     expect(screen.getByText("Open issues")).toBeInTheDocument();
     expect(screen.getByText("Open PRs")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Latest repository activity" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Contribution activity" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Latest activity" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Activity" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Your work" })).not.toBeInTheDocument();
     expect(screen.queryByText("Followers")).not.toBeInTheDocument();
     expect(screen.queryByText("Following")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /apple \/ swift/i })).not.toBeInTheDocument();
+  });
+
+  it("does not treat repository directory rows as Home account activity", async () => {
+    const viewedRepository = {
+      ...mockRepositories[0],
+      id: "R_golang_go",
+      owner: "golang",
+      name: "go",
+      nameWithOwner: "golang/go",
+      description: "The Go programming language",
+      updatedAt: new Date().toISOString(),
+      pushedAt: new Date().toISOString()
+    };
+
+    useUiStore.setState(defaultUiState);
+    renderControl(
+      makeApi({
+        listRepositories: async () => [viewedRepository, ...mockRepositories],
+        listAccountContributions: async () => mockAccountContributions,
+        listAccountIssues: async () => [],
+        listAccountPullRequests: async () => []
+      })
+    );
+
+    const homeActivity = await screen.findByRole("heading", { name: "Latest activity" });
+    const homePanel = homeActivity.closest(".home-panel");
+    expect(homePanel).not.toBeNull();
+
+    await waitFor(() =>
+      expect(
+        within(homePanel as HTMLElement).getByRole("button", { name: /apple\/swift/i })
+      ).toBeInTheDocument()
+    );
+    expect(within(homePanel as HTMLElement).queryByRole("button", { name: /golang\/go/i })).toBeNull();
   });
 });
 

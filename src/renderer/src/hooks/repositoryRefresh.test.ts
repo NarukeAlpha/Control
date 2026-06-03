@@ -21,6 +21,7 @@ import {
 } from "../components/collection/organizationQueries";
 import { notificationQueryKey } from "../components/collection/notificationUi";
 import { mockControlApi } from "../data/mock";
+import { accountContributionsQueryKey, refreshAccountContributionsData } from "./useAccountContributions";
 import { accountProfileQueryKey, refreshAccountProfileData } from "./useAccountProfile";
 import { accountIssuesQueryKey, accountPullsQueryKey, refreshAccountWorkData } from "./useAccountWork";
 import { refreshMailboxNotificationsData } from "./useMailboxNotifications";
@@ -159,6 +160,9 @@ describe("route refresh helpers", () => {
 
   it("refreshes account work and notifications from cache while offline", async () => {
     const queryClient = makeQueryClient();
+    const listAccountContributionsWithStatus = vi.fn<
+      ControlApi["github"]["listAccountContributionsWithStatus"]
+    >(mockControlApi.github.listAccountContributionsWithStatus);
     const listAccountIssuesWithStatus = vi.fn<ControlApi["github"]["listAccountIssuesWithStatus"]>(
       mockControlApi.github.listAccountIssuesWithStatus
     );
@@ -169,12 +173,19 @@ describe("route refresh helpers", () => {
       mockControlApi.github.listNotificationsWithStatus
     );
     const api = makeApi({
+      listAccountContributionsWithStatus,
       listAccountIssuesWithStatus,
       listAccountPullRequestsWithStatus,
       listNotificationsWithStatus
     });
 
     await Promise.all([
+      refreshAccountContributionsData(queryClient, {
+        api,
+        login: "octocat",
+        limit: 30,
+        githubReady: false
+      }),
       refreshAccountWorkData(queryClient, {
         api,
         login: "octocat",
@@ -189,6 +200,12 @@ describe("route refresh helpers", () => {
       })
     ]);
 
+    expect(listAccountContributionsWithStatus).toHaveBeenCalledWith({
+      login: "octocat",
+      limit: 30,
+      cacheOnly: true,
+      forceRefresh: false
+    });
     expect(listAccountIssuesWithStatus).toHaveBeenCalledWith({
       login: "octocat",
       state: "open",
@@ -212,6 +229,7 @@ describe("route refresh helpers", () => {
     });
     expect(queryClient.getQueryData(accountIssuesQueryKey("octocat", 30))).toBeDefined();
     expect(queryClient.getQueryData(accountPullsQueryKey("octocat", 30))).toBeDefined();
+    expect(queryClient.getQueryData(accountContributionsQueryKey("octocat", 30))).toBeDefined();
     expect(queryClient.getQueryData(notificationQueryKey("participating", 40))).toBeDefined();
   });
 

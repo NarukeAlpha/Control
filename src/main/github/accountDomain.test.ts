@@ -24,6 +24,9 @@ describe("OctokitAccountDomain", () => {
         if (query.includes("AccountRepositories")) {
           return { user: { repositories: { nodes: [repositoryFixture()] } } };
         }
+        if (query.includes("AccountContributions")) {
+          return { user: contributionUserFixture() };
+        }
         throw new Error("Unexpected GraphQL query");
       }
     );
@@ -49,6 +52,16 @@ describe("OctokitAccountDomain", () => {
     );
     await expect(domain.listAccountRepositories({ login: "octocat", limit: 5 })).resolves.toEqual([
       expect.objectContaining({ nameWithOwner: "octocat/control" })
+    ]);
+    await expect(domain.listAccountContributions({ login: "octocat", limit: 4 })).resolves.toEqual([
+      {
+        id: "commit-contribution-octocat/control-2026-05-04T00:00:00Z",
+        repositoryNameWithOwner: "octocat/control",
+        repositoryUrl: "https://github.com/octocat/control",
+        occurredAt: "2026-05-04T00:00:00Z",
+        commitCount: 3,
+        restricted: false
+      }
     ]);
   });
 
@@ -171,6 +184,31 @@ function repositoryFixture(): GitHubRepositoryNode {
     projectsV2: { totalCount: 1 },
     releases: { totalCount: 1 },
     primaryLanguage: { name: "TypeScript", color: "#3178c6" }
+  };
+}
+
+function contributionUserFixture() {
+  return {
+    contributionsCollection: {
+      commitContributionsByRepository: [
+        {
+          repository: {
+            nameWithOwner: "octocat/control",
+            url: "https://github.com/octocat/control"
+          },
+          contributions: {
+            totalCount: 5,
+            nodes: [
+              {
+                occurredAt: "2026-05-04T00:00:00Z",
+                commitCount: 3,
+                isRestricted: false
+              }
+            ]
+          }
+        }
+      ]
+    }
   };
 }
 

@@ -114,6 +114,7 @@ type GitHubOptionalInputAdapter<TMethod> = TMethod extends (input: infer TInput)
 type GitHubIpcOptionalInputKeys =
   | "listRepositoriesWithStatus"
   | "listAccountRepositoriesWithStatus"
+  | "listAccountContributionsWithStatus"
   | "getAccountProfileWithStatus"
   | "listOrganizationsWithStatus"
   | "listAccountIssuesWithStatus"
@@ -327,6 +328,7 @@ export const ipcChannels = {
   githubAccountProfileWithStatus: "github:account-profile-with-status",
   githubRepositoriesWithStatus: "github:repositories-with-status",
   githubAccountRepositoriesWithStatus: "github:account-repositories-with-status",
+  githubAccountContributionsWithStatus: "github:account-contributions-with-status",
   githubOrganizationsWithStatus: "github:organizations-with-status",
   githubOrganizationTeamsWithStatus: "github:organization-teams-with-status",
   githubOrganizationRepositoriesWithStatus: "github:organization-repositories-with-status",
@@ -397,6 +399,7 @@ export const githubIpcRouteChannels = {
   getAccountProfileWithStatus: ipcChannels.githubAccountProfileWithStatus,
   listRepositoriesWithStatus: ipcChannels.githubRepositoriesWithStatus,
   listAccountRepositoriesWithStatus: ipcChannels.githubAccountRepositoriesWithStatus,
+  listAccountContributionsWithStatus: ipcChannels.githubAccountContributionsWithStatus,
   listOrganizationsWithStatus: ipcChannels.githubOrganizationsWithStatus,
   listOrganizationTeamsWithStatus: ipcChannels.githubOrganizationTeamsWithStatus,
   listOrganizationRepositoriesWithStatus: ipcChannels.githubOrganizationRepositoriesWithStatus,

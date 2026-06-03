@@ -17,7 +17,12 @@ export { mockProjects } from "./mocks/projects";
 export { mockPullRequests, mockTeams } from "./mocks/pulls";
 export { mockBranches, mockCommits, mockTags, mockTree } from "./mocks/refs";
 export { mockReleases } from "./mocks/releases";
-export { mockAccountProfile, mockRepositories, mockRepository } from "./mocks/repository";
+export {
+  mockAccountContributions,
+  mockAccountProfile,
+  mockRepositories,
+  mockRepository
+} from "./mocks/repository";
 export {
   mockBranchProtection,
   mockCodeScanningAlerts,

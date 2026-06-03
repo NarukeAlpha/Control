@@ -33,6 +33,9 @@ type GitHubRawReadTestApi = Omit<
     listAccountRepositories(
       input?: Parameters<ControlApi["github"]["listAccountRepositoriesWithStatus"]>[0]
     ): Promise<Awaited<ReturnType<ControlApi["github"]["listAccountRepositoriesWithStatus"]>>["items"]>;
+    listAccountContributions(
+      input?: Parameters<ControlApi["github"]["listAccountContributionsWithStatus"]>[0]
+    ): Promise<Awaited<ReturnType<ControlApi["github"]["listAccountContributionsWithStatus"]>>["items"]>;
     listOrganizations(
       input?: Parameters<ControlApi["github"]["listOrganizationsWithStatus"]>[0]
     ): Promise<Awaited<ReturnType<ControlApi["github"]["listOrganizationsWithStatus"]>>["items"]>;
@@ -168,6 +171,12 @@ export function makeApi(overrides: Partial<GitHubTestApi> = {}): ControlApi {
   if (overrides.listAccountRepositories && !overrides.listAccountRepositoriesWithStatus) {
     github.listAccountRepositoriesWithStatus = async (input = {}) => ({
       items: await overrides.listAccountRepositories!(input),
+      availability: available
+    });
+  }
+  if (overrides.listAccountContributions && !overrides.listAccountContributionsWithStatus) {
+    github.listAccountContributionsWithStatus = async (input = {}) => ({
+      items: await overrides.listAccountContributions!(input),
       availability: available
     });
   }

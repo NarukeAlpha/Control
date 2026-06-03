@@ -1,4 +1,7 @@
 import type {
+  AccountContributionListInput,
+  AccountContributionListResult,
+  AccountCommitContributionSummary,
   AccountIssueListInput,
   AccountIssueListResult,
   AccountProfileInput,
@@ -251,6 +254,7 @@ interface GitHubRawReadProvider extends GitHubProvider {
   getAccountProfile(input?: AccountProfileInput): Promise<GitHubAccountProfile>;
   listRepositories(input: RepoListInput): Promise<RepositorySummary[]>;
   listAccountRepositories(input: AccountRepositoryInput): Promise<RepositorySummary[]>;
+  listAccountContributions(input: AccountContributionListInput): Promise<AccountCommitContributionSummary[]>;
   listOrganizations(input: OrganizationListInput): Promise<OrganizationSummary[]>;
   listOrganizationTeams(input: OrganizationTeamsInput): Promise<TeamSummary[]>;
   listAccountIssues(input: AccountIssueListInput): Promise<IssueSummary[]>;
@@ -690,6 +694,35 @@ export class GitHubProviderManager implements GitHubProvider {
       cacheTtlMs.organizationDirectory,
       async () => (await this.provider()).listOrganizations(input),
       { forceRefresh: input.forceRefresh, cacheOnly: input.cacheOnly }
+    );
+  }
+
+  async listAccountContributions(
+    input: AccountContributionListInput = {}
+  ): Promise<AccountCommitContributionSummary[]> {
+    const normalizedInput = this.withViewerLogin(input);
+    const key = `account-contributions:${normalizedInput.login ?? "viewer"}:${normalizedInput.limit ?? 12}`;
+    return this.withCache(
+      key,
+      cacheTtlMs.accountWork,
+      async () => (await this.provider()).listAccountContributions(normalizedInput),
+      {
+        forceRefresh: normalizedInput.forceRefresh,
+        cacheOnly: normalizedInput.cacheOnly
+      }
+    );
+  }
+
+  async listAccountContributionsWithStatus(
+    input: AccountContributionListInput = {}
+  ): Promise<AccountContributionListResult> {
+    const normalizedInput = this.withViewerLogin(input);
+    const key = `account-contributions-with-status:${normalizedInput.login ?? "viewer"}:${normalizedInput.limit ?? 12}`;
+    return this.withListStatusCache(
+      key,
+      cacheTtlMs.accountWork,
+      async () => (await this.provider()).listAccountContributionsWithStatus(normalizedInput),
+      { forceRefresh: normalizedInput.forceRefresh, cacheOnly: normalizedInput.cacheOnly }
     );
   }
 

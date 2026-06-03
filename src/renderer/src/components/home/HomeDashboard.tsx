@@ -2,6 +2,7 @@ import { CircleDot, Code2, ExternalLink, GitPullRequest } from "lucide-react";
 import type { JSX } from "react";
 
 import type {
+  AccountCommitContributionSummary,
   AppState,
   GitHubAccountProfile,
   GitHubReadAvailability,
@@ -13,11 +14,9 @@ import type {
 import {
   displayRepositoryName,
   displayRepositoryShortcutName,
-  maxRepositoryListLimit,
   repositoryShortcutChips,
   repositoryShortcutMetadataParts,
   repositoryShortcutsFromPins,
-  sortRepositoriesByActivity,
   type RepositoryShortcut
 } from "../repository/repositorySearch";
 import { readAvailabilityMessage } from "../repository/repositoryUi";
@@ -70,12 +69,12 @@ interface HomeActivityRepositoryStat {
 
 type HomeTimelineItem =
   | {
-      kind: "repository";
+      kind: "contribution";
       id: string;
       title: string;
       subtitle: string;
-      date: string | null;
-      repository: RepositorySummary;
+      date: string;
+      contribution: AccountCommitContributionSummary;
     }
   | {
       kind: "pull";
@@ -99,11 +98,11 @@ interface HomeDashboardProps {
   profile?: GitHubAccountProfile;
   profileAvailabilityMessage: string | null;
   repositories: RepositorySummary[];
-  repositoryActivityLimit: number;
-  repositoriesLoading: boolean;
-  repositoriesError: Error | null;
-  repositoriesAvailabilityMessage: string | null;
   pinnedRepositoryNames: string[];
+  contributions: AccountCommitContributionSummary[];
+  contributionsLoading: boolean;
+  contributionsError: Error | null;
+  contributionsAvailability: GitHubReadAvailability | null;
   issues: IssueSummary[];
   issuesLoading: boolean;
   issuesError: Error | null;
@@ -113,7 +112,6 @@ interface HomeDashboardProps {
   pullsError: Error | null;
   pullsAvailability: GitHubReadAvailability | null;
   onOpenRepository(nameWithOwner: string): void;
-  onLoadMoreRepositories(): void;
   onOpenIssue(issue: IssueSummary): void;
   onOpenPullRequest(pullRequest: PullRequestSummary): void;
   onOpenExternal(url: string): void;
@@ -136,9 +134,6 @@ interface HomeDashboardModel {
 }
 
 interface HomeActivityModel {
-  latestRepositories: RepositorySummary[];
-  canLoadMoreRepositories: boolean;
-  repositoriesAtLoadedLimit: boolean;
   contributionCalendar: HomeContributionCalendarView;
   contributionGridColumns: string;
   contributionHeading: string;
@@ -188,13 +183,13 @@ function homeContributionLevel(count: number): number {
   return count;
 }
 
-function homeContributionLabel(count: number, date: string, label: "contribution" | "update"): string {
+function homeContributionLabel(count: number, date: string, label: "contribution" | "activity"): string {
   const formattedDate = homeContributionDateFormatter.format(homeDateFromDayKey(date));
 
   if (count === 0) {
     return label === "contribution"
       ? `No contributions on ${formattedDate}`
-      : `No updates on ${formattedDate}`;
+      : `No activity on ${formattedDate}`;
   }
 
   const countLabel = count === 1 ? `1 ${label}` : `${count} ${label}s`;
@@ -270,7 +265,7 @@ function buildHomeContributionFallbackCells(
       count,
       level,
       color: homeContributionColors[level],
-      label: homeContributionLabel(count, key, "update")
+      label: homeContributionLabel(count, key, "activity")
     };
   });
 }
@@ -354,29 +349,34 @@ function homeRepositoryShortcutMetadataParts(repository: RepositoryShortcut): st
 }
 
 function buildHomeActivityTimelineItems({
-  latestRepositories,
+  contributions,
+  repositories,
   pulls,
   issues,
   login
 }: {
-  latestRepositories: RepositorySummary[];
+  contributions: AccountCommitContributionSummary[];
+  repositories: RepositorySummary[];
   pulls: PullRequestSummary[];
   issues: IssueSummary[];
   login: string;
 }): HomeTimelineItem[] {
   const timelineItems: HomeTimelineItem[] = [];
+  const repositoryByName = new Map(repositories.map((repository) => [repository.nameWithOwner, repository]));
 
-  for (const repository of latestRepositories) {
+  for (const contribution of contributions) {
+    const repository = repositoryByName.get(contribution.repositoryNameWithOwner);
+    const displayName = repository
+      ? displayRepositoryName(repository, login)
+      : contribution.repositoryNameWithOwner;
+    const commitLabel = contribution.commitCount === 1 ? "1 commit" : `${contribution.commitCount} commits`;
     timelineItems.push({
-      kind: "repository",
-      id: `repository-${repository.id}`,
-      title: displayRepositoryName(repository, login),
-      subtitle:
-        repository.owner.toLowerCase() === login.toLowerCase()
-          ? (repository.description ?? "Repository")
-          : repository.nameWithOwner,
-      date: repository.pushedAt ?? repository.updatedAt,
-      repository
+      kind: "contribution",
+      id: contribution.id,
+      title: displayName,
+      subtitle: contribution.restricted ? `Private contribution · ${commitLabel}` : commitLabel,
+      date: contribution.occurredAt,
+      contribution
     });
   }
 
@@ -408,18 +408,18 @@ function buildHomeActivityTimelineItems({
 }
 
 function buildHomeActivityDates({
-  latestRepositories,
+  contributions,
   pulls,
   issues
 }: {
-  latestRepositories: RepositorySummary[];
+  contributions: AccountCommitContributionSummary[];
   pulls: PullRequestSummary[];
   issues: IssueSummary[];
 }): Array<string | null | undefined> {
   const dates: Array<string | null | undefined> = [];
 
-  for (const repository of latestRepositories) {
-    dates.push(repository.pushedAt ?? repository.updatedAt);
+  for (const contribution of contributions) {
+    dates.push(contribution.occurredAt);
   }
   for (const pull of pulls) {
     dates.push(pull.updatedAt);
@@ -432,13 +432,13 @@ function buildHomeActivityDates({
 }
 
 function buildHomeActivityRepositoryStats({
-  latestRepositories,
+  contributions,
   pulls,
   issues,
   repositories,
   login
 }: {
-  latestRepositories: RepositorySummary[];
+  contributions: AccountCommitContributionSummary[];
   pulls: PullRequestSummary[];
   issues: IssueSummary[];
   repositories: RepositorySummary[];
@@ -470,8 +470,12 @@ function buildHomeActivityRepositoryStats({
     });
   };
 
-  for (const repository of latestRepositories) {
-    upsertActivityRepository(repository.nameWithOwner, 1, repository.pushedAt ?? repository.updatedAt);
+  for (const contribution of contributions) {
+    upsertActivityRepository(
+      contribution.repositoryNameWithOwner,
+      contribution.commitCount,
+      contribution.occurredAt
+    );
   }
   for (const pull of pulls) {
     upsertActivityRepository(pull.repositoryNameWithOwner, 1, pull.updatedAt);
@@ -494,10 +498,10 @@ function buildHomeActivityRepositoryStats({
 function buildHomeActivityModel({
   profile,
   repositories,
-  repositoryActivityLimit,
-  repositoriesLoading,
-  repositoriesError,
-  repositoriesAvailabilityMessage,
+  contributions,
+  contributionsLoading,
+  contributionsError,
+  contributionsAvailability,
   issues,
   issuesLoading,
   issuesError,
@@ -508,21 +512,14 @@ function buildHomeActivityModel({
   pullsAvailability,
   login
 }: HomeDashboardProps & { login: string }): HomeActivityModel {
-  const sortedRepositories = sortRepositoriesByActivity(repositories);
-  const visibleRepositoryLimit = Math.min(
-    repositoryActivityLimit,
-    sortedRepositories.length,
-    maxRepositoryListLimit
-  );
-  const latestRepositories = sortedRepositories.slice(0, visibleRepositoryLimit);
-  const canLoadMoreRepositories =
-    sortedRepositories.length > latestRepositories.length && repositoryActivityLimit < maxRepositoryListLimit;
-  const repositoriesAtLoadedLimit =
-    !canLoadMoreRepositories &&
-    sortedRepositories.length > 0 &&
-    latestRepositories.length >= Math.min(sortedRepositories.length, maxRepositoryListLimit);
-  const activityTimelineItems = buildHomeActivityTimelineItems({ latestRepositories, pulls, issues, login });
-  const activityDates = buildHomeActivityDates({ latestRepositories, pulls, issues });
+  const activityTimelineItems = buildHomeActivityTimelineItems({
+    contributions,
+    repositories,
+    pulls,
+    issues,
+    login
+  });
+  const activityDates = buildHomeActivityDates({ contributions, pulls, issues });
   const contributionCalendar = buildHomeContributionCalendarView(
     profile?.contributionCalendar,
     activityDates
@@ -530,7 +527,7 @@ function buildHomeActivityModel({
   const contributionWeekCount = Math.max(1, Math.ceil(contributionCalendar.cells.length / 7));
   const totalActivityUpdates = contributionCalendar.totalContributions;
   const topActivityRepositories = buildHomeActivityRepositoryStats({
-    latestRepositories,
+    contributions,
     pulls,
     issues,
     repositories,
@@ -542,26 +539,23 @@ function buildHomeActivityModel({
   );
 
   return {
-    latestRepositories,
-    canLoadMoreRepositories,
-    repositoriesAtLoadedLimit,
     contributionCalendar,
     contributionGridColumns: `repeat(${contributionWeekCount}, 10px)`,
     contributionHeading: contributionCalendar.exact
       ? `${formatCompactNumber(totalActivityUpdates)} contributions in the last year`
-      : `${formatCompactNumber(totalActivityUpdates)} visible updates`,
+      : `${formatCompactNumber(totalActivityUpdates)} visible activity events`,
     activeContributionDays: contributionCalendar.activeDays,
     topActivityRepositories,
     maxActivityRepositoryCount,
     activityTimelineItems,
-    activityLoading: repositoriesLoading || issuesLoading || pullsLoading,
+    activityLoading: contributionsLoading || issuesLoading || pullsLoading,
     activityErrors: [
-      repositoriesError ? `Repositories unavailable: ${repositoriesError.message}` : null,
+      contributionsError ? `Contributions unavailable: ${contributionsError.message}` : null,
       issuesError ? `Issues unavailable: ${issuesError.message}` : null,
       pullsError ? `Pull requests unavailable: ${pullsError.message}` : null
     ].filter((message): message is string => Boolean(message)),
     activityAvailabilityMessages: [
-      repositoriesAvailabilityMessage,
+      readAvailabilityMessage("Account contributions", contributionsAvailability),
       readAvailabilityMessage("Account issues", issuesAvailability),
       readAvailabilityMessage("Account pull requests", pullsAvailability)
     ].filter((message): message is string => Boolean(message)),
@@ -615,7 +609,6 @@ export function HomeDashboard(props: HomeDashboardProps): JSX.Element {
         />
         <HomeActivityPanel
           activity={model.activity}
-          onLoadMoreRepositories={props.onLoadMoreRepositories}
           onOpenIssue={props.onOpenIssue}
           onOpenPullRequest={props.onOpenPullRequest}
           onOpenRepository={props.onOpenRepository}
@@ -737,13 +730,11 @@ function PinnedRepositoryCard({
 
 function HomeActivityPanel({
   activity,
-  onLoadMoreRepositories,
   onOpenRepository,
   onOpenIssue,
   onOpenPullRequest
 }: {
   activity: HomeActivityModel;
-  onLoadMoreRepositories(): void;
   onOpenRepository(nameWithOwner: string): void;
   onOpenIssue(issue: IssueSummary): void;
   onOpenPullRequest(pullRequest: PullRequestSummary): void;
@@ -751,7 +742,7 @@ function HomeActivityPanel({
   return (
     <article className="home-panel home-activity-panel">
       <header>
-        <h2>Latest repository activity</h2>
+        <h2>Latest activity</h2>
       </header>
       <div className="home-activity-overview">
         <HomeContributionGraph activity={activity} />
@@ -759,7 +750,6 @@ function HomeActivityPanel({
       </div>
       <HomeActivityTimeline
         activity={activity}
-        onLoadMoreRepositories={onLoadMoreRepositories}
         onOpenIssue={onOpenIssue}
         onOpenPullRequest={onOpenPullRequest}
         onOpenRepository={onOpenRepository}
@@ -795,7 +785,7 @@ function HomeContributionGraph({ activity }: { activity: HomeActivityModel }): J
         <div
           className="home-contribution-grid"
           style={contributionGridStyle}
-          aria-label="Contribution activity in the last year"
+          aria-label="Activity in the last year"
         >
           {activity.contributionCalendar.cells.map((cell) => (
             <HomeContributionCellMarker key={`${cell.date}-${cell.weekday}`} cell={cell} />
@@ -857,7 +847,7 @@ function HomeActivityRepositorySummary({ activity }: { activity: HomeActivityMod
           ))}
         </div>
       ) : (
-        <p className="muted-row">No repository activity loaded.</p>
+        <p className="muted-row">No activity loaded.</p>
       )}
     </section>
   );
@@ -877,7 +867,7 @@ function HomeActivityRepositoryBar({
       <div>
         <strong>{repository.displayName}</strong>
         <small>
-          {repository.latestAt ? `updated ${formatRelativeDate(repository.latestAt)}` : "Repository activity"}
+          {repository.latestAt ? `active ${formatRelativeDate(repository.latestAt)}` : "Activity"}
         </small>
       </div>
       <span className="home-activity-bar-track" aria-hidden="true">
@@ -890,13 +880,11 @@ function HomeActivityRepositoryBar({
 
 function HomeActivityTimeline({
   activity,
-  onLoadMoreRepositories,
   onOpenRepository,
   onOpenIssue,
   onOpenPullRequest
 }: {
   activity: HomeActivityModel;
-  onLoadMoreRepositories(): void;
   onOpenRepository(nameWithOwner: string): void;
   onOpenIssue(issue: IssueSummary): void;
   onOpenPullRequest(pullRequest: PullRequestSummary): void;
@@ -908,13 +896,13 @@ function HomeActivityTimeline({
     activity.activityTimelineItems.length === 0;
 
   return (
-    <section className="home-activity-timeline" aria-label="Contribution activity">
+    <section className="home-activity-timeline" aria-label="Activity">
       <div className="home-activity-timeline-heading">
-        <h3>Contribution activity</h3>
+        <h3>Activity</h3>
         <span>{activity.timelineMonthLabel}</span>
       </div>
       {activity.activityLoading && activity.activityTimelineItems.length === 0 && (
-        <div className="loading-state">Loading repository activity…</div>
+        <div className="loading-state">Loading activity...</div>
       )}
       {activity.activityErrors.map((message) => (
         <div className="error-state" key={message}>
@@ -936,18 +924,6 @@ function HomeActivityTimeline({
         />
       ))}
       {showEmptyState && <div className="empty-state">No activity loaded.</div>}
-      {activity.canLoadMoreRepositories && (
-        <div className="table-action-row">
-          <button type="button" onClick={onLoadMoreRepositories}>
-            Load more repository activity
-          </button>
-        </div>
-      )}
-      {activity.repositoriesAtLoadedLimit && (
-        <div className="muted-row">
-          Showing {activity.latestRepositories.length} loaded repositories for Home.
-        </div>
-      )}
     </section>
   );
 }
@@ -964,7 +940,7 @@ function HomeActivityTimelineRow({
   onOpenPullRequest(pullRequest: PullRequestSummary): void;
 }): JSX.Element {
   const icon =
-    item.kind === "repository" ? (
+    item.kind === "contribution" ? (
       <Code2 size={16} />
     ) : item.kind === "pull" ? (
       <GitPullRequest size={16} />
@@ -972,15 +948,15 @@ function HomeActivityTimelineRow({
       <CircleDot size={16} />
     );
   const ariaLabel =
-    item.kind === "repository"
-      ? `Open ${item.repository.nameWithOwner}`
+    item.kind === "contribution"
+      ? `Open ${item.contribution.repositoryNameWithOwner}`
       : item.kind === "pull"
         ? `Open pull request #${item.pull.number}: ${item.pull.title}`
         : `Open issue #${item.issue.number}: ${item.issue.title}`;
 
   function openTimelineItem(): void {
-    if (item.kind === "repository") {
-      onOpenRepository(item.repository.nameWithOwner);
+    if (item.kind === "contribution") {
+      onOpenRepository(item.contribution.repositoryNameWithOwner);
       return;
     }
     if (item.kind === "pull") {

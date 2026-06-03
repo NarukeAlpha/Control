@@ -85,6 +85,8 @@ const controlApi: ControlApi = {
       invoke(githubIpcRouteChannels.listRepositoriesWithStatus, input),
     listAccountRepositoriesWithStatus: (input = {}) =>
       invoke(githubIpcRouteChannels.listAccountRepositoriesWithStatus, input),
+    listAccountContributionsWithStatus: (input = {}) =>
+      invoke(githubIpcRouteChannels.listAccountContributionsWithStatus, input),
     listOrganizationsWithStatus: (input = {}) =>
       invoke(githubIpcRouteChannels.listOrganizationsWithStatus, input),
     listOrganizationTeamsWithStatus: (input) =>

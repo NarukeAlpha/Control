@@ -1,4 +1,5 @@
 import type {
+  AccountCommitContributionSummary,
   GitHubAccountProfile,
   GitHubMutationInput,
   RepositoryDetail,
@@ -373,6 +374,25 @@ export const mockRepositories: RepositorySummary[] = [
     pushedAt: new Date(Date.now() - 172_800_000).toISOString(),
     avatarUrl: mockAvatarUrl,
     defaultBranch: "main"
+  }
+];
+
+export const mockAccountContributions: AccountCommitContributionSummary[] = [
+  {
+    id: "commit-contribution-apple/swift",
+    repositoryNameWithOwner: "apple/swift",
+    repositoryUrl: "https://github.com/apple/swift",
+    occurredAt: new Date(Date.now() - 7_200_000).toISOString(),
+    commitCount: 3,
+    restricted: false
+  },
+  {
+    id: "commit-contribution-apple/open-source",
+    repositoryNameWithOwner: "apple/open-source",
+    repositoryUrl: "https://github.com/apple/open-source",
+    occurredAt: new Date(Date.now() - 86_400_000).toISOString(),
+    commitCount: 1,
+    restricted: false
   }
 ];
 

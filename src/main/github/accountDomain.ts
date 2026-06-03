@@ -1,4 +1,7 @@
 import type {
+  AccountCommitContributionSummary,
+  AccountContributionListInput,
+  AccountContributionListResult,
   AccountIssueListInput,
   AccountIssueListResult,
   AccountProfileInput,
@@ -218,6 +221,61 @@ export class OctokitAccountDomain {
     }
   }
 
+  async listAccountContributions(
+    input: AccountContributionListInput = {}
+  ): Promise<AccountCommitContributionSummary[]> {
+    const limit = input.limit ?? 12;
+    const login = input.login ?? (await this.getViewer()).login;
+    const data = await this.client.graphql<{ user: GitHubContributionUserNode | null }>(
+      `
+      query AccountContributions($login: String!, $limit: Int!) {
+        user(login: $login) {
+          contributionsCollection {
+            commitContributionsByRepository(maxRepositories: $limit) {
+              repository {
+                nameWithOwner
+                url
+              }
+              contributions(first: 1, orderBy: { field: OCCURRED_AT, direction: DESC }) {
+                totalCount
+                nodes {
+                  occurredAt
+                  commitCount
+                  isRestricted
+                }
+              }
+            }
+          }
+        }
+      }
+    `,
+      { login, limit }
+    );
+
+    return (
+      data.user?.contributionsCollection.commitContributionsByRepository
+        .flatMap(mapCommitContributionsByRepository)
+        .sort((a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt))
+        .slice(0, limit) ?? []
+    );
+  }
+
+  async listAccountContributionsWithStatus(
+    input: AccountContributionListInput = {}
+  ): Promise<AccountContributionListResult> {
+    try {
+      return {
+        items: await this.listAccountContributions(input),
+        availability: { status: "available", message: null }
+      };
+    } catch (error: unknown) {
+      return {
+        items: [],
+        availability: this.mapError(error)
+      };
+    }
+  }
+
   async listAccountIssues(input: AccountIssueListInput = {}): Promise<IssueSummary[]> {
     const limit = input.limit ?? 30;
     const login = input.login ?? (await this.getViewer()).login;
@@ -390,6 +448,26 @@ function mapContributionCalendar(
   };
 }
 
+function mapCommitContributionsByRepository(
+  item: GitHubCommitContributionsByRepositoryNode
+): AccountCommitContributionSummary[] {
+  const contribution = item.contributions.nodes[0];
+  if (!contribution) {
+    return [];
+  }
+
+  return [
+    {
+      id: `commit-contribution-${item.repository.nameWithOwner}-${contribution.occurredAt}`,
+      repositoryNameWithOwner: item.repository.nameWithOwner,
+      repositoryUrl: item.repository.url,
+      occurredAt: contribution.occurredAt,
+      commitCount: contribution.commitCount || item.contributions.totalCount,
+      restricted: contribution.isRestricted
+    }
+  ];
+}
+
 function mapGraphqlAssignableUser(user: GitHubGraphqlAssignableUser) {
   return {
     id: user.id,
@@ -523,6 +601,27 @@ interface GitHubProfileNode {
   status: { emoji: string | null; message: string | null } | null;
   contributionsCollection?: { contributionCalendar: GitHubContributionCalendarNode | null } | null;
   pinnedItems: { nodes: GitHubRepositoryNode[] };
+}
+
+interface GitHubContributionUserNode {
+  contributionsCollection: {
+    commitContributionsByRepository: GitHubCommitContributionsByRepositoryNode[];
+  };
+}
+
+interface GitHubCommitContributionsByRepositoryNode {
+  repository: {
+    nameWithOwner: string;
+    url: string;
+  };
+  contributions: {
+    totalCount: number;
+    nodes: Array<{
+      occurredAt: string;
+      commitCount: number;
+      isRestricted: boolean;
+    }>;
+  };
 }
 
 interface GitHubGraphqlAssignableUser {

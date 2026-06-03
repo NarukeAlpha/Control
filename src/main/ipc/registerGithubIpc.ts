@@ -1,4 +1,5 @@
 import {
+  AccountContributionListInput,
   AccountIssueListInput,
   AccountProfileInput,
   AccountPullRequestListInput,
@@ -94,6 +95,7 @@ type GitHubIpcDependencies = Pick<
   | "getAccountProfileWithStatus"
   | "listRepositoriesWithStatus"
   | "listAccountRepositoriesWithStatus"
+  | "listAccountContributionsWithStatus"
   | "listOrganizationsWithStatus"
   | "listOrganizationTeamsWithStatus"
   | "listOrganizationRepositoriesWithStatus"
@@ -162,6 +164,7 @@ export const registeredGithubIpcRouteKeys = [
   "getAccountProfileWithStatus",
   "listRepositoriesWithStatus",
   "listAccountRepositoriesWithStatus",
+  "listAccountContributionsWithStatus",
   "listOrganizationsWithStatus",
   "listOrganizationTeamsWithStatus",
   "listOrganizationRepositoriesWithStatus",
@@ -325,6 +328,14 @@ export function createGithubIpcRoutes(github: GitHubIpcDependencies): IpcInvokeR
       channel: githubIpcRouteChannels.listAccountRepositoriesWithStatus,
       parse: ([input]) => requireOptionalReadInput<AccountRepositoryInput>(input),
       handle: (input) => github.listAccountRepositoriesWithStatus(input)
+    }),
+    createIpcInvokeRoute<
+      AccountContributionListInput,
+      ReturnType<GitHubIpcDependencies["listAccountContributionsWithStatus"]>
+    >({
+      channel: githubIpcRouteChannels.listAccountContributionsWithStatus,
+      parse: ([input]) => requireOptionalReadInput<AccountContributionListInput>(input),
+      handle: (input) => github.listAccountContributionsWithStatus(input)
     }),
     createIpcInvokeRoute({
       channel: githubIpcRouteChannels.listOrganizationsWithStatus,

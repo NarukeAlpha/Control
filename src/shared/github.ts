@@ -359,6 +359,17 @@ export type RepositoryListResult = GitHubListResult<RepositorySummary>;
 
 export type AccountRepositoryListResult = GitHubListResult<RepositorySummary>;
 
+export interface AccountCommitContributionSummary {
+  id: string;
+  repositoryNameWithOwner: string;
+  repositoryUrl: string;
+  occurredAt: string;
+  commitCount: number;
+  restricted: boolean;
+}
+
+export type AccountContributionListResult = GitHubListResult<AccountCommitContributionSummary>;
+
 export type RepositorySearchResult = GitHubListResult<RepositorySummary>;
 
 export interface AccountProfileInput {
@@ -377,6 +388,13 @@ export interface AccountRepositoryInput {
   limit?: number;
   cacheOnly?: boolean;
   forceRefresh?: boolean;
+}
+
+export interface AccountContributionListInput {
+  login?: string | null;
+  limit?: number;
+  forceRefresh?: boolean;
+  cacheOnly?: boolean;
 }
 
 export interface OrganizationListInput {
@@ -2129,6 +2147,9 @@ export interface GitHubProvider {
   getAccountProfileWithStatus(input?: AccountProfileInput): Promise<AccountProfileResult>;
   listRepositoriesWithStatus(input: RepoListInput): Promise<RepositoryListResult>;
   listAccountRepositoriesWithStatus(input: AccountRepositoryInput): Promise<AccountRepositoryListResult>;
+  listAccountContributionsWithStatus(
+    input?: AccountContributionListInput
+  ): Promise<AccountContributionListResult>;
   listOrganizationsWithStatus(input?: OrganizationListInput): Promise<OrganizationListResult>;
   listOrganizationTeamsWithStatus(input: OrganizationTeamsInput): Promise<OrganizationTeamsResult>;
   listOrganizationRepositoriesWithStatus(

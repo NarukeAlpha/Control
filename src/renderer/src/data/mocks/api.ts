@@ -1,4 +1,5 @@
 import type {
+  AccountContributionListResult,
   AccountProfileResult,
   AccountRepositoryListResult,
   AppState,
@@ -83,6 +84,7 @@ import {
   listMockPinnedRepositories,
   listMockRecentItems,
   listMockRepositoryPins,
+  mockAccountContributions,
   mockAccountProfile,
   mockRepositories,
   mockRepository,
@@ -468,6 +470,10 @@ export const mockControlApi: ControlApi = {
     }),
     listAccountRepositoriesWithStatus: async (): Promise<AccountRepositoryListResult> => ({
       items: mockRepositories,
+      availability: mockAvailable
+    }),
+    listAccountContributionsWithStatus: async (): Promise<AccountContributionListResult> => ({
+      items: mockAccountContributions,
       availability: mockAvailable
     }),
     listOrganizationsWithStatus: async (): Promise<OrganizationListResult> => ({

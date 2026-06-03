@@ -8,7 +8,6 @@ import {
 import { maxRepositoryListLimit } from "../components/repository/repositorySearch";
 
 const defaultRepositoryListLimit = 80;
-const defaultHomeRepositoryActivityLimit = 6;
 const defaultRecentItemLimit = 12;
 
 interface UseCollectionSurfaceStateInput {
@@ -17,8 +16,6 @@ interface UseCollectionSurfaceStateInput {
 
 interface UseCollectionSurfaceStateResult {
   repositoryListLimit: number;
-  homeRepositoryActivityLimit: number;
-  homeWorkLimit: number;
   mailboxWorkLimit: number;
   mailboxNotificationLimits: Partial<Record<MailboxNotificationFilter, number>>;
   recentItemLimit: number;
@@ -28,8 +25,6 @@ interface UseCollectionSurfaceStateResult {
   maxHomeWorkLimit: number;
   setNotificationFilter: (filter: MailboxNotificationFilter) => void;
   expandMailboxWork: () => void;
-  loadMoreHomeWork: () => void;
-  loadMoreHomeRepositoryActivity: (repositoryItemCount: number) => void;
   expandMailboxNotifications: () => void;
   expandRepositoryList: () => void;
 }
@@ -38,10 +33,6 @@ export function useCollectionSurfaceState({
   activeRouteKind
 }: UseCollectionSurfaceStateInput): UseCollectionSurfaceStateResult {
   const [repositoryListLimit, setRepositoryListLimit] = useState(defaultRepositoryListLimit);
-  const [homeRepositoryActivityLimit, setHomeRepositoryActivityLimit] = useState(
-    defaultHomeRepositoryActivityLimit
-  );
-  const [homeWorkLimit, setHomeWorkLimit] = useState(8);
   const [mailboxWorkLimit, setMailboxWorkLimit] = useState(defaultMailboxListLimit);
   const [mailboxNotificationLimits, setMailboxNotificationLimits] = useState<
     Partial<Record<MailboxNotificationFilter, number>>
@@ -58,21 +49,6 @@ export function useCollectionSurfaceState({
       }
 
       return currentLimit < 50 ? 50 : maxMailboxListLimit;
-    });
-  };
-
-  const loadMoreHomeWork = (): void => {
-    setHomeWorkLimit(defaultMailboxListLimit);
-  };
-
-  const loadMoreHomeRepositoryActivity = (repositoryItemCount: number): void => {
-    setHomeRepositoryActivityLimit((currentLimit) => {
-      const loadedRepositoryLimit = Math.min(repositoryItemCount || currentLimit, maxRepositoryListLimit);
-      if (currentLimit >= loadedRepositoryLimit) {
-        return currentLimit;
-      }
-
-      return Math.min(currentLimit + defaultHomeRepositoryActivityLimit, loadedRepositoryLimit);
     });
   };
 
@@ -100,8 +76,6 @@ export function useCollectionSurfaceState({
 
   return {
     repositoryListLimit,
-    homeRepositoryActivityLimit,
-    homeWorkLimit,
     mailboxWorkLimit,
     mailboxNotificationLimits,
     recentItemLimit: defaultRecentItemLimit,
@@ -111,8 +85,6 @@ export function useCollectionSurfaceState({
     maxHomeWorkLimit: defaultMailboxListLimit,
     setNotificationFilter,
     expandMailboxWork,
-    loadMoreHomeWork,
-    loadMoreHomeRepositoryActivity,
     expandMailboxNotifications,
     expandRepositoryList
   };

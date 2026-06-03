@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 
 import type { MailboxNotificationFilter } from "../components/collection/notificationUi";
+import { refreshAccountContributionsData } from "./useAccountContributions";
 import { refreshAccountProfileData } from "./useAccountProfile";
 import { refreshAccountWorkData } from "./useAccountWork";
 import { useControlApi } from "./useControlApi";
@@ -49,6 +50,12 @@ export function useCollectionRefreshActions({
       await Promise.all([
         refreshAccountProfileData(queryClient, { api, githubReady }),
         refreshRepositoryDirectoryData(queryClient, { api, limit: repositoryListLimit, githubReady }),
+        refreshAccountContributionsData(queryClient, {
+          api,
+          login: authenticatedViewerLogin,
+          limit: homeRefreshWorkLimit,
+          githubReady
+        }),
         refreshAccountWorkData(queryClient, {
           api,
           login: authenticatedViewerLogin,

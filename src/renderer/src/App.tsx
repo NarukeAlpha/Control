@@ -1077,6 +1077,7 @@ function AppShellDialogHost({ state }: { state: AppShellState }): JSX.Element {
       appState={state.appState.data}
       authController={state.providerAuth.github}
       settingsOpen={state.settingsOpen}
+      systemColorScheme={state.resolvedTheme.resolvedMode}
       route={state.route}
       repository={state.repositoryDetail}
       repositoryTree={state.repositoryTreeItem}

@@ -23,7 +23,7 @@ import { readAvailabilityMessage } from "../repository/repositoryUi";
 import { formatCompactNumber, formatRelativeDate } from "../../utils/format";
 
 const homeContributionWeekCount = 53;
-const homeContributionColors = ["#ebedf0", "#9be9a8", "#40c463", "#30a14e", "#216e39"] as const;
+const homeContributionLevels = [0, 1, 2, 3, 4] as const;
 const homeContributionDateFormatter = new Intl.DateTimeFormat("en", {
   month: "short",
   day: "numeric"
@@ -43,7 +43,6 @@ interface HomeContributionCell {
   label: string;
   count: number;
   level: number;
-  color: string | null;
 }
 
 interface HomeContributionMonthLabel {
@@ -219,7 +218,6 @@ function buildHomeContributionCells(
         weekday,
         count,
         level,
-        color: day?.color ?? homeContributionColors[level],
         label: homeContributionLabel(count, date, "contribution")
       };
     });
@@ -264,7 +262,6 @@ function buildHomeContributionFallbackCells(
       weekday: date.getDay(),
       count,
       level,
-      color: homeContributionColors[level],
       label: homeContributionLabel(count, key, "activity")
     };
   });
@@ -804,13 +801,10 @@ function HomeContributionMonthMarker({ label }: { label: HomeContributionMonthLa
 }
 
 function HomeContributionCellMarker({ cell }: { cell: HomeContributionCell }): JSX.Element {
-  const style = { backgroundColor: cell.color ?? undefined };
-
   return (
     <span
       aria-label={cell.label}
       className={`home-contribution-cell level-${cell.level}`}
-      style={style}
       title={cell.label}
     />
   );
@@ -820,12 +814,8 @@ function HomeContributionLegend(): JSX.Element {
   return (
     <div className="home-contribution-legend" aria-hidden="true">
       <span>Less</span>
-      {homeContributionColors.map((color, level) => (
-        <span
-          key={color}
-          className={`home-contribution-cell level-${level}`}
-          style={{ backgroundColor: color }}
-        />
+      {homeContributionLevels.map((level) => (
+        <span key={level} className={`home-contribution-cell level-${level}`} />
       ))}
       <span>More</span>
     </div>

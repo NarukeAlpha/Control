@@ -69,6 +69,7 @@ export interface ControlThemePaletteSettings {
   accent: string;
   background: string;
   foreground: string;
+  texture: string;
 }
 
 export interface ControlThemeCustomSettings {
@@ -93,12 +94,14 @@ export const DEFAULT_CONTROL_THEME_SETTINGS: ControlThemeSettings = {
     light: {
       accent: "#2563EB",
       background: "#EAF2FC",
-      foreground: "#0F172A"
+      foreground: "#0F172A",
+      texture: "#F7FBFF"
     },
     dark: {
       accent: "#60A5FA",
       background: "#101827",
-      foreground: "#E5EDF7"
+      foreground: "#E5EDF7",
+      texture: "#263449"
     },
     uiFont: "inter",
     codeFont: "sf-mono"

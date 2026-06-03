@@ -1,6 +1,7 @@
 import type {
   AppState,
   BranchSummary,
+  ControlSettings,
   RepoTreeEntry,
   RepoTreeResult,
   RepositoryDetail,
@@ -27,6 +28,7 @@ interface ShellDialogsProps {
   appState?: AppState;
   authController: ProviderAuthController;
   settingsOpen: boolean;
+  systemColorScheme: "light" | "dark";
   route: AppRoute;
   repository: RepositoryDetail | null;
   repositoryTree: RepoTreeResult | null;
@@ -49,6 +51,7 @@ interface ShellDialogsProps {
   onDeleteArea(area: Parameters<ShellDialogState["openAreaDelete"]>[0]): Promise<void>;
   onCloseSettings(): void;
   onSaveSettings(settings: Partial<AppState["settings"]>): Promise<void>;
+  onPreviewSettings(settings: Partial<ControlSettings> | null): void;
   onOpenExternal(url: string): void;
   onSelectRepositoryRef(
     nameWithOwner: string,
@@ -69,6 +72,7 @@ export function ShellDialogs({
   appState,
   authController,
   settingsOpen,
+  systemColorScheme,
   route,
   repository,
   repositoryTree,
@@ -91,6 +95,7 @@ export function ShellDialogs({
   onDeleteArea,
   onCloseSettings,
   onSaveSettings,
+  onPreviewSettings,
   onOpenExternal,
   onSelectRepositoryRef,
   repositoryRefKindForName,
@@ -191,7 +196,9 @@ export function ShellDialogs({
           authController={authController}
           onClose={onCloseSettings}
           onOpenExternal={onOpenExternal}
+          onPreviewSettings={onPreviewSettings}
           onSave={onSaveSettings}
+          systemColorScheme={systemColorScheme}
         />
       )}
 

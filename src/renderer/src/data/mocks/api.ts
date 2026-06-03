@@ -1,7 +1,9 @@
 import type {
   AccountProfileResult,
   AccountRepositoryListResult,
+  AppState,
   ContributorListResult,
+  ControlSettings,
   IssueDetailResult,
   NotificationListResult,
   OrganizationListResult,
@@ -107,21 +109,89 @@ import {
 import { mockAvailable, mockGitHubNotLoaded } from "./shared";
 import { mockRepositoryWiki } from "./wiki";
 
+const mockSettingsStorageKey = "control:mock-settings";
+
+function readMockAppState(): AppState {
+  return {
+    ...mockAppState,
+    settings: readMockSettings()
+  };
+}
+
+function readMockSettings(): ControlSettings {
+  if (typeof window === "undefined") {
+    return mockAppState.settings;
+  }
+
+  const serializedSettings = window.localStorage.getItem(mockSettingsStorageKey);
+  if (!serializedSettings) {
+    return mockAppState.settings;
+  }
+
+  try {
+    return mergeMockSettings(
+      mockAppState.settings,
+      JSON.parse(serializedSettings) as Partial<ControlSettings>
+    );
+  } catch {
+    window.localStorage.removeItem(mockSettingsStorageKey);
+    return mockAppState.settings;
+  }
+}
+
+function writeMockSettings(settings: ControlSettings): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(mockSettingsStorageKey, JSON.stringify(settings));
+}
+
+function mergeMockSettings(
+  currentSettings: ControlSettings,
+  settingsPatch: Partial<ControlSettings>
+): ControlSettings {
+  return {
+    ...currentSettings,
+    ...settingsPatch,
+    theme: settingsPatch.theme
+      ? {
+          ...currentSettings.theme,
+          ...settingsPatch.theme,
+          custom: settingsPatch.theme.custom
+            ? {
+                ...currentSettings.theme.custom,
+                ...settingsPatch.theme.custom,
+                light: {
+                  ...currentSettings.theme.custom.light,
+                  ...settingsPatch.theme.custom.light
+                },
+                dark: {
+                  ...currentSettings.theme.custom.dark,
+                  ...settingsPatch.theme.custom.dark
+                }
+              }
+            : currentSettings.theme.custom
+        }
+      : currentSettings.theme,
+    repositoryTabPreferences:
+      settingsPatch.repositoryTabPreferences ?? currentSettings.repositoryTabPreferences
+  };
+}
+
 export const mockControlApi: ControlApi = {
-  getAppState: async () => mockAppState,
-  getSettings: async () => mockAppState.settings,
-  updateSettings: async (settings) => ({
-    ...mockAppState.settings,
-    ...settings,
-    theme: settings.theme
-      ? { ...mockAppState.settings.theme, ...settings.theme }
-      : mockAppState.settings.theme
-  }),
+  getAppState: async () => readMockAppState(),
+  getSettings: async () => readMockSettings(),
+  updateSettings: async (settings) => {
+    const nextSettings = mergeMockSettings(readMockSettings(), settings);
+    writeMockSettings(nextSettings);
+    return nextSettings;
+  },
   signInWithGitHub: async () => mockGitHubSignInSession,
   getGitHubSignIn: async () => mockGitHubSignInSession,
   cancelGitHubSignIn: async () => undefined,
   clearGitHubToken: async () => ({
-    ...mockAppState,
+    ...readMockAppState(),
     github: {
       available: true,
       authenticated: false,

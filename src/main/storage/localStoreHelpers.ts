@@ -1,13 +1,18 @@
 import {
   CONTROL_ACCENT_COLORS,
+  CONTROL_CODE_FONTS,
   CONTROL_GLASS_MODES,
   CONTROL_THEME_MODES,
   CONTROL_THEME_PRESETS,
+  CONTROL_UI_FONTS,
   DEFAULT_CONTROL_THEME_SETTINGS,
   type ControlAccentColor,
+  type ControlCodeFont,
   type ControlSettings,
   type ControlThemeMode,
+  type ControlThemePaletteSettings,
   type ControlThemePreset,
+  type ControlUiFont,
   type RepositoryTabPreference,
   type RepositoryTabPreferenceKey
 } from "@shared/github";
@@ -26,7 +31,7 @@ const repositoryTabPreferenceKeys = [
 export const defaultSettings: ControlSettings = {
   credentialProvider: "github-oauth",
   glassMode: "glass-shell",
-  theme: { ...DEFAULT_CONTROL_THEME_SETTINGS },
+  theme: cloneDefaultThemeSettings(),
   repositoryTabPreferences: {}
 };
 
@@ -59,17 +64,14 @@ export function mergeSettingsPatch(
     ...settingsPatch,
     theme:
       settingsPatch.theme && typeof settingsPatch.theme === "object" && !Array.isArray(settingsPatch.theme)
-        ? {
-            ...currentSettings.theme,
-            ...settingsPatch.theme
-          }
+        ? mergeThemePatch(currentSettings.theme, settingsPatch.theme)
         : (settingsPatch.theme ?? currentSettings.theme)
   });
 }
 
 function normalizeThemeSettings(theme: unknown): ControlSettings["theme"] {
   if (!theme || typeof theme !== "object" || Array.isArray(theme)) {
-    return { ...defaultSettings.theme };
+    return cloneDefaultThemeSettings();
   }
 
   const rawTheme = theme as Partial<Record<keyof ControlSettings["theme"], unknown>>;
@@ -88,12 +90,105 @@ function normalizeThemeSettings(theme: unknown): ControlSettings["theme"] {
       rawTheme.accent,
       CONTROL_ACCENT_COLORS,
       DEFAULT_CONTROL_THEME_SETTINGS.accent
-    )
+    ),
+    custom: normalizeThemeCustomSettings(rawTheme.custom)
   };
 }
 
 function normalizeLiteral<T extends string>(value: unknown, allowedValues: readonly T[], fallback: T): T {
   return allowedValues.includes(value as T) ? (value as T) : fallback;
+}
+
+function mergeThemePatch(
+  currentTheme: ControlSettings["theme"],
+  themePatch: Partial<ControlSettings["theme"]>
+): ControlSettings["theme"] {
+  const rawCustom =
+    themePatch.custom && typeof themePatch.custom === "object" && !Array.isArray(themePatch.custom)
+      ? themePatch.custom
+      : undefined;
+
+  return {
+    ...currentTheme,
+    ...themePatch,
+    custom: rawCustom
+      ? {
+          ...currentTheme.custom,
+          ...rawCustom,
+          light: mergePalettePatch(currentTheme.custom.light, rawCustom.light),
+          dark: mergePalettePatch(currentTheme.custom.dark, rawCustom.dark)
+        }
+      : currentTheme.custom
+  };
+}
+
+function mergePalettePatch(
+  currentPalette: ControlThemePaletteSettings,
+  palettePatch: unknown
+): ControlThemePaletteSettings {
+  if (!palettePatch || typeof palettePatch !== "object" || Array.isArray(palettePatch)) {
+    return currentPalette;
+  }
+
+  return {
+    ...currentPalette,
+    ...palettePatch
+  };
+}
+
+function normalizeThemeCustomSettings(custom: unknown): ControlSettings["theme"]["custom"] {
+  if (!custom || typeof custom !== "object" || Array.isArray(custom)) {
+    return cloneDefaultThemeSettings().custom;
+  }
+
+  const rawCustom = custom as Partial<Record<keyof ControlSettings["theme"]["custom"], unknown>>;
+  return {
+    light: normalizePaletteSettings(rawCustom.light, DEFAULT_CONTROL_THEME_SETTINGS.custom.light),
+    dark: normalizePaletteSettings(rawCustom.dark, DEFAULT_CONTROL_THEME_SETTINGS.custom.dark),
+    uiFont: normalizeLiteral<ControlUiFont>(
+      rawCustom.uiFont,
+      CONTROL_UI_FONTS,
+      DEFAULT_CONTROL_THEME_SETTINGS.custom.uiFont
+    ),
+    codeFont: normalizeLiteral<ControlCodeFont>(
+      rawCustom.codeFont,
+      CONTROL_CODE_FONTS,
+      DEFAULT_CONTROL_THEME_SETTINGS.custom.codeFont
+    )
+  };
+}
+
+function normalizePaletteSettings(
+  palette: unknown,
+  fallback: ControlThemePaletteSettings
+): ControlThemePaletteSettings {
+  if (!palette || typeof palette !== "object" || Array.isArray(palette)) {
+    return { ...fallback };
+  }
+
+  const rawPalette = palette as Partial<Record<keyof ControlThemePaletteSettings, unknown>>;
+  return {
+    accent: normalizeHexColor(rawPalette.accent, fallback.accent),
+    background: normalizeHexColor(rawPalette.background, fallback.background),
+    foreground: normalizeHexColor(rawPalette.foreground, fallback.foreground),
+    texture: normalizeHexColor(rawPalette.texture, fallback.texture)
+  };
+}
+
+function normalizeHexColor(value: unknown, fallback: string): string {
+  return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value) ? value.toUpperCase() : fallback;
+}
+
+function cloneDefaultThemeSettings(): ControlSettings["theme"] {
+  return {
+    ...DEFAULT_CONTROL_THEME_SETTINGS,
+    custom: {
+      light: { ...DEFAULT_CONTROL_THEME_SETTINGS.custom.light },
+      dark: { ...DEFAULT_CONTROL_THEME_SETTINGS.custom.dark },
+      uiFont: DEFAULT_CONTROL_THEME_SETTINGS.custom.uiFont,
+      codeFont: DEFAULT_CONTROL_THEME_SETTINGS.custom.codeFont
+    }
+  };
 }
 
 function normalizeRepositoryTabPreferences(

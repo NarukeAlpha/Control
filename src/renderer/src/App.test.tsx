@@ -2053,7 +2053,7 @@ describe("Control renderer routing", () => {
     await userEvent.click(await screen.findByTitle("Account settings"));
     await userEvent.click(screen.getByRole("button", { name: "Sign in with GitHub" }));
 
-    expect(await screen.findByText("Enter the code in GitHub.")).toBeInTheDocument();
+    expect((await screen.findAllByText(/Enter (the code|WDJB-MJHT) in GitHub\./)).length).toBeGreaterThan(0);
     expect(await screen.findByText("WDJB-MJHT")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Open GitHub" })).toBeInTheDocument();
   });
@@ -2081,7 +2081,8 @@ describe("Control renderer routing", () => {
           theme: {
             mode: "dark",
             preset: "control-high-contrast-dark",
-            accent: "purple"
+            accent: "purple",
+            custom: mockAppState.settings.theme.custom
           }
         }
       })
@@ -2097,6 +2098,67 @@ describe("Control renderer routing", () => {
           accent: "purple"
         }
       });
+    });
+  });
+
+  it("previews appearance edits on the shell before saving settings", async () => {
+    useUiStore.setState(defaultUiState);
+    renderControl(makeApi());
+
+    await userEvent.click(await screen.findByTitle("Account settings"));
+    await userEvent.click(screen.getByRole("button", { name: "Appearance" }));
+    await userEvent.click(
+      within(screen.getByRole("group", { name: "Theme mode" })).getByRole("button", { name: "Dark" })
+    );
+    fireEvent.change(screen.getByLabelText("Dark theme background color", { exact: true }), {
+      target: { value: "#111827" }
+    });
+
+    await waitFor(() => {
+      const shell = document.querySelector(".app-shell");
+      expect(shell).toMatchObject({
+        dataset: {
+          themeMode: "dark",
+          colorScheme: "dark"
+        }
+      });
+      expect((shell as HTMLElement | null)?.style.getPropertyValue("--color-surface-solid")).toBe("#111827");
+    });
+  });
+
+  it("keeps saved light appearance settings after app-state refresh", async () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(
+        () =>
+          ({
+            matches: true,
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn()
+          }) as unknown as MediaQueryList
+      )
+    );
+    useUiStore.setState(defaultUiState);
+    renderControl(makeApi());
+
+    await userEvent.click(await screen.findByTitle("Account settings"));
+    await userEvent.click(screen.getByRole("button", { name: "Appearance" }));
+    await userEvent.click(
+      within(screen.getByRole("group", { name: "Theme mode" })).getByRole("button", { name: "Light" })
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("Settings saved.")).toBeInTheDocument();
+    await waitFor(() => {
+      const shell = document.querySelector(".app-shell");
+      expect(shell).toMatchObject({
+        dataset: {
+          themeMode: "light",
+          colorScheme: "light",
+          themePreset: "control-light"
+        }
+      });
+      expect((shell as HTMLElement | null)?.style.getPropertyValue("--color-surface-solid")).toBe("#EAF2FC");
     });
   });
 

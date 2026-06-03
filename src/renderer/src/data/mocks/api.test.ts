@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { mockControlApi } from "./api";
+import { mockAppState } from "./appState";
 import { installMockDomainTestCleanup } from "./testCleanup";
 
 describe("mock control api", () => {
@@ -53,6 +54,48 @@ describe("mock control api", () => {
     expect(releasesResult).toMatchObject({
       items: expect.any(Array),
       availability: { status: "available", message: null }
+    });
+  });
+
+  it("persists mock settings writes across settings and app-state reads", async () => {
+    await mockControlApi.updateSettings({
+      glassMode: "solid",
+      theme: {
+        ...mockAppState.settings.theme,
+        mode: "light",
+        custom: {
+          ...mockAppState.settings.theme.custom,
+          light: {
+            ...mockAppState.settings.theme.custom.light,
+            accent: "#FF6363"
+          }
+        }
+      }
+    });
+
+    await expect(mockControlApi.getSettings()).resolves.toMatchObject({
+      glassMode: "solid",
+      theme: expect.objectContaining({
+        mode: "light",
+        custom: expect.objectContaining({
+          light: expect.objectContaining({
+            accent: "#FF6363"
+          })
+        })
+      })
+    });
+    await expect(mockControlApi.getAppState()).resolves.toMatchObject({
+      settings: expect.objectContaining({
+        glassMode: "solid",
+        theme: expect.objectContaining({
+          mode: "light",
+          custom: expect.objectContaining({
+            light: expect.objectContaining({
+              accent: "#FF6363"
+            })
+          })
+        })
+      })
     });
   });
 });

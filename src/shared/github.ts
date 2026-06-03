@@ -43,16 +43,69 @@ export const CONTROL_ACCENT_COLOR_LABELS: Record<ControlAccentColor, string> = {
   gray: "Gray"
 };
 
+export const CONTROL_UI_FONTS = ["inter", "system", "satoshi", "serif"] as const;
+
+export type ControlUiFont = (typeof CONTROL_UI_FONTS)[number];
+
+export const CONTROL_UI_FONT_LABELS: Record<ControlUiFont, string> = {
+  inter: "Inter",
+  system: "System",
+  satoshi: "Satoshi",
+  serif: "Serif"
+};
+
+export const CONTROL_CODE_FONTS = ["sf-mono", "jetbrains-mono", "fira-code", "monaco"] as const;
+
+export type ControlCodeFont = (typeof CONTROL_CODE_FONTS)[number];
+
+export const CONTROL_CODE_FONT_LABELS: Record<ControlCodeFont, string> = {
+  "sf-mono": "SF Mono",
+  "jetbrains-mono": "JetBrains Mono",
+  "fira-code": "Fira Code",
+  monaco: "Monaco"
+};
+
+export interface ControlThemePaletteSettings {
+  accent: string;
+  background: string;
+  foreground: string;
+  texture: string;
+}
+
+export interface ControlThemeCustomSettings {
+  light: ControlThemePaletteSettings;
+  dark: ControlThemePaletteSettings;
+  uiFont: ControlUiFont;
+  codeFont: ControlCodeFont;
+}
+
 export interface ControlThemeSettings {
   mode: ControlThemeMode;
   preset: ControlThemePreset;
   accent: ControlAccentColor;
+  custom: ControlThemeCustomSettings;
 }
 
 export const DEFAULT_CONTROL_THEME_SETTINGS: ControlThemeSettings = {
   mode: "system",
   preset: "control-light",
-  accent: "blue"
+  accent: "blue",
+  custom: {
+    light: {
+      accent: "#2563EB",
+      background: "#EAF2FC",
+      foreground: "#0F172A",
+      texture: "#F7FBFF"
+    },
+    dark: {
+      accent: "#60A5FA",
+      background: "#101827",
+      foreground: "#E5EDF7",
+      texture: "#263449"
+    },
+    uiFont: "inter",
+    codeFont: "sf-mono"
+  }
 };
 
 export type RepositoryTabPreference = "auto" | "show" | "hide";

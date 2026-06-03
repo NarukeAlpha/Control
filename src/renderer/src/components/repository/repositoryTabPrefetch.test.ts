@@ -19,8 +19,8 @@ import {
   refreshActionsTabData,
   workflowDefinitionsQueryKey,
   workflowRunDetailQueryKey
-} from "./actions/ActionsTab";
-import { refreshAgentsTabData } from "./agents/AgentsTab";
+} from "./actions/ActionsTab.queries";
+import { refreshAgentsTabData } from "./agents/AgentsTab.queries";
 import {
   codeTabCommitsQueryKey,
   codeTabContentsQueryKey,
@@ -28,23 +28,31 @@ import {
   codeTabRootMarkdownContentQueryKey,
   prefetchCodeTabData,
   refreshCodeTabData
-} from "./code/CodeTab";
-import { contributorsTabQueryKey, refreshContributorsTabData } from "./contributors/ContributorsTab";
+} from "./code/CodeTab.queries";
+import { contributorsTabQueryKey, refreshContributorsTabData } from "./contributors/ContributorsTab.queries";
 import {
   discussionsTabQueryKey,
   prefetchDiscussionsTabData,
   refreshDiscussionsTabData
-} from "./discussions/DiscussionsTab";
+} from "./discussions/DiscussionsTab.queries";
 import { issueDetailQueryKey } from "./issues/useIssueDetail";
-import { issuesTabQueryKey, prefetchIssuesTabData, refreshIssuesTabData } from "./issues/IssuesTab";
-import { projectsTabQueryKey, prefetchProjectsTabData, refreshProjectsTabData } from "./projects/ProjectsTab";
+import { issuesTabQueryKey, prefetchIssuesTabData, refreshIssuesTabData } from "./issues/IssuesTab.queries";
+import {
+  projectsTabQueryKey,
+  prefetchProjectsTabData,
+  refreshProjectsTabData
+} from "./projects/ProjectsTab.queries";
 import {
   prefetchPullRequestsTabData,
   pullRequestDetailQueryKey,
   pullRequestsTabQueryKey,
   refreshPullRequestsTabData
-} from "./pull-requests/PullRequestsTab";
-import { prefetchReleasesTabData, refreshReleasesTabData, releasesTabQueryKey } from "./releases/ReleasesTab";
+} from "./pull-requests/PullRequestsTab.queries";
+import {
+  prefetchReleasesTabData,
+  refreshReleasesTabData,
+  releasesTabQueryKey
+} from "./releases/ReleasesTab.queries";
 import { repositoryBranchProtectionQueryKey, repositoryRulesetsQueryKey } from "./repositoryAdminQueryKeys";
 import {
   codeScanningAlertsQueryKey,
@@ -54,13 +62,13 @@ import {
   repositorySecurityAdvisoriesQueryKey,
   repositorySecurityPolicyQueryKey,
   secretScanningAlertsQueryKey
-} from "./security/SecurityQualityTab";
+} from "./security/SecurityQualityTab.queries";
 import {
   refreshRepositorySettingsTabData,
   repositoryAccessQueryKey,
   repositoryForksQueryKey
-} from "./settings/RepositorySettingsTab";
-import { prefetchWikiTabData, refreshWikiTabData, wikiTabQueryKey } from "./wiki/WikiTab";
+} from "./settings/RepositorySettingsTab.queries";
+import { prefetchWikiTabData, refreshWikiTabData, wikiTabQueryKey } from "./wiki/WikiTab.queries";
 import {
   repositoryAssignableUsersQueryKey,
   repositoryLabelsQueryKey,
@@ -1095,7 +1103,7 @@ describe("repository tab prefetch helpers", () => {
     expect(queryClient.getQueryData(issueDetailQueryKey(owner, repo, 7))).toBeDefined();
   });
 
-  it("refreshes pull requests, shared resources, refs, and focused pull detail online", async () => {
+  it("refreshes pull requests, shared resources, refs, and cached focused pull detail sections online", async () => {
     const queryClient = makeQueryClient();
     const listPullRequestsWithStatus = vi.fn<ControlApi["github"]["listPullRequestsWithStatus"]>(
       mockControlApi.github.listPullRequestsWithStatus
@@ -1155,6 +1163,16 @@ describe("repository tab prefetch helpers", () => {
       listPullRequestTimelineWithStatus,
       listPullRequestLinkedIssuesWithStatus
     });
+    queryClient.setQueryData(pullRequestDetailQueryKey("files", owner, repo, 12), {
+      items: [],
+      availability: available,
+      pageInfo: null
+    });
+    queryClient.setQueryData(pullRequestDetailQueryKey("timeline", owner, repo, 12), {
+      items: [],
+      availability: available,
+      pageInfo: null
+    });
 
     await refreshPullRequestsTabData(queryClient, {
       api,
@@ -1212,14 +1230,14 @@ describe("repository tab prefetch helpers", () => {
       forceRefresh: true
     };
     expect(getPullRequestOverviewWithStatus).toHaveBeenCalledWith(pullDetailInput);
-    expect(listPullRequestCommentsWithStatus).toHaveBeenCalledWith(pullDetailInput);
     expect(listPullRequestFilesWithStatus).toHaveBeenCalledWith(pullDetailInput);
-    expect(listPullRequestCommitsWithStatus).toHaveBeenCalledWith(pullDetailInput);
-    expect(listPullRequestReviewsWithStatus).toHaveBeenCalledWith(pullDetailInput);
-    expect(listPullRequestChecksWithStatus).toHaveBeenCalledWith(pullDetailInput);
-    expect(listPullRequestReviewThreadsWithStatus).toHaveBeenCalledWith(pullDetailInput);
     expect(listPullRequestTimelineWithStatus).toHaveBeenCalledWith(pullDetailInput);
-    expect(listPullRequestLinkedIssuesWithStatus).toHaveBeenCalledWith(pullDetailInput);
+    expect(listPullRequestCommentsWithStatus).not.toHaveBeenCalled();
+    expect(listPullRequestCommitsWithStatus).not.toHaveBeenCalled();
+    expect(listPullRequestReviewsWithStatus).not.toHaveBeenCalled();
+    expect(listPullRequestChecksWithStatus).not.toHaveBeenCalled();
+    expect(listPullRequestReviewThreadsWithStatus).not.toHaveBeenCalled();
+    expect(listPullRequestLinkedIssuesWithStatus).not.toHaveBeenCalled();
 
     expect(queryClient.getQueryData(pullRequestsTabQueryKey(owner, repo, 40))).toBeDefined();
     expect(queryClient.getQueryData(repositoryLabelsQueryKey(owner, repo))).toBeDefined();
@@ -1227,17 +1245,17 @@ describe("repository tab prefetch helpers", () => {
     expect(queryClient.getQueryData(repositoryMilestonesQueryKey(owner, repo))).toBeDefined();
     expect(queryClient.getQueryData(repositoryBranchesQueryKey(owner, repo, 80))).toBeDefined();
     expect(queryClient.getQueryData(pullRequestDetailQueryKey("overview", owner, repo, 12))).toBeDefined();
-    expect(queryClient.getQueryData(pullRequestDetailQueryKey("comments", owner, repo, 12))).toBeDefined();
     expect(queryClient.getQueryData(pullRequestDetailQueryKey("files", owner, repo, 12))).toBeDefined();
-    expect(queryClient.getQueryData(pullRequestDetailQueryKey("commits", owner, repo, 12))).toBeDefined();
-    expect(queryClient.getQueryData(pullRequestDetailQueryKey("reviews", owner, repo, 12))).toBeDefined();
-    expect(queryClient.getQueryData(pullRequestDetailQueryKey("checks", owner, repo, 12))).toBeDefined();
+    expect(queryClient.getQueryData(pullRequestDetailQueryKey("timeline", owner, repo, 12))).toBeDefined();
+    expect(queryClient.getQueryData(pullRequestDetailQueryKey("comments", owner, repo, 12))).toBeUndefined();
+    expect(queryClient.getQueryData(pullRequestDetailQueryKey("commits", owner, repo, 12))).toBeUndefined();
+    expect(queryClient.getQueryData(pullRequestDetailQueryKey("reviews", owner, repo, 12))).toBeUndefined();
+    expect(queryClient.getQueryData(pullRequestDetailQueryKey("checks", owner, repo, 12))).toBeUndefined();
     expect(
       queryClient.getQueryData(pullRequestDetailQueryKey("review-threads", owner, repo, 12))
-    ).toBeDefined();
-    expect(queryClient.getQueryData(pullRequestDetailQueryKey("timeline", owner, repo, 12))).toBeDefined();
+    ).toBeUndefined();
     expect(
       queryClient.getQueryData(pullRequestDetailQueryKey("linked-issues", owner, repo, 12))
-    ).toBeDefined();
+    ).toBeUndefined();
   });
 });

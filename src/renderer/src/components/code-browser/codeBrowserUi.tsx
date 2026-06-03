@@ -2,7 +2,7 @@ import { File as FileIcon, Folder } from "lucide-react";
 import { useMemo, useState, type JSX } from "react";
 
 import type { RepoEntry, RepoFileContent, RepositoryDetail } from "@shared/github";
-import { fileExtension, isNonImageBinaryPath } from "@shared/filePreviewPolicy";
+import { fileExtension } from "@shared/filePreviewPolicy";
 
 import { readAvailabilityMessage, repositoryPath } from "../repository/repositoryUi";
 
@@ -117,11 +117,7 @@ export function pathSegments(path: string): Array<{ label: string; path: string 
   }));
 }
 
-export function isLikelyBinaryFile(path: string, content?: string | null): boolean {
-  return isNonImageBinaryPath(path) || Boolean(content?.includes("\u0000"));
-}
-
-export function iconUrlForEntry(entry: RepoEntry): string {
+function iconUrlForEntry(entry: RepoEntry): string {
   if (entry.type === "dir") {
     const folderIcon = folderIconNames[entry.name.toLowerCase()] ?? "default_folder.svg";
     return `${vscodeIconsBaseUrl}/${folderIcon}`;

@@ -1,4 +1,4 @@
-export type ControlAppDataSyncCollection = "settings" | "repository-pins" | "area-pins" | "recents";
+type ControlAppDataSyncCollection = "settings" | "repository-pins" | "area-pins" | "recents";
 
 export const controlAppDataSyncPolicy = {
   allowedCollections: ["settings", "repository-pins", "area-pins", "recents"],

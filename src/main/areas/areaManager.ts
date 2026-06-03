@@ -457,6 +457,9 @@ export class AreaManager {
   }
 
   async runGatewayOperation(input: AreaGatewayRunOperationInput): Promise<AreaGatewayOperationResult> {
+    if (input.confirmed !== true) {
+      throw new Error("Gateway operation confirmation is required.");
+    }
     const gatewayClient = await this.gatewayClientForArea(input.areaId);
     if (!gatewayClient) {
       throw new Error("This Area does not have a running gateway.");

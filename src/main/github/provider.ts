@@ -305,8 +305,20 @@ export class GitHubProviderManager implements GitHubProvider {
 
   async createAppState(): Promise<AppState> {
     const settings = this.store.getSettings();
-    const token = await getGitHubToken();
     const signInConfigured = isGitHubSignInConfigured();
+    const tokenResult = await this.readStoredGitHubToken();
+    if (tokenResult.status === "unavailable") {
+      const viewer = this.authenticatedViewer;
+      return createGitHubAppState({
+        settings,
+        signInConfigured,
+        authenticated: Boolean(viewer),
+        viewer,
+        user: viewer?.login ?? cachedViewerFromStore(this.store)?.login ?? null,
+        error: tokenResult.message
+      });
+    }
+    const token = tokenResult.token;
 
     if (!token) {
       this.authenticatedViewer = null;
@@ -2171,6 +2183,25 @@ export class GitHubProviderManager implements GitHubProvider {
     return this.providerPromise;
   }
 
+  private async readStoredGitHubToken(): Promise<
+    { status: "available"; token: string | null } | { status: "unavailable"; message: string }
+  > {
+    try {
+      return { status: "available", token: await getGitHubToken() };
+    } catch (error) {
+      if (isCredentialStoreUnavailableError(error)) {
+        return {
+          status: "unavailable",
+          message:
+            error instanceof Error
+              ? `GitHub credential store is unavailable: ${error.message}`
+              : "GitHub credential store is unavailable."
+        };
+      }
+      throw error;
+    }
+  }
+
   private withViewerLogin<T extends { login?: string | null }>(input: T): T {
     if (input.login) {
       return input;
@@ -2196,7 +2227,7 @@ export class GitHubProviderManager implements GitHubProvider {
     try {
       const provider = new OctokitProvider(token);
       const viewer = await provider.getViewer();
-      if ((await getGitHubToken()) !== token) {
+      if (!(await this.storedGitHubTokenStillMatches(token))) {
         return;
       }
 
@@ -2215,7 +2246,7 @@ export class GitHubProviderManager implements GitHubProvider {
         })
       );
     } catch (error) {
-      if ((await getGitHubToken()) !== token) {
+      if (!(await this.storedGitHubTokenStillMatches(token))) {
         return;
       }
 
@@ -2231,6 +2262,17 @@ export class GitHubProviderManager implements GitHubProvider {
           error: error instanceof Error ? error.message : "GitHub credential authentication failed."
         })
       );
+    }
+  }
+
+  private async storedGitHubTokenStillMatches(token: string): Promise<boolean> {
+    try {
+      return (await getGitHubToken()) === token;
+    } catch (error) {
+      if (isCredentialStoreUnavailableError(error)) {
+        return false;
+      }
+      throw error;
     }
   }
 
@@ -2630,6 +2672,10 @@ function createGitHubAppState({
     github,
     viewer
   };
+}
+
+function isCredentialStoreUnavailableError(error: unknown): boolean {
+  return error instanceof Error && Reflect.get(error, "code") === "github-credential-store-unavailable";
 }
 
 function repositoryDetailFromSummary(summary: RepositorySummary): RepositoryDetail {

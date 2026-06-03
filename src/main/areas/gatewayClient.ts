@@ -11,6 +11,7 @@ import type {
 } from "@shared/areas";
 
 import type { AreaGatewayRecord } from "../storage";
+import { gatewayOperationInput } from "./gatewayOperations";
 
 interface GraphQlResponse<T> {
   data?: T;
@@ -409,27 +410,28 @@ function normalizeOperationResult(
   };
 }
 
-function gatewayOperationInput(input: AreaGatewayOperationInput): Record<string, unknown> {
-  const jj = input.kind.startsWith("jj.");
-  const operation = input.kind.endsWith(".push")
-    ? "PUSH"
-    : input.kind.endsWith(".status")
-      ? "STATUS"
-      : "FETCH";
-  return {
-    repository: input.repositoryId,
-    vcs: jj ? "JJ" : "GIT",
-    operation
-  };
-}
-
 function gatewayResultKind(payload: Record<string, unknown>): AreaGatewayOperationResult["kind"] {
   const vcs = String(payload.vcs ?? "").toLowerCase();
   const operation = String(payload.operation ?? "").toLowerCase();
   if (vcs === "jj") {
-    return operation === "push" ? "jj.git.push" : operation === "status" ? "jj.git.fetch" : "jj.git.fetch";
+    if (operation === "fetch") {
+      return "jj.git.fetch";
+    }
+    if (operation === "push") {
+      return "jj.git.push";
+    }
   }
-  return operation === "push" ? "git.push" : operation === "status" ? "git.fetch" : "git.fetch";
+  if (vcs === "git") {
+    if (operation === "fetch") {
+      return "git.fetch";
+    }
+    if (operation === "push") {
+      return "git.push";
+    }
+  }
+  throw new Error(
+    `Gateway returned unsupported operation result: ${vcs || "unknown"}.${operation || "unknown"}.`
+  );
 }
 
 function parseStatusOutput(value: string): AreaRepositoryDetail["status"] {

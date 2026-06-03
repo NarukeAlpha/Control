@@ -3,7 +3,7 @@ const credentialServiceName = "Control Gateway Credentials";
 type GatewayCredentialKind = "api" | "admin";
 type KeytarClient = Pick<typeof import("keytar"), "getPassword" | "setPassword" | "deletePassword">;
 
-export class GatewayCredentialsUnavailableError extends Error {
+class GatewayCredentialsUnavailableError extends Error {
   readonly code = "gateway-credentials-unavailable";
 
   constructor(message = "Control gateway credentials are unavailable.") {

@@ -26,19 +26,6 @@ export class SerializationError extends Error {
   }
 }
 
-export class MigrationError extends Error {
-  readonly code = "STORAGE_MIGRATION_ERROR";
-  readonly kind = "migration" satisfies StorageErrorKind;
-
-  constructor(
-    readonly operation: string,
-    readonly cause: unknown
-  ) {
-    super(`Storage migration failed: ${operation}`);
-    this.name = "MigrationError";
-  }
-}
-
 export class UnavailableDatabaseError extends Error {
   readonly code = "STORAGE_UNAVAILABLE";
   readonly kind = "unavailable" satisfies StorageErrorKind;

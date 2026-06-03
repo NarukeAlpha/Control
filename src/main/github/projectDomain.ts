@@ -492,7 +492,7 @@ function isGitHubProjectV2UserOwner(owner: GitHubProjectV2OwnerNode): owner is G
   return owner.__typename === "User";
 }
 
-export interface GitHubProjectV2Node {
+interface GitHubProjectV2Node {
   id: string;
   number?: number | null;
   title: string;

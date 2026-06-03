@@ -22,7 +22,7 @@ export function createStorageDatabaseAdapter(db: SqliteDatabase): StorageDatabas
   return new BetterSqliteStorageDatabase(db);
 }
 
-export function runDatabaseOperation<T>(operation: string, action: () => T): T {
+function runDatabaseOperation<T>(operation: string, action: () => T): T {
   try {
     return action();
   } catch (cause) {

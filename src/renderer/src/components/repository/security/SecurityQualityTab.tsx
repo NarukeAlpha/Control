@@ -9,26 +9,26 @@ import {
   Plus,
   ShieldCheck,
   Workflow,
-  X
+  X,
+  type LucideIcon
 } from "lucide-react";
-import { useState, type JSX } from "react";
-import { useQuery, type QueryClient } from "@tanstack/react-query";
+import { useState, type ChangeEvent, type JSX } from "react";
 
 import type {
-  BranchProtectionResult,
-  CodeScanningAlertsResult,
-  DependabotAlertsResult,
+  BranchProtectionSummary,
+  BranchSummary,
+  CodeScanningAlertSummary,
+  CommunityProfileFileSummary,
+  DependabotAlertSummary,
   GitHubAction,
   GitHubMutationFields,
-  RepositoryCommunityProfileResult,
+  RepositoryCommunityProfile,
   RepositoryDetail,
-  RepositoryRulesetsResult,
   RepositoryRulesetSummary,
-  RepositorySecurityAdvisoriesResult,
-  RepositorySecurityPolicyResult,
-  SecretScanningAlertsResult
+  RepositorySecurityAdvisorySummary,
+  RepositorySecurityPolicy,
+  SecretScanningAlertSummary
 } from "@shared/github";
-import type { ControlApi } from "@shared/ipc";
 import type { LocalRecentSecurityItemKind } from "@shared/local";
 
 import {
@@ -38,15 +38,8 @@ import {
   readAvailabilityStatusLabel,
   repositoryPath
 } from "@renderer/components/repository/repositoryUi";
-import {
-  repositoryBranchProtectionBranchFor,
-  repositoryBranchProtectionQueryKey,
-  repositoryRulesetsQueryKey
-} from "@renderer/components/repository/repositoryAdminQueryKeys";
-import { useControlApi } from "@renderer/hooks/useControlApi";
-import { useRepositoryRefs } from "@renderer/hooks/useRepositoryRefs";
-
 import { formatCompactNumber, formatRelativeDate } from "@renderer/utils/format";
+import { useSecurityQualityTabQueries } from "./SecurityQualityTab.queries";
 
 interface SecurityItemRecentInput {
   kind: LocalRecentSecurityItemKind;
@@ -64,471 +57,119 @@ interface SecurityItemRecentInput {
   updatedAt?: string | null;
 }
 const maxSecurityListLimit = 100;
+const securityPolicyPreviewLength = 1200;
 
-export interface SecurityQualityTabQueryInput {
-  owner: string;
-  repo: string;
+type OpenSecurityPath = (path: string | null, ref: string | null | undefined, line?: number | null) => void;
+
+type SelectSecurityItem = (securityItem: SecurityItemRecentInput) => void;
+
+type SecurityItemActive = (kind: LocalRecentSecurityItemKind, id: string | number) => boolean;
+
+interface SecurityQualityLink {
+  title: string;
+  path: string;
+  icon: LucideIcon;
+}
+
+const securityQualityLinks: SecurityQualityLink[] = [
+  { title: "Security policy", path: "/security/policy", icon: ShieldCheck },
+  { title: "Code scanning", path: "/security/code-scanning", icon: Gauge },
+  { title: "Dependabot", path: "/security/dependabot", icon: CheckCircle2 },
+  { title: "Secret scanning", path: "/security/secret-scanning", icon: ShieldCheck },
+  { title: "Rulesets", path: "/rules", icon: GitBranch },
+  { title: "Security advisories", path: "/security/advisories", icon: ShieldCheck },
+  { title: "Community standards", path: "/community", icon: BookOpen },
+  { title: "Pulse", path: "/pulse", icon: Workflow }
+];
+
+const securityMutationActions = new Set<GitHubAction>([
+  "updateBranchProtection",
+  "deleteBranchProtection",
+  "createRepositoryRuleset",
+  "updateRepositoryRuleset",
+  "deleteRepositoryRuleset"
+]);
+
+interface SecurityPolicyPreviewState {
+  policy: RepositorySecurityPolicy | null;
+  policyKey: string | null;
+  policyExpanded: boolean;
+  policyHasFullPreview: boolean;
+  visiblePolicyContent: string;
+  togglePolicyPreview(): void;
+}
+
+interface SecurityQualityTabProps {
+  repository: RepositoryDetail;
   selectedRef: string | null;
-  defaultBranch: string | null;
   refListLimit: number;
   dependabotAlertsLimit: number;
   codeScanningAlertsLimit: number;
   secretScanningAlertsLimit: number;
   repositoryRulesetsLimit: number;
   repositorySecurityAdvisoriesLimit: number;
-  enabled: boolean;
   githubReady: boolean;
+  mutationAction: GitHubAction | null;
+  mutationPending: boolean;
+  mutationSucceeded: boolean;
+  mutationError: Error | null;
+  focusedSecurityItemKind: LocalRecentSecurityItemKind | null;
+  focusedSecurityItemId: string | null;
+  onOpenExternal(url: string): void;
+  onOpenCodePath(path: string, ref: string | null, line?: number | null): void;
+  onSelectSecurityItem(securityItem: SecurityItemRecentInput): void;
+  onSelectSecurityQualityBranch(ref: string): void;
+  onExpandDependabotAlerts(): void;
+  onExpandCodeScanningAlerts(): void;
+  onExpandSecretScanningAlerts(): void;
+  onExpandRepositoryRulesets(): void;
+  onExpandRepositorySecurityAdvisories(): void;
+  onMutate(action: GitHubAction, dangerous: boolean, payload?: GitHubMutationFields): void;
 }
 
-export interface SecurityQualityTabPrefetchInput {
-  api: ControlApi;
-  owner: string;
-  repo: string;
+interface SecurityQualityActionsInput {
   branchProtectionBranch: string | null;
-  defaultBranch: string | null;
-  dependabotAlertsLimit: number;
+  defaultSecurityRef: string | null;
+  focusedSecurityItemId: string | null;
+  focusedSecurityItemKind: LocalRecentSecurityItemKind | null;
+  mutationPending: boolean;
+  repository: RepositoryDetail;
+  securityMutationDisabledReason: string | null;
+  securityMutationRelevant: boolean;
+  onMutate(action: GitHubAction, dangerous: boolean, payload?: GitHubMutationFields): void;
+  onOpenCodePath(path: string, ref: string | null, line?: number | null): void;
+  onOpenExternal(url: string): void;
+  onSelectSecurityItem(securityItem: SecurityItemRecentInput): void;
+}
+
+interface SecurityQualityActions {
+  openSecurityPath: OpenSecurityPath;
+  securityItemActive: SecurityItemActive;
+  rulesetMutationDisabledReason(ruleset: RepositoryRulesetSummary): string | null;
+  openBranchRulesFallback(): void;
+  applyBaselineBranchProtection(): void;
+  deleteBranchProtection(): void;
+  createActiveRepositoryRuleset(): void;
+  createEvaluateRepositoryRuleset(): void;
+  reapplyRepositoryRuleset(ruleset: RepositoryRulesetSummary): void;
+  deleteRepositoryRuleset(ruleset: RepositoryRulesetSummary): void;
+  inspectRepositoryRuleset(ruleset: RepositoryRulesetSummary): void;
+  openRulesetsFallback(): void;
+  openSecurityPolicyFallback(): void;
+  openCommunityFallback(): void;
+  openRepositorySecurityPath(path: string): void;
+}
+
+interface SecurityQualityQueryStateInput {
   codeScanningAlertsLimit: number;
-  secretScanningAlertsLimit: number;
+  dependabotAlertsLimit: number;
+  githubReady: boolean;
+  refListLimit: number;
+  repository: RepositoryDetail;
   repositoryRulesetsLimit: number;
   repositorySecurityAdvisoriesLimit: number;
-  githubReady: boolean;
-}
-
-export type SecurityQualityTabRefreshInput = SecurityQualityTabPrefetchInput;
-
-export function dependabotAlertsQueryKey(
-  owner: string,
-  repo: string,
-  limit: number
-): readonly ["dependabot-alerts", string, string, number] {
-  return ["dependabot-alerts", owner, repo, limit] as const;
-}
-
-export function codeScanningAlertsQueryKey(
-  owner: string,
-  repo: string,
-  limit: number
-): readonly ["code-scanning-alerts", string, string, number] {
-  return ["code-scanning-alerts", owner, repo, limit] as const;
-}
-
-export function secretScanningAlertsQueryKey(
-  owner: string,
-  repo: string,
-  limit: number
-): readonly ["secret-scanning-alerts", string, string, number] {
-  return ["secret-scanning-alerts", owner, repo, limit] as const;
-}
-
-export function repositorySecurityAdvisoriesQueryKey(
-  owner: string,
-  repo: string,
-  limit: number
-): readonly ["repository-security-advisories", string, string, number] {
-  return ["repository-security-advisories", owner, repo, limit] as const;
-}
-
-export function repositorySecurityPolicyQueryKey(
-  owner: string,
-  repo: string,
-  defaultBranch: string | null
-): readonly ["repository-security-policy", string, string, string] {
-  return ["repository-security-policy", owner, repo, defaultBranch ?? "none"] as const;
-}
-
-export function repositoryCommunityProfileQueryKey(
-  owner: string,
-  repo: string
-): readonly ["repository-community-profile", string, string] {
-  return ["repository-community-profile", owner, repo] as const;
-}
-
-export function useSecurityQualityTabQueries({
-  owner,
-  repo,
-  selectedRef,
-  defaultBranch,
-  refListLimit,
-  dependabotAlertsLimit,
-  codeScanningAlertsLimit,
-  secretScanningAlertsLimit,
-  repositoryRulesetsLimit,
-  repositorySecurityAdvisoriesLimit,
-  enabled,
-  githubReady
-}: SecurityQualityTabQueryInput) {
-  const api = useControlApi();
-  const refs = useRepositoryRefs(owner, repo, { branches: enabled, tags: false }, refListLimit, {
-    githubReady
-  });
-  const branchProtectionBranch = repositoryBranchProtectionBranchFor(
-    selectedRef,
-    refs.branchItems,
-    defaultBranch
-  );
-
-  const branchProtection = useQuery<BranchProtectionResult>({
-    queryKey: repositoryBranchProtectionQueryKey(owner, repo, branchProtectionBranch),
-    queryFn: () =>
-      api.github.getBranchProtection({
-        owner,
-        repo,
-        branch: branchProtectionBranch!,
-        cacheOnly: !githubReady
-      }),
-    enabled: enabled && Boolean(branchProtectionBranch),
-    staleTime: 60_000
-  });
-
-  const dependabotAlerts = useQuery<DependabotAlertsResult>({
-    queryKey: dependabotAlertsQueryKey(owner, repo, dependabotAlertsLimit),
-    queryFn: () =>
-      api.github.listDependabotAlerts({
-        owner,
-        repo,
-        state: "open",
-        limit: dependabotAlertsLimit,
-        cacheOnly: !githubReady
-      }),
-    enabled,
-    staleTime: 60_000
-  });
-
-  const codeScanningAlerts = useQuery<CodeScanningAlertsResult>({
-    queryKey: codeScanningAlertsQueryKey(owner, repo, codeScanningAlertsLimit),
-    queryFn: () =>
-      api.github.listCodeScanningAlerts({
-        owner,
-        repo,
-        state: "open",
-        limit: codeScanningAlertsLimit,
-        cacheOnly: !githubReady
-      }),
-    enabled,
-    staleTime: 60_000
-  });
-
-  const secretScanningAlerts = useQuery<SecretScanningAlertsResult>({
-    queryKey: secretScanningAlertsQueryKey(owner, repo, secretScanningAlertsLimit),
-    queryFn: () =>
-      api.github.listSecretScanningAlerts({
-        owner,
-        repo,
-        state: "open",
-        limit: secretScanningAlertsLimit,
-        cacheOnly: !githubReady
-      }),
-    enabled,
-    staleTime: 60_000
-  });
-
-  const repositoryRulesets = useQuery<RepositoryRulesetsResult>({
-    queryKey: repositoryRulesetsQueryKey(owner, repo, repositoryRulesetsLimit),
-    queryFn: () =>
-      api.github.listRepositoryRulesets({
-        owner,
-        repo,
-        includesParents: true,
-        limit: repositoryRulesetsLimit,
-        cacheOnly: !githubReady
-      }),
-    enabled,
-    staleTime: 60_000
-  });
-
-  const repositorySecurityAdvisories = useQuery<RepositorySecurityAdvisoriesResult>({
-    queryKey: repositorySecurityAdvisoriesQueryKey(owner, repo, repositorySecurityAdvisoriesLimit),
-    queryFn: () =>
-      api.github.listRepositorySecurityAdvisories({
-        owner,
-        repo,
-        limit: repositorySecurityAdvisoriesLimit,
-        cacheOnly: !githubReady
-      }),
-    enabled,
-    staleTime: 60_000
-  });
-
-  const repositorySecurityPolicy = useQuery<RepositorySecurityPolicyResult>({
-    queryKey: repositorySecurityPolicyQueryKey(owner, repo, defaultBranch),
-    queryFn: () =>
-      api.github.getRepositorySecurityPolicy({
-        owner,
-        repo,
-        ref: defaultBranch,
-        cacheOnly: !githubReady
-      }),
-    enabled: enabled && Boolean(defaultBranch),
-    staleTime: 120_000
-  });
-
-  const repositoryCommunityProfile = useQuery<RepositoryCommunityProfileResult>({
-    queryKey: repositoryCommunityProfileQueryKey(owner, repo),
-    queryFn: () => api.github.getRepositoryCommunityProfile({ owner, repo, cacheOnly: !githubReady }),
-    enabled,
-    staleTime: 120_000
-  });
-
-  return {
-    branchProtectionBranch,
-    branchProtectionBranches: refs.branchItems,
-    branchProtectionBranchesLoading: refs.branches.isLoading || refs.branches.isFetching,
-    branchProtectionBranchesError: refs.branches.error,
-    branchProtection,
-    dependabotAlerts,
-    codeScanningAlerts,
-    secretScanningAlerts,
-    repositoryRulesets,
-    repositorySecurityAdvisories,
-    repositorySecurityPolicy,
-    repositoryCommunityProfile
-  };
-}
-
-export async function prefetchSecurityQualityTabData(
-  queryClient: QueryClient,
-  {
-    api,
-    owner,
-    repo,
-    branchProtectionBranch,
-    defaultBranch,
-    dependabotAlertsLimit,
-    codeScanningAlertsLimit,
-    secretScanningAlertsLimit,
-    repositoryRulesetsLimit,
-    repositorySecurityAdvisoriesLimit,
-    githubReady
-  }: SecurityQualityTabPrefetchInput
-): Promise<void> {
-  await Promise.all([
-    branchProtectionBranch
-      ? queryClient.prefetchQuery({
-          queryKey: repositoryBranchProtectionQueryKey(owner, repo, branchProtectionBranch),
-          queryFn: () =>
-            api.github.getBranchProtection({
-              owner,
-              repo,
-              branch: branchProtectionBranch,
-              cacheOnly: !githubReady
-            }),
-          staleTime: 60_000
-        })
-      : Promise.resolve(),
-    queryClient.prefetchQuery({
-      queryKey: dependabotAlertsQueryKey(owner, repo, dependabotAlertsLimit),
-      queryFn: () =>
-        api.github.listDependabotAlerts({
-          owner,
-          repo,
-          state: "open",
-          limit: dependabotAlertsLimit,
-          cacheOnly: !githubReady
-        }),
-      staleTime: 60_000
-    }),
-    queryClient.prefetchQuery({
-      queryKey: codeScanningAlertsQueryKey(owner, repo, codeScanningAlertsLimit),
-      queryFn: () =>
-        api.github.listCodeScanningAlerts({
-          owner,
-          repo,
-          state: "open",
-          limit: codeScanningAlertsLimit,
-          cacheOnly: !githubReady
-        }),
-      staleTime: 60_000
-    }),
-    queryClient.prefetchQuery({
-      queryKey: secretScanningAlertsQueryKey(owner, repo, secretScanningAlertsLimit),
-      queryFn: () =>
-        api.github.listSecretScanningAlerts({
-          owner,
-          repo,
-          state: "open",
-          limit: secretScanningAlertsLimit,
-          cacheOnly: !githubReady
-        }),
-      staleTime: 60_000
-    }),
-    queryClient.prefetchQuery({
-      queryKey: repositoryRulesetsQueryKey(owner, repo, repositoryRulesetsLimit),
-      queryFn: () =>
-        api.github.listRepositoryRulesets({
-          owner,
-          repo,
-          includesParents: true,
-          limit: repositoryRulesetsLimit,
-          cacheOnly: !githubReady
-        }),
-      staleTime: 60_000
-    }),
-    queryClient.prefetchQuery({
-      queryKey: repositorySecurityAdvisoriesQueryKey(owner, repo, repositorySecurityAdvisoriesLimit),
-      queryFn: () =>
-        api.github.listRepositorySecurityAdvisories({
-          owner,
-          repo,
-          limit: repositorySecurityAdvisoriesLimit,
-          cacheOnly: !githubReady
-        }),
-      staleTime: 60_000
-    }),
-    defaultBranch
-      ? queryClient.prefetchQuery({
-          queryKey: repositorySecurityPolicyQueryKey(owner, repo, defaultBranch),
-          queryFn: () =>
-            api.github.getRepositorySecurityPolicy({
-              owner,
-              repo,
-              ref: defaultBranch,
-              cacheOnly: !githubReady
-            }),
-          staleTime: 120_000
-        })
-      : Promise.resolve(),
-    queryClient.prefetchQuery({
-      queryKey: repositoryCommunityProfileQueryKey(owner, repo),
-      queryFn: () => api.github.getRepositoryCommunityProfile({ owner, repo, cacheOnly: !githubReady }),
-      staleTime: 120_000
-    })
-  ]);
-}
-
-export async function refreshSecurityQualityTabData(
-  queryClient: QueryClient,
-  {
-    api,
-    owner,
-    repo,
-    branchProtectionBranch,
-    defaultBranch,
-    dependabotAlertsLimit,
-    codeScanningAlertsLimit,
-    secretScanningAlertsLimit,
-    repositoryRulesetsLimit,
-    repositorySecurityAdvisoriesLimit,
-    githubReady
-  }: SecurityQualityTabRefreshInput
-): Promise<void> {
-  const cachedRead = !githubReady;
-  const refreshes: Array<Promise<unknown>> = [
-    queryClient.fetchQuery({
-      queryKey: dependabotAlertsQueryKey(owner, repo, dependabotAlertsLimit),
-      staleTime: 0,
-      queryFn: () =>
-        api.github.listDependabotAlerts({
-          owner,
-          repo,
-          state: "open",
-          limit: dependabotAlertsLimit,
-          cacheOnly: cachedRead,
-          forceRefresh: !cachedRead
-        })
-    }),
-    queryClient.fetchQuery({
-      queryKey: codeScanningAlertsQueryKey(owner, repo, codeScanningAlertsLimit),
-      staleTime: 0,
-      queryFn: () =>
-        api.github.listCodeScanningAlerts({
-          owner,
-          repo,
-          state: "open",
-          limit: codeScanningAlertsLimit,
-          cacheOnly: cachedRead,
-          forceRefresh: !cachedRead
-        })
-    }),
-    queryClient.fetchQuery({
-      queryKey: secretScanningAlertsQueryKey(owner, repo, secretScanningAlertsLimit),
-      staleTime: 0,
-      queryFn: () =>
-        api.github.listSecretScanningAlerts({
-          owner,
-          repo,
-          state: "open",
-          limit: secretScanningAlertsLimit,
-          cacheOnly: cachedRead,
-          forceRefresh: !cachedRead
-        })
-    }),
-    queryClient.fetchQuery({
-      queryKey: repositoryRulesetsQueryKey(owner, repo, repositoryRulesetsLimit),
-      staleTime: 0,
-      queryFn: () =>
-        api.github.listRepositoryRulesets({
-          owner,
-          repo,
-          includesParents: true,
-          limit: repositoryRulesetsLimit,
-          cacheOnly: cachedRead,
-          forceRefresh: !cachedRead
-        })
-    }),
-    queryClient.fetchQuery({
-      queryKey: repositorySecurityAdvisoriesQueryKey(owner, repo, repositorySecurityAdvisoriesLimit),
-      staleTime: 0,
-      queryFn: () =>
-        api.github.listRepositorySecurityAdvisories({
-          owner,
-          repo,
-          limit: repositorySecurityAdvisoriesLimit,
-          cacheOnly: cachedRead,
-          forceRefresh: !cachedRead
-        })
-    }),
-    queryClient.fetchQuery({
-      queryKey: repositoryCommunityProfileQueryKey(owner, repo),
-      staleTime: 0,
-      queryFn: () =>
-        api.github.getRepositoryCommunityProfile({
-          owner,
-          repo,
-          cacheOnly: cachedRead,
-          forceRefresh: !cachedRead
-        })
-    })
-  ];
-
-  if (branchProtectionBranch) {
-    refreshes.push(
-      queryClient.fetchQuery({
-        queryKey: repositoryBranchProtectionQueryKey(owner, repo, branchProtectionBranch),
-        staleTime: 0,
-        queryFn: () =>
-          api.github.getBranchProtection({
-            owner,
-            repo,
-            branch: branchProtectionBranch,
-            cacheOnly: cachedRead,
-            forceRefresh: !cachedRead
-          })
-      })
-    );
-  }
-
-  if (defaultBranch) {
-    refreshes.push(
-      queryClient.fetchQuery({
-        queryKey: repositorySecurityPolicyQueryKey(owner, repo, defaultBranch),
-        staleTime: 0,
-        queryFn: () =>
-          api.github.getRepositorySecurityPolicy({
-            owner,
-            repo,
-            ref: defaultBranch,
-            cacheOnly: cachedRead,
-            forceRefresh: !cachedRead
-          })
-      })
-    );
-  }
-
-  try {
-    await Promise.all(refreshes);
-  } catch {
-    // React Query owns the visible error state for this refresh.
-  }
+  secretScanningAlertsLimit: number;
+  selectedRef: string | null;
 }
 
 function normalizeGitHubCodeRef(ref: string | null | undefined): string | null {
@@ -598,59 +239,275 @@ function rulesetPartLabel(name: string, details: string[]): string {
   return visibleDetails.length > 0 ? `${label}: ${visibleDetails.join(", ")}` : label;
 }
 
-export function SecurityQualityTab({
+function securityPathDisabledReason(path: string | null, label: string): string | null {
+  return path ? null : `${label} path unavailable from GitHub.`;
+}
+
+function isSecurityMutationAction(action: GitHubAction | null): boolean {
+  return action ? securityMutationActions.has(action) : false;
+}
+
+function baselineBranchProtectionPayload(branch: string): GitHubMutationFields {
+  return {
+    branch,
+    required_status_checks: null,
+    enforce_admins: true,
+    required_pull_request_reviews: {
+      dismiss_stale_reviews: true,
+      require_code_owner_reviews: false,
+      required_approving_review_count: 1
+    },
+    restrictions: null,
+    required_linear_history: true,
+    allow_force_pushes: false,
+    allow_deletions: false,
+    block_creations: false,
+    required_conversation_resolution: true,
+    lock_branch: false,
+    allow_fork_syncing: false
+  };
+}
+
+function baselineRepositoryRulesetPayload({
+  branch,
+  defaultRef,
+  enforcement,
+  name,
+  rulesetId
+}: {
+  branch: string | null;
+  defaultRef: string | null;
+  enforcement: "active" | "evaluate";
+  name: string;
+  rulesetId?: number;
+}): GitHubMutationFields {
+  const ref = defaultRef ?? branch;
+  return {
+    ...(rulesetId === undefined ? {} : { rulesetId }),
+    name,
+    target: "branch",
+    enforcement,
+    bypass_actors: [],
+    conditions: {
+      ref_name: {
+        include: ref ? [`refs/heads/${ref}`] : ["~DEFAULT_BRANCH"],
+        exclude: []
+      }
+    },
+    rules: [
+      { type: "deletion" },
+      { type: "non_fast_forward" },
+      {
+        type: "pull_request",
+        parameters: {
+          required_approving_review_count: 1,
+          dismiss_stale_reviews_on_push: true,
+          require_code_owner_review: false,
+          require_last_push_approval: false,
+          required_review_thread_resolution: true
+        }
+      }
+    ]
+  };
+}
+
+function useSecurityPolicyPreviewState(
+  repositoryNameWithOwner: string,
+  securityPolicyResult: { policy: RepositorySecurityPolicy | null } | null
+): SecurityPolicyPreviewState {
+  const policy = securityPolicyResult?.policy ?? null;
+  const policyKey = policy
+    ? `${repositoryNameWithOwner}:${policy.path}:${policy.ref ?? ""}:${policy.sha ?? ""}`
+    : null;
+  const [expandedSecurityPolicyState, setExpandedSecurityPolicyState] = useState({
+    policyKey,
+    expanded: false
+  });
+  const policyExpanded =
+    expandedSecurityPolicyState.policyKey === policyKey ? expandedSecurityPolicyState.expanded : false;
+  const policyContent = policy?.content ?? "";
+
+  function togglePolicyPreview(): void {
+    if (!policyKey) {
+      return;
+    }
+
+    setExpandedSecurityPolicyState((current) => ({
+      policyKey,
+      expanded: current.policyKey === policyKey ? !current.expanded : true
+    }));
+  }
+
+  return {
+    policy,
+    policyKey,
+    policyExpanded,
+    policyHasFullPreview: policyContent.length > securityPolicyPreviewLength,
+    visiblePolicyContent: policyExpanded
+      ? policyContent
+      : policyContent.slice(0, securityPolicyPreviewLength),
+    togglePolicyPreview
+  };
+}
+
+function createSecurityQualityActions({
+  branchProtectionBranch,
+  defaultSecurityRef,
+  focusedSecurityItemId,
+  focusedSecurityItemKind,
+  mutationPending,
   repository,
-  selectedRef,
-  refListLimit,
-  dependabotAlertsLimit,
+  securityMutationDisabledReason,
+  securityMutationRelevant,
+  onMutate,
+  onOpenCodePath,
+  onOpenExternal,
+  onSelectSecurityItem
+}: SecurityQualityActionsInput): SecurityQualityActions {
+  function openSecurityPath(path: string | null, ref: string | null | undefined, line?: number | null): void {
+    if (!path) {
+      return;
+    }
+
+    onOpenCodePath(path, normalizeGitHubCodeRef(ref) ?? defaultSecurityRef, line);
+  }
+
+  function securityItemActive(kind: LocalRecentSecurityItemKind, id: string | number): boolean {
+    return focusedSecurityItemKind === kind && focusedSecurityItemId === String(id);
+  }
+
+  function rulesetMutationDisabledReason(ruleset: RepositoryRulesetSummary): string | null {
+    if (mutationPending && securityMutationRelevant) {
+      return "A security setting update is still running.";
+    }
+    if (securityMutationDisabledReason) {
+      return securityMutationDisabledReason;
+    }
+    if (ruleset.sourceType && ruleset.sourceType.toLowerCase() !== "repository") {
+      return "Inherited rulesets must be changed in their source repository or organization.";
+    }
+    return null;
+  }
+
+  function openBranchRulesFallback(): void {
+    onOpenExternal(repositoryPath(repository, "/settings/branches"));
+  }
+
+  function applyBaselineBranchProtection(): void {
+    if (branchProtectionBranch) {
+      onMutate("updateBranchProtection", false, baselineBranchProtectionPayload(branchProtectionBranch));
+    }
+  }
+
+  function deleteBranchProtection(): void {
+    if (branchProtectionBranch) {
+      onMutate("deleteBranchProtection", true, { branch: branchProtectionBranch });
+    }
+  }
+
+  function createActiveRepositoryRuleset(): void {
+    onMutate(
+      "createRepositoryRuleset",
+      false,
+      baselineRepositoryRulesetPayload({
+        branch: branchProtectionBranch,
+        defaultRef: defaultSecurityRef,
+        enforcement: "active",
+        name: "Baseline branch rules"
+      })
+    );
+  }
+
+  function createEvaluateRepositoryRuleset(): void {
+    onMutate(
+      "createRepositoryRuleset",
+      false,
+      baselineRepositoryRulesetPayload({
+        branch: branchProtectionBranch,
+        defaultRef: defaultSecurityRef,
+        enforcement: "evaluate",
+        name: "Evaluate baseline branch rules"
+      })
+    );
+  }
+
+  function reapplyRepositoryRuleset(ruleset: RepositoryRulesetSummary): void {
+    onMutate(
+      "updateRepositoryRuleset",
+      false,
+      baselineRepositoryRulesetPayload({
+        branch: branchProtectionBranch,
+        defaultRef: defaultSecurityRef,
+        enforcement: "active",
+        name: ruleset.name,
+        rulesetId: ruleset.id
+      })
+    );
+  }
+
+  function deleteRepositoryRuleset(ruleset: RepositoryRulesetSummary): void {
+    onMutate("deleteRepositoryRuleset", true, { rulesetId: ruleset.id });
+  }
+
+  function inspectRepositoryRuleset(ruleset: RepositoryRulesetSummary): void {
+    onSelectSecurityItem({
+      kind: "ruleset",
+      id: String(ruleset.id),
+      title: ruleset.name,
+      subtitle: `${repository.nameWithOwner} ruleset`,
+      url: ruleset.htmlUrl,
+      state: ruleset.enforcement,
+      rule: ruleset.name,
+      updatedAt: ruleset.updatedAt
+    });
+  }
+
+  function openRulesetsFallback(): void {
+    onOpenExternal(repositoryPath(repository, "/rules"));
+  }
+
+  function openSecurityPolicyFallback(): void {
+    onOpenExternal(repositoryPath(repository, "/security/policy"));
+  }
+
+  function openCommunityFallback(): void {
+    onOpenExternal(repositoryPath(repository, "/community"));
+  }
+
+  function openRepositorySecurityPath(path: string): void {
+    onOpenExternal(repositoryPath(repository, path));
+  }
+
+  return {
+    openSecurityPath,
+    securityItemActive,
+    rulesetMutationDisabledReason,
+    openBranchRulesFallback,
+    applyBaselineBranchProtection,
+    deleteBranchProtection,
+    createActiveRepositoryRuleset,
+    createEvaluateRepositoryRuleset,
+    reapplyRepositoryRuleset,
+    deleteRepositoryRuleset,
+    inspectRepositoryRuleset,
+    openRulesetsFallback,
+    openSecurityPolicyFallback,
+    openCommunityFallback,
+    openRepositorySecurityPath
+  };
+}
+
+function useSecurityQualityQueryState({
   codeScanningAlertsLimit,
-  secretScanningAlertsLimit,
+  dependabotAlertsLimit,
+  githubReady,
+  refListLimit,
+  repository,
   repositoryRulesetsLimit,
   repositorySecurityAdvisoriesLimit,
-  githubReady,
-  mutationAction,
-  mutationPending,
-  mutationSucceeded,
-  mutationError,
-  focusedSecurityItemKind,
-  focusedSecurityItemId,
-  onOpenExternal,
-  onOpenCodePath,
-  onSelectSecurityItem,
-  onSelectSecurityQualityBranch,
-  onExpandDependabotAlerts,
-  onExpandCodeScanningAlerts,
-  onExpandSecretScanningAlerts,
-  onExpandRepositoryRulesets,
-  onExpandRepositorySecurityAdvisories,
-  onMutate
-}: {
-  repository: RepositoryDetail;
-  selectedRef: string | null;
-  refListLimit: number;
-  dependabotAlertsLimit: number;
-  codeScanningAlertsLimit: number;
-  secretScanningAlertsLimit: number;
-  repositoryRulesetsLimit: number;
-  repositorySecurityAdvisoriesLimit: number;
-  githubReady: boolean;
-  mutationAction: GitHubAction | null;
-  mutationPending: boolean;
-  mutationSucceeded: boolean;
-  mutationError: Error | null;
-  focusedSecurityItemKind: LocalRecentSecurityItemKind | null;
-  focusedSecurityItemId: string | null;
-  onOpenExternal(url: string): void;
-  onOpenCodePath(path: string, ref: string | null, line?: number | null): void;
-  onSelectSecurityItem(securityItem: SecurityItemRecentInput): void;
-  onSelectSecurityQualityBranch(ref: string): void;
-  onExpandDependabotAlerts(): void;
-  onExpandCodeScanningAlerts(): void;
-  onExpandSecretScanningAlerts(): void;
-  onExpandRepositoryRulesets(): void;
-  onExpandRepositorySecurityAdvisories(): void;
-  onMutate(action: GitHubAction, dangerous: boolean, payload?: GitHubMutationFields): void;
-}): JSX.Element {
+  secretScanningAlertsLimit,
+  selectedRef
+}: SecurityQualityQueryStateInput) {
   const {
     branchProtectionBranch,
     branchProtectionBranches,
@@ -679,417 +536,394 @@ export function SecurityQualityTab({
     githubReady
   });
   const branchProtection = branchProtectionQuery.data ?? null;
-  const protection = branchProtection?.protection ?? null;
-  const branchProtectionLoading = branchProtectionQuery.isLoading || branchProtectionQuery.isFetching;
-  const branchProtectionError = branchProtectionQuery.error;
   const dependabotAlerts = dependabotAlertsQuery.data?.items ?? [];
-  const dependabotAlertsLoading = dependabotAlertsQuery.isLoading || dependabotAlertsQuery.isFetching;
-  const dependabotAlertsAvailability = dependabotAlertsQuery.data?.availability ?? null;
-  const dependabotAlertsError = dependabotAlertsQuery.error;
   const codeScanningAlerts = codeScanningAlertsQuery.data?.items ?? [];
-  const codeScanningAlertsLoading = codeScanningAlertsQuery.isLoading || codeScanningAlertsQuery.isFetching;
-  const codeScanningAlertsAvailability = codeScanningAlertsQuery.data?.availability ?? null;
-  const codeScanningAlertsError = codeScanningAlertsQuery.error;
   const secretScanningAlerts = secretScanningAlertsQuery.data?.items ?? [];
-  const secretScanningAlertsLoading =
-    secretScanningAlertsQuery.isLoading || secretScanningAlertsQuery.isFetching;
-  const secretScanningAlertsAvailability = secretScanningAlertsQuery.data?.availability ?? null;
-  const secretScanningAlertsError = secretScanningAlertsQuery.error;
   const repositoryRulesets = repositoryRulesetsQuery.data?.items ?? [];
-  const repositoryRulesetsLoading = repositoryRulesetsQuery.isLoading || repositoryRulesetsQuery.isFetching;
-  const repositoryRulesetsAvailability = repositoryRulesetsQuery.data?.availability ?? null;
-  const repositoryRulesetsError = repositoryRulesetsQuery.error;
   const repositorySecurityAdvisories = repositorySecurityAdvisoriesQuery.data?.items ?? [];
-  const repositorySecurityAdvisoriesLoading =
-    repositorySecurityAdvisoriesQuery.isLoading || repositorySecurityAdvisoriesQuery.isFetching;
-  const repositorySecurityAdvisoriesAvailability =
-    repositorySecurityAdvisoriesQuery.data?.availability ?? null;
-  const repositorySecurityAdvisoriesError = repositorySecurityAdvisoriesQuery.error;
-  const repositorySecurityPolicy = repositorySecurityPolicyQuery.data ?? null;
-  const repositorySecurityPolicyLoading =
-    repositorySecurityPolicyQuery.isLoading || repositorySecurityPolicyQuery.isFetching;
-  const repositorySecurityPolicyError = repositorySecurityPolicyQuery.error;
-  const repositoryCommunityProfile = repositoryCommunityProfileQuery.data?.profile ?? null;
-  const repositoryCommunityProfileLoading =
-    repositoryCommunityProfileQuery.isLoading || repositoryCommunityProfileQuery.isFetching;
-  const repositoryCommunityProfileAvailability = repositoryCommunityProfileQuery.data?.availability ?? null;
-  const repositoryCommunityProfileError = repositoryCommunityProfileQuery.error;
+
+  return {
+    branchProtectionBranch,
+    branchProtectionBranches,
+    branchProtectionBranchesLoading,
+    branchProtectionBranchesError,
+    branchProtection,
+    protection: branchProtection?.protection ?? null,
+    branchProtectionLoading: branchProtectionQuery.isLoading || branchProtectionQuery.isFetching,
+    branchProtectionError: branchProtectionQuery.error,
+    dependabotAlerts,
+    dependabotAlertsLoading: dependabotAlertsQuery.isLoading || dependabotAlertsQuery.isFetching,
+    dependabotAlertsAvailability: dependabotAlertsQuery.data?.availability ?? null,
+    dependabotAlertsError: dependabotAlertsQuery.error,
+    codeScanningAlerts,
+    codeScanningAlertsLoading: codeScanningAlertsQuery.isLoading || codeScanningAlertsQuery.isFetching,
+    codeScanningAlertsAvailability: codeScanningAlertsQuery.data?.availability ?? null,
+    codeScanningAlertsError: codeScanningAlertsQuery.error,
+    secretScanningAlerts,
+    secretScanningAlertsLoading: secretScanningAlertsQuery.isLoading || secretScanningAlertsQuery.isFetching,
+    secretScanningAlertsAvailability: secretScanningAlertsQuery.data?.availability ?? null,
+    secretScanningAlertsError: secretScanningAlertsQuery.error,
+    repositoryRulesets,
+    repositoryRulesetsLoading: repositoryRulesetsQuery.isLoading || repositoryRulesetsQuery.isFetching,
+    repositoryRulesetsAvailability: repositoryRulesetsQuery.data?.availability ?? null,
+    repositoryRulesetsError: repositoryRulesetsQuery.error,
+    repositorySecurityAdvisories,
+    repositorySecurityAdvisoriesLoading:
+      repositorySecurityAdvisoriesQuery.isLoading || repositorySecurityAdvisoriesQuery.isFetching,
+    repositorySecurityAdvisoriesAvailability: repositorySecurityAdvisoriesQuery.data?.availability ?? null,
+    repositorySecurityAdvisoriesError: repositorySecurityAdvisoriesQuery.error,
+    repositorySecurityPolicy: repositorySecurityPolicyQuery.data ?? null,
+    repositorySecurityPolicyLoading:
+      repositorySecurityPolicyQuery.isLoading || repositorySecurityPolicyQuery.isFetching,
+    repositorySecurityPolicyError: repositorySecurityPolicyQuery.error,
+    repositoryCommunityProfile: repositoryCommunityProfileQuery.data?.profile ?? null,
+    repositoryCommunityProfileLoading:
+      repositoryCommunityProfileQuery.isLoading || repositoryCommunityProfileQuery.isFetching,
+    repositoryCommunityProfileAvailability: repositoryCommunityProfileQuery.data?.availability ?? null,
+    repositoryCommunityProfileError: repositoryCommunityProfileQuery.error
+  };
+}
+
+type SecurityQualityQueryState = ReturnType<typeof useSecurityQualityQueryState>;
+
+function readSecurityQualityDerivedState({
+  githubReady,
+  mutationAction,
+  mutationPending,
+  queryState,
+  repository,
+  securityPolicy
+}: {
+  githubReady: boolean;
+  mutationAction: GitHubAction | null;
+  mutationPending: boolean;
+  queryState: SecurityQualityQueryState;
+  repository: RepositoryDetail;
+  securityPolicy: RepositorySecurityPolicy | null;
+}) {
+  const branchProtectionAvailabilityLabel = readAvailabilityStatusLabel(
+    queryState.branchProtection?.availability ?? null
+  );
   const availabilityMessage = readAvailabilityMessage(
     "Branch protection",
-    branchProtection?.availability ?? null
-  );
-  const branchProtectionAvailabilityLabel = readAvailabilityStatusLabel(
-    branchProtection?.availability ?? null
+    queryState.branchProtection?.availability ?? null
   );
   const dependabotAvailabilityMessage = readAvailabilityMessage(
     "Dependabot alerts",
-    dependabotAlertsAvailability
+    queryState.dependabotAlertsAvailability
   );
   const codeScanningAvailabilityMessage = readAvailabilityMessage(
     "Code scanning alerts",
-    codeScanningAlertsAvailability
+    queryState.codeScanningAlertsAvailability
   );
   const secretScanningAvailabilityMessage = readAvailabilityMessage(
     "Secret scanning alerts",
-    secretScanningAlertsAvailability
+    queryState.secretScanningAlertsAvailability
   );
   const repositoryRulesetsAvailabilityMessage = readAvailabilityMessage(
     "Repository rulesets",
-    repositoryRulesetsAvailability
+    queryState.repositoryRulesetsAvailability
   );
   const repositorySecurityAdvisoriesAvailabilityMessage = readAvailabilityMessage(
     "Security advisories",
-    repositorySecurityAdvisoriesAvailability
+    queryState.repositorySecurityAdvisoriesAvailability
   );
   const repositorySecurityPolicyAvailabilityMessage = readAvailabilityMessage(
     "Security policy",
-    repositorySecurityPolicy?.availability ?? null
+    queryState.repositorySecurityPolicy?.availability ?? null
   );
-  const repositorySecurityPolicyAvailabilityLabel = readAvailabilityStatusLabel(
-    repositorySecurityPolicy?.availability ?? null
-  );
-  const securityPolicy = repositorySecurityPolicy?.policy ?? null;
-  const securityPolicyPreviewLength = 1200;
-  const securityPolicyKey = securityPolicy
-    ? `${repository.nameWithOwner}:${securityPolicy.path}:${securityPolicy.ref ?? ""}:${securityPolicy.sha ?? ""}`
-    : null;
-  const [expandedSecurityPolicyState, setExpandedSecurityPolicyState] = useState({
-    policyKey: securityPolicyKey,
-    expanded: false
-  });
-  const securityPolicyExpanded =
-    expandedSecurityPolicyState.policyKey === securityPolicyKey
-      ? expandedSecurityPolicyState.expanded
-      : false;
-  const securityPolicyContent = securityPolicy?.content ?? "";
-  const securityPolicyHasFullPreview = securityPolicyContent.length > securityPolicyPreviewLength;
-  const visibleSecurityPolicyContent = securityPolicyExpanded
-    ? securityPolicyContent
-    : securityPolicyContent.slice(0, securityPolicyPreviewLength);
   const repositoryCommunityProfileAvailabilityMessage = readAvailabilityMessage(
     "Community profile",
-    repositoryCommunityProfileAvailability
+    queryState.repositoryCommunityProfileAvailability
   );
   const administrationAvailabilityMessage = readAvailabilityMessage(
     "Repository settings metadata",
     repository.administrationAvailability ?? null
   );
-  const administrationAvailabilityLabel = readAvailabilityStatusLabel(
-    repository.administrationAvailability ?? null
+  const repositorySecurityPolicyAvailabilityLabel = readAvailabilityStatusLabel(
+    queryState.repositorySecurityPolicy?.availability ?? null
   );
-  const branchProtectionStatusUnavailable =
-    Boolean(branchProtectionError) || Boolean(branchProtectionAvailabilityLabel);
-  const repositoryRulesetsStatusUnavailable =
-    Boolean(repositoryRulesetsError) || Boolean(repositoryRulesetsAvailabilityMessage);
-  const repositorySecurityAdvisoriesStatusUnavailable =
-    Boolean(repositorySecurityAdvisoriesError) || Boolean(repositorySecurityAdvisoriesAvailabilityMessage);
-  const repositorySecurityPolicyStatusUnavailable =
-    Boolean(repositorySecurityPolicyError) || Boolean(repositorySecurityPolicyAvailabilityMessage);
   const repositoryCommunityProfileStatusUnavailable =
-    Boolean(repositoryCommunityProfileError) || Boolean(repositoryCommunityProfileAvailabilityMessage);
+    Boolean(queryState.repositoryCommunityProfileError) ||
+    Boolean(repositoryCommunityProfileAvailabilityMessage);
   const dependabotStatusUnavailable =
-    Boolean(dependabotAlertsError) || Boolean(dependabotAvailabilityMessage);
+    Boolean(queryState.dependabotAlertsError) || Boolean(dependabotAvailabilityMessage);
   const codeScanningStatusUnavailable =
-    Boolean(codeScanningAlertsError) || Boolean(codeScanningAvailabilityMessage);
+    Boolean(queryState.codeScanningAlertsError) || Boolean(codeScanningAvailabilityMessage);
   const secretScanningStatusUnavailable =
-    Boolean(secretScanningAlertsError) || Boolean(secretScanningAvailabilityMessage);
-  const branchProtectionStatusLabel =
-    branchProtectionLoading && !branchProtection
-      ? "loading"
-      : branchProtectionError
-        ? "unavailable"
-        : (branchProtectionAvailabilityLabel ??
-          (protection ? "protected" : branchProtection ? "unprotected" : "unknown"));
-  const repositoryRulesetsStatusLabel =
-    repositoryRulesetsLoading && repositoryRulesets.length === 0
-      ? "loading"
-      : repositoryRulesetsStatusUnavailable
-        ? "unavailable"
-        : repositoryRulesets.length === 0
-          ? "none"
-          : `${repositoryRulesets.length} rulesets`;
-  const repositorySecurityAdvisoriesStatusLabel =
-    repositorySecurityAdvisoriesLoading && repositorySecurityAdvisories.length === 0
-      ? "loading"
-      : repositorySecurityAdvisoriesStatusUnavailable
-        ? "unavailable"
-        : repositorySecurityAdvisories.length === 0
-          ? "clear"
-          : `${repositorySecurityAdvisories.length} advisories`;
-  const repositorySecurityPolicyStatusLabel =
-    repositorySecurityPolicyLoading && !repositorySecurityPolicy
-      ? "loading"
-      : repositorySecurityPolicyError
-        ? "unavailable"
-        : repositorySecurityPolicyAvailabilityLabel
-          ? repositorySecurityPolicyAvailabilityLabel
-          : securityPolicy
-            ? "found"
-            : repositorySecurityPolicy
-              ? "not configured"
-              : "unknown";
-  const presentCommunityFiles =
-    repositoryCommunityProfile?.files.filter((file) => file.path || file.htmlUrl) ?? [];
-  const missingCommunityFiles =
-    repositoryCommunityProfile?.files.filter((file) => !file.path && !file.htmlUrl) ?? [];
-  const repositoryCommunityProfileStatusLabel =
-    repositoryCommunityProfileLoading && !repositoryCommunityProfile
-      ? "loading"
-      : repositoryCommunityProfileStatusUnavailable
-        ? "unavailable"
-        : repositoryCommunityProfile?.healthPercentage != null
-          ? `${repositoryCommunityProfile.healthPercentage}%`
-          : "unknown";
-  const dependabotStatusLabel =
-    dependabotAlertsLoading && dependabotAlerts.length === 0
-      ? "loading"
-      : dependabotStatusUnavailable
-        ? "unavailable"
-        : dependabotAlerts.length === 0
-          ? "clear"
-          : `${dependabotAlerts.length} open`;
-  const codeScanningStatusLabel =
-    codeScanningAlertsLoading && codeScanningAlerts.length === 0
-      ? "loading"
-      : codeScanningStatusUnavailable
-        ? "unavailable"
-        : codeScanningAlerts.length === 0
-          ? "clear"
-          : `${codeScanningAlerts.length} open`;
-  const secretScanningStatusLabel =
-    secretScanningAlertsLoading && secretScanningAlerts.length === 0
-      ? "loading"
-      : secretScanningStatusUnavailable
-        ? "unavailable"
-        : secretScanningAlerts.length === 0
-          ? "clear"
-          : `${secretScanningAlerts.length} open`;
-  const securityFeatureRows = repositorySecurityFeatureRows(repository.administration.securityAndAnalysis);
-  const qualityLinks = [
-    { title: "Security policy", path: "/security/policy", icon: ShieldCheck },
-    { title: "Code scanning", path: "/security/code-scanning", icon: Gauge },
-    { title: "Dependabot", path: "/security/dependabot", icon: CheckCircle2 },
-    { title: "Secret scanning", path: "/security/secret-scanning", icon: ShieldCheck },
-    { title: "Rulesets", path: "/rules", icon: GitBranch },
-    { title: "Security advisories", path: "/security/advisories", icon: ShieldCheck },
-    { title: "Community standards", path: "/community", icon: BookOpen },
-    { title: "Pulse", path: "/pulse", icon: Workflow }
-  ];
+    Boolean(queryState.secretScanningAlertsError) || Boolean(secretScanningAvailabilityMessage);
   const defaultSecurityRef = repository.defaultBranch ?? null;
-  const branchProtectionBranchLabel = branchProtectionBranch ?? "No branch selected";
-  const hasBranchProtectionBranchOption = branchProtectionBranches.some(
-    (branch) => branch.name === branchProtectionBranch
-  );
   const branchProtectionBranchesDisabled =
-    branchProtectionBranchesLoading && branchProtectionBranches.length === 0;
-  const branchProtectionBranchesNote = branchProtectionBranchesError
-    ? `Branch list unavailable: ${branchProtectionBranchesError.message}`
-    : branchProtectionBranchesDisabled
-      ? "Loading branches…"
-      : branchProtectionBranches.length === 0
-        ? "No branch options available."
-        : null;
-  const securityMutationActionSet = new Set<GitHubAction>([
-    "updateBranchProtection",
-    "deleteBranchProtection",
-    "createRepositoryRuleset",
-    "updateRepositoryRuleset",
-    "deleteRepositoryRuleset"
-  ]);
-  const securityMutationRelevant = mutationAction ? securityMutationActionSet.has(mutationAction) : false;
+    queryState.branchProtectionBranchesLoading && queryState.branchProtectionBranches.length === 0;
+  const securityMutationRelevant = isSecurityMutationAction(mutationAction);
   const securityMutationDisabledReason =
     (!githubReady ? "Sign in with GitHub to change security settings." : null) ??
     (repository.permissions.isArchived ? "Repository is archived." : null) ??
     (repository.permissions.isDisabled ? "Repository is disabled." : null);
-  const branchProtectionMutationDisabledReason =
-    (mutationPending && securityMutationRelevant ? "A security setting update is still running." : null) ??
-    securityMutationDisabledReason ??
-    (!branchProtectionBranch ? "Select a branch before changing branch protection." : null);
-  const createRulesetDisabledReason =
-    (mutationPending && securityMutationRelevant ? "A security setting update is still running." : null) ??
-    securityMutationDisabledReason ??
-    (!defaultSecurityRef ? "Repository default branch is unavailable." : null);
 
-  function openSecurityPath(path: string | null, ref: string | null | undefined, line?: number | null): void {
-    if (!path) {
-      return;
-    }
+  return {
+    availabilityMessage,
+    branchProtectionBranchLabel: queryState.branchProtectionBranch ?? "No branch selected",
+    branchProtectionBranchesDisabled,
+    branchProtectionBranchesNote: queryState.branchProtectionBranchesError
+      ? `Branch list unavailable: ${queryState.branchProtectionBranchesError.message}`
+      : branchProtectionBranchesDisabled
+        ? "Loading branches…"
+        : queryState.branchProtectionBranches.length === 0
+          ? "No branch options available."
+          : null,
+    branchProtectionMutationDisabledReason:
+      (mutationPending && securityMutationRelevant ? "A security setting update is still running." : null) ??
+      securityMutationDisabledReason ??
+      (!queryState.branchProtectionBranch ? "Select a branch before changing branch protection." : null),
+    branchProtectionStatusLabel:
+      queryState.branchProtectionLoading && !queryState.branchProtection
+        ? "loading"
+        : queryState.branchProtectionError
+          ? "unavailable"
+          : (branchProtectionAvailabilityLabel ??
+            (queryState.protection ? "protected" : queryState.branchProtection ? "unprotected" : "unknown")),
+    branchProtectionStatusUnavailable:
+      Boolean(queryState.branchProtectionError) || Boolean(branchProtectionAvailabilityLabel),
+    codeScanningAvailabilityMessage,
+    codeScanningStatusLabel:
+      queryState.codeScanningAlertsLoading && queryState.codeScanningAlerts.length === 0
+        ? "loading"
+        : codeScanningStatusUnavailable
+          ? "unavailable"
+          : queryState.codeScanningAlerts.length === 0
+            ? "clear"
+            : `${queryState.codeScanningAlerts.length} open`,
+    codeScanningStatusUnavailable,
+    createRulesetDisabledReason:
+      (mutationPending && securityMutationRelevant ? "A security setting update is still running." : null) ??
+      securityMutationDisabledReason ??
+      (!defaultSecurityRef ? "Repository default branch is unavailable." : null),
+    defaultSecurityRef,
+    dependabotAvailabilityMessage,
+    dependabotStatusLabel:
+      queryState.dependabotAlertsLoading && queryState.dependabotAlerts.length === 0
+        ? "loading"
+        : dependabotStatusUnavailable
+          ? "unavailable"
+          : queryState.dependabotAlerts.length === 0
+            ? "clear"
+            : `${queryState.dependabotAlerts.length} open`,
+    dependabotStatusUnavailable,
+    hasBranchProtectionBranchOption: queryState.branchProtectionBranches.some(
+      (branch) => branch.name === queryState.branchProtectionBranch
+    ),
+    presentCommunityFiles:
+      queryState.repositoryCommunityProfile?.files.filter((file) => file.path || file.htmlUrl) ?? [],
+    missingCommunityFiles:
+      queryState.repositoryCommunityProfile?.files.filter((file) => !file.path && !file.htmlUrl) ?? [],
+    repositoryCommunityProfileAvailabilityMessage,
+    repositoryCommunityProfileStatusLabel:
+      queryState.repositoryCommunityProfileLoading && !queryState.repositoryCommunityProfile
+        ? "loading"
+        : repositoryCommunityProfileStatusUnavailable
+          ? "unavailable"
+          : queryState.repositoryCommunityProfile?.healthPercentage != null
+            ? `${queryState.repositoryCommunityProfile.healthPercentage}%`
+            : "unknown",
+    repositoryCommunityProfileStatusUnavailable,
+    repositoryRulesetsAvailabilityMessage,
+    repositoryRulesetsStatusLabel:
+      queryState.repositoryRulesetsLoading && queryState.repositoryRulesets.length === 0
+        ? "loading"
+        : Boolean(queryState.repositoryRulesetsError) || Boolean(repositoryRulesetsAvailabilityMessage)
+          ? "unavailable"
+          : queryState.repositoryRulesets.length === 0
+            ? "none"
+            : `${queryState.repositoryRulesets.length} rulesets`,
+    repositoryRulesetsStatusUnavailable:
+      Boolean(queryState.repositoryRulesetsError) || Boolean(repositoryRulesetsAvailabilityMessage),
+    repositorySecurityAdvisoriesAvailabilityMessage,
+    repositorySecurityAdvisoriesStatusLabel:
+      queryState.repositorySecurityAdvisoriesLoading && queryState.repositorySecurityAdvisories.length === 0
+        ? "loading"
+        : Boolean(queryState.repositorySecurityAdvisoriesError) ||
+            Boolean(repositorySecurityAdvisoriesAvailabilityMessage)
+          ? "unavailable"
+          : queryState.repositorySecurityAdvisories.length === 0
+            ? "clear"
+            : `${queryState.repositorySecurityAdvisories.length} advisories`,
+    repositorySecurityAdvisoriesStatusUnavailable:
+      Boolean(queryState.repositorySecurityAdvisoriesError) ||
+      Boolean(repositorySecurityAdvisoriesAvailabilityMessage),
+    repositorySecurityPolicyAvailabilityMessage,
+    repositorySecurityPolicyStatusLabel:
+      queryState.repositorySecurityPolicyLoading && !queryState.repositorySecurityPolicy
+        ? "loading"
+        : queryState.repositorySecurityPolicyError
+          ? "unavailable"
+          : repositorySecurityPolicyAvailabilityLabel
+            ? repositorySecurityPolicyAvailabilityLabel
+            : securityPolicy
+              ? "found"
+              : queryState.repositorySecurityPolicy
+                ? "not configured"
+                : "unknown",
+    repositorySecurityPolicyStatusUnavailable:
+      Boolean(queryState.repositorySecurityPolicyError) ||
+      Boolean(repositorySecurityPolicyAvailabilityMessage),
+    secretScanningAvailabilityMessage,
+    secretScanningStatusLabel:
+      queryState.secretScanningAlertsLoading && queryState.secretScanningAlerts.length === 0
+        ? "loading"
+        : secretScanningStatusUnavailable
+          ? "unavailable"
+          : queryState.secretScanningAlerts.length === 0
+            ? "clear"
+            : `${queryState.secretScanningAlerts.length} open`,
+    secretScanningStatusUnavailable,
+    securityFeatureRows: repositorySecurityFeatureRows(repository.administration.securityAndAnalysis),
+    securityMutationDisabledReason,
+    securityMutationRelevant,
+    administrationAvailabilityLabel: readAvailabilityStatusLabel(
+      repository.administrationAvailability ?? null
+    ),
+    administrationAvailabilityMessage
+  };
+}
 
-    onOpenCodePath(path, normalizeGitHubCodeRef(ref) ?? defaultSecurityRef, line);
-  }
-
-  function securityPathDisabledReason(path: string | null, label: string): string | null {
-    return path ? null : `${label} path unavailable from GitHub.`;
-  }
-
-  function securityItemActive(kind: LocalRecentSecurityItemKind, id: string | number): boolean {
-    return focusedSecurityItemKind === kind && focusedSecurityItemId === String(id);
-  }
-
-  function baselineBranchProtectionPayload(branch: string): GitHubMutationFields {
-    return {
-      branch,
-      required_status_checks: null,
-      enforce_admins: true,
-      required_pull_request_reviews: {
-        dismiss_stale_reviews: true,
-        require_code_owner_reviews: false,
-        required_approving_review_count: 1
-      },
-      restrictions: null,
-      required_linear_history: true,
-      allow_force_pushes: false,
-      allow_deletions: false,
-      block_creations: false,
-      required_conversation_resolution: true,
-      lock_branch: false,
-      allow_fork_syncing: false
-    };
-  }
-
-  function baselineRepositoryRulesetPayload(
-    name: string,
-    enforcement: "active" | "evaluate",
-    rulesetId?: number
-  ): GitHubMutationFields {
-    const ref = defaultSecurityRef ?? branchProtectionBranch;
-    return {
-      ...(rulesetId === undefined ? {} : { rulesetId }),
-      name,
-      target: "branch",
-      enforcement,
-      bypass_actors: [],
-      conditions: {
-        ref_name: {
-          include: ref ? [`refs/heads/${ref}`] : ["~DEFAULT_BRANCH"],
-          exclude: []
-        }
-      },
-      rules: [
-        { type: "deletion" },
-        { type: "non_fast_forward" },
-        {
-          type: "pull_request",
-          parameters: {
-            required_approving_review_count: 1,
-            dismiss_stale_reviews_on_push: true,
-            require_code_owner_review: false,
-            require_last_push_approval: false,
-            required_review_thread_resolution: true
-          }
-        }
-      ]
-    };
-  }
-
-  function rulesetMutationDisabledReason(ruleset: RepositoryRulesetSummary): string | null {
-    if (mutationPending && securityMutationRelevant) {
-      return "A security setting update is still running.";
-    }
-    if (securityMutationDisabledReason) {
-      return securityMutationDisabledReason;
-    }
-    if (ruleset.sourceType && ruleset.sourceType.toLowerCase() !== "repository") {
-      return "Inherited rulesets must be changed in their source repository or organization.";
-    }
+function SecurityListDepthControl({
+  count,
+  limit,
+  loadMoreLabel,
+  maxNote,
+  onExpand
+}: {
+  count: number;
+  limit: number;
+  loadMoreLabel: string;
+  maxNote: string;
+  onExpand(): void;
+}): JSX.Element | null {
+  if (count < limit) {
     return null;
   }
 
-  function renderSecurityListDepthControl(
-    count: number,
-    limit: number,
-    loadMoreLabel: string,
-    maxNote: string,
-    onExpand: () => void
-  ): JSX.Element | null {
-    if (count < limit) {
-      return null;
-    }
+  if (limit < maxSecurityListLimit) {
+    return (
+      <div className="table-action-row">
+        <button type="button" onClick={onExpand}>
+          <ChevronDown size={16} /> {loadMoreLabel}
+        </button>
+      </div>
+    );
+  }
 
-    if (limit < maxSecurityListLimit) {
-      return (
-        <div className="table-action-row">
-          <button type="button" onClick={onExpand}>
-            <ChevronDown size={16} /> {loadMoreLabel}
-          </button>
-        </div>
-      );
-    }
+  return <div className="muted-row">{maxNote}</div>;
+}
 
-    return <div className="muted-row">{maxNote}</div>;
+function BranchProtectionSurface({
+  availabilityMessage,
+  branch,
+  branchLabel,
+  branches,
+  branchesDisabled,
+  branchesNote,
+  error,
+  hasBranchOption,
+  hasProtectionResult,
+  loading,
+  mutationAction,
+  mutationDisabledReason,
+  mutationError,
+  mutationPending,
+  mutationRelevant,
+  mutationSucceeded,
+  protection,
+  statusLabel,
+  statusUnavailable,
+  onApplyBaselineProtection,
+  onDeleteProtection,
+  onOpenBranchRulesFallback,
+  onSelectBranch
+}: {
+  availabilityMessage: string | null;
+  branch: string | null;
+  branchLabel: string;
+  branches: BranchSummary[];
+  branchesDisabled: boolean;
+  branchesNote: string | null;
+  error: Error | null;
+  hasBranchOption: boolean;
+  hasProtectionResult: boolean;
+  loading: boolean;
+  mutationAction: GitHubAction | null;
+  mutationDisabledReason: string | null;
+  mutationError: Error | null;
+  mutationPending: boolean;
+  mutationRelevant: boolean;
+  mutationSucceeded: boolean;
+  protection: BranchProtectionSummary | null;
+  statusLabel: string;
+  statusUnavailable: boolean;
+  onApplyBaselineProtection(): void;
+  onDeleteProtection(): void;
+  onOpenBranchRulesFallback(): void;
+  onSelectBranch(ref: string): void;
+}): JSX.Element {
+  function handleBranchChange(event: ChangeEvent<HTMLSelectElement>): void {
+    const ref = event.currentTarget.value;
+    if (ref) {
+      onSelectBranch(ref);
+    }
   }
 
   return (
-    <section className="table-panel github-surface security-quality-panel">
+    <>
       <div className="table-action-row">
         <label className="ref-picker">
           <GitBranch size={16} />
           <select
             aria-label="Branch protection branch"
-            disabled={branchProtectionBranchesDisabled || branchProtectionBranches.length === 0}
-            value={branchProtectionBranch ?? ""}
-            onChange={(event) => {
-              const ref = event.currentTarget.value;
-              if (ref) {
-                onSelectSecurityQualityBranch(ref);
-              }
-            }}
+            disabled={branchesDisabled || branches.length === 0}
+            value={branch ?? ""}
+            onChange={handleBranchChange}
           >
-            {branchProtectionBranch && !hasBranchProtectionBranchOption && (
-              <option value={branchProtectionBranch}>{branchProtectionBranch}</option>
-            )}
-            {!branchProtectionBranch && <option value="">No branch selected</option>}
-            {branchProtectionBranches.map((branch) => (
-              <option key={`security-quality-branch-${branch.name}`} value={branch.name}>
-                {branch.name}
-                {branch.protected ? " (protected)" : ""}
+            {branch && !hasBranchOption && <option value={branch}>{branch}</option>}
+            {!branch && <option value="">No branch selected</option>}
+            {branches.map((branchOption) => (
+              <option key={`security-quality-branch-${branchOption.name}`} value={branchOption.name}>
+                {branchOption.name}
+                {branchOption.protected ? " (protected)" : ""}
               </option>
             ))}
           </select>
           <ChevronDown size={14} />
         </label>
-        <button
-          type="button"
-          onClick={() => onOpenExternal(repositoryPath(repository, "/settings/branches"))}
-        >
+        <button type="button" onClick={onOpenBranchRulesFallback}>
           <ExternalLink size={16} /> Branch rules fallback
         </button>
-        {branchProtectionBranchesNote && (
-          <small className="action-disabled-note">{branchProtectionBranchesNote}</small>
-        )}
+        {branchesNote && <small className="action-disabled-note">{branchesNote}</small>}
       </div>
       <section className="security-protection-summary" aria-label="Branch protection">
         <header>
           <div>
             <h2>Branch protection</h2>
-            <small>{branchProtectionBranchLabel}</small>
+            <small>{branchLabel}</small>
           </div>
-          <span
-            className={`state-chip ${
-              branchProtectionStatusUnavailable ? "attention" : protection ? "success" : ""
-            }`}
-          >
-            {branchProtectionStatusLabel}
+          <span className={`state-chip ${statusUnavailable ? "attention" : protection ? "success" : ""}`}>
+            {statusLabel}
           </span>
         </header>
-        {branchProtectionLoading && !branchProtection && (
-          <div className="loading-state">Loading branch protection…</div>
-        )}
-        {branchProtectionError && (
-          <div className="error-state">Branch protection unavailable: {branchProtectionError.message}</div>
-        )}
+        {loading && !hasProtectionResult && <div className="loading-state">Loading branch protection…</div>}
+        {error && <div className="error-state">Branch protection unavailable: {error.message}</div>}
         {availabilityMessage && <div className="error-state">{availabilityMessage}</div>}
-        {securityMutationRelevant && mutationPending && (
+        {mutationRelevant && mutationPending && (
           <div className="loading-state" role="status">
             Running security action: {githubActionLabel(mutationAction)}.
           </div>
         )}
-        {securityMutationRelevant && !mutationPending && mutationSucceeded && (
+        {mutationRelevant && !mutationPending && mutationSucceeded && (
           <div className="success-state" role="status">
             Security action completed: {githubActionLabel(mutationAction)}.
           </div>
         )}
-        {securityMutationRelevant && !mutationPending && mutationError && (
+        {mutationRelevant && !mutationPending && mutationError && (
           <div className="error-state" role="alert">
             Security action failed: {githubActionLabel(mutationAction)}. {mutationError.message}
           </div>
@@ -1097,39 +931,24 @@ export function SecurityQualityTab({
         <div className="security-management-actions">
           <button
             type="button"
-            disabled={Boolean(branchProtectionMutationDisabledReason)}
-            title={branchProtectionMutationDisabledReason ?? undefined}
-            onClick={() => {
-              if (branchProtectionBranch) {
-                onMutate(
-                  "updateBranchProtection",
-                  false,
-                  baselineBranchProtectionPayload(branchProtectionBranch)
-                );
-              }
-            }}
+            disabled={Boolean(mutationDisabledReason)}
+            title={mutationDisabledReason ?? undefined}
+            onClick={onApplyBaselineProtection}
           >
             <ShieldCheck size={15} /> Apply baseline protection
           </button>
           <button
             type="button"
-            disabled={Boolean(branchProtectionMutationDisabledReason) || !protection}
+            disabled={Boolean(mutationDisabledReason) || !protection}
             title={
-              branchProtectionMutationDisabledReason ??
+              mutationDisabledReason ??
               (!protection ? "No branch protection is configured for this branch." : undefined)
             }
-            onClick={() => {
-              if (branchProtectionBranch) {
-                onMutate("deleteBranchProtection", true, { branch: branchProtectionBranch });
-              }
-            }}
+            onClick={onDeleteProtection}
           >
             <X size={15} /> Delete protection
           </button>
-          <button
-            type="button"
-            onClick={() => onOpenExternal(repositoryPath(repository, "/settings/branches"))}
-          >
+          <button type="button" onClick={onOpenBranchRulesFallback}>
             <ExternalLink size={15} /> GitHub fallback
           </button>
         </div>
@@ -1191,890 +1010,1833 @@ export function SecurityQualityTab({
             )}
           </div>
         )}
-        {!branchProtectionLoading && !branchProtectionError && !availabilityMessage && !protection && (
+        {!loading && !error && !availabilityMessage && !protection && (
           <div className="empty-state">No branch protection data returned.</div>
         )}
       </section>
-      <section className="security-protection-summary" aria-label="Repository rulesets">
-        <header>
-          <div>
-            <h2>Repository rulesets</h2>
-            <small>Branch and tag rules returned by GitHub, including inherited rules when visible.</small>
-          </div>
-          <span
-            className={`state-chip ${
-              repositoryRulesetsStatusUnavailable
-                ? "attention"
-                : repositoryRulesets.length === 0
-                  ? ""
-                  : "success"
-            }`}
-          >
-            {repositoryRulesetsStatusLabel}
-          </span>
-        </header>
-        {repositoryRulesetsLoading && repositoryRulesets.length === 0 && (
-          <div className="loading-state">Loading repository rulesets…</div>
-        )}
-        {repositoryRulesetsError && (
-          <div className="error-state">
-            Repository rulesets unavailable: {repositoryRulesetsError.message}
-          </div>
-        )}
-        {repositoryRulesetsAvailabilityMessage && (
-          <div className="error-state">{repositoryRulesetsAvailabilityMessage}</div>
-        )}
-        <div className="security-management-actions">
-          <button
-            type="button"
-            disabled={Boolean(createRulesetDisabledReason)}
-            title={createRulesetDisabledReason ?? undefined}
-            onClick={() =>
-              onMutate(
-                "createRepositoryRuleset",
-                false,
-                baselineRepositoryRulesetPayload("Baseline branch rules", "active")
-              )
-            }
-          >
-            <Plus size={15} /> Create baseline ruleset
-          </button>
-          <button
-            type="button"
-            disabled={Boolean(createRulesetDisabledReason)}
-            title={createRulesetDisabledReason ?? undefined}
-            onClick={() =>
-              onMutate(
-                "createRepositoryRuleset",
-                false,
-                baselineRepositoryRulesetPayload("Evaluate baseline branch rules", "evaluate")
-              )
-            }
-          >
-            <ShieldCheck size={15} /> Create evaluate ruleset
-          </button>
-          <button type="button" onClick={() => onOpenExternal(repositoryPath(repository, "/rules"))}>
-            <ExternalLink size={15} /> Rulesets fallback
-          </button>
-        </div>
-        {!repositoryRulesetsLoading &&
-          !repositoryRulesetsError &&
-          !repositoryRulesetsAvailabilityMessage &&
-          repositoryRulesets.length === 0 && (
-            <div className="empty-state">No repository rulesets returned.</div>
-          )}
-        {renderSecurityListDepthControl(
-          repositoryRulesets.length,
-          repositoryRulesetsLimit,
-          "Load more rulesets",
-          `Showing the first ${repositoryRulesetsLimit} repository rulesets returned by GitHub.`,
-          onExpandRepositoryRulesets
-        )}
-        {repositoryRulesets.length > 0 && (
-          <div className="workflow-detail-grid">
-            {repositoryRulesets.map((ruleset) => (
-              <article
-                className={`workflow-job-card ${securityItemActive("ruleset", ruleset.id) ? "active" : ""}`}
-                key={ruleset.id}
-              >
-                <header>
-                  <strong>{ruleset.name}</strong>
-                  <span className="state-chip">{ruleset.enforcement ?? "unknown"}</span>
-                </header>
-                <small>
-                  {ruleset.target ?? "target unknown"} · {ruleset.sourceType ?? "source"}{" "}
-                  {ruleset.source ? `from ${ruleset.source}` : ""}
-                </small>
-                <div className="workflow-summary branch-protection-flags">
-                  <span>{formatCompactNumber(ruleset.ruleCount ?? 0)} rules</span>
-                  <span>{formatCompactNumber(ruleset.conditionCount ?? 0)} conditions</span>
-                  <span>{formatCompactNumber(ruleset.bypassActorCount ?? 0)} bypass actors</span>
-                  <span>Bypass: {accessRoleLabel(ruleset.currentUserCanBypass)}</span>
-                </div>
-                {(ruleset.rules.length > 0 ||
-                  ruleset.conditions.length > 0 ||
-                  ruleset.bypassActors.length > 0) && (
-                  <div className="ruleset-detail-list" aria-label={`${ruleset.name} ruleset details`}>
-                    {ruleset.rules.slice(0, 4).map((rule) => (
-                      <span key={`rule-${rule.type}-${rule.parameters.join("|")}`}>
-                        <strong>Rule</strong> {rulesetRuleLabel(rule)}
-                      </span>
-                    ))}
-                    {ruleset.conditions.slice(0, 3).map((condition) => (
-                      <span
-                        key={`condition-${condition.type}-${condition.include.join("|")}-${condition.exclude.join("|")}-${condition.parameters.join("|")}`}
-                      >
-                        <strong>Condition</strong> {rulesetConditionLabel(condition)}
-                      </span>
-                    ))}
-                    {ruleset.bypassActors.slice(0, 3).map((actor) => (
-                      <span
-                        key={`bypass-${actor.actorType ?? "actor"}-${actor.actorId ?? "unknown"}-${actor.bypassMode ?? "mode"}`}
-                      >
-                        <strong>Bypass</strong> {rulesetBypassActorLabel(actor)}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <small>
-                  {ruleset.updatedAt ? `Updated ${formatRelativeDate(ruleset.updatedAt)}` : "No update time"}
-                </small>
-                <div>
-                  {(() => {
-                    const rulesetDisabledReason = rulesetMutationDisabledReason(ruleset);
-                    return (
-                      <>
-                        <button
-                          type="button"
-                          disabled={Boolean(rulesetDisabledReason)}
-                          title={rulesetDisabledReason ?? undefined}
-                          onClick={() =>
-                            onMutate(
-                              "updateRepositoryRuleset",
-                              false,
-                              baselineRepositoryRulesetPayload(ruleset.name, "active", ruleset.id)
-                            )
-                          }
-                        >
-                          <ShieldCheck size={15} /> Reapply baseline
-                        </button>
-                        <button
-                          type="button"
-                          disabled={Boolean(rulesetDisabledReason)}
-                          title={rulesetDisabledReason ?? undefined}
-                          onClick={() => onMutate("deleteRepositoryRuleset", true, { rulesetId: ruleset.id })}
-                        >
-                          <X size={15} /> Delete
-                        </button>
-                      </>
-                    );
-                  })()}
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onSelectSecurityItem({
-                        kind: "ruleset",
-                        id: String(ruleset.id),
-                        title: ruleset.name,
-                        subtitle: `${repository.nameWithOwner} ruleset`,
-                        url: ruleset.htmlUrl,
-                        state: ruleset.enforcement,
-                        rule: ruleset.name,
-                        updatedAt: ruleset.updatedAt
-                      })
-                    }
-                  >
-                    <ShieldCheck size={15} /> Inspect
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!ruleset.htmlUrl}
-                    title={ruleset.htmlUrl ? undefined : "Ruleset URL unavailable."}
-                    onClick={() => {
-                      if (ruleset.htmlUrl) {
-                        onOpenExternal(ruleset.htmlUrl);
-                      }
-                    }}
-                  >
-                    <ExternalLink size={15} /> GitHub fallback
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
-      <section className="security-protection-summary" aria-label="Security advisories">
-        <header>
-          <div>
-            <h2>Security advisories</h2>
-            <small>Repository advisories returned by GitHub for coordinated vulnerability disclosure.</small>
-          </div>
-          <span
-            className={`state-chip ${
-              repositorySecurityAdvisoriesLoading && repositorySecurityAdvisories.length === 0
-                ? ""
-                : repositorySecurityAdvisoriesStatusUnavailable || repositorySecurityAdvisories.length > 0
-                  ? "attention"
-                  : "success"
-            }`}
-          >
-            {repositorySecurityAdvisoriesStatusLabel}
-          </span>
-        </header>
-        {repositorySecurityAdvisoriesLoading && repositorySecurityAdvisories.length === 0 && (
-          <div className="loading-state">Loading security advisories…</div>
-        )}
-        {repositorySecurityAdvisoriesError && (
-          <div className="error-state">
-            Security advisories unavailable: {repositorySecurityAdvisoriesError.message}
-          </div>
-        )}
-        {repositorySecurityAdvisoriesAvailabilityMessage && (
-          <div className="error-state">{repositorySecurityAdvisoriesAvailabilityMessage}</div>
-        )}
-        {!repositorySecurityAdvisoriesLoading &&
-          !repositorySecurityAdvisoriesError &&
-          !repositorySecurityAdvisoriesAvailabilityMessage &&
-          repositorySecurityAdvisories.length === 0 && (
-            <div className="empty-state">No repository security advisories returned.</div>
-          )}
-        {renderSecurityListDepthControl(
-          repositorySecurityAdvisories.length,
-          repositorySecurityAdvisoriesLimit,
-          "Load more advisories",
-          `Showing the first ${repositorySecurityAdvisoriesLimit} security advisories returned by GitHub.`,
-          onExpandRepositorySecurityAdvisories
-        )}
-        {repositorySecurityAdvisories.length > 0 && (
-          <div className="workflow-detail-grid">
-            {repositorySecurityAdvisories.map((advisory) => (
-              <article
-                className={`workflow-job-card ${
-                  securityItemActive("advisory", advisory.ghsaId) ? "active" : ""
-                }`}
-                key={advisory.ghsaId}
-              >
-                <header>
-                  <strong>{advisory.summary}</strong>
-                  <span className="state-chip attention">{advisory.severity ?? advisory.state}</span>
-                </header>
-                <small>
-                  {advisory.ghsaId}
-                  {advisory.cveId ? ` · ${advisory.cveId}` : ""} ·{" "}
-                  {advisory.updatedAt ? formatRelativeDate(advisory.updatedAt) : "not updated"}
-                </small>
-                {advisory.description && <p>{advisory.description}</p>}
-                <div className="workflow-summary branch-protection-flags">
-                  <span>CVSS {advisory.cvssScore ?? "unknown"}</span>
-                  <span>{formatCompactNumber(advisory.vulnerabilityCount ?? 0)} vulnerabilities</span>
-                  <span>{formatCompactNumber(advisory.creditCount ?? 0)} credits</span>
-                  {advisory.cweIds.map((cweId) => (
-                    <span key={cweId}>{cweId}</span>
-                  ))}
-                </div>
-                <div>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onSelectSecurityItem({
-                        kind: "advisory",
-                        id: advisory.ghsaId,
-                        title: advisory.summary,
-                        subtitle: `${repository.nameWithOwner} advisory · ${advisory.ghsaId}`,
-                        url: advisory.htmlUrl,
-                        state: advisory.state,
-                        severity: advisory.severity,
-                        ghsaId: advisory.ghsaId,
-                        cveId: advisory.cveId,
-                        updatedAt: advisory.updatedAt
-                      })
-                    }
-                  >
-                    <ShieldCheck size={15} /> Inspect
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!advisory.htmlUrl}
-                    title={advisory.htmlUrl ? undefined : "Advisory URL unavailable."}
-                    onClick={() => {
-                      if (advisory.htmlUrl) {
-                        onOpenExternal(advisory.htmlUrl);
-                      }
-                    }}
-                  >
-                    <ExternalLink size={15} /> GitHub fallback
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
-      <section className="security-protection-summary" aria-label="Security policy">
-        <header>
-          <div>
-            <h2>Security policy</h2>
-            <small>Read-only SECURITY.md surfaced from GitHub when configured.</small>
-          </div>
-          <span
-            className={`state-chip ${
-              repositorySecurityPolicyStatusUnavailable ? "attention" : securityPolicy ? "success" : ""
-            }`}
-          >
-            {repositorySecurityPolicyStatusLabel}
-          </span>
-        </header>
-        {repositorySecurityPolicyLoading && !repositorySecurityPolicy && (
-          <div className="loading-state">Loading security policy…</div>
-        )}
-        {repositorySecurityPolicyError && (
-          <div className="error-state">
-            Security policy unavailable: {repositorySecurityPolicyError.message}
-          </div>
-        )}
-        {repositorySecurityPolicyAvailabilityMessage && (
-          <div className="error-state">{repositorySecurityPolicyAvailabilityMessage}</div>
-        )}
-        {!repositorySecurityPolicyLoading &&
-          !repositorySecurityPolicyError &&
-          !repositorySecurityPolicyAvailabilityMessage &&
-          repositorySecurityPolicy &&
-          !securityPolicy && (
-            <div className="empty-state">
-              No security policy file found in SECURITY.md, .github/SECURITY.md, or docs/SECURITY.md.
-            </div>
-          )}
-        {securityPolicy && (
-          <article className="workflow-job-card">
-            <header>
-              <strong>{securityPolicy.path}</strong>
-              <span className="state-chip success">
-                {formatCompactNumber(securityPolicy.size ?? 0)} bytes
-              </span>
-            </header>
-            <small>
-              {securityPolicy.sha ? `SHA ${securityPolicy.sha.slice(0, 12)}` : "SHA unavailable"} ·{" "}
-              {securityPolicy.ref ?? repository.defaultBranch ?? "default branch"}
-            </small>
-            {securityPolicy.content ? (
-              <>
-                <pre className="code-preview">{visibleSecurityPolicyContent}</pre>
-                {securityPolicyHasFullPreview && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setExpandedSecurityPolicyState((current) => ({
-                        policyKey: securityPolicyKey,
-                        expanded: current.policyKey === securityPolicyKey ? !current.expanded : true
-                      }))
-                    }
-                  >
-                    <small>{securityPolicyExpanded ? "Show preview" : "Show full policy"}</small>
-                  </button>
-                )}
-              </>
-            ) : (
-              <div className="empty-state">Policy content is too large or unavailable for preview.</div>
-            )}
-            <div>
-              <button type="button" onClick={() => openSecurityPath(securityPolicy.path, securityPolicy.ref)}>
-                <FileIcon size={15} /> Open in Control
-              </button>
-              <button
-                type="button"
-                disabled={!securityPolicy.htmlUrl}
-                title={securityPolicy.htmlUrl ? undefined : "Policy URL unavailable."}
-                onClick={() => {
-                  if (securityPolicy.htmlUrl) {
-                    onOpenExternal(securityPolicy.htmlUrl);
-                  }
-                }}
-              >
-                <ExternalLink size={15} /> GitHub fallback
-              </button>
-            </div>
-          </article>
-        )}
-        <div className="table-action-row">
-          <button
-            type="button"
-            onClick={() => onOpenExternal(repositoryPath(repository, "/security/policy"))}
-          >
-            <ExternalLink size={16} /> GitHub fallback
-          </button>
-        </div>
-      </section>
-      <section className="security-protection-summary" aria-label="Community profile">
-        <header>
-          <div>
-            <h2>Community profile</h2>
-            <small>Repository community standards returned by GitHub.</small>
-          </div>
-          <span
-            className={`state-chip ${repositoryCommunityProfileStatusUnavailable ? "attention" : "success"}`}
-          >
-            {repositoryCommunityProfileStatusLabel}
-          </span>
-        </header>
-        {repositoryCommunityProfileLoading && !repositoryCommunityProfile && (
-          <div className="loading-state">Loading community profile…</div>
-        )}
-        {repositoryCommunityProfileError && (
-          <div className="error-state">
-            Community profile unavailable: {repositoryCommunityProfileError.message}
-          </div>
-        )}
-        {repositoryCommunityProfileAvailabilityMessage && (
-          <div className="error-state">{repositoryCommunityProfileAvailabilityMessage}</div>
-        )}
-        {!repositoryCommunityProfileLoading &&
-          !repositoryCommunityProfileError &&
-          !repositoryCommunityProfileAvailabilityMessage &&
-          !repositoryCommunityProfile && <div className="empty-state">No community profile returned.</div>}
-        {repositoryCommunityProfile && (
-          <>
-            <div className="insight-grid">
-              <article className="metric-tile">
-                <strong>
-                  {repositoryCommunityProfile.healthPercentage != null
-                    ? `${repositoryCommunityProfile.healthPercentage}%`
-                    : "Unknown"}
-                </strong>
-                <small>Health score</small>
-                <span>{repositoryCommunityProfile.description ?? "No community profile description"}</span>
-              </article>
-              <article className="metric-tile">
-                <strong>{formatCompactNumber(presentCommunityFiles.length)}</strong>
-                <small>Standards found</small>
-                <span>{formatCompactNumber(missingCommunityFiles.length)} missing standards</span>
-              </article>
-            </div>
-            {presentCommunityFiles.length > 0 ? (
-              <div className="workflow-detail-grid">
-                {presentCommunityFiles.map((file) => (
-                  <article className="workflow-job-card" key={file.key}>
-                    <header>
-                      <strong>{file.label}</strong>
-                      <span className="state-chip success">found</span>
-                    </header>
-                    <small>{file.path ?? file.name ?? "Path unavailable"}</small>
-                    <div>
-                      <button
-                        type="button"
-                        disabled={!file.path}
-                        title={securityPathDisabledReason(file.path, file.label) ?? undefined}
-                        onClick={() => openSecurityPath(file.path, null)}
-                      >
-                        <FileIcon size={15} /> Open in Control
-                      </button>
-                      <button
-                        type="button"
-                        disabled={!file.htmlUrl}
-                        title={file.htmlUrl ? undefined : "File URL unavailable."}
-                        onClick={() => {
-                          if (file.htmlUrl) {
-                            onOpenExternal(file.htmlUrl);
-                          }
-                        }}
-                      >
-                        <ExternalLink size={15} /> GitHub fallback
-                      </button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <div className="empty-state">No community standard files returned.</div>
-            )}
-            {missingCommunityFiles.length > 0 && (
-              <div className="label-stack branch-protection-checks">
-                {missingCommunityFiles.map((file) => (
-                  <span key={file.key}>Missing {file.label}</span>
-                ))}
-              </div>
-            )}
-          </>
-        )}
-        <div className="table-action-row">
-          {repositoryCommunityProfile?.documentationUrl && (
-            <button
-              type="button"
-              onClick={() => onOpenExternal(repositoryCommunityProfile.documentationUrl!)}
+    </>
+  );
+}
+
+function RepositorySecurityAdvisoryCard({
+  advisory,
+  active,
+  repositoryNameWithOwner,
+  onOpenExternal,
+  onSelectSecurityItem
+}: {
+  advisory: RepositorySecurityAdvisorySummary;
+  active: boolean;
+  repositoryNameWithOwner: string;
+  onOpenExternal(url: string): void;
+  onSelectSecurityItem: SelectSecurityItem;
+}): JSX.Element {
+  function handleInspect(): void {
+    onSelectSecurityItem({
+      kind: "advisory",
+      id: advisory.ghsaId,
+      title: advisory.summary,
+      subtitle: `${repositoryNameWithOwner} advisory · ${advisory.ghsaId}`,
+      url: advisory.htmlUrl,
+      state: advisory.state,
+      severity: advisory.severity,
+      ghsaId: advisory.ghsaId,
+      cveId: advisory.cveId,
+      updatedAt: advisory.updatedAt
+    });
+  }
+
+  function handleOpenFallback(): void {
+    if (advisory.htmlUrl) {
+      onOpenExternal(advisory.htmlUrl);
+    }
+  }
+
+  return (
+    <article className={`workflow-job-card ${active ? "active" : ""}`}>
+      <header>
+        <strong>{advisory.summary}</strong>
+        <span className="state-chip attention">{advisory.severity ?? advisory.state}</span>
+      </header>
+      <small>
+        {advisory.ghsaId}
+        {advisory.cveId ? ` · ${advisory.cveId}` : ""} ·{" "}
+        {advisory.updatedAt ? formatRelativeDate(advisory.updatedAt) : "not updated"}
+      </small>
+      {advisory.description && <p>{advisory.description}</p>}
+      <div className="workflow-summary branch-protection-flags">
+        <span>CVSS {advisory.cvssScore ?? "unknown"}</span>
+        <span>{formatCompactNumber(advisory.vulnerabilityCount ?? 0)} vulnerabilities</span>
+        <span>{formatCompactNumber(advisory.creditCount ?? 0)} credits</span>
+        {advisory.cweIds.map((cweId) => (
+          <span key={cweId}>{cweId}</span>
+        ))}
+      </div>
+      <div>
+        <button type="button" onClick={handleInspect}>
+          <ShieldCheck size={15} /> Inspect
+        </button>
+        <button
+          type="button"
+          disabled={!advisory.htmlUrl}
+          title={advisory.htmlUrl ? undefined : "Advisory URL unavailable."}
+          onClick={handleOpenFallback}
+        >
+          <ExternalLink size={15} /> GitHub fallback
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function DependabotAlertCard({
+  alert,
+  active,
+  repositoryNameWithOwner,
+  defaultSecurityRef,
+  onOpenExternal,
+  onOpenSecurityPath,
+  onSelectSecurityItem
+}: {
+  alert: DependabotAlertSummary;
+  active: boolean;
+  repositoryNameWithOwner: string;
+  defaultSecurityRef: string | null;
+  onOpenExternal(url: string): void;
+  onOpenSecurityPath: OpenSecurityPath;
+  onSelectSecurityItem: SelectSecurityItem;
+}): JSX.Element {
+  const manifestDisabledReason = securityPathDisabledReason(alert.manifestPath, "Manifest");
+
+  function handleInspect(): void {
+    onSelectSecurityItem({
+      kind: "dependabot",
+      id: String(alert.number),
+      title: alert.packageName ?? `Dependabot alert #${alert.number}`,
+      subtitle: `${repositoryNameWithOwner} Dependabot alert #${alert.number}`,
+      url: alert.htmlUrl,
+      state: alert.state,
+      severity: alert.severity,
+      path: alert.manifestPath,
+      packageName: alert.packageName,
+      updatedAt: alert.updatedAt
+    });
+  }
+
+  function handleOpenManifest(): void {
+    onOpenSecurityPath(alert.manifestPath, defaultSecurityRef);
+  }
+
+  function handleOpenFallback(): void {
+    if (alert.htmlUrl) {
+      onOpenExternal(alert.htmlUrl);
+    }
+  }
+
+  return (
+    <article className={`workflow-job-card ${active ? "active" : ""}`}>
+      <header>
+        <strong>{alert.packageName ?? `Alert ${alert.number}`}</strong>
+        <span className="state-chip attention">{alert.severity ?? alert.state}</span>
+      </header>
+      <small>
+        {alert.ecosystem ?? "dependency"} · {alert.manifestPath ?? "unknown manifest"} ·{" "}
+        {alert.updatedAt ? formatRelativeDate(alert.updatedAt) : "not updated"}
+      </small>
+      {alert.summary && <p>{alert.summary}</p>}
+      <div>
+        <button type="button" onClick={handleInspect}>
+          <ShieldCheck size={15} /> Inspect
+        </button>
+        <button
+          type="button"
+          disabled={Boolean(manifestDisabledReason)}
+          title={manifestDisabledReason ?? undefined}
+          onClick={handleOpenManifest}
+        >
+          Open manifest in Control
+        </button>
+        <button
+          type="button"
+          disabled={!alert.htmlUrl}
+          title={alert.htmlUrl ? undefined : "Dependabot alert URL unavailable."}
+          onClick={handleOpenFallback}
+        >
+          <ExternalLink size={15} /> GitHub fallback
+        </button>
+      </div>
+      {manifestDisabledReason && <small className="action-disabled-note">{manifestDisabledReason}</small>}
+    </article>
+  );
+}
+
+function CodeScanningAlertCard({
+  alert,
+  active,
+  repositoryNameWithOwner,
+  onOpenExternal,
+  onOpenSecurityPath,
+  onSelectSecurityItem
+}: {
+  alert: CodeScanningAlertSummary;
+  active: boolean;
+  repositoryNameWithOwner: string;
+  onOpenExternal(url: string): void;
+  onOpenSecurityPath: OpenSecurityPath;
+  onSelectSecurityItem: SelectSecurityItem;
+}): JSX.Element {
+  const codePathDisabledReason = securityPathDisabledReason(alert.path, "Code alert");
+
+  function handleInspect(): void {
+    onSelectSecurityItem({
+      kind: "codeScanning",
+      id: String(alert.number),
+      title: alert.ruleName ?? alert.ruleId ?? `Code scanning alert #${alert.number}`,
+      subtitle: `${repositoryNameWithOwner} code scanning alert #${alert.number}`,
+      url: alert.htmlUrl,
+      state: alert.state,
+      severity: alert.severity,
+      path: alert.path,
+      rule: alert.ruleName ?? alert.ruleId,
+      updatedAt: alert.updatedAt
+    });
+  }
+
+  function handleOpenFile(): void {
+    onOpenSecurityPath(alert.path, alert.ref, alert.startLine);
+  }
+
+  function handleOpenFallback(): void {
+    if (alert.htmlUrl) {
+      onOpenExternal(alert.htmlUrl);
+    }
+  }
+
+  return (
+    <article className={`workflow-job-card ${active ? "active" : ""}`}>
+      <header>
+        <strong>{alert.ruleName ?? alert.ruleId ?? `Alert ${alert.number}`}</strong>
+        <span className="state-chip attention">{alert.severity ?? alert.state}</span>
+      </header>
+      <small>
+        {alert.toolName ?? "code scanning"} · {alert.path ?? "unknown path"}
+        {alert.startLine ? `:${alert.startLine}` : ""} ·{" "}
+        {alert.updatedAt ? formatRelativeDate(alert.updatedAt) : "not updated"}
+      </small>
+      {alert.message && <p>{alert.message}</p>}
+      {alert.ruleDescription && <small>{alert.ruleDescription}</small>}
+      <div>
+        <button type="button" onClick={handleInspect}>
+          <ShieldCheck size={15} /> Inspect
+        </button>
+        <button
+          type="button"
+          disabled={Boolean(codePathDisabledReason)}
+          title={codePathDisabledReason ?? undefined}
+          onClick={handleOpenFile}
+        >
+          Open file in Control
+        </button>
+        <button
+          type="button"
+          disabled={!alert.htmlUrl}
+          title={alert.htmlUrl ? undefined : "Code scanning alert URL unavailable."}
+          onClick={handleOpenFallback}
+        >
+          <ExternalLink size={15} /> GitHub fallback
+        </button>
+      </div>
+      {codePathDisabledReason && <small className="action-disabled-note">{codePathDisabledReason}</small>}
+    </article>
+  );
+}
+
+function SecretScanningAlertCard({
+  alert,
+  active,
+  repositoryNameWithOwner,
+  defaultSecurityRef,
+  onOpenExternal,
+  onOpenSecurityPath,
+  onSelectSecurityItem
+}: {
+  alert: SecretScanningAlertSummary;
+  active: boolean;
+  repositoryNameWithOwner: string;
+  defaultSecurityRef: string | null;
+  onOpenExternal(url: string): void;
+  onOpenSecurityPath: OpenSecurityPath;
+  onSelectSecurityItem: SelectSecurityItem;
+}): JSX.Element {
+  const secretLocationDisabledReason = securityPathDisabledReason(alert.firstLocationPath, "Secret location");
+
+  function handleInspect(): void {
+    onSelectSecurityItem({
+      kind: "secretScanning",
+      id: String(alert.number),
+      title: alert.secretTypeDisplayName ?? alert.secretType ?? `Secret scanning alert #${alert.number}`,
+      subtitle: `${repositoryNameWithOwner} secret scanning alert #${alert.number}`,
+      url: alert.htmlUrl,
+      state: alert.state,
+      severity: alert.validity,
+      path: alert.firstLocationPath,
+      rule: alert.secretTypeDisplayName ?? alert.secretType,
+      updatedAt: alert.updatedAt
+    });
+  }
+
+  function handleOpenLocation(): void {
+    onOpenSecurityPath(alert.firstLocationPath, defaultSecurityRef, alert.firstLocationStartLine);
+  }
+
+  function handleOpenFallback(): void {
+    if (alert.htmlUrl) {
+      onOpenExternal(alert.htmlUrl);
+    }
+  }
+
+  return (
+    <article className={`workflow-job-card ${active ? "active" : ""}`}>
+      <header>
+        <strong>{alert.secretTypeDisplayName ?? alert.secretType ?? `Alert ${alert.number}`}</strong>
+        <span className="state-chip attention">{alert.validity ?? alert.state}</span>
+      </header>
+      <small>
+        {alert.firstLocationPath ?? "unknown location"}
+        {alert.firstLocationStartLine ? `:${alert.firstLocationStartLine}` : ""} ·{" "}
+        {alert.updatedAt ? formatRelativeDate(alert.updatedAt) : "not updated"}
+      </small>
+      <p>Secret value hidden by Control.</p>
+      <div className="workflow-summary branch-protection-flags">
+        <span>Publicly leaked: {settingStateLabel(alert.publiclyLeaked)}</span>
+        <span>Multi-repo: {settingStateLabel(alert.multiRepo)}</span>
+        <span>Push protection bypassed: {settingStateLabel(alert.pushProtectionBypassed)}</span>
+      </div>
+      <div>
+        <button type="button" onClick={handleInspect}>
+          <ShieldCheck size={15} /> Inspect
+        </button>
+        <button
+          type="button"
+          disabled={Boolean(secretLocationDisabledReason)}
+          title={secretLocationDisabledReason ?? undefined}
+          onClick={handleOpenLocation}
+        >
+          Open location in Control
+        </button>
+        <button
+          type="button"
+          disabled={!alert.htmlUrl}
+          title={alert.htmlUrl ? undefined : "Secret scanning alert URL unavailable."}
+          onClick={handleOpenFallback}
+        >
+          <ExternalLink size={15} /> GitHub fallback
+        </button>
+      </div>
+      {secretLocationDisabledReason && (
+        <small className="action-disabled-note">{secretLocationDisabledReason}</small>
+      )}
+    </article>
+  );
+}
+
+function RepositoryRulesetCard({
+  active,
+  ruleset,
+  getMutationDisabledReason,
+  onDeleteRuleset,
+  onInspectRuleset,
+  onOpenExternal,
+  onReapplyRuleset
+}: {
+  active: boolean;
+  ruleset: RepositoryRulesetSummary;
+  getMutationDisabledReason(ruleset: RepositoryRulesetSummary): string | null;
+  onDeleteRuleset(ruleset: RepositoryRulesetSummary): void;
+  onInspectRuleset(ruleset: RepositoryRulesetSummary): void;
+  onOpenExternal(url: string): void;
+  onReapplyRuleset(ruleset: RepositoryRulesetSummary): void;
+}): JSX.Element {
+  const rulesetDisabledReason = getMutationDisabledReason(ruleset);
+
+  function handleReapplyRuleset(): void {
+    onReapplyRuleset(ruleset);
+  }
+
+  function handleDeleteRuleset(): void {
+    onDeleteRuleset(ruleset);
+  }
+
+  function handleInspectRuleset(): void {
+    onInspectRuleset(ruleset);
+  }
+
+  function handleOpenFallback(): void {
+    if (ruleset.htmlUrl) {
+      onOpenExternal(ruleset.htmlUrl);
+    }
+  }
+
+  return (
+    <article className={`workflow-job-card ${active ? "active" : ""}`}>
+      <header>
+        <strong>{ruleset.name}</strong>
+        <span className="state-chip">{ruleset.enforcement ?? "unknown"}</span>
+      </header>
+      <small>
+        {ruleset.target ?? "target unknown"} · {ruleset.sourceType ?? "source"}{" "}
+        {ruleset.source ? `from ${ruleset.source}` : ""}
+      </small>
+      <div className="workflow-summary branch-protection-flags">
+        <span>{formatCompactNumber(ruleset.ruleCount ?? 0)} rules</span>
+        <span>{formatCompactNumber(ruleset.conditionCount ?? 0)} conditions</span>
+        <span>{formatCompactNumber(ruleset.bypassActorCount ?? 0)} bypass actors</span>
+        <span>Bypass: {accessRoleLabel(ruleset.currentUserCanBypass)}</span>
+      </div>
+      {(ruleset.rules.length > 0 || ruleset.conditions.length > 0 || ruleset.bypassActors.length > 0) && (
+        <div className="ruleset-detail-list" aria-label={`${ruleset.name} ruleset details`}>
+          {ruleset.rules.slice(0, 4).map((rule) => (
+            <span key={`rule-${rule.type}-${rule.parameters.join("|")}`}>
+              <strong>Rule</strong> {rulesetRuleLabel(rule)}
+            </span>
+          ))}
+          {ruleset.conditions.slice(0, 3).map((condition) => (
+            <span
+              key={`condition-${condition.type}-${condition.include.join("|")}-${condition.exclude.join("|")}-${condition.parameters.join("|")}`}
             >
-              <ExternalLink size={16} /> GitHub fallback
-            </button>
-          )}
-          <button type="button" onClick={() => onOpenExternal(repositoryPath(repository, "/community"))}>
-            <ExternalLink size={16} /> GitHub fallback
-          </button>
-        </div>
-      </section>
-      <section className="security-protection-summary" aria-label="Security feature availability">
-        <header>
-          <div>
-            <h2>Security feature availability</h2>
-            <small>Repository-level feature statuses returned by GitHub settings metadata.</small>
-          </div>
-          <span className={`state-chip ${administrationAvailabilityLabel ? "attention" : ""}`}>
-            {administrationAvailabilityLabel ??
-              `${formatCompactNumber(securityFeatureRows.filter(([, status]) => status !== null).length)} returned`}
-          </span>
-        </header>
-        {administrationAvailabilityMessage && (
-          <div className="error-state">{administrationAvailabilityMessage}</div>
-        )}
-        <div className="workflow-summary branch-protection-flags">
-          {securityFeatureRows.map(([label, status]) => (
-            <span key={label}>
-              {label}: {securityFeatureStatusLabel(status)}
+              <strong>Condition</strong> {rulesetConditionLabel(condition)}
+            </span>
+          ))}
+          {ruleset.bypassActors.slice(0, 3).map((actor) => (
+            <span
+              key={`bypass-${actor.actorType ?? "actor"}-${actor.actorId ?? "unknown"}-${actor.bypassMode ?? "mode"}`}
+            >
+              <strong>Bypass</strong> {rulesetBypassActorLabel(actor)}
             </span>
           ))}
         </div>
-      </section>
-      <section className="security-protection-summary" aria-label="Dependabot alerts">
-        <header>
-          <div>
-            <h2>Dependabot alerts</h2>
-            <small>Open vulnerability alerts returned by GitHub for this repository.</small>
-          </div>
-          <span
-            className={`state-chip ${
-              dependabotAlertsLoading && dependabotAlerts.length === 0
-                ? ""
-                : dependabotStatusUnavailable || dependabotAlerts.length > 0
-                  ? "attention"
-                  : "success"
-            }`}
-          >
-            {dependabotStatusLabel}
-          </span>
-        </header>
-        {dependabotAlertsLoading && dependabotAlerts.length === 0 && (
-          <div className="loading-state">Loading Dependabot alerts…</div>
-        )}
-        {dependabotAlertsError && (
-          <div className="error-state">Dependabot alerts unavailable: {dependabotAlertsError.message}</div>
-        )}
-        {dependabotAvailabilityMessage && <div className="error-state">{dependabotAvailabilityMessage}</div>}
-        {!dependabotAlertsLoading &&
-          !dependabotAlertsError &&
-          !dependabotAvailabilityMessage &&
-          dependabotAlerts.length === 0 && <div className="empty-state">No open Dependabot alerts.</div>}
-        {renderSecurityListDepthControl(
-          dependabotAlerts.length,
-          dependabotAlertsLimit,
-          "Load more Dependabot alerts",
-          `Showing the first ${dependabotAlertsLimit} Dependabot alerts returned by GitHub.`,
-          onExpandDependabotAlerts
-        )}
-        {dependabotAlerts.length > 0 && (
-          <div className="workflow-detail-grid">
-            {dependabotAlerts.map((alert) => (
-              <article
-                className={`workflow-job-card ${
-                  securityItemActive("dependabot", alert.number) ? "active" : ""
-                }`}
-                key={alert.number}
-              >
-                <header>
-                  <strong>{alert.packageName ?? `Alert ${alert.number}`}</strong>
-                  <span className="state-chip attention">{alert.severity ?? alert.state}</span>
-                </header>
-                <small>
-                  {alert.ecosystem ?? "dependency"} · {alert.manifestPath ?? "unknown manifest"} ·{" "}
-                  {alert.updatedAt ? formatRelativeDate(alert.updatedAt) : "not updated"}
-                </small>
-                {alert.summary && <p>{alert.summary}</p>}
-                <div>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onSelectSecurityItem({
-                        kind: "dependabot",
-                        id: String(alert.number),
-                        title: alert.packageName ?? `Dependabot alert #${alert.number}`,
-                        subtitle: `${repository.nameWithOwner} Dependabot alert #${alert.number}`,
-                        url: alert.htmlUrl,
-                        state: alert.state,
-                        severity: alert.severity,
-                        path: alert.manifestPath,
-                        packageName: alert.packageName,
-                        updatedAt: alert.updatedAt
-                      })
-                    }
-                  >
-                    <ShieldCheck size={15} /> Inspect
-                  </button>
-                  <button
-                    type="button"
-                    disabled={Boolean(securityPathDisabledReason(alert.manifestPath, "Manifest"))}
-                    title={securityPathDisabledReason(alert.manifestPath, "Manifest") ?? undefined}
-                    onClick={() => openSecurityPath(alert.manifestPath, defaultSecurityRef)}
-                  >
-                    Open manifest in Control
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!alert.htmlUrl}
-                    title={alert.htmlUrl ? undefined : "Dependabot alert URL unavailable."}
-                    onClick={() => {
-                      if (alert.htmlUrl) {
-                        onOpenExternal(alert.htmlUrl);
-                      }
-                    }}
-                  >
-                    <ExternalLink size={15} /> GitHub fallback
-                  </button>
-                </div>
-                {securityPathDisabledReason(alert.manifestPath, "Manifest") && (
-                  <small className="action-disabled-note">
-                    {securityPathDisabledReason(alert.manifestPath, "Manifest")}
-                  </small>
-                )}
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
-      <section className="security-protection-summary" aria-label="Code scanning alerts">
-        <header>
-          <div>
-            <h2>Code scanning alerts</h2>
-            <small>Open static analysis findings returned by GitHub for this repository.</small>
-          </div>
-          <span
-            className={`state-chip ${
-              codeScanningAlertsLoading && codeScanningAlerts.length === 0
-                ? ""
-                : codeScanningStatusUnavailable || codeScanningAlerts.length > 0
-                  ? "attention"
-                  : "success"
-            }`}
-          >
-            {codeScanningStatusLabel}
-          </span>
-        </header>
-        {codeScanningAlertsLoading && codeScanningAlerts.length === 0 && (
-          <div className="loading-state">Loading code scanning alerts…</div>
-        )}
-        {codeScanningAlertsError && (
-          <div className="error-state">
-            Code scanning alerts unavailable: {codeScanningAlertsError.message}
-          </div>
-        )}
-        {codeScanningAvailabilityMessage && (
-          <div className="error-state">{codeScanningAvailabilityMessage}</div>
-        )}
-        {!codeScanningAlertsLoading &&
-          !codeScanningAlertsError &&
-          !codeScanningAvailabilityMessage &&
-          codeScanningAlerts.length === 0 && <div className="empty-state">No open code scanning alerts.</div>}
-        {renderSecurityListDepthControl(
-          codeScanningAlerts.length,
-          codeScanningAlertsLimit,
-          "Load more code scanning alerts",
-          `Showing the first ${codeScanningAlertsLimit} code scanning alerts returned by GitHub.`,
-          onExpandCodeScanningAlerts
-        )}
-        {codeScanningAlerts.length > 0 && (
-          <div className="workflow-detail-grid">
-            {codeScanningAlerts.map((alert) => (
-              <article
-                className={`workflow-job-card ${
-                  securityItemActive("codeScanning", alert.number) ? "active" : ""
-                }`}
-                key={alert.number}
-              >
-                <header>
-                  <strong>{alert.ruleName ?? alert.ruleId ?? `Alert ${alert.number}`}</strong>
-                  <span className="state-chip attention">{alert.severity ?? alert.state}</span>
-                </header>
-                <small>
-                  {alert.toolName ?? "code scanning"} · {alert.path ?? "unknown path"}
-                  {alert.startLine ? `:${alert.startLine}` : ""} ·{" "}
-                  {alert.updatedAt ? formatRelativeDate(alert.updatedAt) : "not updated"}
-                </small>
-                {alert.message && <p>{alert.message}</p>}
-                {alert.ruleDescription && <small>{alert.ruleDescription}</small>}
-                <div>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onSelectSecurityItem({
-                        kind: "codeScanning",
-                        id: String(alert.number),
-                        title: alert.ruleName ?? alert.ruleId ?? `Code scanning alert #${alert.number}`,
-                        subtitle: `${repository.nameWithOwner} code scanning alert #${alert.number}`,
-                        url: alert.htmlUrl,
-                        state: alert.state,
-                        severity: alert.severity,
-                        path: alert.path,
-                        rule: alert.ruleName ?? alert.ruleId,
-                        updatedAt: alert.updatedAt
-                      })
-                    }
-                  >
-                    <ShieldCheck size={15} /> Inspect
-                  </button>
-                  <button
-                    type="button"
-                    disabled={Boolean(securityPathDisabledReason(alert.path, "Code alert"))}
-                    title={securityPathDisabledReason(alert.path, "Code alert") ?? undefined}
-                    onClick={() => openSecurityPath(alert.path, alert.ref, alert.startLine)}
-                  >
-                    Open file in Control
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!alert.htmlUrl}
-                    title={alert.htmlUrl ? undefined : "Code scanning alert URL unavailable."}
-                    onClick={() => {
-                      if (alert.htmlUrl) {
-                        onOpenExternal(alert.htmlUrl);
-                      }
-                    }}
-                  >
-                    <ExternalLink size={15} /> GitHub fallback
-                  </button>
-                </div>
-                {securityPathDisabledReason(alert.path, "Code alert") && (
-                  <small className="action-disabled-note">
-                    {securityPathDisabledReason(alert.path, "Code alert")}
-                  </small>
-                )}
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
-      <section className="security-protection-summary" aria-label="Secret scanning alerts">
-        <header>
-          <div>
-            <h2>Secret scanning alerts</h2>
-            <small>Open leaked-secret alerts returned by GitHub for this repository.</small>
-          </div>
-          <span
-            className={`state-chip ${
-              secretScanningAlertsLoading && secretScanningAlerts.length === 0
-                ? ""
-                : secretScanningStatusUnavailable || secretScanningAlerts.length > 0
-                  ? "attention"
-                  : "success"
-            }`}
-          >
-            {secretScanningStatusLabel}
-          </span>
-        </header>
-        {secretScanningAlertsLoading && secretScanningAlerts.length === 0 && (
-          <div className="loading-state">Loading secret scanning alerts…</div>
-        )}
-        {secretScanningAlertsError && (
-          <div className="error-state">
-            Secret scanning alerts unavailable: {secretScanningAlertsError.message}
-          </div>
-        )}
-        {secretScanningAvailabilityMessage && (
-          <div className="error-state">{secretScanningAvailabilityMessage}</div>
-        )}
-        {!secretScanningAlertsLoading &&
-          !secretScanningAlertsError &&
-          !secretScanningAvailabilityMessage &&
-          secretScanningAlerts.length === 0 && (
-            <div className="empty-state">No open secret scanning alerts.</div>
-          )}
-        {renderSecurityListDepthControl(
-          secretScanningAlerts.length,
-          secretScanningAlertsLimit,
-          "Load more secret scanning alerts",
-          `Showing the first ${secretScanningAlertsLimit} secret scanning alerts returned by GitHub.`,
-          onExpandSecretScanningAlerts
-        )}
-        {secretScanningAlerts.length > 0 && (
-          <div className="workflow-detail-grid">
-            {secretScanningAlerts.map((alert) => (
-              <article
-                className={`workflow-job-card ${
-                  securityItemActive("secretScanning", alert.number) ? "active" : ""
-                }`}
-                key={alert.number}
-              >
-                <header>
-                  <strong>
-                    {alert.secretTypeDisplayName ?? alert.secretType ?? `Alert ${alert.number}`}
-                  </strong>
-                  <span className="state-chip attention">{alert.validity ?? alert.state}</span>
-                </header>
-                <small>
-                  {alert.firstLocationPath ?? "unknown location"}
-                  {alert.firstLocationStartLine ? `:${alert.firstLocationStartLine}` : ""} ·{" "}
-                  {alert.updatedAt ? formatRelativeDate(alert.updatedAt) : "not updated"}
-                </small>
-                <p>Secret value hidden by Control.</p>
-                <div className="workflow-summary branch-protection-flags">
-                  <span>Publicly leaked: {settingStateLabel(alert.publiclyLeaked)}</span>
-                  <span>Multi-repo: {settingStateLabel(alert.multiRepo)}</span>
-                  <span>Push protection bypassed: {settingStateLabel(alert.pushProtectionBypassed)}</span>
-                </div>
-                <div>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onSelectSecurityItem({
-                        kind: "secretScanning",
-                        id: String(alert.number),
-                        title:
-                          alert.secretTypeDisplayName ??
-                          alert.secretType ??
-                          `Secret scanning alert #${alert.number}`,
-                        subtitle: `${repository.nameWithOwner} secret scanning alert #${alert.number}`,
-                        url: alert.htmlUrl,
-                        state: alert.state,
-                        severity: alert.validity,
-                        path: alert.firstLocationPath,
-                        rule: alert.secretTypeDisplayName ?? alert.secretType,
-                        updatedAt: alert.updatedAt
-                      })
-                    }
-                  >
-                    <ShieldCheck size={15} /> Inspect
-                  </button>
-                  <button
-                    type="button"
-                    disabled={Boolean(securityPathDisabledReason(alert.firstLocationPath, "Secret location"))}
-                    title={
-                      securityPathDisabledReason(alert.firstLocationPath, "Secret location") ?? undefined
-                    }
-                    onClick={() =>
-                      openSecurityPath(
-                        alert.firstLocationPath,
-                        defaultSecurityRef,
-                        alert.firstLocationStartLine
-                      )
-                    }
-                  >
-                    Open location in Control
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!alert.htmlUrl}
-                    title={alert.htmlUrl ? undefined : "Secret scanning alert URL unavailable."}
-                    onClick={() => {
-                      if (alert.htmlUrl) {
-                        onOpenExternal(alert.htmlUrl);
-                      }
-                    }}
-                  >
-                    <ExternalLink size={15} /> GitHub fallback
-                  </button>
-                </div>
-                {securityPathDisabledReason(alert.firstLocationPath, "Secret location") && (
-                  <small className="action-disabled-note">
-                    {securityPathDisabledReason(alert.firstLocationPath, "Secret location")}
-                  </small>
-                )}
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
-      <section className="tile-grid">
-        {qualityLinks.map((item) => {
-          const Icon = item.icon;
-          return (
-            <button
-              className="project-tile"
-              key={item.title}
-              type="button"
-              onClick={() => onOpenExternal(repositoryPath(repository, item.path))}
-            >
-              <Icon size={20} />
-              <strong>{item.title}</strong>
-              <small>{repository.nameWithOwner}</small>
-            </button>
-          );
-        })}
-      </section>
+      )}
+      <small>
+        {ruleset.updatedAt ? `Updated ${formatRelativeDate(ruleset.updatedAt)}` : "No update time"}
+      </small>
+      <div>
+        <button
+          type="button"
+          disabled={Boolean(rulesetDisabledReason)}
+          title={rulesetDisabledReason ?? undefined}
+          onClick={handleReapplyRuleset}
+        >
+          <ShieldCheck size={15} /> Reapply baseline
+        </button>
+        <button
+          type="button"
+          disabled={Boolean(rulesetDisabledReason)}
+          title={rulesetDisabledReason ?? undefined}
+          onClick={handleDeleteRuleset}
+        >
+          <X size={15} /> Delete
+        </button>
+        <button type="button" onClick={handleInspectRuleset}>
+          <ShieldCheck size={15} /> Inspect
+        </button>
+        <button
+          type="button"
+          disabled={!ruleset.htmlUrl}
+          title={ruleset.htmlUrl ? undefined : "Ruleset URL unavailable."}
+          onClick={handleOpenFallback}
+        >
+          <ExternalLink size={15} /> GitHub fallback
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function RepositoryRulesetsSection({
+  createRulesetDisabledReason,
+  limit,
+  loading,
+  error,
+  availabilityMessage,
+  repositoryRulesetsStatusLabel,
+  repositoryRulesetsStatusUnavailable,
+  rulesets,
+  getMutationDisabledReason,
+  onCreateActiveRuleset,
+  onCreateEvaluateRuleset,
+  onDeleteRuleset,
+  onExpand,
+  onInspectRuleset,
+  onOpenRulesetsFallback,
+  onOpenExternal,
+  onReapplyRuleset,
+  securityItemActive
+}: {
+  createRulesetDisabledReason: string | null;
+  limit: number;
+  loading: boolean;
+  error: Error | null;
+  availabilityMessage: string | null;
+  repositoryRulesetsStatusLabel: string;
+  repositoryRulesetsStatusUnavailable: boolean;
+  rulesets: RepositoryRulesetSummary[];
+  getMutationDisabledReason(ruleset: RepositoryRulesetSummary): string | null;
+  onCreateActiveRuleset(): void;
+  onCreateEvaluateRuleset(): void;
+  onDeleteRuleset(ruleset: RepositoryRulesetSummary): void;
+  onExpand(): void;
+  onInspectRuleset(ruleset: RepositoryRulesetSummary): void;
+  onOpenRulesetsFallback(): void;
+  onOpenExternal(url: string): void;
+  onReapplyRuleset(ruleset: RepositoryRulesetSummary): void;
+  securityItemActive: SecurityItemActive;
+}): JSX.Element {
+  return (
+    <section className="security-protection-summary" aria-label="Repository rulesets">
+      <header>
+        <div>
+          <h2>Repository rulesets</h2>
+          <small>Branch and tag rules returned by GitHub, including inherited rules when visible.</small>
+        </div>
+        <span
+          className={`state-chip ${
+            repositoryRulesetsStatusUnavailable ? "attention" : rulesets.length === 0 ? "" : "success"
+          }`}
+        >
+          {repositoryRulesetsStatusLabel}
+        </span>
+      </header>
+      {loading && rulesets.length === 0 && <div className="loading-state">Loading repository rulesets…</div>}
+      {error && <div className="error-state">Repository rulesets unavailable: {error.message}</div>}
+      {availabilityMessage && <div className="error-state">{availabilityMessage}</div>}
+      <div className="security-management-actions">
+        <button
+          type="button"
+          disabled={Boolean(createRulesetDisabledReason)}
+          title={createRulesetDisabledReason ?? undefined}
+          onClick={onCreateActiveRuleset}
+        >
+          <Plus size={15} /> Create baseline ruleset
+        </button>
+        <button
+          type="button"
+          disabled={Boolean(createRulesetDisabledReason)}
+          title={createRulesetDisabledReason ?? undefined}
+          onClick={onCreateEvaluateRuleset}
+        >
+          <ShieldCheck size={15} /> Create evaluate ruleset
+        </button>
+        <button type="button" onClick={onOpenRulesetsFallback}>
+          <ExternalLink size={15} /> Rulesets fallback
+        </button>
+      </div>
+      {!loading && !error && !availabilityMessage && rulesets.length === 0 && (
+        <div className="empty-state">No repository rulesets returned.</div>
+      )}
+      <SecurityListDepthControl
+        count={rulesets.length}
+        limit={limit}
+        loadMoreLabel="Load more rulesets"
+        maxNote={`Showing the first ${limit} repository rulesets returned by GitHub.`}
+        onExpand={onExpand}
+      />
+      {rulesets.length > 0 && (
+        <div className="workflow-detail-grid">
+          {rulesets.map((ruleset) => (
+            <RepositoryRulesetCard
+              active={securityItemActive("ruleset", ruleset.id)}
+              getMutationDisabledReason={getMutationDisabledReason}
+              key={ruleset.id}
+              onDeleteRuleset={onDeleteRuleset}
+              onInspectRuleset={onInspectRuleset}
+              onOpenExternal={onOpenExternal}
+              onReapplyRuleset={onReapplyRuleset}
+              ruleset={ruleset}
+            />
+          ))}
+        </div>
+      )}
     </section>
+  );
+}
+
+function RepositorySecurityAdvisoriesSection({
+  advisories,
+  availabilityMessage,
+  error,
+  limit,
+  loading,
+  repositoryNameWithOwner,
+  statusLabel,
+  statusUnavailable,
+  onExpand,
+  onOpenExternal,
+  onSelectSecurityItem,
+  securityItemActive
+}: {
+  advisories: RepositorySecurityAdvisorySummary[];
+  availabilityMessage: string | null;
+  error: Error | null;
+  limit: number;
+  loading: boolean;
+  repositoryNameWithOwner: string;
+  statusLabel: string;
+  statusUnavailable: boolean;
+  onExpand(): void;
+  onOpenExternal(url: string): void;
+  onSelectSecurityItem: SelectSecurityItem;
+  securityItemActive: SecurityItemActive;
+}): JSX.Element {
+  return (
+    <section className="security-protection-summary" aria-label="Security advisories">
+      <header>
+        <div>
+          <h2>Security advisories</h2>
+          <small>Repository advisories returned by GitHub for coordinated vulnerability disclosure.</small>
+        </div>
+        <span
+          className={`state-chip ${
+            loading && advisories.length === 0
+              ? ""
+              : statusUnavailable || advisories.length > 0
+                ? "attention"
+                : "success"
+          }`}
+        >
+          {statusLabel}
+        </span>
+      </header>
+      {loading && advisories.length === 0 && (
+        <div className="loading-state">Loading security advisories…</div>
+      )}
+      {error && <div className="error-state">Security advisories unavailable: {error.message}</div>}
+      {availabilityMessage && <div className="error-state">{availabilityMessage}</div>}
+      {!loading && !error && !availabilityMessage && advisories.length === 0 && (
+        <div className="empty-state">No repository security advisories returned.</div>
+      )}
+      <SecurityListDepthControl
+        count={advisories.length}
+        limit={limit}
+        loadMoreLabel="Load more advisories"
+        maxNote={`Showing the first ${limit} security advisories returned by GitHub.`}
+        onExpand={onExpand}
+      />
+      {advisories.length > 0 && (
+        <div className="workflow-detail-grid">
+          {advisories.map((advisory) => (
+            <RepositorySecurityAdvisoryCard
+              active={securityItemActive("advisory", advisory.ghsaId)}
+              advisory={advisory}
+              key={advisory.ghsaId}
+              onOpenExternal={onOpenExternal}
+              onSelectSecurityItem={onSelectSecurityItem}
+              repositoryNameWithOwner={repositoryNameWithOwner}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function SecurityPolicySection({
+  availabilityMessage,
+  defaultBranch,
+  error,
+  hasPolicyResult,
+  loading,
+  policy,
+  policyExpanded,
+  policyHasFullPreview,
+  statusLabel,
+  statusUnavailable,
+  visiblePolicyContent,
+  onOpenExternal,
+  onOpenSecurityPath,
+  onOpenSecurityPolicyFallback,
+  onTogglePolicyPreview
+}: {
+  availabilityMessage: string | null;
+  defaultBranch: string | null;
+  error: Error | null;
+  hasPolicyResult: boolean;
+  loading: boolean;
+  policy: RepositorySecurityPolicy | null;
+  policyExpanded: boolean;
+  policyHasFullPreview: boolean;
+  statusLabel: string;
+  statusUnavailable: boolean;
+  visiblePolicyContent: string;
+  onOpenExternal(url: string): void;
+  onOpenSecurityPath: OpenSecurityPath;
+  onOpenSecurityPolicyFallback(): void;
+  onTogglePolicyPreview(): void;
+}): JSX.Element {
+  function handleOpenPolicy(): void {
+    if (policy) {
+      onOpenSecurityPath(policy.path, policy.ref);
+    }
+  }
+
+  function handleOpenPolicyFallback(): void {
+    if (policy?.htmlUrl) {
+      onOpenExternal(policy.htmlUrl);
+    }
+  }
+
+  return (
+    <section className="security-protection-summary" aria-label="Security policy">
+      <header>
+        <div>
+          <h2>Security policy</h2>
+          <small>Read-only SECURITY.md surfaced from GitHub when configured.</small>
+        </div>
+        <span className={`state-chip ${statusUnavailable ? "attention" : policy ? "success" : ""}`}>
+          {statusLabel}
+        </span>
+      </header>
+      {loading && !hasPolicyResult && <div className="loading-state">Loading security policy…</div>}
+      {error && <div className="error-state">Security policy unavailable: {error.message}</div>}
+      {availabilityMessage && <div className="error-state">{availabilityMessage}</div>}
+      {!loading && !error && !availabilityMessage && hasPolicyResult && !policy && (
+        <div className="empty-state">
+          No security policy file found in SECURITY.md, .github/SECURITY.md, or docs/SECURITY.md.
+        </div>
+      )}
+      {policy && (
+        <article className="workflow-job-card">
+          <header>
+            <strong>{policy.path}</strong>
+            <span className="state-chip success">{formatCompactNumber(policy.size ?? 0)} bytes</span>
+          </header>
+          <small>
+            {policy.sha ? `SHA ${policy.sha.slice(0, 12)}` : "SHA unavailable"} ·{" "}
+            {policy.ref ?? defaultBranch ?? "default branch"}
+          </small>
+          {policy.content ? (
+            <>
+              <pre className="code-preview">{visiblePolicyContent}</pre>
+              {policyHasFullPreview && (
+                <button type="button" onClick={onTogglePolicyPreview}>
+                  <small>{policyExpanded ? "Show preview" : "Show full policy"}</small>
+                </button>
+              )}
+            </>
+          ) : (
+            <div className="empty-state">Policy content is too large or unavailable for preview.</div>
+          )}
+          <div>
+            <button type="button" onClick={handleOpenPolicy}>
+              <FileIcon size={15} /> Open in Control
+            </button>
+            <button
+              type="button"
+              disabled={!policy.htmlUrl}
+              title={policy.htmlUrl ? undefined : "Policy URL unavailable."}
+              onClick={handleOpenPolicyFallback}
+            >
+              <ExternalLink size={15} /> GitHub fallback
+            </button>
+          </div>
+        </article>
+      )}
+      <div className="table-action-row">
+        <button type="button" onClick={onOpenSecurityPolicyFallback}>
+          <ExternalLink size={16} /> GitHub fallback
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function CommunityProfileFileCard({
+  file,
+  onOpenExternal,
+  onOpenSecurityPath
+}: {
+  file: CommunityProfileFileSummary;
+  onOpenExternal(url: string): void;
+  onOpenSecurityPath: OpenSecurityPath;
+}): JSX.Element {
+  const disabledReason = securityPathDisabledReason(file.path, file.label);
+
+  function handleOpenFile(): void {
+    onOpenSecurityPath(file.path, null);
+  }
+
+  function handleOpenFallback(): void {
+    if (file.htmlUrl) {
+      onOpenExternal(file.htmlUrl);
+    }
+  }
+
+  return (
+    <article className="workflow-job-card">
+      <header>
+        <strong>{file.label}</strong>
+        <span className="state-chip success">found</span>
+      </header>
+      <small>{file.path ?? file.name ?? "Path unavailable"}</small>
+      <div>
+        <button
+          type="button"
+          disabled={!file.path}
+          title={disabledReason ?? undefined}
+          onClick={handleOpenFile}
+        >
+          <FileIcon size={15} /> Open in Control
+        </button>
+        <button
+          type="button"
+          disabled={!file.htmlUrl}
+          title={file.htmlUrl ? undefined : "File URL unavailable."}
+          onClick={handleOpenFallback}
+        >
+          <ExternalLink size={15} /> GitHub fallback
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function CommunityProfileSection({
+  availabilityMessage,
+  error,
+  loading,
+  missingFiles,
+  presentFiles,
+  profile,
+  statusLabel,
+  statusUnavailable,
+  onOpenCommunityFallback,
+  onOpenExternal,
+  onOpenSecurityPath
+}: {
+  availabilityMessage: string | null;
+  error: Error | null;
+  loading: boolean;
+  missingFiles: CommunityProfileFileSummary[];
+  presentFiles: CommunityProfileFileSummary[];
+  profile: RepositoryCommunityProfile | null;
+  statusLabel: string;
+  statusUnavailable: boolean;
+  onOpenCommunityFallback(): void;
+  onOpenExternal(url: string): void;
+  onOpenSecurityPath: OpenSecurityPath;
+}): JSX.Element {
+  function handleOpenDocumentation(): void {
+    if (profile?.documentationUrl) {
+      onOpenExternal(profile.documentationUrl);
+    }
+  }
+
+  return (
+    <section className="security-protection-summary" aria-label="Community profile">
+      <header>
+        <div>
+          <h2>Community profile</h2>
+          <small>Repository community standards returned by GitHub.</small>
+        </div>
+        <span className={`state-chip ${statusUnavailable ? "attention" : "success"}`}>{statusLabel}</span>
+      </header>
+      {loading && !profile && <div className="loading-state">Loading community profile…</div>}
+      {error && <div className="error-state">Community profile unavailable: {error.message}</div>}
+      {availabilityMessage && <div className="error-state">{availabilityMessage}</div>}
+      {!loading && !error && !availabilityMessage && !profile && (
+        <div className="empty-state">No community profile returned.</div>
+      )}
+      {profile && (
+        <>
+          <div className="insight-grid">
+            <article className="metric-tile">
+              <strong>{profile.healthPercentage != null ? `${profile.healthPercentage}%` : "Unknown"}</strong>
+              <small>Health score</small>
+              <span>{profile.description ?? "No community profile description"}</span>
+            </article>
+            <article className="metric-tile">
+              <strong>{formatCompactNumber(presentFiles.length)}</strong>
+              <small>Standards found</small>
+              <span>{formatCompactNumber(missingFiles.length)} missing standards</span>
+            </article>
+          </div>
+          {presentFiles.length > 0 ? (
+            <div className="workflow-detail-grid">
+              {presentFiles.map((file) => (
+                <CommunityProfileFileCard
+                  file={file}
+                  key={file.key}
+                  onOpenExternal={onOpenExternal}
+                  onOpenSecurityPath={onOpenSecurityPath}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="empty-state">No community standard files returned.</div>
+          )}
+          {missingFiles.length > 0 && (
+            <div className="label-stack branch-protection-checks">
+              {missingFiles.map((file) => (
+                <span key={file.key}>Missing {file.label}</span>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+      <div className="table-action-row">
+        {profile?.documentationUrl && (
+          <button type="button" onClick={handleOpenDocumentation}>
+            <ExternalLink size={16} /> GitHub fallback
+          </button>
+        )}
+        <button type="button" onClick={onOpenCommunityFallback}>
+          <ExternalLink size={16} /> GitHub fallback
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function SecurityFeatureAvailabilitySection({
+  availabilityLabel,
+  availabilityMessage,
+  rows
+}: {
+  availabilityLabel: string | null;
+  availabilityMessage: string | null;
+  rows: Array<[string, string | null]>;
+}): JSX.Element {
+  const returnedFeatureCount = rows.filter(([, status]) => status !== null).length;
+
+  return (
+    <section className="security-protection-summary" aria-label="Security feature availability">
+      <header>
+        <div>
+          <h2>Security feature availability</h2>
+          <small>Repository-level feature statuses returned by GitHub settings metadata.</small>
+        </div>
+        <span className={`state-chip ${availabilityLabel ? "attention" : ""}`}>
+          {availabilityLabel ?? `${formatCompactNumber(returnedFeatureCount)} returned`}
+        </span>
+      </header>
+      {availabilityMessage && <div className="error-state">{availabilityMessage}</div>}
+      <div className="workflow-summary branch-protection-flags">
+        {rows.map(([label, status]) => (
+          <span key={label}>
+            {label}: {securityFeatureStatusLabel(status)}
+          </span>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function DependabotAlertsSection({
+  alerts,
+  availabilityMessage,
+  defaultSecurityRef,
+  error,
+  limit,
+  loading,
+  repositoryNameWithOwner,
+  statusLabel,
+  statusUnavailable,
+  onExpand,
+  onOpenExternal,
+  onOpenSecurityPath,
+  onSelectSecurityItem,
+  securityItemActive
+}: {
+  alerts: DependabotAlertSummary[];
+  availabilityMessage: string | null;
+  defaultSecurityRef: string | null;
+  error: Error | null;
+  limit: number;
+  loading: boolean;
+  repositoryNameWithOwner: string;
+  statusLabel: string;
+  statusUnavailable: boolean;
+  onExpand(): void;
+  onOpenExternal(url: string): void;
+  onOpenSecurityPath: OpenSecurityPath;
+  onSelectSecurityItem: SelectSecurityItem;
+  securityItemActive: SecurityItemActive;
+}): JSX.Element {
+  return (
+    <section className="security-protection-summary" aria-label="Dependabot alerts">
+      <header>
+        <div>
+          <h2>Dependabot alerts</h2>
+          <small>Open vulnerability alerts returned by GitHub for this repository.</small>
+        </div>
+        <span
+          className={`state-chip ${
+            loading && alerts.length === 0
+              ? ""
+              : statusUnavailable || alerts.length > 0
+                ? "attention"
+                : "success"
+          }`}
+        >
+          {statusLabel}
+        </span>
+      </header>
+      {loading && alerts.length === 0 && <div className="loading-state">Loading Dependabot alerts…</div>}
+      {error && <div className="error-state">Dependabot alerts unavailable: {error.message}</div>}
+      {availabilityMessage && <div className="error-state">{availabilityMessage}</div>}
+      {!loading && !error && !availabilityMessage && alerts.length === 0 && (
+        <div className="empty-state">No open Dependabot alerts.</div>
+      )}
+      <SecurityListDepthControl
+        count={alerts.length}
+        limit={limit}
+        loadMoreLabel="Load more Dependabot alerts"
+        maxNote={`Showing the first ${limit} Dependabot alerts returned by GitHub.`}
+        onExpand={onExpand}
+      />
+      {alerts.length > 0 && (
+        <div className="workflow-detail-grid">
+          {alerts.map((alert) => (
+            <DependabotAlertCard
+              active={securityItemActive("dependabot", alert.number)}
+              alert={alert}
+              defaultSecurityRef={defaultSecurityRef}
+              key={alert.number}
+              onOpenExternal={onOpenExternal}
+              onOpenSecurityPath={onOpenSecurityPath}
+              onSelectSecurityItem={onSelectSecurityItem}
+              repositoryNameWithOwner={repositoryNameWithOwner}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function CodeScanningAlertsSection({
+  alerts,
+  availabilityMessage,
+  error,
+  limit,
+  loading,
+  repositoryNameWithOwner,
+  statusLabel,
+  statusUnavailable,
+  onExpand,
+  onOpenExternal,
+  onOpenSecurityPath,
+  onSelectSecurityItem,
+  securityItemActive
+}: {
+  alerts: CodeScanningAlertSummary[];
+  availabilityMessage: string | null;
+  error: Error | null;
+  limit: number;
+  loading: boolean;
+  repositoryNameWithOwner: string;
+  statusLabel: string;
+  statusUnavailable: boolean;
+  onExpand(): void;
+  onOpenExternal(url: string): void;
+  onOpenSecurityPath: OpenSecurityPath;
+  onSelectSecurityItem: SelectSecurityItem;
+  securityItemActive: SecurityItemActive;
+}): JSX.Element {
+  return (
+    <section className="security-protection-summary" aria-label="Code scanning alerts">
+      <header>
+        <div>
+          <h2>Code scanning alerts</h2>
+          <small>Open static analysis findings returned by GitHub for this repository.</small>
+        </div>
+        <span
+          className={`state-chip ${
+            loading && alerts.length === 0
+              ? ""
+              : statusUnavailable || alerts.length > 0
+                ? "attention"
+                : "success"
+          }`}
+        >
+          {statusLabel}
+        </span>
+      </header>
+      {loading && alerts.length === 0 && <div className="loading-state">Loading code scanning alerts…</div>}
+      {error && <div className="error-state">Code scanning alerts unavailable: {error.message}</div>}
+      {availabilityMessage && <div className="error-state">{availabilityMessage}</div>}
+      {!loading && !error && !availabilityMessage && alerts.length === 0 && (
+        <div className="empty-state">No open code scanning alerts.</div>
+      )}
+      <SecurityListDepthControl
+        count={alerts.length}
+        limit={limit}
+        loadMoreLabel="Load more code scanning alerts"
+        maxNote={`Showing the first ${limit} code scanning alerts returned by GitHub.`}
+        onExpand={onExpand}
+      />
+      {alerts.length > 0 && (
+        <div className="workflow-detail-grid">
+          {alerts.map((alert) => (
+            <CodeScanningAlertCard
+              active={securityItemActive("codeScanning", alert.number)}
+              alert={alert}
+              key={alert.number}
+              onOpenExternal={onOpenExternal}
+              onOpenSecurityPath={onOpenSecurityPath}
+              onSelectSecurityItem={onSelectSecurityItem}
+              repositoryNameWithOwner={repositoryNameWithOwner}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function SecretScanningAlertsSection({
+  alerts,
+  availabilityMessage,
+  defaultSecurityRef,
+  error,
+  limit,
+  loading,
+  repositoryNameWithOwner,
+  statusLabel,
+  statusUnavailable,
+  onExpand,
+  onOpenExternal,
+  onOpenSecurityPath,
+  onSelectSecurityItem,
+  securityItemActive
+}: {
+  alerts: SecretScanningAlertSummary[];
+  availabilityMessage: string | null;
+  defaultSecurityRef: string | null;
+  error: Error | null;
+  limit: number;
+  loading: boolean;
+  repositoryNameWithOwner: string;
+  statusLabel: string;
+  statusUnavailable: boolean;
+  onExpand(): void;
+  onOpenExternal(url: string): void;
+  onOpenSecurityPath: OpenSecurityPath;
+  onSelectSecurityItem: SelectSecurityItem;
+  securityItemActive: SecurityItemActive;
+}): JSX.Element {
+  return (
+    <section className="security-protection-summary" aria-label="Secret scanning alerts">
+      <header>
+        <div>
+          <h2>Secret scanning alerts</h2>
+          <small>Open leaked-secret alerts returned by GitHub for this repository.</small>
+        </div>
+        <span
+          className={`state-chip ${
+            loading && alerts.length === 0
+              ? ""
+              : statusUnavailable || alerts.length > 0
+                ? "attention"
+                : "success"
+          }`}
+        >
+          {statusLabel}
+        </span>
+      </header>
+      {loading && alerts.length === 0 && <div className="loading-state">Loading secret scanning alerts…</div>}
+      {error && <div className="error-state">Secret scanning alerts unavailable: {error.message}</div>}
+      {availabilityMessage && <div className="error-state">{availabilityMessage}</div>}
+      {!loading && !error && !availabilityMessage && alerts.length === 0 && (
+        <div className="empty-state">No open secret scanning alerts.</div>
+      )}
+      <SecurityListDepthControl
+        count={alerts.length}
+        limit={limit}
+        loadMoreLabel="Load more secret scanning alerts"
+        maxNote={`Showing the first ${limit} secret scanning alerts returned by GitHub.`}
+        onExpand={onExpand}
+      />
+      {alerts.length > 0 && (
+        <div className="workflow-detail-grid">
+          {alerts.map((alert) => (
+            <SecretScanningAlertCard
+              active={securityItemActive("secretScanning", alert.number)}
+              alert={alert}
+              defaultSecurityRef={defaultSecurityRef}
+              key={alert.number}
+              onOpenExternal={onOpenExternal}
+              onOpenSecurityPath={onOpenSecurityPath}
+              onSelectSecurityItem={onSelectSecurityItem}
+              repositoryNameWithOwner={repositoryNameWithOwner}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function SecurityQualityLinkButton({
+  link,
+  repositoryNameWithOwner,
+  onOpenRepositoryPath
+}: {
+  link: SecurityQualityLink;
+  repositoryNameWithOwner: string;
+  onOpenRepositoryPath(path: string): void;
+}): JSX.Element {
+  const Icon = link.icon;
+
+  function handleOpenLink(): void {
+    onOpenRepositoryPath(link.path);
+  }
+
+  return (
+    <button className="project-tile" type="button" onClick={handleOpenLink}>
+      <Icon size={20} />
+      <strong>{link.title}</strong>
+      <small>{repositoryNameWithOwner}</small>
+    </button>
+  );
+}
+
+function SecurityQualityLinks({
+  repositoryNameWithOwner,
+  onOpenRepositoryPath
+}: {
+  repositoryNameWithOwner: string;
+  onOpenRepositoryPath(path: string): void;
+}): JSX.Element {
+  return (
+    <section className="tile-grid">
+      {securityQualityLinks.map((link) => (
+        <SecurityQualityLinkButton
+          key={link.title}
+          link={link}
+          onOpenRepositoryPath={onOpenRepositoryPath}
+          repositoryNameWithOwner={repositoryNameWithOwner}
+        />
+      ))}
+    </section>
+  );
+}
+
+interface SecurityQualityTabSectionsProps {
+  administrationAvailabilityLabel: string | null;
+  administrationAvailabilityMessage: string | null;
+  availabilityMessage: string | null;
+  branchProtection: unknown;
+  branchProtectionBranch: string | null;
+  branchProtectionBranchLabel: string;
+  branchProtectionBranches: BranchSummary[];
+  branchProtectionBranchesDisabled: boolean;
+  branchProtectionBranchesNote: string | null;
+  branchProtectionError: Error | null;
+  branchProtectionLoading: boolean;
+  branchProtectionMutationDisabledReason: string | null;
+  branchProtectionStatusLabel: string;
+  branchProtectionStatusUnavailable: boolean;
+  codeScanningAlerts: CodeScanningAlertSummary[];
+  codeScanningAlertsError: Error | null;
+  codeScanningAlertsLimit: number;
+  codeScanningAlertsLoading: boolean;
+  codeScanningAvailabilityMessage: string | null;
+  codeScanningStatusLabel: string;
+  codeScanningStatusUnavailable: boolean;
+  createRulesetDisabledReason: string | null;
+  defaultSecurityRef: string | null;
+  dependabotAlerts: DependabotAlertSummary[];
+  dependabotAlertsError: Error | null;
+  dependabotAlertsLimit: number;
+  dependabotAlertsLoading: boolean;
+  dependabotAvailabilityMessage: string | null;
+  dependabotStatusLabel: string;
+  dependabotStatusUnavailable: boolean;
+  hasBranchProtectionBranchOption: boolean;
+  mutationAction: GitHubAction | null;
+  mutationError: Error | null;
+  mutationPending: boolean;
+  mutationSucceeded: boolean;
+  onExpandCodeScanningAlerts(): void;
+  onExpandDependabotAlerts(): void;
+  onExpandRepositoryRulesets(): void;
+  onExpandRepositorySecurityAdvisories(): void;
+  onExpandSecretScanningAlerts(): void;
+  onOpenExternal(url: string): void;
+  onSelectSecurityItem: SelectSecurityItem;
+  onSelectSecurityQualityBranch(ref: string): void;
+  presentCommunityFiles: CommunityProfileFileSummary[];
+  missingCommunityFiles: CommunityProfileFileSummary[];
+  protection: BranchProtectionSummary | null;
+  repository: RepositoryDetail;
+  repositoryCommunityProfile: RepositoryCommunityProfile | null;
+  repositoryCommunityProfileAvailabilityMessage: string | null;
+  repositoryCommunityProfileError: Error | null;
+  repositoryCommunityProfileLoading: boolean;
+  repositoryCommunityProfileStatusLabel: string;
+  repositoryCommunityProfileStatusUnavailable: boolean;
+  repositoryRulesets: RepositoryRulesetSummary[];
+  repositoryRulesetsAvailabilityMessage: string | null;
+  repositoryRulesetsError: Error | null;
+  repositoryRulesetsLimit: number;
+  repositoryRulesetsLoading: boolean;
+  repositoryRulesetsStatusLabel: string;
+  repositoryRulesetsStatusUnavailable: boolean;
+  repositorySecurityAdvisories: RepositorySecurityAdvisorySummary[];
+  repositorySecurityAdvisoriesAvailabilityMessage: string | null;
+  repositorySecurityAdvisoriesError: Error | null;
+  repositorySecurityAdvisoriesLimit: number;
+  repositorySecurityAdvisoriesLoading: boolean;
+  repositorySecurityAdvisoriesStatusLabel: string;
+  repositorySecurityAdvisoriesStatusUnavailable: boolean;
+  repositorySecurityPolicyError: Error | null;
+  repositorySecurityPolicyLoading: boolean;
+  repositorySecurityPolicyStatusLabel: string;
+  repositorySecurityPolicyStatusUnavailable: boolean;
+  repositorySecurityPolicyHasResult: boolean;
+  repositorySecurityPolicyAvailabilityMessage: string | null;
+  secretScanningAlerts: SecretScanningAlertSummary[];
+  secretScanningAlertsError: Error | null;
+  secretScanningAlertsLimit: number;
+  secretScanningAlertsLoading: boolean;
+  secretScanningAvailabilityMessage: string | null;
+  secretScanningStatusLabel: string;
+  secretScanningStatusUnavailable: boolean;
+  securityFeatureRows: Array<[string, string | null]>;
+  securityMutationRelevant: boolean;
+  securityPolicy: RepositorySecurityPolicy | null;
+  securityPolicyExpanded: boolean;
+  securityPolicyHasFullPreview: boolean;
+  visibleSecurityPolicyContent: string;
+  applyBaselineBranchProtection(): void;
+  createActiveRepositoryRuleset(): void;
+  createEvaluateRepositoryRuleset(): void;
+  deleteBranchProtection(): void;
+  deleteRepositoryRuleset(ruleset: RepositoryRulesetSummary): void;
+  inspectRepositoryRuleset(ruleset: RepositoryRulesetSummary): void;
+  openBranchRulesFallback(): void;
+  openCommunityFallback(): void;
+  openRepositorySecurityPath(path: string): void;
+  openRulesetsFallback(): void;
+  openSecurityPath: OpenSecurityPath;
+  openSecurityPolicyFallback(): void;
+  reapplyRepositoryRuleset(ruleset: RepositoryRulesetSummary): void;
+  rulesetMutationDisabledReason(ruleset: RepositoryRulesetSummary): string | null;
+  securityItemActive: SecurityItemActive;
+  togglePolicyPreview(): void;
+}
+
+function SecurityQualityTabSections({
+  administrationAvailabilityLabel,
+  administrationAvailabilityMessage,
+  availabilityMessage,
+  branchProtection,
+  branchProtectionBranch,
+  branchProtectionBranchLabel,
+  branchProtectionBranches,
+  branchProtectionBranchesDisabled,
+  branchProtectionBranchesNote,
+  branchProtectionError,
+  branchProtectionLoading,
+  branchProtectionMutationDisabledReason,
+  branchProtectionStatusLabel,
+  branchProtectionStatusUnavailable,
+  codeScanningAlerts,
+  codeScanningAlertsError,
+  codeScanningAlertsLimit,
+  codeScanningAlertsLoading,
+  codeScanningAvailabilityMessage,
+  codeScanningStatusLabel,
+  codeScanningStatusUnavailable,
+  createRulesetDisabledReason,
+  defaultSecurityRef,
+  dependabotAlerts,
+  dependabotAlertsError,
+  dependabotAlertsLimit,
+  dependabotAlertsLoading,
+  dependabotAvailabilityMessage,
+  dependabotStatusLabel,
+  dependabotStatusUnavailable,
+  hasBranchProtectionBranchOption,
+  mutationAction,
+  mutationError,
+  mutationPending,
+  mutationSucceeded,
+  onExpandCodeScanningAlerts,
+  onExpandDependabotAlerts,
+  onExpandRepositoryRulesets,
+  onExpandRepositorySecurityAdvisories,
+  onExpandSecretScanningAlerts,
+  onOpenExternal,
+  onSelectSecurityItem,
+  onSelectSecurityQualityBranch,
+  presentCommunityFiles,
+  missingCommunityFiles,
+  protection,
+  repository,
+  repositoryCommunityProfile,
+  repositoryCommunityProfileAvailabilityMessage,
+  repositoryCommunityProfileError,
+  repositoryCommunityProfileLoading,
+  repositoryCommunityProfileStatusLabel,
+  repositoryCommunityProfileStatusUnavailable,
+  repositoryRulesets,
+  repositoryRulesetsAvailabilityMessage,
+  repositoryRulesetsError,
+  repositoryRulesetsLimit,
+  repositoryRulesetsLoading,
+  repositoryRulesetsStatusLabel,
+  repositoryRulesetsStatusUnavailable,
+  repositorySecurityAdvisories,
+  repositorySecurityAdvisoriesAvailabilityMessage,
+  repositorySecurityAdvisoriesError,
+  repositorySecurityAdvisoriesLimit,
+  repositorySecurityAdvisoriesLoading,
+  repositorySecurityAdvisoriesStatusLabel,
+  repositorySecurityAdvisoriesStatusUnavailable,
+  repositorySecurityPolicyAvailabilityMessage,
+  repositorySecurityPolicyError,
+  repositorySecurityPolicyHasResult,
+  repositorySecurityPolicyLoading,
+  repositorySecurityPolicyStatusLabel,
+  repositorySecurityPolicyStatusUnavailable,
+  secretScanningAlerts,
+  secretScanningAlertsError,
+  secretScanningAlertsLimit,
+  secretScanningAlertsLoading,
+  secretScanningAvailabilityMessage,
+  secretScanningStatusLabel,
+  secretScanningStatusUnavailable,
+  securityFeatureRows,
+  securityMutationRelevant,
+  securityPolicy,
+  securityPolicyExpanded,
+  securityPolicyHasFullPreview,
+  visibleSecurityPolicyContent,
+  applyBaselineBranchProtection,
+  createActiveRepositoryRuleset,
+  createEvaluateRepositoryRuleset,
+  deleteBranchProtection,
+  deleteRepositoryRuleset,
+  inspectRepositoryRuleset,
+  openBranchRulesFallback,
+  openCommunityFallback,
+  openRepositorySecurityPath,
+  openRulesetsFallback,
+  openSecurityPath,
+  openSecurityPolicyFallback,
+  reapplyRepositoryRuleset,
+  rulesetMutationDisabledReason,
+  securityItemActive,
+  togglePolicyPreview
+}: SecurityQualityTabSectionsProps): JSX.Element {
+  return (
+    <section className="table-panel github-surface security-quality-panel">
+      <BranchProtectionSurface
+        availabilityMessage={availabilityMessage}
+        branch={branchProtectionBranch}
+        branchLabel={branchProtectionBranchLabel}
+        branches={branchProtectionBranches}
+        branchesDisabled={branchProtectionBranchesDisabled}
+        branchesNote={branchProtectionBranchesNote}
+        error={branchProtectionError}
+        hasBranchOption={hasBranchProtectionBranchOption}
+        hasProtectionResult={Boolean(branchProtection)}
+        loading={branchProtectionLoading}
+        mutationAction={mutationAction}
+        mutationDisabledReason={branchProtectionMutationDisabledReason}
+        mutationError={mutationError}
+        mutationPending={mutationPending}
+        mutationRelevant={securityMutationRelevant}
+        mutationSucceeded={mutationSucceeded}
+        onApplyBaselineProtection={applyBaselineBranchProtection}
+        onDeleteProtection={deleteBranchProtection}
+        onOpenBranchRulesFallback={openBranchRulesFallback}
+        onSelectBranch={onSelectSecurityQualityBranch}
+        protection={protection}
+        statusLabel={branchProtectionStatusLabel}
+        statusUnavailable={branchProtectionStatusUnavailable}
+      />
+      <RepositoryRulesetsSection
+        availabilityMessage={repositoryRulesetsAvailabilityMessage}
+        createRulesetDisabledReason={createRulesetDisabledReason}
+        error={repositoryRulesetsError}
+        getMutationDisabledReason={rulesetMutationDisabledReason}
+        limit={repositoryRulesetsLimit}
+        loading={repositoryRulesetsLoading}
+        onCreateActiveRuleset={createActiveRepositoryRuleset}
+        onCreateEvaluateRuleset={createEvaluateRepositoryRuleset}
+        onDeleteRuleset={deleteRepositoryRuleset}
+        onExpand={onExpandRepositoryRulesets}
+        onInspectRuleset={inspectRepositoryRuleset}
+        onOpenExternal={onOpenExternal}
+        onOpenRulesetsFallback={openRulesetsFallback}
+        onReapplyRuleset={reapplyRepositoryRuleset}
+        repositoryRulesetsStatusLabel={repositoryRulesetsStatusLabel}
+        repositoryRulesetsStatusUnavailable={repositoryRulesetsStatusUnavailable}
+        rulesets={repositoryRulesets}
+        securityItemActive={securityItemActive}
+      />
+      <RepositorySecurityAdvisoriesSection
+        advisories={repositorySecurityAdvisories}
+        availabilityMessage={repositorySecurityAdvisoriesAvailabilityMessage}
+        error={repositorySecurityAdvisoriesError}
+        limit={repositorySecurityAdvisoriesLimit}
+        loading={repositorySecurityAdvisoriesLoading}
+        onExpand={onExpandRepositorySecurityAdvisories}
+        onOpenExternal={onOpenExternal}
+        onSelectSecurityItem={onSelectSecurityItem}
+        repositoryNameWithOwner={repository.nameWithOwner}
+        securityItemActive={securityItemActive}
+        statusLabel={repositorySecurityAdvisoriesStatusLabel}
+        statusUnavailable={repositorySecurityAdvisoriesStatusUnavailable}
+      />
+      <SecurityPolicySection
+        availabilityMessage={repositorySecurityPolicyAvailabilityMessage}
+        defaultBranch={repository.defaultBranch ?? null}
+        error={repositorySecurityPolicyError}
+        hasPolicyResult={repositorySecurityPolicyHasResult}
+        loading={repositorySecurityPolicyLoading}
+        onOpenExternal={onOpenExternal}
+        onOpenSecurityPath={openSecurityPath}
+        onOpenSecurityPolicyFallback={openSecurityPolicyFallback}
+        onTogglePolicyPreview={togglePolicyPreview}
+        policy={securityPolicy}
+        policyExpanded={securityPolicyExpanded}
+        policyHasFullPreview={securityPolicyHasFullPreview}
+        statusLabel={repositorySecurityPolicyStatusLabel}
+        statusUnavailable={repositorySecurityPolicyStatusUnavailable}
+        visiblePolicyContent={visibleSecurityPolicyContent}
+      />
+      <CommunityProfileSection
+        availabilityMessage={repositoryCommunityProfileAvailabilityMessage}
+        error={repositoryCommunityProfileError}
+        loading={repositoryCommunityProfileLoading}
+        missingFiles={missingCommunityFiles}
+        onOpenCommunityFallback={openCommunityFallback}
+        onOpenExternal={onOpenExternal}
+        onOpenSecurityPath={openSecurityPath}
+        presentFiles={presentCommunityFiles}
+        profile={repositoryCommunityProfile}
+        statusLabel={repositoryCommunityProfileStatusLabel}
+        statusUnavailable={repositoryCommunityProfileStatusUnavailable}
+      />
+      <SecurityFeatureAvailabilitySection
+        availabilityLabel={administrationAvailabilityLabel}
+        availabilityMessage={administrationAvailabilityMessage}
+        rows={securityFeatureRows}
+      />
+      <DependabotAlertsSection
+        alerts={dependabotAlerts}
+        availabilityMessage={dependabotAvailabilityMessage}
+        defaultSecurityRef={defaultSecurityRef}
+        error={dependabotAlertsError}
+        limit={dependabotAlertsLimit}
+        loading={dependabotAlertsLoading}
+        onExpand={onExpandDependabotAlerts}
+        onOpenExternal={onOpenExternal}
+        onOpenSecurityPath={openSecurityPath}
+        onSelectSecurityItem={onSelectSecurityItem}
+        repositoryNameWithOwner={repository.nameWithOwner}
+        securityItemActive={securityItemActive}
+        statusLabel={dependabotStatusLabel}
+        statusUnavailable={dependabotStatusUnavailable}
+      />
+      <CodeScanningAlertsSection
+        alerts={codeScanningAlerts}
+        availabilityMessage={codeScanningAvailabilityMessage}
+        error={codeScanningAlertsError}
+        limit={codeScanningAlertsLimit}
+        loading={codeScanningAlertsLoading}
+        onExpand={onExpandCodeScanningAlerts}
+        onOpenExternal={onOpenExternal}
+        onOpenSecurityPath={openSecurityPath}
+        onSelectSecurityItem={onSelectSecurityItem}
+        repositoryNameWithOwner={repository.nameWithOwner}
+        securityItemActive={securityItemActive}
+        statusLabel={codeScanningStatusLabel}
+        statusUnavailable={codeScanningStatusUnavailable}
+      />
+      <SecretScanningAlertsSection
+        alerts={secretScanningAlerts}
+        availabilityMessage={secretScanningAvailabilityMessage}
+        defaultSecurityRef={defaultSecurityRef}
+        error={secretScanningAlertsError}
+        limit={secretScanningAlertsLimit}
+        loading={secretScanningAlertsLoading}
+        onExpand={onExpandSecretScanningAlerts}
+        onOpenExternal={onOpenExternal}
+        onOpenSecurityPath={openSecurityPath}
+        onSelectSecurityItem={onSelectSecurityItem}
+        repositoryNameWithOwner={repository.nameWithOwner}
+        securityItemActive={securityItemActive}
+        statusLabel={secretScanningStatusLabel}
+        statusUnavailable={secretScanningStatusUnavailable}
+      />
+      <SecurityQualityLinks
+        onOpenRepositoryPath={openRepositorySecurityPath}
+        repositoryNameWithOwner={repository.nameWithOwner}
+      />
+    </section>
+  );
+}
+
+export function SecurityQualityTab({
+  repository,
+  selectedRef,
+  refListLimit,
+  dependabotAlertsLimit,
+  codeScanningAlertsLimit,
+  secretScanningAlertsLimit,
+  repositoryRulesetsLimit,
+  repositorySecurityAdvisoriesLimit,
+  githubReady,
+  mutationAction,
+  mutationPending,
+  mutationSucceeded,
+  mutationError,
+  focusedSecurityItemKind,
+  focusedSecurityItemId,
+  onOpenExternal,
+  onOpenCodePath,
+  onSelectSecurityItem,
+  onSelectSecurityQualityBranch,
+  onExpandDependabotAlerts,
+  onExpandCodeScanningAlerts,
+  onExpandSecretScanningAlerts,
+  onExpandRepositoryRulesets,
+  onExpandRepositorySecurityAdvisories,
+  onMutate
+}: SecurityQualityTabProps): JSX.Element {
+  const queryState = useSecurityQualityQueryState({
+    selectedRef,
+    repository,
+    refListLimit,
+    dependabotAlertsLimit,
+    codeScanningAlertsLimit,
+    secretScanningAlertsLimit,
+    repositoryRulesetsLimit,
+    repositorySecurityAdvisoriesLimit,
+    githubReady
+  });
+  const {
+    branchProtectionBranch,
+    branchProtectionBranches,
+    branchProtection,
+    protection,
+    branchProtectionLoading,
+    branchProtectionError,
+    dependabotAlerts,
+    dependabotAlertsLoading,
+    dependabotAlertsError,
+    codeScanningAlerts,
+    codeScanningAlertsLoading,
+    codeScanningAlertsError,
+    secretScanningAlerts,
+    secretScanningAlertsLoading,
+    secretScanningAlertsError,
+    repositoryRulesets,
+    repositoryRulesetsLoading,
+    repositoryRulesetsError,
+    repositorySecurityAdvisories,
+    repositorySecurityAdvisoriesLoading,
+    repositorySecurityAdvisoriesError,
+    repositorySecurityPolicy,
+    repositorySecurityPolicyLoading,
+    repositorySecurityPolicyError,
+    repositoryCommunityProfile,
+    repositoryCommunityProfileLoading,
+    repositoryCommunityProfileError
+  } = queryState;
+  const {
+    policy: securityPolicy,
+    policyExpanded: securityPolicyExpanded,
+    policyHasFullPreview: securityPolicyHasFullPreview,
+    togglePolicyPreview,
+    visiblePolicyContent: visibleSecurityPolicyContent
+  } = useSecurityPolicyPreviewState(repository.nameWithOwner, repositorySecurityPolicy);
+  const {
+    administrationAvailabilityLabel,
+    administrationAvailabilityMessage,
+    availabilityMessage,
+    branchProtectionBranchLabel,
+    branchProtectionBranchesDisabled,
+    branchProtectionBranchesNote,
+    branchProtectionMutationDisabledReason,
+    branchProtectionStatusLabel,
+    branchProtectionStatusUnavailable,
+    codeScanningAvailabilityMessage,
+    codeScanningStatusLabel,
+    codeScanningStatusUnavailable,
+    createRulesetDisabledReason,
+    defaultSecurityRef,
+    dependabotAvailabilityMessage,
+    dependabotStatusLabel,
+    dependabotStatusUnavailable,
+    hasBranchProtectionBranchOption,
+    missingCommunityFiles,
+    presentCommunityFiles,
+    repositoryCommunityProfileAvailabilityMessage,
+    repositoryCommunityProfileStatusLabel,
+    repositoryCommunityProfileStatusUnavailable,
+    repositoryRulesetsAvailabilityMessage,
+    repositoryRulesetsStatusLabel,
+    repositoryRulesetsStatusUnavailable,
+    repositorySecurityAdvisoriesAvailabilityMessage,
+    repositorySecurityAdvisoriesStatusLabel,
+    repositorySecurityAdvisoriesStatusUnavailable,
+    repositorySecurityPolicyAvailabilityMessage,
+    repositorySecurityPolicyStatusLabel,
+    repositorySecurityPolicyStatusUnavailable,
+    secretScanningAvailabilityMessage,
+    secretScanningStatusLabel,
+    secretScanningStatusUnavailable,
+    securityFeatureRows,
+    securityMutationDisabledReason,
+    securityMutationRelevant
+  } = readSecurityQualityDerivedState({
+    githubReady,
+    mutationAction,
+    mutationPending,
+    queryState,
+    repository,
+    securityPolicy
+  });
+  const {
+    applyBaselineBranchProtection,
+    createActiveRepositoryRuleset,
+    createEvaluateRepositoryRuleset,
+    deleteBranchProtection,
+    deleteRepositoryRuleset,
+    inspectRepositoryRuleset,
+    openBranchRulesFallback,
+    openCommunityFallback,
+    openRepositorySecurityPath,
+    openRulesetsFallback,
+    openSecurityPath,
+    openSecurityPolicyFallback,
+    reapplyRepositoryRuleset,
+    rulesetMutationDisabledReason,
+    securityItemActive
+  } = createSecurityQualityActions({
+    branchProtectionBranch,
+    defaultSecurityRef,
+    focusedSecurityItemId,
+    focusedSecurityItemKind,
+    mutationPending,
+    repository,
+    securityMutationDisabledReason,
+    securityMutationRelevant,
+    onMutate,
+    onOpenCodePath,
+    onOpenExternal,
+    onSelectSecurityItem
+  });
+
+  return (
+    <SecurityQualityTabSections
+      administrationAvailabilityLabel={administrationAvailabilityLabel}
+      administrationAvailabilityMessage={administrationAvailabilityMessage}
+      applyBaselineBranchProtection={applyBaselineBranchProtection}
+      availabilityMessage={availabilityMessage}
+      branchProtection={branchProtection}
+      branchProtectionBranch={branchProtectionBranch}
+      branchProtectionBranchLabel={branchProtectionBranchLabel}
+      branchProtectionBranches={branchProtectionBranches}
+      branchProtectionBranchesDisabled={branchProtectionBranchesDisabled}
+      branchProtectionBranchesNote={branchProtectionBranchesNote}
+      branchProtectionError={branchProtectionError}
+      branchProtectionLoading={branchProtectionLoading}
+      branchProtectionMutationDisabledReason={branchProtectionMutationDisabledReason}
+      branchProtectionStatusLabel={branchProtectionStatusLabel}
+      branchProtectionStatusUnavailable={branchProtectionStatusUnavailable}
+      codeScanningAlerts={codeScanningAlerts}
+      codeScanningAlertsError={codeScanningAlertsError}
+      codeScanningAlertsLimit={codeScanningAlertsLimit}
+      codeScanningAlertsLoading={codeScanningAlertsLoading}
+      codeScanningAvailabilityMessage={codeScanningAvailabilityMessage}
+      codeScanningStatusLabel={codeScanningStatusLabel}
+      codeScanningStatusUnavailable={codeScanningStatusUnavailable}
+      createActiveRepositoryRuleset={createActiveRepositoryRuleset}
+      createEvaluateRepositoryRuleset={createEvaluateRepositoryRuleset}
+      createRulesetDisabledReason={createRulesetDisabledReason}
+      defaultSecurityRef={defaultSecurityRef}
+      deleteBranchProtection={deleteBranchProtection}
+      deleteRepositoryRuleset={deleteRepositoryRuleset}
+      dependabotAlerts={dependabotAlerts}
+      dependabotAlertsError={dependabotAlertsError}
+      dependabotAlertsLimit={dependabotAlertsLimit}
+      dependabotAlertsLoading={dependabotAlertsLoading}
+      dependabotAvailabilityMessage={dependabotAvailabilityMessage}
+      dependabotStatusLabel={dependabotStatusLabel}
+      dependabotStatusUnavailable={dependabotStatusUnavailable}
+      hasBranchProtectionBranchOption={hasBranchProtectionBranchOption}
+      inspectRepositoryRuleset={inspectRepositoryRuleset}
+      missingCommunityFiles={missingCommunityFiles}
+      mutationAction={mutationAction}
+      mutationError={mutationError}
+      mutationPending={mutationPending}
+      mutationSucceeded={mutationSucceeded}
+      onExpandCodeScanningAlerts={onExpandCodeScanningAlerts}
+      onExpandDependabotAlerts={onExpandDependabotAlerts}
+      onExpandRepositoryRulesets={onExpandRepositoryRulesets}
+      onExpandRepositorySecurityAdvisories={onExpandRepositorySecurityAdvisories}
+      onExpandSecretScanningAlerts={onExpandSecretScanningAlerts}
+      onOpenExternal={onOpenExternal}
+      onSelectSecurityItem={onSelectSecurityItem}
+      onSelectSecurityQualityBranch={onSelectSecurityQualityBranch}
+      openBranchRulesFallback={openBranchRulesFallback}
+      openCommunityFallback={openCommunityFallback}
+      openRepositorySecurityPath={openRepositorySecurityPath}
+      openRulesetsFallback={openRulesetsFallback}
+      openSecurityPath={openSecurityPath}
+      openSecurityPolicyFallback={openSecurityPolicyFallback}
+      presentCommunityFiles={presentCommunityFiles}
+      protection={protection}
+      reapplyRepositoryRuleset={reapplyRepositoryRuleset}
+      repository={repository}
+      repositoryCommunityProfile={repositoryCommunityProfile}
+      repositoryCommunityProfileAvailabilityMessage={repositoryCommunityProfileAvailabilityMessage}
+      repositoryCommunityProfileError={repositoryCommunityProfileError}
+      repositoryCommunityProfileLoading={repositoryCommunityProfileLoading}
+      repositoryCommunityProfileStatusLabel={repositoryCommunityProfileStatusLabel}
+      repositoryCommunityProfileStatusUnavailable={repositoryCommunityProfileStatusUnavailable}
+      repositoryRulesets={repositoryRulesets}
+      repositoryRulesetsAvailabilityMessage={repositoryRulesetsAvailabilityMessage}
+      repositoryRulesetsError={repositoryRulesetsError}
+      repositoryRulesetsLimit={repositoryRulesetsLimit}
+      repositoryRulesetsLoading={repositoryRulesetsLoading}
+      repositoryRulesetsStatusLabel={repositoryRulesetsStatusLabel}
+      repositoryRulesetsStatusUnavailable={repositoryRulesetsStatusUnavailable}
+      repositorySecurityAdvisories={repositorySecurityAdvisories}
+      repositorySecurityAdvisoriesAvailabilityMessage={repositorySecurityAdvisoriesAvailabilityMessage}
+      repositorySecurityAdvisoriesError={repositorySecurityAdvisoriesError}
+      repositorySecurityAdvisoriesLimit={repositorySecurityAdvisoriesLimit}
+      repositorySecurityAdvisoriesLoading={repositorySecurityAdvisoriesLoading}
+      repositorySecurityAdvisoriesStatusLabel={repositorySecurityAdvisoriesStatusLabel}
+      repositorySecurityAdvisoriesStatusUnavailable={repositorySecurityAdvisoriesStatusUnavailable}
+      repositorySecurityPolicyAvailabilityMessage={repositorySecurityPolicyAvailabilityMessage}
+      repositorySecurityPolicyError={repositorySecurityPolicyError}
+      repositorySecurityPolicyHasResult={Boolean(repositorySecurityPolicy)}
+      repositorySecurityPolicyLoading={repositorySecurityPolicyLoading}
+      repositorySecurityPolicyStatusLabel={repositorySecurityPolicyStatusLabel}
+      repositorySecurityPolicyStatusUnavailable={repositorySecurityPolicyStatusUnavailable}
+      rulesetMutationDisabledReason={rulesetMutationDisabledReason}
+      secretScanningAlerts={secretScanningAlerts}
+      secretScanningAlertsError={secretScanningAlertsError}
+      secretScanningAlertsLimit={secretScanningAlertsLimit}
+      secretScanningAlertsLoading={secretScanningAlertsLoading}
+      secretScanningAvailabilityMessage={secretScanningAvailabilityMessage}
+      secretScanningStatusLabel={secretScanningStatusLabel}
+      secretScanningStatusUnavailable={secretScanningStatusUnavailable}
+      securityFeatureRows={securityFeatureRows}
+      securityItemActive={securityItemActive}
+      securityMutationRelevant={securityMutationRelevant}
+      securityPolicy={securityPolicy}
+      securityPolicyExpanded={securityPolicyExpanded}
+      securityPolicyHasFullPreview={securityPolicyHasFullPreview}
+      togglePolicyPreview={togglePolicyPreview}
+      visibleSecurityPolicyContent={visibleSecurityPolicyContent}
+    />
   );
 }

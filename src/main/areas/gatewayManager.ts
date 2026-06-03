@@ -3,7 +3,7 @@ import { constants as fsConstants } from "node:fs";
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { dirname, join, resolve } from "node:path";
-import { execFile, spawn } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { promisify } from "node:util";
 
 import type {
@@ -29,12 +29,51 @@ const execFileAsync = promisify(execFile);
 const gatewayVersion = "0.1.0";
 const gatewayManifestFile = "manifest.json";
 const gatewayPollTimeoutMs = 8_000;
+const gatewayLocalPollIntervalMs = 100;
+const gatewayRemotePollIntervalMs = 200;
+
+interface ExecFileResult {
+  stdout: string | Buffer;
+  stderr: string | Buffer;
+}
+
+type ExecFileRunner = (file: string, args?: readonly string[]) => Promise<ExecFileResult>;
+type SpawnRunner = (command: string, args?: readonly string[], options?: unknown) => ChildProcess;
+
+interface GatewayManagerRuntime {
+  spawn: SpawnRunner;
+  execFile: ExecFileRunner;
+  fetch: typeof fetch;
+  freePort: () => Promise<number>;
+  resolveGatewayBinary: () => Promise<string>;
+  pollTimeoutMs: number;
+  localPollIntervalMs: number;
+  remotePollIntervalMs: number;
+}
+
+type GatewayManagerRuntimeOptions = Partial<GatewayManagerRuntime>;
 
 export class GatewayManager {
+  private readonly runtime: GatewayManagerRuntime;
+  private readonly startupPromises = new Map<string, Promise<AreaGatewayRecord>>();
+
   constructor(
     private readonly store: LocalStore,
-    private readonly userDataPath: string
-  ) {}
+    private readonly userDataPath: string,
+    runtime: GatewayManagerRuntimeOptions = {}
+  ) {
+    this.runtime = {
+      spawn: spawn as SpawnRunner,
+      execFile: execFileAsync as ExecFileRunner,
+      fetch: globalThis.fetch.bind(globalThis),
+      freePort,
+      resolveGatewayBinary: resolveGatewayBinaryArtifact,
+      pollTimeoutMs: gatewayPollTimeoutMs,
+      localPollIntervalMs: gatewayLocalPollIntervalMs,
+      remotePollIntervalMs: gatewayRemotePollIntervalMs,
+      ...runtime
+    };
+  }
 
   seedLocalArea(area: AreaSummary): AreaGatewayRecord {
     const existing = this.store.getAreaGateway(area.id);
@@ -77,20 +116,42 @@ export class GatewayManager {
     if (seeded.failureCode === "gateway-credentials-migration-pending") {
       throw new Error("Gateway credentials are waiting for migration to the system keychain.");
     }
+    if (seeded.status === "ready" && seeded.apiUrl && (await this.gatewayResponds(seeded))) {
+      const refreshed = {
+        ...seeded,
+        lastSeenAt: new Date().toISOString(),
+        failureCode: null,
+        message: null
+      };
+      this.store.setAreaGateway(refreshed);
+      return refreshed;
+    }
+
+    const existingStartup = this.startupPromises.get(seeded.areaId);
+    if (existingStartup) {
+      return existingStartup;
+    }
+
+    const startup = this.startAreaGateway(seeded);
+    this.startupPromises.set(seeded.areaId, startup);
     try {
-      if (seeded.status === "ready" && seeded.apiUrl && (await this.gatewayResponds(seeded))) {
-        const refreshed = {
-          ...seeded,
-          lastSeenAt: new Date().toISOString(),
-          failureCode: null,
-          message: null
-        };
-        this.store.setAreaGateway(refreshed);
-        return refreshed;
+      return await startup;
+    } finally {
+      if (this.startupPromises.get(seeded.areaId) === startup) {
+        this.startupPromises.delete(seeded.areaId);
       }
-      return seeded.transport === "ssh" ? this.startSshGateway(seeded) : this.startLocalGateway(seeded);
+    }
+  }
+
+  private async startAreaGateway(record: AreaGatewayRecord): Promise<AreaGatewayRecord> {
+    try {
+      return record.transport === "ssh"
+        ? await this.startSshGateway(record)
+        : await this.startLocalGateway(record);
     } catch (error) {
-      this.store.setAreaGateway(failedGatewayRecord(this.store.getAreaGateway(area.id) ?? seeded, error));
+      this.store.setAreaGateway(
+        failedGatewayRecord(this.store.getAreaGateway(record.areaId) ?? record, error)
+      );
       throw error;
     }
   }
@@ -128,10 +189,12 @@ export class GatewayManager {
         this.store.setAreaGateway(failed);
         throw new Error("Gateway admin credentials are unavailable.");
       }
-      const response = await fetch(new URL("/stop", record.adminUrl), {
-        method: "POST",
-        headers: { authorization: `Bearer ${credentials.adminToken}` }
-      }).catch(() => null);
+      const response = await this.runtime
+        .fetch(new URL("/stop", record.adminUrl), {
+          method: "POST",
+          headers: { authorization: `Bearer ${credentials.adminToken}` }
+        })
+        .catch(() => null);
       if (!response?.ok) {
         const failed = failedGatewayRecord(
           record,
@@ -208,8 +271,9 @@ export class GatewayManager {
     };
     this.store.setAreaGateway(starting);
 
+    let child: ChildProcess | null = null;
     try {
-      const child = spawn(
+      child = this.runtime.spawn(
         binaryPath,
         [
           "--root",
@@ -231,10 +295,13 @@ export class GatewayManager {
       );
       child.unref();
 
-      const manifest = normalizeManifest(await readGatewayManifest(manifestPath), {
-        minStartedAt: startedAt,
-        requireLoopback: true
-      });
+      const manifest = normalizeManifest(
+        await readGatewayManifest(manifestPath, this.runtime.pollTimeoutMs, this.runtime.localPollIntervalMs),
+        {
+          minStartedAt: startedAt,
+          requireLoopback: true
+        }
+      );
       const ready = {
         ...starting,
         status: "ready" as const,
@@ -249,6 +316,10 @@ export class GatewayManager {
       };
       this.store.setAreaGateway(ready);
       return ready;
+    } catch (error) {
+      throw withStartupCleanupFailures(error, [
+        await terminateSpawnedProcess(child, "local gateway process")
+      ]);
     } finally {
       await Promise.all([
         rm(tokenFiles.apiTokenFile, { force: true }),
@@ -282,26 +353,29 @@ export class GatewayManager {
     };
     this.store.setAreaGateway(starting);
 
-    await execFileAsync("ssh", sshArgs(record, target, ["mkdir", "-p", remoteBase, remoteSecrets]));
-    await execFileAsync("ssh", sshArgs(record, target, ["chmod", "700", remoteSecrets])).catch(
-      () => undefined
-    );
-    await execFileAsync(
+    await this.runtime.execFile("ssh", sshArgs(record, target, ["mkdir", "-p", remoteBase, remoteSecrets]));
+    await this.runtime
+      .execFile("ssh", sshArgs(record, target, ["chmod", "700", remoteSecrets]))
+      .catch(() => undefined);
+    await this.runtime.execFile(
       "ssh",
       sshArgs(record, target, ["rm", "-f", remoteManifest, remoteApiTokenFile, remoteAdminTokenFile])
     );
     await Promise.all([
-      writeRemoteSecret(record, target, remoteApiTokenFile, credentials.apiToken),
-      writeRemoteSecret(record, target, remoteAdminTokenFile, credentials.adminToken)
+      writeRemoteSecret(record, target, remoteApiTokenFile, credentials.apiToken, this.runtime.spawn),
+      writeRemoteSecret(record, target, remoteAdminTokenFile, credentials.adminToken, this.runtime.spawn)
     ]);
 
+    let remoteManifestData: GatewayManifestPayload | null = null;
+    let remoteAdminUrl: string | null = null;
+    let tunnel: ChildProcess | null = null;
     try {
       const localBinary = await this.resolveGatewayBinary().catch(() => null);
       if (localBinary) {
-        await scp(localBinary, record, target, remoteBinary).catch(() => undefined);
-        await execFileAsync("ssh", sshArgs(record, target, ["chmod", "+x", remoteBinary])).catch(
-          () => undefined
-        );
+        await scp(localBinary, record, target, remoteBinary, this.runtime.spawn).catch(() => undefined);
+        await this.runtime
+          .execFile("ssh", sshArgs(record, target, ["chmod", "+x", remoteBinary]))
+          .catch(() => undefined);
       }
 
       const command = [
@@ -319,17 +393,26 @@ export class GatewayManager {
         shellQuote(remoteManifest),
         `>${remoteBase}/gateway.log 2>&1 &`
       ].join(" ");
-      await execFileAsync("ssh", sshArgs(record, target, ["sh", "-lc", command]));
+      await this.runtime.execFile("ssh", sshArgs(record, target, ["sh", "-lc", command]));
 
-      const remoteManifestJson = await pollRemoteManifest(record, target, remoteManifest);
-      const remoteManifestData = normalizeManifest(JSON.parse(remoteManifestJson) as GatewayManifestPayload, {
+      const remoteManifestJson = await pollRemoteManifest(
+        record,
+        target,
+        remoteManifest,
+        this.runtime.execFile,
+        this.runtime.pollTimeoutMs,
+        this.runtime.remotePollIntervalMs
+      );
+      remoteManifestData = JSON.parse(remoteManifestJson) as GatewayManifestPayload;
+      const normalizedManifestData = normalizeManifest(remoteManifestData, {
         requireLoopback: true
       });
-      const apiPort = portFromUrl(remoteManifestData.apiUrl);
-      const adminPort = portFromUrl(remoteManifestData.adminUrl);
-      const localApiPort = await freePort();
-      const localAdminPort = await freePort();
-      const tunnel = spawn(
+      remoteAdminUrl = normalizedManifestData.adminUrl;
+      const apiPort = portFromUrl(normalizedManifestData.apiUrl);
+      const adminPort = portFromUrl(normalizedManifestData.adminUrl);
+      const localApiPort = await this.runtime.freePort();
+      const localAdminPort = await this.runtime.freePort();
+      tunnel = this.runtime.spawn(
         "ssh",
         [
           ...sshConnectionArgs(record),
@@ -343,26 +426,47 @@ export class GatewayManager {
         { detached: true, stdio: "ignore" }
       );
       tunnel.unref();
+      await waitForGatewayApi(
+        `http://127.0.0.1:${localApiPort}`,
+        credentials.apiToken,
+        this.runtime.fetch,
+        this.runtime.pollTimeoutMs,
+        this.runtime.localPollIntervalMs
+      );
 
       const ready = {
         ...starting,
         status: "ready" as const,
-        version: remoteManifestData.version ?? gatewayVersion,
+        version: normalizedManifestData.version ?? gatewayVersion,
         apiUrl: `http://127.0.0.1:${localApiPort}`,
         adminUrl: `http://127.0.0.1:${localAdminPort}`,
         processId: tunnel.pid ?? null,
-        pid: remoteManifestData.pid ?? null,
+        pid: normalizedManifestData.pid ?? null,
         message: null,
         lastSeenAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
       this.store.setAreaGateway(ready);
       return ready;
+    } catch (error) {
+      const remoteCleanupFailure = await cleanupRemoteGatewayStartup({
+        record,
+        target,
+        remoteManifest,
+        remoteBinary,
+        remoteAdminUrl,
+        remotePid: remoteManifestData?.pid ?? null,
+        adminToken: credentials.adminToken,
+        execFile: this.runtime.execFile
+      });
+      throw withStartupCleanupFailures(error, [
+        await terminateSpawnedProcess(tunnel, "SSH tunnel process"),
+        remoteCleanupFailure
+      ]);
     } finally {
-      await execFileAsync(
-        "ssh",
-        sshArgs(record, target, ["rm", "-f", remoteApiTokenFile, remoteAdminTokenFile])
-      ).catch(() => undefined);
+      await this.runtime
+        .execFile("ssh", sshArgs(record, target, ["rm", "-f", remoteApiTokenFile, remoteAdminTokenFile]))
+        .catch(() => undefined);
     }
   }
 
@@ -374,15 +478,7 @@ export class GatewayManager {
     if (!credentials) {
       return false;
     }
-    const response = await fetch(new URL("/graphql", record.apiUrl), {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${credentials.apiToken}`
-      },
-      body: JSON.stringify({ query: "{ territory { id } }" })
-    }).catch(() => null);
-    return Boolean(response?.ok);
+    return gatewayApiResponds(record.apiUrl, credentials.apiToken, this.runtime.fetch);
   }
 
   private async ensureGatewayCredentials(areaId: string): Promise<GatewayCredentials> {
@@ -428,7 +524,7 @@ export class GatewayManager {
   }
 
   private async resolveGatewayBinary(): Promise<string> {
-    return resolveGatewayBinaryArtifact();
+    return this.runtime.resolveGatewayBinary();
   }
 }
 
@@ -545,14 +641,18 @@ async function canExecute(path: string): Promise<boolean> {
   );
 }
 
-async function readGatewayManifest(path: string): Promise<GatewayManifestPayload> {
+async function readGatewayManifest(
+  path: string,
+  timeoutMs: number,
+  intervalMs: number
+): Promise<GatewayManifestPayload> {
   const startedAt = Date.now();
-  while (Date.now() - startedAt < gatewayPollTimeoutMs) {
+  while (Date.now() - startedAt < timeoutMs) {
     const content = await readFile(path, "utf8").catch(() => null);
     if (content) {
       return JSON.parse(content) as GatewayManifestPayload;
     }
-    await delay(100);
+    await delay(intervalMs);
   }
   throw new Error("Gateway did not write its manifest before the startup timeout.");
 }
@@ -560,17 +660,20 @@ async function readGatewayManifest(path: string): Promise<GatewayManifestPayload
 async function pollRemoteManifest(
   record: AreaGatewayRecord,
   target: string,
-  remoteManifest: string
+  remoteManifest: string,
+  execFileRunner: ExecFileRunner,
+  timeoutMs: number,
+  intervalMs: number
 ): Promise<string> {
   const startedAt = Date.now();
-  while (Date.now() - startedAt < gatewayPollTimeoutMs) {
-    const result = await execFileAsync("ssh", sshArgs(record, target, ["cat", remoteManifest])).catch(
+  while (Date.now() - startedAt < timeoutMs) {
+    const result = await execFileRunner("ssh", sshArgs(record, target, ["cat", remoteManifest])).catch(
       () => null
     );
     if (result?.stdout) {
       return result.stdout.toString();
     }
-    await delay(200);
+    await delay(intervalMs);
   }
   throw new Error("Remote gateway did not write its manifest before the startup timeout.");
 }
@@ -587,7 +690,8 @@ async function scp(
   localBinary: string,
   record: AreaGatewayRecord,
   target: string,
-  remoteBinary: string
+  remoteBinary: string,
+  spawnProcess: SpawnRunner
 ): Promise<void> {
   await new Promise<void>((resolvePromise, reject) => {
     const args = [
@@ -595,8 +699,12 @@ async function scp(
       localBinary,
       `${target}:${remoteBinary}`
     ];
-    const child = spawn("scp", args, { stdio: ["ignore", "ignore", "pipe"] });
+    const child = spawnProcess("scp", args, { stdio: ["ignore", "ignore", "pipe"] });
     let stderr = "";
+    if (!child.stderr) {
+      reject(new Error("scp stderr stream is unavailable."));
+      return;
+    }
     child.stderr.on("data", (chunk: Buffer) => {
       stderr += chunk.toString();
     });
@@ -792,11 +900,116 @@ function validateLoopbackUrl(url: string): void {
   }
 }
 
+async function gatewayApiResponds(
+  apiUrl: string,
+  apiToken: string,
+  fetchGateway: typeof fetch
+): Promise<boolean> {
+  const response = await fetchGateway(new URL("/graphql", apiUrl), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${apiToken}`
+    },
+    body: JSON.stringify({ query: "{ territory { id } }" })
+  }).catch(() => null);
+  return Boolean(response?.ok);
+}
+
+async function waitForGatewayApi(
+  apiUrl: string,
+  apiToken: string,
+  fetchGateway: typeof fetch,
+  timeoutMs: number,
+  intervalMs: number
+): Promise<void> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (await gatewayApiResponds(apiUrl, apiToken, fetchGateway)) {
+      return;
+    }
+    await delay(intervalMs);
+  }
+  throw new Error("SSH gateway tunnel did not become reachable before the startup timeout.");
+}
+
+async function terminateSpawnedProcess(child: ChildProcess | null, label: string): Promise<string | null> {
+  if (!child) {
+    return null;
+  }
+  try {
+    if (!child.killed) {
+      child.kill("SIGTERM");
+    }
+    return null;
+  } catch (error) {
+    return `${label}: ${error instanceof Error ? error.message : "cleanup failed"}`;
+  }
+}
+
+interface RemoteGatewayStartupCleanupInput {
+  record: AreaGatewayRecord;
+  target: string;
+  remoteManifest: string;
+  remoteBinary: string;
+  remoteAdminUrl: string | null;
+  remotePid: number | null;
+  adminToken: string;
+  execFile: ExecFileRunner;
+}
+
+async function cleanupRemoteGatewayStartup({
+  record,
+  target,
+  remoteManifest,
+  remoteBinary,
+  remoteAdminUrl,
+  remotePid,
+  adminToken,
+  execFile: execFileRunner
+}: RemoteGatewayStartupCleanupInput): Promise<string | null> {
+  const stopUrl = remoteAdminUrl ? new URL("/stop", remoteAdminUrl).toString() : null;
+  const remoteCleanupCommand = [
+    stopUrl
+      ? `curl -fsS -X POST -H ${shellQuote(`authorization: Bearer ${adminToken}`)} ${shellQuote(
+          stopUrl
+        )} >/dev/null 2>&1 || true`
+      : null,
+    remotePid ? `kill ${remotePid} >/dev/null 2>&1 || true` : null,
+    `if [ -f ${shellQuote(remoteManifest)} ]; then pid=$(sed -n 's/.*"pid"[[:space:]]*:[[:space:]]*\\([0-9][0-9]*\\).*/\\1/p' ${shellQuote(
+      remoteManifest
+    )} | head -n 1); if [ -n "$pid" ]; then kill "$pid" >/dev/null 2>&1 || true; fi; fi`,
+    `pkill -f -- ${shellQuote(remoteBinary)} >/dev/null 2>&1 || true`
+  ]
+    .filter((command): command is string => Boolean(command))
+    .join("; ");
+
+  try {
+    await execFileRunner("ssh", sshArgs(record, target, ["sh", "-lc", remoteCleanupCommand]));
+    return null;
+  } catch (error) {
+    return `remote gateway cleanup: ${error instanceof Error ? error.message : "cleanup failed"}`;
+  }
+}
+
+function withStartupCleanupFailures(error: unknown, cleanupFailures: Array<string | null>): Error {
+  const failures = cleanupFailures.filter((failure): failure is string => Boolean(failure));
+  if (failures.length === 0) {
+    return error instanceof Error ? error : new Error("Gateway startup failed.");
+  }
+
+  const message = `${error instanceof Error ? error.message : "Gateway startup failed."} Cleanup also failed: ${failures.join("; ")}.`;
+  return error instanceof GatewayLifecycleError
+    ? gatewayError(error.failureCode, message)
+    : new Error(message);
+}
+
 async function writeRemoteSecret(
   record: AreaGatewayRecord,
   target: string,
   remotePath: string,
-  value: string
+  value: string,
+  spawnProcess: SpawnRunner
 ): Promise<void> {
   const tmpPath = `${remotePath}.tmp.${Date.now()}.${Math.random().toString(36).slice(2)}`;
   const command = [
@@ -806,13 +1019,22 @@ async function writeRemoteSecret(
     'chmod 600 "$tmp"',
     `mv "$tmp" ${shellQuote(remotePath)}`
   ].join("; ");
-  await spawnWithInput("ssh", sshArgs(record, target, ["sh", "-lc", command]), value);
+  await spawnWithInput("ssh", sshArgs(record, target, ["sh", "-lc", command]), value, spawnProcess);
 }
 
-async function spawnWithInput(command: string, args: string[], input: string): Promise<void> {
+async function spawnWithInput(
+  command: string,
+  args: string[],
+  input: string,
+  spawnProcess: SpawnRunner
+): Promise<void> {
   await new Promise<void>((resolvePromise, reject) => {
-    const child = spawn(command, args, { stdio: ["pipe", "ignore", "pipe"] });
+    const child = spawnProcess(command, args, { stdio: ["pipe", "ignore", "pipe"] });
     let stderr = "";
+    if (!child.stderr || !child.stdin) {
+      reject(new Error(`${command} process streams are unavailable.`));
+      return;
+    }
     child.stderr.on("data", (chunk: Buffer) => {
       stderr += chunk.toString();
     });

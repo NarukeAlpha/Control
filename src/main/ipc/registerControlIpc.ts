@@ -25,8 +25,9 @@ import {
   createControlImportPreview,
   writeControlExportArchive
 } from "../storage/exportArchive";
-import { createGithubIpcRoutes } from "./registerGithubIpc";
+import { nullableTrimmedString, optionalBoolean, requireRecord, requireTrimmedString } from "./ipcInput";
 import { createIpcInvokeRoute, registerIpcRoutes, type IpcInvokeRoute } from "./ipcRouter";
+import { createGithubIpcRoutes } from "./registerGithubIpc";
 
 interface RegisterControlIpcInput {
   ipcMain: Pick<IpcMain, "handle">;
@@ -204,10 +205,7 @@ function controlRoute<TInput, TOutput>(route: {
 }
 
 function requireRecordInput<TInput extends object>(input: unknown, message: string): TInput {
-  if (!input || typeof input !== "object" || Array.isArray(input)) {
-    throw new Error(message);
-  }
-  return input as TInput;
+  return requireRecord<TInput>(input, message);
 }
 
 function requireRepositoryPinInput(input: unknown): string {
@@ -401,25 +399,11 @@ function requireRecentKind(kind: unknown): LocalRecentRecordInput["kind"] {
 }
 
 function requireTrimmedText(value: unknown, message: string): string {
-  if (typeof value !== "string" || !value.trim()) {
-    throw new Error(message);
-  }
-
-  return value.trim();
-}
-
-function optionalBoolean(value: unknown, message: string): boolean | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (typeof value !== "boolean") {
-    throw new Error(message);
-  }
-  return value;
+  return requireTrimmedString(value, message);
 }
 
 function optionalTrimmedText(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
+  return nullableTrimmedString(value);
 }
 
 function normalizeLocalLimit(limit: unknown): number {

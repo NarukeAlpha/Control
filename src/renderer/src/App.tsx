@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef } from "react";
-import type { JSX } from "react";
+import type { ComponentProps, JSX } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import type { RepositoryTabPreferenceKey } from "@shared/github";
+import type { AppState, RepositoryTabPreferenceKey } from "@shared/github";
 
 import { MarkdownUrlHandlerContext } from "./components/MarkdownBody";
 import { LocalAreaHome } from "./components/areas/LocalAreaHome";
@@ -63,7 +63,23 @@ function routeTitle(route: AppRoute): string {
   }
 }
 
-export function App(): JSX.Element {
+function useContentScrollReset(route: AppRoute) {
+  const contentScrollRef = useRef<HTMLElement | null>(null);
+  const contentScrollKey = JSON.stringify(route);
+
+  useEffect(() => {
+    if (!contentScrollRef.current) {
+      return;
+    }
+
+    contentScrollRef.current.scrollTop = 0;
+    contentScrollRef.current.scrollLeft = 0;
+  }, [contentScrollKey]);
+
+  return contentScrollRef;
+}
+
+function useAppShellState() {
   const api = useControlApi();
   const providerAuth = useProviderAuth();
   const queryClient = useQueryClient();
@@ -79,8 +95,6 @@ export function App(): JSX.Element {
   const commandPalette = useCommandPaletteController();
   const dialogs = useShellDialogState();
   const [repositoryRefs, setRepositoryRefs] = useStoredRepositoryRefs();
-  const contentScrollRef = useRef<HTMLElement | null>(null);
-  const contentScrollKey = JSON.stringify(route);
 
   const appState = useQuery({
     queryKey: ["app-state"],
@@ -237,15 +251,6 @@ export function App(): JSX.Element {
   const { repositoryTree, repositoryTreeItem, repositoryTreeAvailabilityMessage } = codeBrowserQueries;
   const { refreshRepositorySurface } = refreshActions;
 
-  useEffect(() => {
-    if (!contentScrollRef.current) {
-      return;
-    }
-
-    contentScrollRef.current.scrollTop = 0;
-    contentScrollRef.current.scrollLeft = 0;
-  }, [contentScrollKey]);
-
   async function showRepositoryTab(tab: RepositoryTabPreferenceKey): Promise<void> {
     await api.updateSettings({
       repositoryTabPreferences: {
@@ -317,7 +322,10 @@ export function App(): JSX.Element {
   const mutation = useMutation({
     mutationFn: api.github.mutate,
     onSuccess: async (_result, input) => {
-      await invalidateGitHubMutationQueries(queryClient, input);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+        invalidateGitHubMutationQueries(queryClient, input)
+      ]);
     }
   });
   const commandPaletteItems = useCommandPaletteItems({
@@ -430,334 +438,606 @@ export function App(): JSX.Element {
   ]
     .filter(Boolean)
     .join(" ");
-  const isHomeRoute = route.kind === "home";
+
+  function openExternal(url: string): void {
+    void api.openExternal(url);
+  }
+
+  function openSettingsPanel(): void {
+    setSettingsOpen(true);
+  }
+
+  function closeSettingsPanel(): void {
+    setSettingsOpen(false);
+  }
+
+  async function saveSettings(settings: Partial<AppState["settings"]>): Promise<void> {
+    await api.updateSettings(settings);
+    await queryClient.invalidateQueries({ queryKey: ["app-state"] });
+  }
+
+  return {
+    api,
+    providerAuth,
+    route,
+    selectedAreaId,
+    goToLocalRepository,
+    goHome,
+    goToRepositories,
+    goToMailbox,
+    settingsOpen,
+    commandPalette,
+    dialogs,
+    appState,
+    githubReady,
+    authenticatedViewerLogin,
+    areaItems,
+    selectedArea,
+    selectedAreaIsGateway,
+    selectedAreaRepositories,
+    localRepositoryItems,
+    selectArea,
+    addLocalArea,
+    createSshArea,
+    updateArea,
+    deleteArea,
+    refreshSelectedArea,
+    stopSelectedAreaGateway,
+    repositoryListLimit,
+    homeRepositoryActivityLimit,
+    mailboxWorkLimit,
+    notificationFilter,
+    accountWorkLimit,
+    notificationLimit,
+    setNotificationFilter,
+    expandMailboxWork,
+    loadMoreHomeRepositoryActivity,
+    expandMailboxNotifications,
+    expandRepositoryList,
+    repositories,
+    repositoryItems,
+    repositoriesAvailabilityMessage,
+    repositoryPinRecords,
+    pinnedRepositoryNames,
+    isRepositoryPinned,
+    isAreaRepositoryPinned,
+    repositoryPinBusy,
+    repositoryPinError,
+    toggleRepositoryPin,
+    toggleAreaRepositoryPin,
+    recentItems,
+    accountProfileData,
+    accountProfileAvailabilityMessage,
+    accountIssues,
+    accountIssueItems,
+    accountIssuesAvailability,
+    accountPulls,
+    accountPullItems,
+    accountPullsAvailability,
+    organizationsRouteState,
+    repositoryRouteState,
+    isRepositoryRoute,
+    isLocalRepositoryRoute,
+    isRepositoryContext,
+    activeLocalRepositoryTab,
+    activeLocalRepositoryPath,
+    effectiveRepository,
+    activeRepositoryScope,
+    contentsRef,
+    repositoryDetail,
+    branches,
+    tags,
+    branchItems,
+    tagItems,
+    refsAvailabilityMessage,
+    refsError,
+    repositoryRefListLimit,
+    maxRefListLimit,
+    expandActiveRepositoryRefs,
+    topbarRepository,
+    repositoryTree,
+    repositoryTreeItem,
+    repositoryTreeAvailabilityMessage,
+    openRepositoryInApp,
+    openLocalRepositoryInApp,
+    openLocalFileInApp,
+    openRepositoryRouteInApp,
+    openCodeBrowserInApp,
+    repositoryRefKindForName,
+    selectRepositoryRefInApp,
+    openIssueSummaryInApp,
+    openPullRequestSummaryInApp,
+    openNotificationInApp,
+    openRecentItem,
+    openMarkdownUrl,
+    navigationActions,
+    refreshHomeNow,
+    refreshRepositoriesNow,
+    refreshMailboxNow,
+    refreshOrganizationsNow,
+    mutation,
+    commandPaletteItems,
+    resolvedTheme,
+    shellClass,
+    showRepositoryTab,
+    openExternal,
+    openSettingsPanel,
+    closeSettingsPanel,
+    saveSettings
+  };
+}
+
+type AppShellState = ReturnType<typeof useAppShellState>;
+type TopBarProps = ComponentProps<typeof TopBar>;
+type LocalRepositoryPageProps = ComponentProps<typeof LocalRepositoryPage>;
+type CommandPaletteProps = ComponentProps<typeof CommandPalette>;
+type CommandPaletteFileSearch = CommandPaletteProps["fileSearch"];
+type CommandPaletteLocalFileSearch = CommandPaletteProps["localFileSearch"];
+
+export function App(): JSX.Element {
+  const state = useAppShellState();
+  const contentScrollRef = useContentScrollReset(state.route);
+  return <AppShell state={state} contentScrollRef={contentScrollRef} />;
+}
+
+function AppShell({
+  state,
+  contentScrollRef
+}: {
+  state: AppShellState;
+  contentScrollRef: ReturnType<typeof useContentScrollReset>;
+}): JSX.Element {
+  return (
+    <MarkdownUrlHandlerContext.Provider value={state.openMarkdownUrl}>
+      <AppEventBridge activeRepository={state.activeRepositoryScope} />
+      <div
+        className={state.shellClass}
+        data-accent={state.resolvedTheme.accent}
+        data-color-scheme={state.resolvedTheme.colorScheme}
+        data-theme-mode={state.resolvedTheme.requestedMode}
+        data-theme-preset={state.resolvedTheme.preset}
+      >
+        <AppSidebar state={state} />
+        <AppTopBar state={state} />
+        <AppWorkspace state={state} contentScrollRef={contentScrollRef} />
+        <AppCommandPaletteOverlay state={state} />
+        <AppShellDialogHost state={state} />
+      </div>
+    </MarkdownUrlHandlerContext.Provider>
+  );
+}
+
+function AppSidebar({ state }: { state: AppShellState }): JSX.Element {
+  return (
+    <Sidebar
+      appState={state.appState.data}
+      profile={state.accountProfileData ?? undefined}
+      areas={state.areaItems}
+      selectedAreaId={state.selectedArea?.id ?? null}
+      localRepositories={state.localRepositoryItems}
+      localRepositoriesLoading={
+        state.selectedAreaRepositories.isLoading || state.selectedAreaRepositories.isFetching
+      }
+      repositories={state.repositoryItems}
+      repositoriesLoading={state.repositories.isLoading || state.repositories.isFetching}
+      repositoriesError={state.repositories.error}
+      repositoriesAvailabilityMessage={state.repositoriesAvailabilityMessage}
+      pinnedRepositoryNames={state.pinnedRepositoryNames}
+      repositoryPinRecords={state.repositoryPinRecords}
+      selectedRepository={state.effectiveRepository}
+      route={state.route}
+      onSelectLocalRepository={state.openLocalRepositoryInApp}
+      onSelectRepository={state.openRepositoryInApp}
+      onOpenRepositorySearch={state.commandPalette.openPalette}
+      onOpenAddRepository={state.dialogs.openAddRepository}
+      onOpenSettings={state.openSettingsPanel}
+    />
+  );
+}
+
+function AppTopBar({ state }: { state: AppShellState }): JSX.Element {
+  function selectTopBarArea(areaId: string): void {
+    void state.selectArea(areaId);
+  }
+
+  function addTopBarLocalArea(): void {
+    void state.addLocalArea();
+  }
+
+  function openTopBarRepository(): void {
+    if (state.topbarRepository) {
+      state.openRepositoryInApp(state.topbarRepository);
+    }
+  }
+
+  const openTopBarWorkspace: TopBarProps["onOpenWorkspace"] = (workspace) => {
+    state.goToLocalRepository(workspace.areaId, workspace.repositoryId, "overview", workspace.id);
+  };
+
+  return (
+    <TopBar
+      viewer={state.appState.data?.viewer ?? null}
+      route={state.route}
+      areas={state.areaItems}
+      selectedAreaId={state.selectedArea?.id ?? state.selectedAreaId}
+      selectedRepository={state.topbarRepository}
+      repositories={state.repositoryItems}
+      githubReady={state.githubReady}
+      onSelectArea={selectTopBarArea}
+      onAddLocalArea={addTopBarLocalArea}
+      onAddSshArea={state.dialogs.openSshArea}
+      onEditArea={state.dialogs.openAreaEdit}
+      onDeleteArea={state.dialogs.openAreaDelete}
+      onGoRepository={openTopBarRepository}
+      onOpenRepository={state.openRepositoryInApp}
+      onOpenLocalRepository={state.openLocalRepositoryInApp}
+      onOpenWorkspace={openTopBarWorkspace}
+      onOpenAddRepository={state.dialogs.openAddRepository}
+      onOpenCommandPalette={state.commandPalette.openPalette}
+      onOpenHome={state.goHome}
+      onOpenMailbox={state.goToMailbox}
+      onOpenSettings={state.openSettingsPanel}
+    />
+  );
+}
+
+function AppWorkspace({
+  state,
+  contentScrollRef
+}: {
+  state: AppShellState;
+  contentScrollRef: ReturnType<typeof useContentScrollReset>;
+}): JSX.Element {
+  const repositoryWorkspace = state.isRepositoryRoute || state.isLocalRepositoryRoute;
+  const homeRoute = state.route.kind === "home";
   const workspaceClass = [
     "workspace",
-    isRepositoryRoute || isLocalRepositoryRoute ? "workspace-repository" : "workspace-wide",
-    isHomeRoute ? "workspace-home" : null
+    repositoryWorkspace ? "workspace-repository" : "workspace-wide",
+    homeRoute ? "workspace-home" : null
   ]
     .filter(Boolean)
     .join(" ");
   const contentScrollClass = [
     "content-scroll",
-    isRepositoryRoute || isLocalRepositoryRoute ? "repository-content-scroll" : null,
-    isHomeRoute ? "home-content-scroll" : null
+    repositoryWorkspace ? "repository-content-scroll" : null,
+    homeRoute ? "home-content-scroll" : null
   ]
     .filter(Boolean)
     .join(" ");
+
   return (
-    <MarkdownUrlHandlerContext.Provider value={openMarkdownUrl}>
-      <AppEventBridge activeRepository={activeRepositoryScope} />
-      <div
-        className={shellClass}
-        data-accent={resolvedTheme.accent}
-        data-color-scheme={resolvedTheme.colorScheme}
-        data-theme-mode={resolvedTheme.requestedMode}
-        data-theme-preset={resolvedTheme.preset}
-      >
-        <Sidebar
-          appState={appState.data}
-          profile={accountProfileData ?? undefined}
-          areas={areaItems}
-          selectedAreaId={selectedArea?.id ?? null}
-          localRepositories={localRepositoryItems}
-          localRepositoriesLoading={selectedAreaRepositories.isLoading || selectedAreaRepositories.isFetching}
-          repositories={repositoryItems}
-          repositoriesLoading={repositories.isLoading || repositories.isFetching}
-          repositoriesError={repositories.error}
-          repositoriesAvailabilityMessage={repositoriesAvailabilityMessage}
-          pinnedRepositoryNames={pinnedRepositoryNames}
-          repositoryPinRecords={repositoryPinRecords}
-          selectedRepository={effectiveRepository}
-          route={route}
-          onSelectLocalRepository={openLocalRepositoryInApp}
-          onSelectRepository={openRepositoryInApp}
-          onOpenRepositorySearch={commandPalette.openPalette}
-          onOpenAddRepository={dialogs.openAddRepository}
-          onOpenSettings={() => setSettingsOpen(true)}
-        />
+    <section className={workspaceClass}>
+      {!state.appState.data?.github.authenticated && <SetupPanel appState={state.appState.data} />}
 
-        <TopBar
-          viewer={appState.data?.viewer ?? null}
-          route={route}
-          areas={areaItems}
-          selectedAreaId={selectedArea?.id ?? selectedAreaId}
-          selectedRepository={topbarRepository}
-          repositories={repositoryItems}
-          githubReady={githubReady}
-          onSelectArea={(areaId) => void selectArea(areaId)}
-          onAddLocalArea={() => void addLocalArea()}
-          onAddSshArea={dialogs.openSshArea}
-          onEditArea={dialogs.openAreaEdit}
-          onDeleteArea={dialogs.openAreaDelete}
-          onGoRepository={() => {
-            if (topbarRepository) {
-              openRepositoryInApp(topbarRepository);
-            }
-          }}
-          onOpenRepository={openRepositoryInApp}
-          onOpenLocalRepository={openLocalRepositoryInApp}
-          onOpenWorkspace={(workspace) =>
-            goToLocalRepository(workspace.areaId, workspace.repositoryId, "overview", workspace.id)
-          }
-          onOpenAddRepository={dialogs.openAddRepository}
-          onOpenCommandPalette={commandPalette.openPalette}
-          onOpenHome={goHome}
-          onOpenMailbox={goToMailbox}
-          onOpenSettings={() => setSettingsOpen(true)}
-        />
+      <main ref={contentScrollRef} className={contentScrollClass}>
+        <AppHomeRoute state={state} />
+        <AppLocalRepositoryRoute state={state} />
+        <AppRepositoryRoute state={state} />
+        <AppCollectionRoutes state={state} />
+      </main>
+    </section>
+  );
+}
 
-        <section className={workspaceClass}>
-          {!appState.data?.github.authenticated && <SetupPanel appState={appState.data} />}
+function AppHomeRoute({ state }: { state: AppShellState }): JSX.Element | null {
+  if (state.route.kind !== "home") {
+    return null;
+  }
 
-          <main ref={contentScrollRef} className={contentScrollClass}>
-            {route.kind === "home" && selectedArea && selectedAreaIsGateway ? (
-              <LocalAreaHome
-                area={selectedArea}
-                repositories={localRepositoryItems}
-                repositoriesLoading={
-                  selectedAreaRepositories.isLoading || selectedAreaRepositories.isFetching
-                }
-                recentItems={recentItems.data ?? []}
-                onOpenRepository={openLocalRepositoryInApp}
-                onOpenRecent={openRecentItem}
-                onRefresh={refreshSelectedArea}
-                onStopGateway={stopSelectedAreaGateway}
-              />
-            ) : route.kind === "home" ? (
-              <HomeDashboard
-                appState={appState.data}
-                profile={accountProfileData ?? undefined}
-                profileAvailabilityMessage={accountProfileAvailabilityMessage}
-                repositories={repositoryItems}
-                repositoryActivityLimit={homeRepositoryActivityLimit}
-                repositoriesLoading={repositories.isLoading || repositories.isFetching}
-                repositoriesError={repositories.error}
-                repositoriesAvailabilityMessage={repositoriesAvailabilityMessage}
-                pinnedRepositoryNames={pinnedRepositoryNames}
-                issues={accountIssueItems}
-                issuesLoading={accountIssues.isLoading || accountIssues.isFetching}
-                issuesError={accountIssues.error}
-                issuesAvailability={accountIssuesAvailability}
-                pulls={accountPullItems}
-                pullsLoading={accountPulls.isLoading || accountPulls.isFetching}
-                pullsError={accountPulls.error}
-                pullsAvailability={accountPullsAvailability}
-                onOpenRepository={openRepositoryInApp}
-                onLoadMoreRepositories={() => loadMoreHomeRepositoryActivity(repositoryItems.length)}
-                onOpenIssue={openIssueSummaryInApp}
-                onOpenPullRequest={openPullRequestSummaryInApp}
-                onOpenExternal={(url) => void api.openExternal(url)}
-              />
-            ) : null}
+  function loadMoreHomeRepositories(): void {
+    state.loadMoreHomeRepositoryActivity(state.repositoryItems.length);
+  }
 
-            {route.kind === "localRepository" && (
-              <LocalRepositoryPage
-                route={route}
-                activeTab={activeLocalRepositoryTab}
-                activePath={activeLocalRepositoryPath}
-                onSelectTab={(tab) =>
-                  goToLocalRepository(
-                    route.areaId,
-                    route.repositoryId,
-                    tab,
-                    route.workspaceId ?? null,
-                    route.path ?? null
-                  )
-                }
-                onSelectWorkspace={(workspaceId) =>
-                  goToLocalRepository(
-                    route.areaId,
-                    route.repositoryId,
-                    activeLocalRepositoryTab,
-                    workspaceId,
-                    route.path ?? null
-                  )
-                }
-                onOpenPath={(entry) =>
-                  goToLocalRepository(
-                    route.areaId,
-                    route.repositoryId,
-                    "code",
-                    route.workspaceId ?? null,
-                    entry.path
-                  )
-                }
-                pinned={isAreaRepositoryPinned(route.areaId, route.repositoryId, route.workspaceId ?? null)}
-                pinBusy={repositoryPinBusy}
-                onTogglePin={toggleAreaRepositoryPin}
-                onOpenGitHub={(nameWithOwner) => openRepositoryInApp(nameWithOwner)}
-                onOpenExternal={(url) => void api.openExternal(url)}
-                githubReady={githubReady}
-              />
-            )}
+  if (state.selectedArea && state.selectedAreaIsGateway) {
+    return (
+      <LocalAreaHome
+        area={state.selectedArea}
+        repositories={state.localRepositoryItems}
+        repositoriesLoading={
+          state.selectedAreaRepositories.isLoading || state.selectedAreaRepositories.isFetching
+        }
+        recentItems={state.recentItems.data ?? []}
+        onOpenRepository={state.openLocalRepositoryInApp}
+        onOpenRecent={state.openRecentItem}
+        onRefresh={state.refreshSelectedArea}
+        onStopGateway={state.stopSelectedAreaGateway}
+      />
+    );
+  }
 
-            <RepositoryRouteSection
-              route={route}
-              githubReady={githubReady}
-              routeState={repositoryRouteState}
-              navigation={navigationActions}
-              dialogs={dialogs}
-              mutation={mutation}
-              repositoryPinBusy={repositoryPinBusy}
-              repositoryPinError={repositoryPinError}
-              isRepositoryPinned={isRepositoryPinned}
-              toggleRepositoryPin={toggleRepositoryPin}
-              onShowRepositoryTab={(tab) => void showRepositoryTab(tab)}
-              onOpenExternal={(url) => void api.openExternal(url)}
-            />
+  return (
+    <HomeDashboard
+      appState={state.appState.data}
+      profile={state.accountProfileData ?? undefined}
+      profileAvailabilityMessage={state.accountProfileAvailabilityMessage}
+      repositories={state.repositoryItems}
+      repositoryActivityLimit={state.homeRepositoryActivityLimit}
+      repositoriesLoading={state.repositories.isLoading || state.repositories.isFetching}
+      repositoriesError={state.repositories.error}
+      repositoriesAvailabilityMessage={state.repositoriesAvailabilityMessage}
+      pinnedRepositoryNames={state.pinnedRepositoryNames}
+      issues={state.accountIssueItems}
+      issuesLoading={state.accountIssues.isLoading || state.accountIssues.isFetching}
+      issuesError={state.accountIssues.error}
+      issuesAvailability={state.accountIssuesAvailability}
+      pulls={state.accountPullItems}
+      pullsLoading={state.accountPulls.isLoading || state.accountPulls.isFetching}
+      pullsError={state.accountPulls.error}
+      pullsAvailability={state.accountPullsAvailability}
+      onOpenRepository={state.openRepositoryInApp}
+      onLoadMoreRepositories={loadMoreHomeRepositories}
+      onOpenIssue={state.openIssueSummaryInApp}
+      onOpenPullRequest={state.openPullRequestSummaryInApp}
+      onOpenExternal={state.openExternal}
+    />
+  );
+}
 
-            {route.kind === "repositories" && (
-              <RepositoriesRoute
-                title={routeTitle(route)}
-                repositoryListLimit={repositoryListLimit}
-                selectedArea={selectedArea}
-                githubRepositoryItems={repositoryItems}
-                githubRepositoriesLoading={repositories.isLoading}
-                githubRepositoriesFetching={repositories.isFetching}
-                githubRepositoriesError={repositories.error instanceof Error ? repositories.error : null}
-                githubRepositoriesAvailability={repositoriesAvailabilityMessage}
-                localRepositories={localRepositoryItems}
-                localRepositoriesLoading={
-                  selectedAreaRepositories.isLoading || selectedAreaRepositories.isFetching
-                }
-                areaRepositoryPinRecords={repositoryPinRecords}
-                pinnedRepositoryNames={pinnedRepositoryNames}
-                repositoryPinBusy={repositoryPinBusy}
-                repositoryPinError={repositoryPinError}
-                viewerLogin={appState.data?.viewer?.login ?? accountProfileData?.login ?? null}
-                onOpenExternal={(url) => void api.openExternal(url)}
-                onOpenRepository={openRepositoryInApp}
-                onOpenLocalRepository={openLocalRepositoryInApp}
-                onOpenAddRepository={dialogs.openAddRepository}
-                onExpandRepositories={expandRepositoryList}
-                onToggleRepositoryPin={toggleRepositoryPin}
-                onToggleAreaRepositoryPin={toggleAreaRepositoryPin}
-                onRefreshRepositories={refreshRepositoriesNow}
-                onRefreshSelectedArea={refreshSelectedArea}
-              />
-            )}
+function AppLocalRepositoryRoute({ state }: { state: AppShellState }): JSX.Element | null {
+  if (state.route.kind !== "localRepository") {
+    return null;
+  }
 
-            {route.kind === "mailbox" && (
-              <MailboxRoute
-                title={routeTitle(route)}
-                appReady={appState.isSuccess}
-                githubReady={githubReady}
-                viewerLogin={authenticatedViewerLogin}
-                accountWorkLimit={accountWorkLimit}
-                notificationFilter={notificationFilter}
-                notificationLimit={notificationLimit}
-                onOpenExternal={(url) => void api.openExternal(url)}
-                onOpenIssue={openIssueSummaryInApp}
-                onOpenPullRequest={openPullRequestSummaryInApp}
-                onOpenNotification={openNotificationInApp}
-                onNotificationFilterChange={setNotificationFilter}
-                onExpandMailboxWork={expandMailboxWork}
-                onExpandMailboxNotifications={expandMailboxNotifications}
-              />
-            )}
+  const route = state.route;
+  const selectLocalRepositoryTab: LocalRepositoryPageProps["onSelectTab"] = (tab) => {
+    state.goToLocalRepository(
+      route.areaId,
+      route.repositoryId,
+      tab,
+      route.workspaceId ?? null,
+      route.path ?? null
+    );
+  };
+  const selectLocalRepositoryWorkspace: LocalRepositoryPageProps["onSelectWorkspace"] = (workspaceId) => {
+    state.goToLocalRepository(
+      route.areaId,
+      route.repositoryId,
+      state.activeLocalRepositoryTab,
+      workspaceId,
+      route.path ?? null
+    );
+  };
+  const openLocalRepositoryPath: LocalRepositoryPageProps["onOpenPath"] = (entry) => {
+    state.goToLocalRepository(
+      route.areaId,
+      route.repositoryId,
+      "code",
+      route.workspaceId ?? null,
+      entry.path
+    );
+  };
 
-            {route.kind === "organizations" && (
-              <OrganizationsRoute
-                title={routeTitle(route)}
-                githubReady={githubReady}
-                routeState={organizationsRouteState}
-                pinnedRepositoryNames={pinnedRepositoryNames}
-                repositoryPinBusy={repositoryPinBusy}
-                repositoryPinError={repositoryPinError}
-                onOpenExternal={(url) => void api.openExternal(url)}
-                onOpenRepository={openRepositoryInApp}
-                onToggleRepositoryPin={toggleRepositoryPin}
-                onRefresh={() => void refreshOrganizationsNow()}
-              />
-            )}
-          </main>
-        </section>
+  return (
+    <LocalRepositoryPage
+      route={route}
+      activeTab={state.activeLocalRepositoryTab}
+      activePath={state.activeLocalRepositoryPath}
+      onSelectTab={selectLocalRepositoryTab}
+      onSelectWorkspace={selectLocalRepositoryWorkspace}
+      onOpenPath={openLocalRepositoryPath}
+      pinned={state.isAreaRepositoryPinned(route.areaId, route.repositoryId, route.workspaceId ?? null)}
+      pinBusy={state.repositoryPinBusy}
+      onTogglePin={state.toggleAreaRepositoryPin}
+      onOpenGitHub={state.openRepositoryInApp}
+      onOpenExternal={state.openExternal}
+      onConfirm={state.dialogs.requestConfirmation}
+      githubReady={state.githubReady}
+    />
+  );
+}
 
-        {commandPalette.open && (
-          <CommandPalette
-            items={commandPaletteItems}
-            fileSearch={
-              repositoryDetail && isRepositoryContext
-                ? {
-                    repository: repositoryDetail,
-                    selectedRef: contentsRef ?? repositoryDetail.defaultBranch ?? "HEAD",
-                    githubReady,
-                    onOpenEntry: (entry) =>
-                      openCodeBrowserInApp(
-                        effectiveRepository,
-                        entry.path,
-                        entry.type === "dir" ? "dir" : "file",
-                        contentsRef ?? repositoryDetail.defaultBranch ?? null
-                      )
-                  }
-                : null
-            }
-            localFileSearch={
-              route.kind === "localRepository"
-                ? {
-                    route,
-                    onOpenEntry: (entry) =>
-                      openLocalFileInApp({
-                        areaId: route.areaId,
-                        repositoryId: route.repositoryId,
-                        workspaceId: route.workspaceId ?? null,
-                        path: entry.path,
-                        entryType: entry.type
-                      })
-                  }
-                : null
-            }
-            onOpenRepository={openRepositoryInApp}
-            onOpenArea={(area) => void selectArea(area.id)}
-            onOpenAreaRepository={openLocalRepositoryInApp}
-            onOpenWorkspace={(workspace) =>
-              goToLocalRepository(workspace.areaId, workspace.repositoryId, "overview", workspace.id)
-            }
-            onClose={commandPalette.closePalette}
-          />
-        )}
+function AppRepositoryRoute({ state }: { state: AppShellState }): JSX.Element {
+  function showRepositoryTab(tab: RepositoryTabPreferenceKey): void {
+    void state.showRepositoryTab(tab);
+  }
 
-        <ShellDialogs
-          dialogs={dialogs}
-          repositories={repositoryItems}
-          viewerLogin={appState.data?.viewer?.login ?? accountProfileData?.login ?? null}
-          githubReady={githubReady}
-          appState={appState.data}
-          authController={providerAuth.github}
-          settingsOpen={settingsOpen}
-          route={route}
-          repository={repositoryDetail}
-          repositoryTree={repositoryTreeItem}
-          repositoryTreeLoading={repositoryTree.isLoading || repositoryTree.isFetching}
-          repositoryTreeError={repositoryTree.error}
-          repositoryTreeAvailabilityMessage={repositoryTreeAvailabilityMessage}
-          branches={branchItems}
-          tags={tagItems}
-          refListLimit={repositoryRefListLimit}
-          maxRefListLimit={maxRefListLimit}
-          refsLoading={branches.isLoading || branches.isFetching || tags.isLoading || tags.isFetching}
-          refsError={refsError}
-          refsAvailabilityMessage={refsAvailabilityMessage || null}
-          selectedRef={contentsRef ?? repositoryDetail?.defaultBranch ?? "HEAD"}
-          selectedCodeRef={contentsRef ?? repositoryDetail?.defaultBranch ?? null}
-          effectiveRepository={effectiveRepository}
-          onOpenRepository={openRepositoryInApp}
-          onCreateSshArea={createSshArea}
-          onUpdateArea={updateArea}
-          onDeleteArea={deleteArea}
-          onCloseSettings={() => setSettingsOpen(false)}
-          onOpenExternal={(url) => void api.openExternal(url)}
-          onSaveSettings={async (settings) => {
-            await api.updateSettings(settings);
-            await queryClient.invalidateQueries({ queryKey: ["app-state"] });
-          }}
-          onSelectRepositoryRef={selectRepositoryRefInApp}
-          repositoryRefKindForName={repositoryRefKindForName}
-          onExpandRefs={expandActiveRepositoryRefs}
-          onOpenCodeBrowser={openCodeBrowserInApp}
-        />
-      </div>
-    </MarkdownUrlHandlerContext.Provider>
+  return (
+    <RepositoryRouteSection
+      route={state.route}
+      githubReady={state.githubReady}
+      routeState={state.repositoryRouteState}
+      navigation={state.navigationActions}
+      dialogs={state.dialogs}
+      mutation={state.mutation}
+      repositoryPinBusy={state.repositoryPinBusy}
+      repositoryPinError={state.repositoryPinError}
+      isRepositoryPinned={state.isRepositoryPinned}
+      toggleRepositoryPin={state.toggleRepositoryPin}
+      onShowRepositoryTab={showRepositoryTab}
+      onOpenExternal={state.openExternal}
+    />
+  );
+}
+
+function AppCollectionRoutes({ state }: { state: AppShellState }): JSX.Element | null {
+  function refreshOrganizations(): void {
+    void state.refreshOrganizationsNow();
+  }
+
+  if (state.route.kind === "repositories") {
+    return (
+      <RepositoriesRoute
+        title={routeTitle(state.route)}
+        repositoryListLimit={state.repositoryListLimit}
+        selectedArea={state.selectedArea}
+        githubRepositoryItems={state.repositoryItems}
+        githubRepositoriesLoading={state.repositories.isLoading}
+        githubRepositoriesFetching={state.repositories.isFetching}
+        githubRepositoriesError={state.repositories.error instanceof Error ? state.repositories.error : null}
+        githubRepositoriesAvailability={state.repositoriesAvailabilityMessage}
+        localRepositories={state.localRepositoryItems}
+        localRepositoriesLoading={
+          state.selectedAreaRepositories.isLoading || state.selectedAreaRepositories.isFetching
+        }
+        areaRepositoryPinRecords={state.repositoryPinRecords}
+        pinnedRepositoryNames={state.pinnedRepositoryNames}
+        repositoryPinBusy={state.repositoryPinBusy}
+        repositoryPinError={state.repositoryPinError}
+        viewerLogin={state.appState.data?.viewer?.login ?? state.accountProfileData?.login ?? null}
+        onOpenExternal={state.openExternal}
+        onOpenRepository={state.openRepositoryInApp}
+        onOpenLocalRepository={state.openLocalRepositoryInApp}
+        onOpenAddRepository={state.dialogs.openAddRepository}
+        onExpandRepositories={state.expandRepositoryList}
+        onToggleRepositoryPin={state.toggleRepositoryPin}
+        onToggleAreaRepositoryPin={state.toggleAreaRepositoryPin}
+        onRefreshRepositories={state.refreshRepositoriesNow}
+        onRefreshSelectedArea={state.refreshSelectedArea}
+      />
+    );
+  }
+
+  if (state.route.kind === "mailbox") {
+    return (
+      <MailboxRoute
+        title={routeTitle(state.route)}
+        appReady={state.appState.isSuccess}
+        githubReady={state.githubReady}
+        viewerLogin={state.authenticatedViewerLogin}
+        accountWorkLimit={state.accountWorkLimit}
+        notificationFilter={state.notificationFilter}
+        notificationLimit={state.notificationLimit}
+        onOpenExternal={state.openExternal}
+        onOpenIssue={state.openIssueSummaryInApp}
+        onOpenPullRequest={state.openPullRequestSummaryInApp}
+        onOpenNotification={state.openNotificationInApp}
+        onNotificationFilterChange={state.setNotificationFilter}
+        onExpandMailboxWork={state.expandMailboxWork}
+        onExpandMailboxNotifications={state.expandMailboxNotifications}
+        onConfirm={state.dialogs.requestConfirmation}
+      />
+    );
+  }
+
+  if (state.route.kind === "organizations") {
+    return (
+      <OrganizationsRoute
+        title={routeTitle(state.route)}
+        githubReady={state.githubReady}
+        routeState={state.organizationsRouteState}
+        pinnedRepositoryNames={state.pinnedRepositoryNames}
+        repositoryPinBusy={state.repositoryPinBusy}
+        repositoryPinError={state.repositoryPinError}
+        onOpenExternal={state.openExternal}
+        onOpenRepository={state.openRepositoryInApp}
+        onToggleRepositoryPin={state.toggleRepositoryPin}
+        onRefresh={refreshOrganizations}
+      />
+    );
+  }
+
+  return null;
+}
+
+function createCommandPaletteFileSearch(state: AppShellState): CommandPaletteFileSearch {
+  if (!state.repositoryDetail || !state.isRepositoryContext) {
+    return null;
+  }
+
+  const openFileSearchEntry: NonNullable<CommandPaletteFileSearch>["onOpenEntry"] = (entry) => {
+    state.openCodeBrowserInApp(
+      state.effectiveRepository,
+      entry.path,
+      entry.type === "dir" ? "dir" : "file",
+      state.contentsRef ?? state.repositoryDetail?.defaultBranch ?? null
+    );
+  };
+
+  return {
+    repository: state.repositoryDetail,
+    selectedRef: state.contentsRef ?? state.repositoryDetail.defaultBranch ?? "HEAD",
+    githubReady: state.githubReady,
+    onOpenEntry: openFileSearchEntry
+  };
+}
+
+function createCommandPaletteLocalFileSearch(state: AppShellState): CommandPaletteLocalFileSearch {
+  if (state.route.kind !== "localRepository") {
+    return null;
+  }
+
+  const route = state.route;
+  const openLocalFileSearchEntry: NonNullable<CommandPaletteLocalFileSearch>["onOpenEntry"] = (entry) => {
+    state.openLocalFileInApp({
+      areaId: route.areaId,
+      repositoryId: route.repositoryId,
+      workspaceId: route.workspaceId ?? null,
+      path: entry.path,
+      entryType: entry.type
+    });
+  };
+
+  return {
+    route,
+    onOpenEntry: openLocalFileSearchEntry
+  };
+}
+
+function AppCommandPaletteOverlay({ state }: { state: AppShellState }): JSX.Element | null {
+  if (!state.commandPalette.open) {
+    return null;
+  }
+
+  const openCommandPaletteArea: CommandPaletteProps["onOpenArea"] = (area) => {
+    void state.selectArea(area.id);
+  };
+  const openCommandPaletteWorkspace: CommandPaletteProps["onOpenWorkspace"] = (workspace) => {
+    state.goToLocalRepository(workspace.areaId, workspace.repositoryId, "overview", workspace.id);
+  };
+
+  return (
+    <CommandPalette
+      items={state.commandPaletteItems}
+      fileSearch={createCommandPaletteFileSearch(state)}
+      localFileSearch={createCommandPaletteLocalFileSearch(state)}
+      onOpenRepository={state.openRepositoryInApp}
+      onOpenArea={openCommandPaletteArea}
+      onOpenAreaRepository={state.openLocalRepositoryInApp}
+      onOpenWorkspace={openCommandPaletteWorkspace}
+      onClose={state.commandPalette.closePalette}
+    />
+  );
+}
+
+function AppShellDialogHost({ state }: { state: AppShellState }): JSX.Element {
+  return (
+    <ShellDialogs
+      dialogs={state.dialogs}
+      repositories={state.repositoryItems}
+      viewerLogin={state.appState.data?.viewer?.login ?? state.accountProfileData?.login ?? null}
+      githubReady={state.githubReady}
+      appState={state.appState.data}
+      authController={state.providerAuth.github}
+      settingsOpen={state.settingsOpen}
+      route={state.route}
+      repository={state.repositoryDetail}
+      repositoryTree={state.repositoryTreeItem}
+      repositoryTreeLoading={state.repositoryTree.isLoading || state.repositoryTree.isFetching}
+      repositoryTreeError={state.repositoryTree.error}
+      repositoryTreeAvailabilityMessage={state.repositoryTreeAvailabilityMessage}
+      branches={state.branchItems}
+      tags={state.tagItems}
+      refListLimit={state.repositoryRefListLimit}
+      maxRefListLimit={state.maxRefListLimit}
+      refsLoading={
+        state.branches.isLoading || state.branches.isFetching || state.tags.isLoading || state.tags.isFetching
+      }
+      refsError={state.refsError}
+      refsAvailabilityMessage={state.refsAvailabilityMessage || null}
+      selectedRef={state.contentsRef ?? state.repositoryDetail?.defaultBranch ?? "HEAD"}
+      selectedCodeRef={state.contentsRef ?? state.repositoryDetail?.defaultBranch ?? null}
+      effectiveRepository={state.effectiveRepository}
+      onOpenRepository={state.openRepositoryInApp}
+      onCreateSshArea={state.createSshArea}
+      onUpdateArea={state.updateArea}
+      onDeleteArea={state.deleteArea}
+      onCloseSettings={state.closeSettingsPanel}
+      onOpenExternal={state.openExternal}
+      onSaveSettings={state.saveSettings}
+      onSelectRepositoryRef={state.selectRepositoryRefInApp}
+      repositoryRefKindForName={state.repositoryRefKindForName}
+      onExpandRefs={state.expandActiveRepositoryRefs}
+      onOpenCodeBrowser={state.openCodeBrowserInApp}
+    />
   );
 }

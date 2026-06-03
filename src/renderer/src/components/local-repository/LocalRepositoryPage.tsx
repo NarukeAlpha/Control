@@ -15,8 +15,8 @@ import {
   RefreshCw,
   Workflow
 } from "lucide-react";
-import { useEffect, useMemo, useState, type JSX } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useState, type ChangeEvent, type JSX } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type {
   AreaFileContent,
@@ -30,6 +30,7 @@ import type {
 } from "@shared/areas";
 import { useControlApi } from "../../hooks/useControlApi";
 import type { AppRoute, LocalRepositoryTab } from "../../stores/uiStore";
+import type { ConfirmAction } from "../dialogs/confirmation";
 import { readAvailabilityMessage } from "../repository/repositoryUi";
 
 const localRepoTabs: Array<{ key: LocalRepositoryTab; label: string; icon: typeof Code2 }> = [
@@ -54,6 +55,22 @@ interface LocalGatewayOperationFeedback {
   error: Error | null;
 }
 
+interface LocalRepositoryPageProps {
+  route: Extract<AppRoute, { kind: "localRepository" }>;
+  activeTab: LocalRepositoryTab;
+  activePath: string;
+  pinned: boolean;
+  pinBusy: boolean;
+  onSelectTab(tab: LocalRepositoryTab): void;
+  onSelectWorkspace(workspaceId: string): void;
+  onOpenPath(entry: AreaFileEntry): void;
+  onTogglePin(repository: AreaRepositorySummary, workspaceId: string | null): void;
+  onOpenGitHub(nameWithOwner: string): void;
+  onOpenExternal(url: string): void;
+  onConfirm: ConfirmAction;
+  githubReady: boolean;
+}
+
 function localRepositoryTabDisabledReason(
   detail: AreaRepositoryDetail,
   tab: LocalRepositoryTab
@@ -68,7 +85,7 @@ function localRepositoryTabDisabledReason(
   return null;
 }
 
-export function LocalRepositoryPage({
+function useLocalRepositoryPageModel({
   route,
   activeTab,
   activePath,
@@ -80,22 +97,11 @@ export function LocalRepositoryPage({
   onTogglePin,
   onOpenGitHub,
   onOpenExternal,
+  onConfirm,
   githubReady
-}: {
-  route: Extract<AppRoute, { kind: "localRepository" }>;
-  activeTab: LocalRepositoryTab;
-  activePath: string;
-  pinned: boolean;
-  pinBusy: boolean;
-  onSelectTab(tab: LocalRepositoryTab): void;
-  onSelectWorkspace(workspaceId: string): void;
-  onOpenPath(entry: AreaFileEntry): void;
-  onTogglePin(repository: AreaRepositorySummary, workspaceId: string | null): void;
-  onOpenGitHub(nameWithOwner: string): void;
-  onOpenExternal(url: string): void;
-  githubReady: boolean;
-}): JSX.Element {
+}: LocalRepositoryPageProps) {
   const api = useControlApi();
+  const queryClient = useQueryClient();
   const repository = useQuery({
     queryKey: ["area-repository", route.areaId, route.repositoryId],
     queryFn: () =>
@@ -205,7 +211,13 @@ export function LocalRepositoryPage({
         workspaceId: route.workspaceId ?? null,
         kind
       });
-      if (!window.confirm(`${preview.title}\n\n${preview.summary}`)) {
+      const confirmed = await onConfirm({
+        title: preview.title,
+        message: preview.summary,
+        confirmLabel: "Run operation",
+        tone: "danger"
+      });
+      if (!confirmed) {
         return { kind, result: null };
       }
       const result = await api.areas.runGatewayOperation({
@@ -216,11 +228,22 @@ export function LocalRepositoryPage({
       return { kind, result };
     },
     onSuccess: async (feedback) => {
-      if (feedback.result) {
-        setLastOperationFeedback({ kind: feedback.kind, result: feedback.result, error: null });
+      if (!feedback.result) {
+        return;
       }
-      await syncStatus.refetch();
-      await repository.refetch();
+
+      setLastOperationFeedback({ kind: feedback.kind, result: feedback.result, error: null });
+      const workspaceScope = [route.areaId, route.repositoryId, route.workspaceId ?? "none"] as const;
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["area-repository", route.areaId, route.repositoryId] }),
+        queryClient.invalidateQueries({ queryKey: ["area-workspaces", route.areaId, route.repositoryId] }),
+        queryClient.invalidateQueries({ queryKey: ["area-contents", ...workspaceScope] }),
+        queryClient.invalidateQueries({ queryKey: ["area-file-content", ...workspaceScope] }),
+        queryClient.invalidateQueries({ queryKey: ["area-sync-status", ...workspaceScope] }),
+        queryClient.invalidateQueries({ queryKey: ["area-github-issues", ...workspaceScope] }),
+        queryClient.invalidateQueries({ queryKey: ["area-github-pulls", ...workspaceScope] }),
+        queryClient.invalidateQueries({ queryKey: ["area-github-actions", ...workspaceScope] })
+      ]);
     },
     onError: (error, kind) => {
       setLastOperationFeedback({
@@ -264,302 +287,443 @@ export function LocalRepositoryPage({
     workspaces.isLoading
   ]);
 
-  if (repository.isLoading) {
-    return <div className="loading-state">Loading local repository...</div>;
+  function runGatewayOperation(kind: AreaGatewayOperationInput["kind"]): void {
+    gatewayOperation.mutate(kind);
   }
-  if (repository.error || !detail) {
+
+  return {
+    route,
+    activeTab,
+    activePath,
+    pinned,
+    pinBusy,
+    repositoryLoading: repository.isLoading,
+    repositoryError: repository.error,
+    detail,
+    workspaceItems,
+    selectedWorkspace,
+    githubConnection,
+    contents,
+    fileContent,
+    localIssues,
+    localPulls,
+    localActions,
+    syncStatus,
+    lastOperationFeedback,
+    operationPending: gatewayOperation.isPending,
+    localIssuesAvailabilityMessage,
+    localPullsAvailabilityMessage,
+    localActionsAvailabilityMessage,
+    status,
+    onSelectTab,
+    onSelectWorkspace,
+    onOpenPath,
+    onTogglePin,
+    onOpenGitHub,
+    onOpenExternal,
+    onRunOperation: runGatewayOperation
+  };
+}
+
+export function LocalRepositoryPage(props: LocalRepositoryPageProps): JSX.Element {
+  const model = useLocalRepositoryPageModel(props);
+
+  if (model.repositoryLoading) {
+    return <div className="loading-state">Loading local repository…</div>;
+  }
+  if (model.repositoryError || !model.detail) {
     return (
       <div className="error-state">
         Local repository unavailable
-        {repository.error instanceof Error ? `: ${repository.error.message}` : "."}
+        {model.repositoryError instanceof Error ? `: ${model.repositoryError.message}` : "."}
       </div>
     );
   }
 
   return (
     <section className="local-repository-page">
-      <header className="local-repository-header">
-        <div>
-          <div className="eyebrow-row">
-            <span className="status-pill">{detail.kind.toUpperCase()}</span>
-            {detail.capabilities.isGitBacked && <span className="status-pill">Git-backed</span>}
-            {detail.capabilities.isColocated && <span className="status-pill">Colocated</span>}
-            {githubConnection && <span className="status-pill">GitHub connected</span>}
-          </div>
-          <h1>{detail.displayName}</h1>
-          {detail.path && <p className="muted-row">{detail.path}</p>}
-          {detail.health.message && <p className="error-state">{detail.health.message}</p>}
-          {detail.kind === "jj" && route.workspaceId && !selectedWorkspace && !workspaces.isLoading && (
-            <p className="error-state">Local workspace was not found.</p>
-          )}
+      <LocalRepositoryHeader model={model} />
+      <LocalRepositoryTabs
+        activeTab={model.activeTab}
+        detail={model.detail}
+        onSelectTab={model.onSelectTab}
+      />
+      <LocalRepositoryTabContent model={model} />
+    </section>
+  );
+}
+
+function LocalRepositoryHeader({
+  model
+}: {
+  model: ReturnType<typeof useLocalRepositoryPageModel>;
+}): JSX.Element {
+  const { detail, githubConnection, pinBusy, pinned, route, selectedWorkspace, workspaceItems } = model;
+
+  function selectWorkspace(event: ChangeEvent<HTMLSelectElement>): void {
+    if (event.target.value) {
+      model.onSelectWorkspace(event.target.value);
+    }
+  }
+
+  function toggleLocalRepositoryPin(): void {
+    model.onTogglePin(detail!, route.workspaceId ?? null);
+  }
+
+  function openMatchedGitHubArea(): void {
+    if (githubConnection) {
+      model.onOpenGitHub(githubConnection.nameWithOwner);
+    }
+  }
+
+  function openRepositoryOnGitHub(): void {
+    if (githubConnection) {
+      model.onOpenExternal(githubConnection.url);
+    }
+  }
+
+  return (
+    <header className="local-repository-header">
+      <div>
+        <div className="eyebrow-row">
+          <span className="status-pill">{detail!.kind.toUpperCase()}</span>
+          {detail!.capabilities.isGitBacked && <span className="status-pill">Git-backed</span>}
+          {detail!.capabilities.isColocated && <span className="status-pill">Colocated</span>}
+          {githubConnection && <span className="status-pill">GitHub connected</span>}
         </div>
-        <div className="button-row">
-          {detail.capabilities.supportsWorkspaces && workspaceItems.length > 0 && (
-            <label className="local-workspace-select">
-              <span>Workspace</span>
-              <select
-                value={route.workspaceId ?? ""}
-                onChange={(event) => {
-                  if (event.target.value) {
-                    onSelectWorkspace(event.target.value);
-                  }
-                }}
-              >
-                {!route.workspaceId && <option value="">Repository root</option>}
-                {workspaceItems.map((workspace) => (
-                  <option key={workspace.id} value={workspace.id}>
-                    {workspace.name}
-                    {workspace.isStale ? " (stale)" : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
+        <h1>{detail!.displayName}</h1>
+        {detail!.path && <p className="muted-row">{detail!.path}</p>}
+        {detail!.health.message && <p className="error-state">{detail!.health.message}</p>}
+        {detail!.kind === "jj" && route.workspaceId && !selectedWorkspace && (
+          <p className="error-state">Local workspace was not found.</p>
+        )}
+      </div>
+      <div className="button-row">
+        {detail!.capabilities.supportsWorkspaces && workspaceItems.length > 0 && (
+          <label className="local-workspace-select">
+            <span>Workspace</span>
+            <select value={route.workspaceId ?? ""} onChange={selectWorkspace}>
+              {!route.workspaceId && <option value="">Repository root</option>}
+              {workspaceItems.map((workspace) => (
+                <option key={workspace.id} value={workspace.id}>
+                  {workspace.name}
+                  {workspace.isStale ? " (stale)" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <button
+          className="icon-button"
+          type="button"
+          aria-label={pinned ? "Unpin local repository" : "Pin local repository"}
+          title={pinned ? "Unpin local repository" : "Pin local repository"}
+          disabled={pinBusy}
+          onClick={toggleLocalRepositoryPin}
+        >
+          <Pin size={16} fill={pinned ? "currentColor" : "none"} />
+        </button>
+        {githubConnection?.matchedGitHubAreaId && (
+          <button className="secondary-button" type="button" onClick={openMatchedGitHubArea}>
+            Open in GitHub Area
+          </button>
+        )}
+        {githubConnection && (
           <button
             className="icon-button"
             type="button"
-            aria-label={pinned ? "Unpin local repository" : "Pin local repository"}
-            title={pinned ? "Unpin local repository" : "Pin local repository"}
-            disabled={pinBusy}
-            onClick={() => onTogglePin(detail, route.workspaceId ?? null)}
+            title="Open on GitHub"
+            onClick={openRepositoryOnGitHub}
           >
-            <Pin size={16} fill={pinned ? "currentColor" : "none"} />
+            <ExternalLink size={16} />
           </button>
-          {githubConnection?.matchedGitHubAreaId && (
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={() => onOpenGitHub(githubConnection.nameWithOwner)}
-            >
-              Open in GitHub Area
-            </button>
-          )}
-          {githubConnection && (
-            <button
-              className="icon-button"
-              type="button"
-              title="Open on GitHub"
-              onClick={() => onOpenExternal(githubConnection.url)}
-            >
-              <ExternalLink size={16} />
-            </button>
-          )}
-        </div>
-      </header>
+        )}
+      </div>
+    </header>
+  );
+}
 
-      <nav className="repo-tabs">
-        {localRepoTabs.map((tab) => {
-          const Icon = tab.icon;
-          const disabledReason = localRepositoryTabDisabledReason(detail, tab.key);
-          return (
-            <button
-              className={activeTab === tab.key ? "active" : ""}
-              disabled={Boolean(disabledReason)}
-              key={tab.key}
-              type="button"
-              title={disabledReason ?? tab.label}
-              onClick={() => onSelectTab(tab.key)}
-            >
-              <Icon size={15} />
-              <span>{tab.label}</span>
-            </button>
-          );
-        })}
-      </nav>
+function LocalRepositoryTabs({
+  activeTab,
+  detail,
+  onSelectTab
+}: {
+  activeTab: LocalRepositoryTab;
+  detail: AreaRepositoryDetail;
+  onSelectTab(tab: LocalRepositoryTab): void;
+}): JSX.Element {
+  return (
+    <nav className="repo-tabs">
+      {localRepoTabs.map((tab) => (
+        <LocalRepositoryTabButton
+          active={activeTab === tab.key}
+          detail={detail}
+          key={tab.key}
+          tab={tab}
+          onSelectTab={onSelectTab}
+        />
+      ))}
+    </nav>
+  );
+}
 
-      {activeTab === "overview" && (
-        <div className="local-repository-grid">
-          <section className="glass-panel">
-            <h2>Repository</h2>
-            <dl className="definition-list">
-              <div>
-                <dt>Path</dt>
-                <dd>{detail.path ?? "Unknown"}</dd>
-              </div>
-              <div>
-                <dt>{detail.kind === "jj" ? "Working-copy change" : "Current branch"}</dt>
-                <dd>
-                  {detail.kind === "jj"
-                    ? (selectedWorkspace?.workingCopyChangeId ??
-                      workspaceItems[0]?.workingCopyChangeId ??
-                      "None")
-                    : (detail.currentBranch ?? "None")}
-                </dd>
-              </div>
-              {detail.kind === "jj" && (
-                <div>
-                  <dt>Working-copy commit</dt>
-                  <dd>
-                    {selectedWorkspace?.workingCopyCommitId ??
-                      workspaceItems[0]?.workingCopyCommitId ??
-                      "None"}
-                  </dd>
-                </div>
-              )}
-              <div>
-                <dt>Status</dt>
-                <dd>{status?.clean ? "Clean" : `${status?.dirtyCount ?? 0} changed`}</dd>
-              </div>
-              {detail.kind === "jj" && (
-                <div>
-                  <dt>Latest operation</dt>
-                  <dd>{detail.recentOperations[0]?.description ?? "No recent operation"}</dd>
-                </div>
-              )}
-              <div>
-                <dt>Remote</dt>
-                <dd>{githubConnection?.nameWithOwner ?? "No GitHub remote"}</dd>
-              </div>
-            </dl>
-          </section>
-          <section className="glass-panel">
-            <h2>Workspaces</h2>
-            {workspaceItems.length ? (
-              <ul className="plain-list">
-                {workspaceItems.map((workspace) => (
-                  <li key={workspace.id}>
-                    <strong>{workspace.name}</strong>
-                    <span>{workspace.rootPath}</span>
-                    {workspace.isStale && <span className="status-pill">Stale</span>}
-                    {workspace.health.message && <small>{workspace.health.message}</small>}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="muted-row">No extra workspaces.</p>
-            )}
-          </section>
-        </div>
-      )}
+function LocalRepositoryTabButton({
+  active,
+  detail,
+  tab,
+  onSelectTab
+}: {
+  active: boolean;
+  detail: AreaRepositoryDetail;
+  tab: (typeof localRepoTabs)[number];
+  onSelectTab(tab: LocalRepositoryTab): void;
+}): JSX.Element {
+  const Icon = tab.icon;
+  const disabledReason = localRepositoryTabDisabledReason(detail, tab.key);
 
-      {activeTab === "code" && (
+  function selectRepositoryTab(): void {
+    onSelectTab(tab.key);
+  }
+
+  return (
+    <button
+      className={active ? "active" : ""}
+      disabled={Boolean(disabledReason)}
+      type="button"
+      title={disabledReason ?? tab.label}
+      onClick={selectRepositoryTab}
+    >
+      <Icon size={15} />
+      <span>{tab.label}</span>
+    </button>
+  );
+}
+
+function localBranchRow(branch: AreaRepositoryDetail["branches"][number]): string {
+  return `${branch.name}${branch.current ? " current" : ""}`;
+}
+
+function localBookmarkRow(bookmark: AreaRepositoryDetail["bookmarks"][number]): string {
+  return `${bookmark.name}${bookmark.target ? ` ${bookmark.target}` : ""}`;
+}
+
+function localRemoteRow(remote: AreaRepositoryDetail["remotes"][number]): string {
+  return `${remote.name} ${remote.fetchUrl ?? ""}`;
+}
+
+function localStatusRow(entry: AreaRepositoryDetail["status"]["entries"][number]): string {
+  return `${entry.indexStatus ?? ""}${entry.workingTreeStatus ?? ""} ${entry.path}`;
+}
+
+function localOperationRow(operation: AreaRepositoryDetail["recentOperations"][number]): string {
+  return `${operation.shortId} ${operation.description}`;
+}
+
+function localStatusEmptyLabel(detail: AreaRepositoryDetail): string {
+  if (!detail.status.clean) {
+    return "No status entries.";
+  }
+
+  return detail.kind === "jj" ? "Working copy is clean." : "Working tree is clean.";
+}
+
+function localActivityRows(detail: AreaRepositoryDetail): string[] {
+  const rows: string[] = [];
+
+  for (const operation of detail.recentOperations) {
+    rows.push(localOperationRow(operation));
+  }
+  for (const commit of detail.recentCommits) {
+    rows.push(`${commit.shortId} ${commit.summary}`);
+  }
+
+  return rows;
+}
+
+function localWorkspaceRow(workspace: AreaWorkspaceSummary): string {
+  const parts = [workspace.name, workspace.rootPath];
+
+  if (workspace.isStale) {
+    parts.push("stale");
+  }
+  if (workspace.sparseSummary) {
+    parts.push(`sparse ${workspace.sparseSummary}`);
+  }
+  if (workspace.workingCopyChangeId) {
+    parts.push(`change ${workspace.workingCopyChangeId}`);
+  }
+  if (workspace.workingCopyCommitId) {
+    parts.push(`commit ${workspace.workingCopyCommitId}`);
+  }
+  if (workspace.health.message) {
+    parts.push(workspace.health.message);
+  }
+
+  return parts.join(" · ");
+}
+
+function LocalRepositoryTabContent({
+  model
+}: {
+  model: ReturnType<typeof useLocalRepositoryPageModel>;
+}): JSX.Element | null {
+  const { activeTab, detail, githubConnection, workspaceItems } = model;
+
+  switch (activeTab) {
+    case "overview":
+      return <LocalRepositoryOverview model={model} />;
+    case "code":
+      return (
         <LocalCodePanel
-          activePath={activePath}
-          contents={contents.data ?? []}
-          contentsLoading={contents.isLoading || contents.isFetching}
-          contentsError={contents.error}
-          fileContent={fileContent.data ?? null}
-          fileLoading={fileContent.isLoading || fileContent.isFetching}
-          onOpenPath={onOpenPath}
+          activePath={model.activePath}
+          contents={model.contents.data ?? []}
+          contentsLoading={model.contents.isLoading || model.contents.isFetching}
+          contentsError={model.contents.error}
+          fileContent={model.fileContent.data ?? null}
+          fileLoading={model.fileContent.isLoading || model.fileContent.isFetching}
+          onOpenPath={model.onOpenPath}
         />
-      )}
-
-      {activeTab === "branches" && (
-        <LocalListPanel
-          title="Branches"
-          rows={detail.branches.map((branch) => `${branch.name}${branch.current ? " current" : ""}`)}
-        />
-      )}
-      {activeTab === "bookmarks" && (
-        <LocalListPanel
-          title="Bookmarks"
-          rows={detail.bookmarks.map(
-            (bookmark) => `${bookmark.name}${bookmark.target ? ` ${bookmark.target}` : ""}`
-          )}
-        />
-      )}
-      {activeTab === "remotes" && (
-        <LocalListPanel
-          title="Remotes"
-          rows={detail.remotes.map((remote) => `${remote.name} ${remote.fetchUrl ?? ""}`)}
-        />
-      )}
-      {activeTab === "issues" && (
+      );
+    case "branches":
+      return <LocalListPanel title="Branches" rows={detail!.branches.map(localBranchRow)} />;
+    case "bookmarks":
+      return <LocalListPanel title="Bookmarks" rows={detail!.bookmarks.map(localBookmarkRow)} />;
+    case "remotes":
+      return <LocalListPanel title="Remotes" rows={detail!.remotes.map(localRemoteRow)} />;
+    case "issues":
+      return (
         <LocalListPanel
           title="GitHub Issues"
-          rows={(localIssues.data?.items ?? []).map((issue) => `#${issue.number} ${issue.title}`)}
+          rows={(model.localIssues.data?.items ?? []).map((issue) => `#${issue.number} ${issue.title}`)}
           emptyLabel={
-            localIssuesAvailabilityMessage ??
+            model.localIssuesAvailabilityMessage ??
             (githubConnection ? "No open issues." : "No GitHub remote is connected.")
           }
-          loading={localIssues.isLoading || localIssues.isFetching}
-          error={localIssues.error}
+          loading={model.localIssues.isLoading || model.localIssues.isFetching}
+          error={model.localIssues.error}
         />
-      )}
-      {activeTab === "pulls" && (
+      );
+    case "pulls":
+      return (
         <LocalListPanel
           title="GitHub Pull Requests"
-          rows={(localPulls.data?.items ?? []).map((pull) => `#${pull.number} ${pull.title}`)}
+          rows={(model.localPulls.data?.items ?? []).map((pull) => `#${pull.number} ${pull.title}`)}
           emptyLabel={
-            localPullsAvailabilityMessage ??
+            model.localPullsAvailabilityMessage ??
             (githubConnection ? "No open pull requests." : "No GitHub remote is connected.")
           }
-          loading={localPulls.isLoading || localPulls.isFetching}
-          error={localPulls.error}
+          loading={model.localPulls.isLoading || model.localPulls.isFetching}
+          error={model.localPulls.error}
         />
-      )}
-      {activeTab === "actions" && (
+      );
+    case "actions":
+      return (
         <LocalListPanel
           title="GitHub Actions"
-          rows={(localActions.data?.items ?? []).map((run) => `${run.name} ${run.status ?? "unknown"}`)}
+          rows={(model.localActions.data?.items ?? []).map((run) => `${run.name} ${run.status ?? "unknown"}`)}
           emptyLabel={
-            localActionsAvailabilityMessage ??
+            model.localActionsAvailabilityMessage ??
             (githubConnection ? "No workflow runs." : "No GitHub remote is connected.")
           }
-          loading={localActions.isLoading || localActions.isFetching}
-          error={localActions.error}
+          loading={model.localActions.isLoading || model.localActions.isFetching}
+          error={model.localActions.error}
         />
-      )}
-      {activeTab === "sync" && (
+      );
+    case "sync":
+      return (
         <LocalSyncPanel
-          detail={detail}
-          syncStatus={syncStatus.data ?? null}
-          loading={syncStatus.isLoading || syncStatus.isFetching}
-          error={syncStatus.error}
-          operationPending={gatewayOperation.isPending}
-          operationFeedback={lastOperationFeedback}
-          onRunOperation={(kind) => gatewayOperation.mutate(kind)}
+          detail={detail!}
+          syncStatus={model.syncStatus.data ?? null}
+          loading={model.syncStatus.isLoading || model.syncStatus.isFetching}
+          error={model.syncStatus.error}
+          operationPending={model.operationPending}
+          operationFeedback={model.lastOperationFeedback}
+          onRunOperation={model.onRunOperation}
         />
-      )}
-      {activeTab === "status" && (
+      );
+    case "status":
+      return (
         <LocalListPanel
-          title={detail.kind === "jj" ? "Working-copy changes" : "Status"}
-          rows={detail.status.entries.map(
-            (entry) => `${entry.indexStatus ?? ""}${entry.workingTreeStatus ?? ""} ${entry.path}`
+          title={detail!.kind === "jj" ? "Working-copy changes" : "Status"}
+          rows={detail!.status.entries.map(localStatusRow)}
+          emptyLabel={localStatusEmptyLabel(detail!)}
+        />
+      );
+    case "activity":
+      return <LocalListPanel title="Activity" rows={localActivityRows(detail!)} />;
+    case "workspaces":
+      return <LocalListPanel title="Workspaces" rows={workspaceItems.map(localWorkspaceRow)} />;
+    case "operations":
+      return <LocalListPanel title="Operations" rows={detail!.recentOperations.map(localOperationRow)} />;
+  }
+}
+
+function LocalRepositoryOverview({
+  model
+}: {
+  model: ReturnType<typeof useLocalRepositoryPageModel>;
+}): JSX.Element {
+  const { detail, githubConnection, selectedWorkspace, status, workspaceItems } = model;
+
+  return (
+    <div className="local-repository-grid">
+      <section className="glass-panel">
+        <h2>Repository</h2>
+        <dl className="definition-list">
+          <div>
+            <dt>Path</dt>
+            <dd>{detail!.path ?? "Unknown"}</dd>
+          </div>
+          <div>
+            <dt>{detail!.kind === "jj" ? "Working-copy change" : "Current branch"}</dt>
+            <dd>
+              {detail!.kind === "jj"
+                ? (selectedWorkspace?.workingCopyChangeId ?? workspaceItems[0]?.workingCopyChangeId ?? "None")
+                : (detail!.currentBranch ?? "None")}
+            </dd>
+          </div>
+          {detail!.kind === "jj" && (
+            <div>
+              <dt>Working-copy commit</dt>
+              <dd>
+                {selectedWorkspace?.workingCopyCommitId ?? workspaceItems[0]?.workingCopyCommitId ?? "None"}
+              </dd>
+            </div>
           )}
-          emptyLabel={
-            detail.status.clean
-              ? detail.kind === "jj"
-                ? "Working copy is clean."
-                : "Working tree is clean."
-              : "No status entries."
-          }
-        />
-      )}
-      {activeTab === "activity" && (
-        <LocalListPanel
-          title="Activity"
-          rows={[
-            ...detail.recentOperations.map((operation) => `${operation.shortId} ${operation.description}`),
-            ...detail.recentCommits.map((commit) => `${commit.shortId} ${commit.summary}`)
-          ]}
-        />
-      )}
-      {activeTab === "workspaces" && (
-        <LocalListPanel
-          title="Workspaces"
-          rows={workspaceItems.map((workspace) =>
-            [
-              workspace.name,
-              workspace.rootPath,
-              workspace.isStale ? "stale" : null,
-              workspace.sparseSummary ? `sparse ${workspace.sparseSummary}` : null,
-              workspace.workingCopyChangeId ? `change ${workspace.workingCopyChangeId}` : null,
-              workspace.workingCopyCommitId ? `commit ${workspace.workingCopyCommitId}` : null,
-              workspace.health.message
-            ]
-              .filter(Boolean)
-              .join(" · ")
+          <div>
+            <dt>Status</dt>
+            <dd>{status?.clean ? "Clean" : `${status?.dirtyCount ?? 0} changed`}</dd>
+          </div>
+          {detail!.kind === "jj" && (
+            <div>
+              <dt>Latest operation</dt>
+              <dd>{detail!.recentOperations[0]?.description ?? "No recent operation"}</dd>
+            </div>
           )}
-        />
-      )}
-      {activeTab === "operations" && (
-        <LocalListPanel
-          title="Operations"
-          rows={detail.recentOperations.map((operation) => `${operation.shortId} ${operation.description}`)}
-        />
-      )}
-    </section>
+          <div>
+            <dt>Remote</dt>
+            <dd>{githubConnection?.nameWithOwner ?? "No GitHub remote"}</dd>
+          </div>
+        </dl>
+      </section>
+      <section className="glass-panel">
+        <h2>Workspaces</h2>
+        {workspaceItems.length ? (
+          <ul className="plain-list">
+            {workspaceItems.map((workspace) => (
+              <li key={workspace.id}>
+                <strong>{workspace.name}</strong>
+                <span>{workspace.rootPath}</span>
+                {workspace.isStale && <span className="status-pill">Stale</span>}
+                {workspace.health.message && <small>{workspace.health.message}</small>}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted-row">No extra workspaces.</p>
+        )}
+      </section>
+    </div>
   );
 }
 
@@ -589,6 +753,14 @@ function LocalSyncPanel({
   const operationResult = operationFeedback?.result ?? null;
   const operationError = operationFeedback?.error ?? null;
 
+  function runFetchOperation(): void {
+    onRunOperation(fetchKind);
+  }
+
+  function runPushOperation(): void {
+    onRunOperation(pushKind);
+  }
+
   return (
     <section className="glass-panel local-sync-panel">
       <div className="section-title-row">
@@ -598,7 +770,7 @@ function LocalSyncPanel({
             className="secondary-button"
             type="button"
             disabled={!canFetch || operationPending}
-            onClick={() => onRunOperation(fetchKind)}
+            onClick={runFetchOperation}
           >
             <RefreshCw size={15} /> Fetch
           </button>
@@ -606,13 +778,13 @@ function LocalSyncPanel({
             className="secondary-button"
             type="button"
             disabled={!canPush || operationPending}
-            onClick={() => onRunOperation(pushKind)}
+            onClick={runPushOperation}
           >
             <GitBranch size={15} /> Push
           </button>
         </div>
       </div>
-      {loading && <div className="loading-state">Loading sync state...</div>}
+      {loading && <div className="loading-state">Loading sync state…</div>}
       {error && <div className="error-state">Sync state unavailable: {error.message}</div>}
       {syncStatus && (
         <dl className="definition-list">
@@ -650,7 +822,7 @@ function LocalSyncPanel({
           </div>
         ))}
       </div>
-      {operationPending && <div className="loading-state">Running gateway operation...</div>}
+      {operationPending && <div className="loading-state">Running gateway operation…</div>}
       {gatewayUnavailable && (
         <div className="error-state">
           Gateway operations are unavailable until this Area has a running gateway.
@@ -699,24 +871,40 @@ function LocalCodePanel({
         <pre className="local-file-preview">{textContent}</pre>
       ) : (
         <>
-          {fileLoading && <div className="loading-state">Loading file...</div>}
+          {fileLoading && <div className="loading-state">Loading file…</div>}
           {fileContent?.kind === "binary" && <div className="muted-row">{fileContent.message}</div>}
           {fileContent?.kind === "unavailable" && (
             <div className="muted-row">{fileContent.message ?? "File content is unavailable."}</div>
           )}
-          {contentsLoading && <div className="loading-state">Loading directory...</div>}
+          {contentsLoading && <div className="loading-state">Loading directory…</div>}
           {contentsError && <div className="error-state">Directory unavailable: {contentsError.message}</div>}
           <div className="local-file-list">
             {contents.map((entry) => (
-              <button key={entry.path} type="button" onClick={() => onOpenPath(entry)}>
-                {entry.type === "dir" ? <Folder size={15} /> : <FileIcon size={15} />}
-                <span>{entry.name}</span>
-              </button>
+              <LocalFileEntryRow key={entry.path} entry={entry} onOpenPath={onOpenPath} />
             ))}
           </div>
         </>
       )}
     </section>
+  );
+}
+
+function LocalFileEntryRow({
+  entry,
+  onOpenPath
+}: {
+  entry: AreaFileEntry;
+  onOpenPath(entry: AreaFileEntry): void;
+}): JSX.Element {
+  function openLocalFileEntry(): void {
+    onOpenPath(entry);
+  }
+
+  return (
+    <button type="button" onClick={openLocalFileEntry}>
+      {entry.type === "dir" ? <Folder size={15} /> : <FileIcon size={15} />}
+      <span>{entry.name}</span>
+    </button>
   );
 }
 
@@ -737,7 +925,7 @@ function LocalListPanel({
     <section className="glass-panel">
       <h2>{title}</h2>
       {loading ? (
-        <div className="loading-state">Loading...</div>
+        <div className="loading-state">Loading…</div>
       ) : error ? (
         <div className="error-state">{error.message}</div>
       ) : rows.length ? (
@@ -754,9 +942,12 @@ function LocalListPanel({
 }
 
 function sortWorkspaces(workspaces: AreaWorkspaceSummary[]): AreaWorkspaceSummary[] {
-  return [...workspaces].sort(
+  const sortedWorkspaces = Array.from(workspaces);
+  sortedWorkspaces.sort(
     (left, right) => left.name.localeCompare(right.name) || left.rootPath.localeCompare(right.rootPath)
   );
+
+  return sortedWorkspaces;
 }
 
 function fallbackRemoteSyncRows(detail: AreaRepositoryDetail): AreaSyncStatus["remotes"] {

@@ -1,27 +1,536 @@
 import { BookOpen, CheckCircle2, Copy, ExternalLink, Plus, X } from "lucide-react";
-import { useState, type FormEvent, type JSX } from "react";
-import { useQuery, type QueryClient } from "@tanstack/react-query";
+import { useReducer, type ChangeEvent, type FormEvent, type JSX } from "react";
 
 import type {
   GitHubAction,
   GitHubMutationFields,
+  GitHubReadAvailability,
   RepositoryDetail,
-  RepositoryWikiResult,
   WikiPageContent,
   WikiPageSummary
 } from "@shared/github";
-import type { ControlApi } from "@shared/ipc";
 import { MarkdownBody, markdownWikiUrlContext } from "../../MarkdownBody";
-import { useControlApi } from "../../../hooks/useControlApi";
 import {
   githubActionLabel,
   readAvailabilityMessage,
   readAvailabilityStatusLabel,
   repositoryPath
 } from "../repositoryUi";
+import { defaultWikiPageLimit, useWikiTabQueries } from "./WikiTab.queries";
 
-const defaultWikiPageLimit = 50;
 const maxWikiPageLimit = 100;
+type WikiFormMode = "create" | "edit";
+
+interface WikiTabState {
+  copyStatus: string | null;
+  wikiPageLimit: number;
+  wikiFormMode: WikiFormMode;
+  wikiPageTitle: string;
+  wikiPageContent: string;
+}
+
+type WikiTabStateAction =
+  | { type: "set-copy-status"; status: string | null }
+  | { type: "set-page-limit"; limit: number }
+  | { type: "set-title"; title: string }
+  | { type: "set-content"; content: string }
+  | { type: "reset-create-form" }
+  | { type: "start-edit"; title: string; content: string };
+
+const initialWikiTabState: WikiTabState = {
+  copyStatus: null,
+  wikiPageLimit: defaultWikiPageLimit,
+  wikiFormMode: "create",
+  wikiPageTitle: "",
+  wikiPageContent: ""
+};
+
+function wikiTabStateReducer(state: WikiTabState, action: WikiTabStateAction): WikiTabState {
+  switch (action.type) {
+    case "set-copy-status":
+      return { ...state, copyStatus: action.status };
+    case "set-page-limit":
+      return { ...state, wikiPageLimit: action.limit };
+    case "set-title":
+      return { ...state, wikiPageTitle: action.title };
+    case "set-content":
+      return { ...state, wikiPageContent: action.content };
+    case "reset-create-form":
+      return {
+        ...state,
+        wikiFormMode: "create",
+        wikiPageTitle: "",
+        wikiPageContent: ""
+      };
+    case "start-edit":
+      return {
+        ...state,
+        wikiFormMode: "edit",
+        wikiPageTitle: action.title,
+        wikiPageContent: action.content
+      };
+  }
+}
+
+function WikiSurfaceHeader({
+  availability,
+  hasPages,
+  wikiAvailable,
+  wikiErrorMessage,
+  wikiFeature,
+  wikiStatus,
+  wikiUpdating
+}: {
+  availability: GitHubReadAvailability | null;
+  hasPages: boolean;
+  wikiAvailable: boolean;
+  wikiErrorMessage: string | null;
+  wikiFeature: boolean | null;
+  wikiStatus: string;
+  wikiUpdating: boolean;
+}): JSX.Element {
+  return (
+    <header className="settings-surface-header">
+      <div>
+        <h2>Repository wiki</h2>
+        <p>{wikiStatus}</p>
+      </div>
+      <div className="surface-header-actions">
+        {wikiUpdating && hasPages && <span className="state-chip">updating</span>}
+        <span className={`state-chip ${wikiAvailable ? "success" : ""}`}>
+          {wikiAvailable
+            ? "available"
+            : wikiFeature === false
+              ? "disabled"
+              : wikiErrorMessage
+                ? "unavailable"
+                : (readAvailabilityStatusLabel(availability) ?? "unknown")}
+        </span>
+      </div>
+    </header>
+  );
+}
+
+function WikiStatusMessages({
+  availabilityMessage,
+  hasPages,
+  hasWikiData,
+  wikiError,
+  wikiErrorMessage,
+  wikiFeature,
+  wikiLoading
+}: {
+  availabilityMessage: string | null;
+  hasPages: boolean;
+  hasWikiData: boolean;
+  wikiError: unknown;
+  wikiErrorMessage: string | null;
+  wikiFeature: boolean | null;
+  wikiLoading: boolean;
+}): JSX.Element {
+  return (
+    <>
+      {wikiFeature !== false && wikiLoading && !hasPages && (
+        <div className="loading-state">Loading wiki pages…</div>
+      )}
+      {wikiErrorMessage && <div className="error-state">{wikiErrorMessage}</div>}
+      {availabilityMessage && <div className="error-state">{availabilityMessage}</div>}
+      {wikiFeature === false && <div className="empty-state">Wiki is disabled for this repository.</div>}
+      {wikiFeature === null && !wikiLoading && !wikiError && !availabilityMessage && !hasWikiData && (
+        <div className="empty-state">Wiki availability is unknown for this repository.</div>
+      )}
+      {wikiFeature !== false && !wikiLoading && !wikiError && !availabilityMessage && !hasPages && (
+        <div className="empty-state">GitHub returned no wiki pages.</div>
+      )}
+    </>
+  );
+}
+
+function WikiMutationFeedback({
+  mutationAction,
+  mutationError,
+  mutationPending,
+  mutationSucceeded,
+  wikiMutationBusy
+}: {
+  mutationAction: GitHubAction | null;
+  mutationError: Error | null;
+  mutationPending: boolean;
+  mutationSucceeded: boolean;
+  wikiMutationBusy: boolean;
+}): JSX.Element | null {
+  if (wikiMutationBusy && mutationAction) {
+    return (
+      <div className="mutation-feedback loading-state" role="status">
+        Wiki action running: {githubActionLabel(mutationAction)}.
+      </div>
+    );
+  }
+
+  if (!mutationPending && mutationSucceeded && mutationAction) {
+    return (
+      <div className="mutation-feedback success-state" role="status">
+        Wiki action completed: {githubActionLabel(mutationAction)}.
+      </div>
+    );
+  }
+
+  if (!mutationPending && mutationError && mutationAction) {
+    return (
+      <div className="mutation-feedback error-state" role="alert">
+        Wiki action failed: {githubActionLabel(mutationAction)}. {mutationError.message}
+      </div>
+    );
+  }
+
+  return null;
+}
+
+function WikiPageListItem({
+  page,
+  selected,
+  onSelectWikiPage
+}: {
+  page: WikiPageSummary;
+  selected: boolean;
+  onSelectWikiPage(page: WikiPageSummary): void;
+}): JSX.Element {
+  function handleSelectPage(): void {
+    onSelectWikiPage(page);
+  }
+
+  return (
+    <button className={selected ? "selected-action" : ""} type="button" onClick={handleSelectPage}>
+      <BookOpen size={16} />
+      <span>
+        <strong>{page.title}</strong>
+        <small>{page.path}</small>
+      </span>
+    </button>
+  );
+}
+
+function WikiPageList({
+  pages,
+  selectedPage,
+  onSelectWikiPage
+}: {
+  pages: WikiPageSummary[];
+  selectedPage: WikiPageContent | null;
+  onSelectWikiPage(page: WikiPageSummary): void;
+}): JSX.Element {
+  return (
+    <div className="wiki-page-list" aria-label="Wiki pages">
+      {pages.map((page) => (
+        <WikiPageListItem
+          key={page.sha}
+          page={page}
+          selected={page.path === selectedPage?.path}
+          onSelectWikiPage={onSelectWikiPage}
+        />
+      ))}
+    </div>
+  );
+}
+
+function WikiPagePreview({
+  deleteDisabledReason,
+  editDisabledReason,
+  markdownUrlContext,
+  selectedPage,
+  onDeleteSelectedWikiPage,
+  onOpenExternal,
+  onStartWikiEdit
+}: {
+  deleteDisabledReason: string | null;
+  editDisabledReason: string | null;
+  markdownUrlContext: ReturnType<typeof markdownWikiUrlContext> | undefined;
+  selectedPage: WikiPageContent | null;
+  onDeleteSelectedWikiPage(): void;
+  onOpenExternal(url: string): void;
+  onStartWikiEdit(): void;
+}): JSX.Element {
+  const pageFallbackDisabledReason = selectedPage?.htmlUrl ? null : "Wiki page URL unavailable.";
+
+  function handleOpenSelectedPageFallback(): void {
+    if (selectedPage?.htmlUrl) {
+      onOpenExternal(selectedPage.htmlUrl);
+    }
+  }
+
+  return (
+    <article className="wiki-page-preview">
+      <header>
+        <h3>{selectedPage?.title ?? "Wiki page"}</h3>
+        <div className="table-action-row">
+          <button
+            type="button"
+            disabled={Boolean(editDisabledReason)}
+            title={editDisabledReason ?? undefined}
+            onClick={onStartWikiEdit}
+          >
+            <BookOpen size={15} /> Edit
+          </button>
+          <button
+            type="button"
+            disabled={Boolean(deleteDisabledReason)}
+            title={deleteDisabledReason ?? undefined}
+            onClick={onDeleteSelectedWikiPage}
+          >
+            <X size={15} /> Delete
+          </button>
+          <button
+            type="button"
+            disabled={Boolean(pageFallbackDisabledReason)}
+            title={pageFallbackDisabledReason ?? undefined}
+            onClick={handleOpenSelectedPageFallback}
+          >
+            <ExternalLink size={15} /> GitHub fallback
+          </button>
+        </div>
+      </header>
+      <MarkdownBody
+        markdown={selectedPage?.markdown}
+        emptyText="This wiki page has no markdown content."
+        onOpenExternal={onOpenExternal}
+        urlContext={markdownUrlContext}
+      />
+    </article>
+  );
+}
+
+function WikiBrowser({
+  canExpandWikiPages,
+  deleteDisabledReason,
+  editDisabledReason,
+  markdownUrlContext,
+  pages,
+  selectedPage,
+  wikiPageLimitHit,
+  onDeleteSelectedWikiPage,
+  onExpandWikiPages,
+  onOpenExternal,
+  onSelectWikiPage,
+  onStartWikiEdit
+}: {
+  canExpandWikiPages: boolean;
+  deleteDisabledReason: string | null;
+  editDisabledReason: string | null;
+  markdownUrlContext: ReturnType<typeof markdownWikiUrlContext> | undefined;
+  pages: WikiPageSummary[];
+  selectedPage: WikiPageContent | null;
+  wikiPageLimitHit: boolean;
+  onDeleteSelectedWikiPage(): void;
+  onExpandWikiPages(): void;
+  onOpenExternal(url: string): void;
+  onSelectWikiPage(page: WikiPageSummary): void;
+  onStartWikiEdit(): void;
+}): JSX.Element {
+  return (
+    <div className="wiki-browser">
+      <WikiPageList pages={pages} selectedPage={selectedPage} onSelectWikiPage={onSelectWikiPage} />
+      {canExpandWikiPages && (
+        <div className="table-action-row">
+          <button type="button" onClick={onExpandWikiPages}>
+            Load more wiki pages
+          </button>
+        </div>
+      )}
+      {wikiPageLimitHit && !canExpandWikiPages && (
+        <div className="muted-row">Showing the first {pages.length} wiki pages returned by GitHub.</div>
+      )}
+      <WikiPagePreview
+        deleteDisabledReason={deleteDisabledReason}
+        editDisabledReason={editDisabledReason}
+        markdownUrlContext={markdownUrlContext}
+        selectedPage={selectedPage}
+        onDeleteSelectedWikiPage={onDeleteSelectedWikiPage}
+        onOpenExternal={onOpenExternal}
+        onStartWikiEdit={onStartWikiEdit}
+      />
+    </div>
+  );
+}
+
+function WikiEditorForm({
+  deleteDisabledReason,
+  editDisabledReason,
+  formDisabledReason,
+  selectedPage,
+  submitDisabledReason,
+  wikiFormMode,
+  wikiPageContent,
+  wikiPageTitle,
+  onDeleteSelectedWikiPage,
+  onResetCreateForm,
+  onStartWikiEdit,
+  onSubmitWikiForm,
+  onWikiPageContentChange,
+  onWikiPageTitleChange
+}: {
+  deleteDisabledReason: string | null;
+  editDisabledReason: string | null;
+  formDisabledReason: string | null;
+  selectedPage: WikiPageContent | null;
+  submitDisabledReason: string | null;
+  wikiFormMode: WikiFormMode;
+  wikiPageContent: string;
+  wikiPageTitle: string;
+  onDeleteSelectedWikiPage(): void;
+  onResetCreateForm(): void;
+  onStartWikiEdit(): void;
+  onSubmitWikiForm(): void;
+  onWikiPageContentChange(content: string): void;
+  onWikiPageTitleChange(title: string): void;
+}): JSX.Element {
+  function handleSubmit(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    onSubmitWikiForm();
+  }
+
+  function handleTitleChange(event: ChangeEvent<HTMLInputElement>): void {
+    onWikiPageTitleChange(event.target.value);
+  }
+
+  function handleContentChange(event: ChangeEvent<HTMLTextAreaElement>): void {
+    onWikiPageContentChange(event.target.value);
+  }
+
+  return (
+    <form className="compose-form wiki-editor-form" onSubmit={handleSubmit}>
+      <div className="form-section-heading">
+        <div>
+          <h3>{wikiFormMode === "create" ? "Create wiki page" : "Edit wiki page"}</h3>
+          <p>{wikiFormMode === "create" ? "Create a page in the repository wiki." : selectedPage?.path}</p>
+        </div>
+        <div className="table-action-row">
+          <button
+            className={wikiFormMode === "create" ? "selected-action" : ""}
+            type="button"
+            disabled={Boolean(formDisabledReason)}
+            title={formDisabledReason ?? undefined}
+            onClick={onResetCreateForm}
+          >
+            <Plus size={15} /> New
+          </button>
+          <button
+            className={wikiFormMode === "edit" ? "selected-action" : ""}
+            type="button"
+            disabled={Boolean(editDisabledReason)}
+            title={editDisabledReason ?? undefined}
+            onClick={onStartWikiEdit}
+          >
+            <BookOpen size={15} /> Edit selected
+          </button>
+        </div>
+      </div>
+      <label>
+        Title
+        <input
+          type="text"
+          value={wikiPageTitle}
+          disabled={wikiFormMode === "edit" || Boolean(formDisabledReason)}
+          title={
+            wikiFormMode === "edit"
+              ? "Rename wiki pages on GitHub fallback."
+              : (formDisabledReason ?? undefined)
+          }
+          onChange={handleTitleChange}
+          placeholder="Home"
+        />
+      </label>
+      <label>
+        Markdown
+        <textarea
+          value={wikiPageContent}
+          disabled={Boolean(formDisabledReason)}
+          title={formDisabledReason ?? undefined}
+          onChange={handleContentChange}
+          placeholder="Write the wiki page markdown."
+          rows={10}
+        />
+      </label>
+      {submitDisabledReason && <small className="action-disabled-note">{submitDisabledReason}</small>}
+      <div className="form-actions">
+        <button
+          type="submit"
+          disabled={Boolean(submitDisabledReason)}
+          title={submitDisabledReason ?? undefined}
+        >
+          <CheckCircle2 size={16} /> {wikiFormMode === "create" ? "Create page" : "Save page"}
+        </button>
+        {wikiFormMode === "edit" && (
+          <button
+            type="button"
+            disabled={Boolean(deleteDisabledReason)}
+            title={deleteDisabledReason ?? undefined}
+            onClick={onDeleteSelectedWikiPage}
+          >
+            <X size={16} /> Delete page
+          </button>
+        )}
+      </div>
+    </form>
+  );
+}
+
+function WikiFallbackTiles({
+  repository,
+  wikiActionDisabledReason,
+  wikiCloneUrl,
+  onCopyWikiCloneUrl,
+  onOpenExternal
+}: {
+  repository: RepositoryDetail;
+  wikiActionDisabledReason: string | null;
+  wikiCloneUrl: string;
+  onCopyWikiCloneUrl(): Promise<void>;
+  onOpenExternal(url: string): void;
+}): JSX.Element {
+  function handleOpenWikiFallback(): void {
+    onOpenExternal(repositoryPath(repository, "/wiki"));
+  }
+
+  function handleOpenNewWikiPage(): void {
+    onOpenExternal(repositoryPath(repository, "/wiki/_new"));
+  }
+
+  function handleCopyWikiCloneUrl(): void {
+    void onCopyWikiCloneUrl();
+  }
+
+  return (
+    <div className="tile-grid">
+      <button className="project-tile" type="button" onClick={handleOpenWikiFallback}>
+        <BookOpen size={20} />
+        <strong>GitHub wiki fallback</strong>
+        <small>Use the GitHub wiki fallback for {repository.nameWithOwner}.</small>
+      </button>
+      <button
+        className="project-tile"
+        type="button"
+        disabled={Boolean(wikiActionDisabledReason)}
+        title={wikiActionDisabledReason ?? undefined}
+        onClick={handleOpenNewWikiPage}
+      >
+        <Plus size={20} />
+        <strong>New wiki page on GitHub</strong>
+        <small>Create or edit long-form repository documentation on GitHub.</small>
+      </button>
+      <button
+        className="project-tile"
+        type="button"
+        disabled={Boolean(wikiActionDisabledReason)}
+        title={wikiActionDisabledReason ?? undefined}
+        onClick={handleCopyWikiCloneUrl}
+      >
+        <Copy size={20} />
+        <strong>Copy clone URL</strong>
+        <small>{wikiCloneUrl}</small>
+      </button>
+    </div>
+  );
+}
 
 export interface WikiTabProps {
   githubReady: boolean;
@@ -36,122 +545,6 @@ export interface WikiTabProps {
   onSelectWikiPage(page: WikiPageSummary | WikiPageContent): void;
 }
 
-export interface WikiTabQueryInput {
-  owner: string;
-  repo: string;
-  focusedPagePath: string | null;
-  pageLimit: number;
-  enabled: boolean;
-  githubReady: boolean;
-}
-
-export interface WikiTabPrefetchInput {
-  api: ControlApi;
-  owner: string;
-  repo: string;
-  focusedPagePath: string | null;
-  pageLimit?: number;
-  githubReady: boolean;
-}
-
-export type WikiTabRefreshInput = WikiTabPrefetchInput;
-
-export function wikiTabQueryKey(
-  owner: string,
-  repo: string,
-  focusedPagePath: string | null,
-  pageLimit: number
-): readonly ["repository-wiki", string, string, string, number] {
-  return ["repository-wiki", owner, repo, focusedPagePath ?? "default", pageLimit] as const;
-}
-
-export function useWikiTabQueries({
-  owner,
-  repo,
-  focusedPagePath,
-  pageLimit,
-  enabled,
-  githubReady
-}: WikiTabQueryInput) {
-  const api = useControlApi();
-
-  const wiki = useQuery<RepositoryWikiResult>({
-    queryKey: wikiTabQueryKey(owner, repo, focusedPagePath, pageLimit),
-    queryFn: () =>
-      api.github.getRepositoryWiki({
-        owner,
-        repo,
-        pagePath: focusedPagePath,
-        limit: pageLimit,
-        cacheOnly: !githubReady
-      }),
-    enabled,
-    staleTime: 120_000
-  });
-
-  return { wiki };
-}
-
-export async function prefetchWikiTabData(
-  queryClient: QueryClient,
-  { api, owner, repo, focusedPagePath, pageLimit = defaultWikiPageLimit, githubReady }: WikiTabPrefetchInput
-): Promise<void> {
-  await queryClient.prefetchQuery({
-    queryKey: wikiTabQueryKey(owner, repo, focusedPagePath, pageLimit),
-    queryFn: () =>
-      api.github.getRepositoryWiki({
-        owner,
-        repo,
-        pagePath: focusedPagePath,
-        limit: pageLimit,
-        cacheOnly: !githubReady
-      }),
-    staleTime: 120_000
-  });
-}
-
-export async function refreshWikiTabData(
-  queryClient: QueryClient,
-  { api, owner, repo, focusedPagePath, pageLimit = defaultWikiPageLimit, githubReady }: WikiTabRefreshInput
-): Promise<void> {
-  const cachedRead = !githubReady;
-  const wikiQueryKeys = queryClient
-    .getQueriesData<RepositoryWikiResult>({ queryKey: ["repository-wiki", owner, repo] })
-    .map(([queryKey]) => queryKey)
-    .filter(
-      (queryKey): queryKey is ReturnType<typeof wikiTabQueryKey> =>
-        queryKey[0] === "repository-wiki" &&
-        queryKey[1] === owner &&
-        queryKey[2] === repo &&
-        typeof queryKey[3] === "string" &&
-        typeof queryKey[4] === "number"
-    );
-  const keys =
-    wikiQueryKeys.length > 0 ? wikiQueryKeys : [wikiTabQueryKey(owner, repo, focusedPagePath, pageLimit)];
-
-  try {
-    await Promise.all(
-      keys.map((queryKey) =>
-        queryClient.fetchQuery({
-          queryKey,
-          staleTime: 0,
-          queryFn: () =>
-            api.github.getRepositoryWiki({
-              owner,
-              repo,
-              pagePath: queryKey[3] === "default" ? null : queryKey[3],
-              limit: queryKey[4],
-              cacheOnly: cachedRead,
-              forceRefresh: !cachedRead
-            })
-        })
-      )
-    );
-  } catch {
-    // React Query owns the visible error state for this refresh.
-  }
-}
-
 export function WikiTab({
   githubReady,
   repository,
@@ -164,11 +557,8 @@ export function WikiTab({
   onOpenExternal,
   onSelectWikiPage
 }: WikiTabProps): JSX.Element {
-  const [copyStatus, setCopyStatus] = useState<string | null>(null);
-  const [wikiPageLimit, setWikiPageLimit] = useState(defaultWikiPageLimit);
-  const [wikiFormMode, setWikiFormMode] = useState<"create" | "edit">("create");
-  const [wikiPageTitle, setWikiPageTitle] = useState("");
-  const [wikiPageContent, setWikiPageContent] = useState("");
+  const [wikiState, dispatchWikiState] = useReducer(wikiTabStateReducer, initialWikiTabState);
+  const { copyStatus, wikiFormMode, wikiPageContent, wikiPageLimit, wikiPageTitle } = wikiState;
   const wikiFeature = repository.administration?.features.wiki ?? null;
   const { wiki } = useWikiTabQueries({
     owner: repository.owner,
@@ -212,19 +602,19 @@ export function WikiTab({
 
   async function copyWikiCloneUrl(): Promise<void> {
     if (wikiActionDisabledReason) {
-      setCopyStatus(wikiActionDisabledReason);
+      dispatchWikiState({ type: "set-copy-status", status: wikiActionDisabledReason });
       return;
     }
     if (!navigator.clipboard?.writeText) {
-      setCopyStatus("Clipboard unavailable.");
+      dispatchWikiState({ type: "set-copy-status", status: "Clipboard unavailable." });
       return;
     }
 
     try {
       await navigator.clipboard.writeText(wikiCloneUrl);
-      setCopyStatus("Wiki clone URL copied.");
+      dispatchWikiState({ type: "set-copy-status", status: "Wiki clone URL copied." });
     } catch {
-      setCopyStatus("Could not copy wiki clone URL.");
+      dispatchWikiState({ type: "set-copy-status", status: "Could not copy wiki clone URL." });
     }
   }
 
@@ -269,10 +659,12 @@ export function WikiTab({
   const wikiSubmitDisabledReason =
     wikiFormMode === "create" ? wikiCreateDisabledReason : wikiUpdateDisabledReason;
 
+  function expandWikiPages(): void {
+    dispatchWikiState({ type: "set-page-limit", limit: maxWikiPageLimit });
+  }
+
   function resetWikiCreateForm(): void {
-    setWikiFormMode("create");
-    setWikiPageTitle("");
-    setWikiPageContent("");
+    dispatchWikiState({ type: "reset-create-form" });
   }
 
   function startWikiEdit(): void {
@@ -280,13 +672,22 @@ export function WikiTab({
       return;
     }
 
-    setWikiFormMode("edit");
-    setWikiPageTitle(selectedPage.title);
-    setWikiPageContent(selectedPage.markdown ?? "");
+    dispatchWikiState({
+      type: "start-edit",
+      title: selectedPage.title,
+      content: selectedPage.markdown ?? ""
+    });
   }
 
-  function submitWikiForm(event: FormEvent<HTMLFormElement>): void {
-    event.preventDefault();
+  function updateWikiPageTitle(title: string): void {
+    dispatchWikiState({ type: "set-title", title });
+  }
+
+  function updateWikiPageContent(content: string): void {
+    dispatchWikiState({ type: "set-content", content });
+  }
+
+  function submitWikiForm(): void {
     if (wikiSubmitDisabledReason) {
       return;
     }
@@ -319,233 +720,70 @@ export function WikiTab({
 
   return (
     <section className="repository-settings-panel">
-      <header className="settings-surface-header">
-        <div>
-          <h2>Repository wiki</h2>
-          <p>{wikiStatus}</p>
-        </div>
-        <div className="surface-header-actions">
-          {wiki.isFetching && pages.length > 0 && <span className="state-chip">updating</span>}
-          <span className={`state-chip ${wikiAvailable ? "success" : ""}`}>
-            {wikiAvailable
-              ? "available"
-              : wikiFeature === false
-                ? "disabled"
-                : wikiErrorMessage
-                  ? "unavailable"
-                  : (readAvailabilityStatusLabel(wiki.data?.availability ?? null) ?? "unknown")}
-          </span>
-        </div>
-      </header>
-      {wikiFeature !== false && wiki.isLoading && pages.length === 0 && (
-        <div className="loading-state">Loading wiki pages…</div>
-      )}
-      {wikiErrorMessage && <div className="error-state">{wikiErrorMessage}</div>}
-      {wikiAvailabilityMessage && <div className="error-state">{wikiAvailabilityMessage}</div>}
-      {wikiFeature === false && <div className="empty-state">Wiki is disabled for this repository.</div>}
-      {wikiFeature === null && !wiki.isLoading && !wiki.error && !wikiAvailabilityMessage && !wiki.data && (
-        <div className="empty-state">Wiki availability is unknown for this repository.</div>
-      )}
-      {wikiFeature !== false &&
-        !wiki.isLoading &&
-        !wiki.error &&
-        !wikiAvailabilityMessage &&
-        pages.length === 0 && <div className="empty-state">GitHub returned no wiki pages.</div>}
-      {wikiMutationBusy && wikiMutationAction && (
-        <div className="mutation-feedback loading-state" role="status">
-          Wiki action running: {githubActionLabel(wikiMutationAction)}.
-        </div>
-      )}
-      {!mutationPending && mutationSucceeded && wikiMutationAction && (
-        <div className="mutation-feedback success-state" role="status">
-          Wiki action completed: {githubActionLabel(wikiMutationAction)}.
-        </div>
-      )}
-      {!mutationPending && mutationError && wikiMutationAction && (
-        <div className="mutation-feedback error-state" role="alert">
-          Wiki action failed: {githubActionLabel(wikiMutationAction)}. {mutationError.message}
-        </div>
-      )}
+      <WikiSurfaceHeader
+        availability={wiki.data?.availability ?? null}
+        hasPages={pages.length > 0}
+        wikiAvailable={wikiAvailable}
+        wikiErrorMessage={wikiErrorMessage}
+        wikiFeature={wikiFeature}
+        wikiStatus={wikiStatus}
+        wikiUpdating={wiki.isFetching}
+      />
+      <WikiStatusMessages
+        availabilityMessage={wikiAvailabilityMessage}
+        hasPages={pages.length > 0}
+        hasWikiData={Boolean(wiki.data)}
+        wikiError={wiki.error}
+        wikiErrorMessage={wikiErrorMessage}
+        wikiFeature={wikiFeature}
+        wikiLoading={wiki.isLoading}
+      />
+      <WikiMutationFeedback
+        mutationAction={wikiMutationAction}
+        mutationError={mutationError}
+        mutationPending={mutationPending}
+        mutationSucceeded={mutationSucceeded}
+        wikiMutationBusy={wikiMutationBusy}
+      />
       {pages.length > 0 && (
-        <div className="wiki-browser">
-          <div className="wiki-page-list" aria-label="Wiki pages">
-            {pages.map((page) => (
-              <button
-                className={page.path === selectedPage?.path ? "selected-action" : ""}
-                key={page.sha}
-                type="button"
-                onClick={() => onSelectWikiPage(page)}
-              >
-                <BookOpen size={16} />
-                <span>
-                  <strong>{page.title}</strong>
-                  <small>{page.path}</small>
-                </span>
-              </button>
-            ))}
-          </div>
-          {canExpandWikiPages && (
-            <div className="table-action-row">
-              <button type="button" onClick={() => setWikiPageLimit(maxWikiPageLimit)}>
-                Load more wiki pages
-              </button>
-            </div>
-          )}
-          {wikiPageLimitHit && wikiPageLimit >= maxWikiPageLimit && (
-            <div className="muted-row">Showing the first {pages.length} wiki pages returned by GitHub.</div>
-          )}
-          <article className="wiki-page-preview">
-            <header>
-              <h3>{selectedPage?.title ?? "Wiki page"}</h3>
-              <div className="table-action-row">
-                <button
-                  type="button"
-                  disabled={Boolean(wikiEditDisabledReason)}
-                  title={wikiEditDisabledReason ?? undefined}
-                  onClick={startWikiEdit}
-                >
-                  <BookOpen size={15} /> Edit
-                </button>
-                <button
-                  type="button"
-                  disabled={Boolean(wikiDeleteDisabledReason)}
-                  title={wikiDeleteDisabledReason ?? undefined}
-                  onClick={deleteSelectedWikiPage}
-                >
-                  <X size={15} /> Delete
-                </button>
-                <button
-                  type="button"
-                  disabled={!selectedPage?.htmlUrl}
-                  title={selectedPage?.htmlUrl ? undefined : "Wiki page URL unavailable."}
-                  onClick={() => {
-                    if (selectedPage?.htmlUrl) {
-                      onOpenExternal(selectedPage.htmlUrl);
-                    }
-                  }}
-                >
-                  <ExternalLink size={15} /> GitHub fallback
-                </button>
-              </div>
-            </header>
-            <MarkdownBody
-              markdown={selectedPage?.markdown}
-              emptyText="This wiki page has no markdown content."
-              onOpenExternal={onOpenExternal}
-              urlContext={wikiMarkdownUrlContext}
-            />
-          </article>
-        </div>
+        <WikiBrowser
+          canExpandWikiPages={canExpandWikiPages}
+          deleteDisabledReason={wikiDeleteDisabledReason}
+          editDisabledReason={wikiEditDisabledReason}
+          markdownUrlContext={wikiMarkdownUrlContext}
+          pages={pages}
+          selectedPage={selectedPage}
+          wikiPageLimitHit={wikiPageLimitHit}
+          onDeleteSelectedWikiPage={deleteSelectedWikiPage}
+          onExpandWikiPages={expandWikiPages}
+          onOpenExternal={onOpenExternal}
+          onSelectWikiPage={onSelectWikiPage}
+          onStartWikiEdit={startWikiEdit}
+        />
       )}
-      <form className="compose-form wiki-editor-form" onSubmit={submitWikiForm}>
-        <div className="form-section-heading">
-          <div>
-            <h3>{wikiFormMode === "create" ? "Create wiki page" : "Edit wiki page"}</h3>
-            <p>{wikiFormMode === "create" ? "Create a page in the repository wiki." : selectedPage?.path}</p>
-          </div>
-          <div className="table-action-row">
-            <button
-              className={wikiFormMode === "create" ? "selected-action" : ""}
-              type="button"
-              disabled={Boolean(wikiFormDisabledReason)}
-              title={wikiFormDisabledReason ?? undefined}
-              onClick={resetWikiCreateForm}
-            >
-              <Plus size={15} /> New
-            </button>
-            <button
-              className={wikiFormMode === "edit" ? "selected-action" : ""}
-              type="button"
-              disabled={Boolean(wikiEditDisabledReason)}
-              title={wikiEditDisabledReason ?? undefined}
-              onClick={startWikiEdit}
-            >
-              <BookOpen size={15} /> Edit selected
-            </button>
-          </div>
-        </div>
-        <label>
-          Title
-          <input
-            type="text"
-            value={wikiPageTitle}
-            disabled={wikiFormMode === "edit" || Boolean(wikiFormDisabledReason)}
-            title={
-              wikiFormMode === "edit"
-                ? "Rename wiki pages on GitHub fallback."
-                : (wikiFormDisabledReason ?? undefined)
-            }
-            onChange={(event) => setWikiPageTitle(event.target.value)}
-            placeholder="Home"
-          />
-        </label>
-        <label>
-          Markdown
-          <textarea
-            value={wikiPageContent}
-            disabled={Boolean(wikiFormDisabledReason)}
-            title={wikiFormDisabledReason ?? undefined}
-            onChange={(event) => setWikiPageContent(event.target.value)}
-            placeholder="Write the wiki page markdown."
-            rows={10}
-          />
-        </label>
-        {wikiSubmitDisabledReason && (
-          <small className="action-disabled-note">{wikiSubmitDisabledReason}</small>
-        )}
-        <div className="form-actions">
-          <button
-            type="submit"
-            disabled={Boolean(wikiSubmitDisabledReason)}
-            title={wikiSubmitDisabledReason ?? undefined}
-          >
-            <CheckCircle2 size={16} /> {wikiFormMode === "create" ? "Create page" : "Save page"}
-          </button>
-          {wikiFormMode === "edit" && (
-            <button
-              type="button"
-              disabled={Boolean(wikiDeleteDisabledReason)}
-              title={wikiDeleteDisabledReason ?? undefined}
-              onClick={deleteSelectedWikiPage}
-            >
-              <X size={16} /> Delete page
-            </button>
-          )}
-        </div>
-      </form>
-      <div className="tile-grid">
-        <button
-          className="project-tile"
-          type="button"
-          onClick={() => onOpenExternal(repositoryPath(repository, "/wiki"))}
-        >
-          <BookOpen size={20} />
-          <strong>GitHub wiki fallback</strong>
-          <small>Use the GitHub wiki fallback for {repository.nameWithOwner}.</small>
-        </button>
-        <button
-          className="project-tile"
-          type="button"
-          disabled={Boolean(wikiActionDisabledReason)}
-          title={wikiActionDisabledReason ?? undefined}
-          onClick={() => onOpenExternal(repositoryPath(repository, "/wiki/_new"))}
-        >
-          <Plus size={20} />
-          <strong>New wiki page on GitHub</strong>
-          <small>Create or edit long-form repository documentation on GitHub.</small>
-        </button>
-        <button
-          className="project-tile"
-          type="button"
-          disabled={Boolean(wikiActionDisabledReason)}
-          title={wikiActionDisabledReason ?? undefined}
-          onClick={() => void copyWikiCloneUrl()}
-        >
-          <Copy size={20} />
-          <strong>Copy clone URL</strong>
-          <small>{wikiCloneUrl}</small>
-        </button>
-      </div>
+      <WikiEditorForm
+        deleteDisabledReason={wikiDeleteDisabledReason}
+        editDisabledReason={wikiEditDisabledReason}
+        formDisabledReason={wikiFormDisabledReason}
+        selectedPage={selectedPage}
+        submitDisabledReason={wikiSubmitDisabledReason}
+        wikiFormMode={wikiFormMode}
+        wikiPageContent={wikiPageContent}
+        wikiPageTitle={wikiPageTitle}
+        onDeleteSelectedWikiPage={deleteSelectedWikiPage}
+        onResetCreateForm={resetWikiCreateForm}
+        onStartWikiEdit={startWikiEdit}
+        onSubmitWikiForm={submitWikiForm}
+        onWikiPageContentChange={updateWikiPageContent}
+        onWikiPageTitleChange={updateWikiPageTitle}
+      />
+      <WikiFallbackTiles
+        repository={repository}
+        wikiActionDisabledReason={wikiActionDisabledReason}
+        wikiCloneUrl={wikiCloneUrl}
+        onCopyWikiCloneUrl={copyWikiCloneUrl}
+        onOpenExternal={onOpenExternal}
+      />
       {copyStatus && <div className="muted-row">{copyStatus}</div>}
     </section>
   );

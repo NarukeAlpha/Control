@@ -2,43 +2,28 @@ import { fileExtension, fileNameFromPath } from "@shared/filePreviewPolicy";
 
 export type CodeLanguage =
   | "bash"
-  | "c"
-  | "cmake"
-  | "cpp"
   | "css"
-  | "dockerfile"
-  | "git-commit"
   | "go"
   | "html"
-  | "java"
   | "javascript"
   | "json"
   | "jsonc"
-  | "kotlin"
-  | "make"
   | "markdown"
-  | "php"
   | "python"
-  | "ruby"
   | "rust"
-  | "scss"
-  | "sql"
-  | "swift"
   | "toml"
   | "typescript"
   | "tsx"
-  | "xml"
-  | "yaml"
-  | "zsh";
+  | "yaml";
 
 const fileNameLanguages = new Map<string, CodeLanguage | null>([
-  ["dockerfile", "dockerfile"],
-  ["containerfile", "dockerfile"],
-  ["makefile", "make"],
-  ["cmakelists.txt", "cmake"],
-  [".gitignore", "git-commit"],
-  [".gitattributes", "git-commit"],
-  [".gitmodules", "git-commit"],
+  ["dockerfile", null],
+  ["containerfile", null],
+  ["makefile", null],
+  ["cmakelists.txt", null],
+  [".gitignore", null],
+  [".gitattributes", null],
+  [".gitmodules", null],
   ["package.json", "json"],
   ["tsconfig.json", "jsonc"],
   ["composer.json", "json"],
@@ -59,7 +44,6 @@ const extensionLanguages = new Map<string, CodeLanguage>([
   ["json", "json"],
   ["jsonc", "jsonc"],
   ["css", "css"],
-  ["scss", "scss"],
   ["html", "html"],
   ["md", "markdown"],
   ["markdown", "markdown"],
@@ -70,23 +54,12 @@ const extensionLanguages = new Map<string, CodeLanguage>([
   ["yml", "yaml"],
   ["yaml", "yaml"],
   ["toml", "toml"],
-  ["xml", "xml"],
   ["sh", "bash"],
   ["bash", "bash"],
-  ["zsh", "zsh"],
+  ["zsh", "bash"],
   ["py", "python"],
-  ["rb", "ruby"],
   ["go", "go"],
-  ["rs", "rust"],
-  ["swift", "swift"],
-  ["c", "c"],
-  ["h", "c"],
-  ["cpp", "cpp"],
-  ["hpp", "cpp"],
-  ["java", "java"],
-  ["kt", "kotlin"],
-  ["php", "php"],
-  ["sql", "sql"]
+  ["rs", "rust"]
 ]);
 
 export function languageForCodePath(path: string): CodeLanguage | null {

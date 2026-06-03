@@ -3,6 +3,15 @@ const tokenAccountName = "github.com";
 
 type KeytarClient = Pick<typeof import("keytar"), "getPassword" | "setPassword" | "deletePassword">;
 
+export class GitHubCredentialStoreUnavailableError extends Error {
+  readonly code = "github-credential-store-unavailable";
+
+  constructor(message = "GitHub credential store is unavailable.") {
+    super(message);
+    this.name = "GitHubCredentialStoreUnavailableError";
+  }
+}
+
 function getProperty(value: unknown, key: string): unknown {
   if (!value || (typeof value !== "object" && typeof value !== "function")) {
     return undefined;
@@ -40,7 +49,7 @@ async function loadKeytar(): Promise<KeytarClient> {
     return defaultExport;
   }
 
-  throw new Error("Control keychain module did not load correctly.");
+  throw new GitHubCredentialStoreUnavailableError("Control keychain module did not load correctly.");
 }
 
 export async function getGitHubToken(): Promise<string | null> {
@@ -51,10 +60,12 @@ export async function getGitHubToken(): Promise<string | null> {
 
   try {
     const keytar = await loadKeytar();
-    return keytar.getPassword(tokenServiceName, tokenAccountName);
+    return await keytar.getPassword(tokenServiceName, tokenAccountName);
   } catch (error) {
     console.warn("Control keychain access unavailable.", error);
-    return null;
+    throw new GitHubCredentialStoreUnavailableError(
+      error instanceof Error ? error.message : "GitHub credential store is unavailable."
+    );
   }
 }
 

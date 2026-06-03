@@ -37,11 +37,3 @@ export async function readLocalReadme(rootPath: string): Promise<AreaFileContent
   localReadmeCache.set(rootPath, { fingerprint, value });
   return value;
 }
-
-export function clearLocalReadmeCache(rootPath?: string): void {
-  if (rootPath) {
-    localReadmeCache.delete(rootPath);
-    return;
-  }
-  localReadmeCache.clear();
-}

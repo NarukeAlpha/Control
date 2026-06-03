@@ -1,10 +1,10 @@
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { prefetchActionsTabData } from "../components/repository/actions/ActionsTab";
-import { prefetchCodeTabData } from "../components/repository/code/CodeTab";
-import { prefetchIssuesTabData } from "../components/repository/issues/IssuesTab";
-import { prefetchPullRequestsTabData } from "../components/repository/pull-requests/PullRequestsTab";
+import { prefetchActionsTabData } from "../components/repository/actions/ActionsTab.queries";
+import { prefetchCodeTabData } from "../components/repository/code/CodeTab.queries";
+import { prefetchIssuesTabData } from "../components/repository/issues/IssuesTab.queries";
+import { prefetchPullRequestsTabData } from "../components/repository/pull-requests/PullRequestsTab.queries";
 import { useControlApi } from "./useControlApi";
 
 interface UseRepositoryWarmPrefetchInput {

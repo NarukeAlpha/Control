@@ -24,13 +24,15 @@ import type {
 import { ipcChannels } from "@shared/ipc";
 
 import { createIpcInvokeRoute, registerIpcRoutes, type IpcInvokeRoute } from "../ipc/ipcRouter";
+import { isRecord, nullableTrimmedString, requireTrimmedString } from "../ipc/ipcInput";
 import type { AreaManager } from "./areaManager";
+import { isAreaGatewayOperationKind } from "./gatewayOperations";
 
 export function registerAreaIpc(areaManager: AreaManager): void {
   registerIpcRoutes(ipcMain, createAreaIpcRoutes(areaManager));
 }
 
-export function createAreaIpcRoutes(areaManager: AreaManager): IpcInvokeRoute[] {
+function createAreaIpcRoutes(areaManager: AreaManager): IpcInvokeRoute[] {
   return [
     createIpcInvokeRoute<void, ReturnType<AreaManager["listAreas"]>>({
       channel: ipcChannels.areasList,
@@ -378,42 +380,22 @@ function requireGitHubListState(value: unknown): "open" | "closed" | "all" | und
 }
 
 function requireString(value: unknown): string {
-  if (typeof value !== "string" || !value.trim()) {
-    throw new Error("Area IPC input requires a non-empty string.");
-  }
-  return value.trim();
+  return requireTrimmedString(value, "Area IPC input requires a non-empty string.");
 }
 
 function optionalString(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
+  return nullableTrimmedString(value);
 }
 
 function requireOperationKind(value: unknown): AreaGatewayOperationInput["kind"] {
-  const allowed = new Set<AreaGatewayOperationInput["kind"]>([
-    "git.fetch",
-    "git.pull",
-    "git.push",
-    "git.commit",
-    "git.branch.create",
-    "git.branch.checkout",
-    "jj.git.fetch",
-    "jj.git.push",
-    "jj.new",
-    "jj.describe",
-    "jj.commit",
-    "jj.bookmark.create",
-    "jj.bookmark.move",
-    "jj.undo",
-    "jj.redo"
-  ]);
-  if (!allowed.has(value as AreaGatewayOperationInput["kind"])) {
+  if (!isAreaGatewayOperationKind(value)) {
     throw new Error("Gateway operation kind is not supported.");
   }
-  return value as AreaGatewayOperationInput["kind"];
+  return value;
 }
 
 function objectRecord(value: unknown): Record<string, string | number | boolean | null> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+  if (!isRecord(value)) {
     return {};
   }
   const output: Record<string, string | number | boolean | null> = {};

@@ -9,7 +9,8 @@ import type {
   ReleaseDetailResult,
   RepoFileContentResult,
   RepositoryDetail,
-  RepositorySummary
+  RepositorySummary,
+  Viewer
 } from "@shared/github";
 import { createLocalStore } from "../storage";
 import { MemoryLocalStore } from "../storage/memoryStore";
@@ -193,6 +194,48 @@ describe("GitHubProviderManager cache-only reads", () => {
     expect(clearGitHubTokenMock).toHaveBeenCalledTimes(1);
     expect(store.getLastAccount("github-viewer")).toBeNull();
     expect(store.getLastAccount("github")).toEqual({ login: "octocat" });
+  });
+
+  it("surfaces keychain failures separately from signed-out auth", async () => {
+    getGitHubTokenMock.mockRejectedValueOnce(
+      Object.assign(new Error("native keychain unavailable"), {
+        code: "github-credential-store-unavailable"
+      })
+    );
+    const provider = new GitHubProviderManager(new MemoryLocalStore());
+
+    await expect(provider.createAppState()).resolves.toMatchObject({
+      github: {
+        authenticated: false,
+        error: "GitHub credential store is unavailable: native keychain unavailable"
+      },
+      viewer: null
+    });
+  });
+
+  it("does not clear an authenticated viewer when the keychain cannot be read", async () => {
+    const viewer: Viewer = {
+      login: "octocat",
+      name: "Octo Cat",
+      avatarUrl: null,
+      htmlUrl: "https://github.com/octocat"
+    };
+    getGitHubTokenMock.mockRejectedValueOnce(
+      Object.assign(new Error("native keychain unavailable"), {
+        code: "github-credential-store-unavailable"
+      })
+    );
+    const provider = new GitHubProviderManager(new MemoryLocalStore());
+    (provider as unknown as { authenticatedViewer: Viewer | null }).authenticatedViewer = viewer;
+
+    await expect(provider.createAppState()).resolves.toMatchObject({
+      github: {
+        authenticated: true,
+        user: "octocat",
+        error: "GitHub credential store is unavailable: native keychain unavailable"
+      },
+      viewer
+    });
   });
 
   it("returns status cache-only misses without loading a GitHub token", async () => {

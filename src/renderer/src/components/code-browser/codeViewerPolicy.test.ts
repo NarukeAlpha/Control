@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   highlightDecision,
+  isSupportedCodeLanguage,
   isMarkdownPath,
   isPreviewableImagePath,
   maxHighlightBytes,
@@ -29,6 +30,10 @@ describe("codeViewerPolicy", () => {
     expect(
       highlightDecision({ path: "src/main.ts", content: "const value = 1;", language: "typescript" })
     ).toEqual({ kind: "eligible" });
+    expect(highlightDecision({ path: "src/native.cpp", content: "int main() {}", language: "cpp" })).toEqual({
+      kind: "unsupported",
+      message: "Syntax highlighting unavailable for this file type."
+    });
     expect(highlightDecision({ path: "LICENSE", content: "plain", language: null })).toEqual({
       kind: "unsupported",
       message: "Syntax highlighting unavailable for this file type."
@@ -40,5 +45,14 @@ describe("codeViewerPolicy", () => {
         language: "typescript"
       })
     ).toEqual({ kind: "too_large", message: "Syntax highlighting skipped for this large file." });
+  });
+
+  it("documents the explicit syntax highlighting language allowlist", () => {
+    expect(isSupportedCodeLanguage("typescript")).toBe(true);
+    expect(isSupportedCodeLanguage("markdown")).toBe(true);
+    expect(isSupportedCodeLanguage("json")).toBe(true);
+    expect(isSupportedCodeLanguage("rust")).toBe(true);
+    expect(isSupportedCodeLanguage("plain")).toBe(false);
+    expect(isSupportedCodeLanguage("cpp")).toBe(false);
   });
 });

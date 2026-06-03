@@ -1,7 +1,99 @@
 import { Pencil, Plus, Trash2, X } from "lucide-react";
-import { useState, type FormEvent, type JSX } from "react";
+import { useReducer, useState, type ChangeEvent, type FormEvent, type JSX, type MouseEvent } from "react";
 
 import type { AreaSummary, CreateSshAreaInput, UpdateAreaInput } from "@shared/areas";
+
+type AreaDraftField = "label" | "host" | "rootPath" | "username" | "port";
+
+interface AreaDialogDraft {
+  host: string;
+  rootPath: string;
+  username: string;
+  port: string;
+  label: string;
+  submitting: boolean;
+  error: string | null;
+}
+
+type AreaDialogDraftAction =
+  | { type: "setField"; field: AreaDraftField; value: string }
+  | { type: "submitStarted" }
+  | { type: "submitFailed"; error: string };
+
+function areaDialogDraftReducer(state: AreaDialogDraft, action: AreaDialogDraftAction): AreaDialogDraft {
+  switch (action.type) {
+    case "setField":
+      return { ...state, [action.field]: action.value };
+    case "submitStarted":
+      return { ...state, submitting: true, error: null };
+    case "submitFailed":
+      return { ...state, submitting: false, error: action.error };
+  }
+}
+
+function createSshAreaDraft(): AreaDialogDraft {
+  return {
+    host: "delta-wsl",
+    rootPath: "~/controltest",
+    username: "",
+    port: "",
+    label: "",
+    submitting: false,
+    error: null
+  };
+}
+
+function createAreaEditDraft(area: AreaSummary): AreaDialogDraft {
+  const sshDefaults = sshDefaultsFromArea(area);
+  return {
+    host: sshDefaults.host,
+    rootPath: area.rootPath ?? "",
+    username: sshDefaults.username ?? "",
+    port: sshDefaults.port ? String(sshDefaults.port) : "",
+    label: area.label,
+    submitting: false,
+    error: null
+  };
+}
+
+function digitsOnly(value: string): string {
+  return value.replace(/\D/g, "");
+}
+
+function stopDialogMouseDown(event: MouseEvent<HTMLElement>): void {
+  event.stopPropagation();
+}
+
+function AreaDraftInput({
+  label,
+  field,
+  value,
+  inputMode,
+  normalize,
+  dispatch
+}: {
+  label: string;
+  field: AreaDraftField;
+  value: string;
+  inputMode?: "numeric";
+  normalize?(value: string): string;
+  dispatch(action: AreaDialogDraftAction): void;
+}): JSX.Element {
+  function updateDraftField(event: ChangeEvent<HTMLInputElement>): void {
+    dispatch({
+      type: "setField",
+      field,
+      value: normalize ? normalize(event.target.value) : event.target.value
+    });
+  }
+
+  return (
+    <label>
+      {label}
+      <input inputMode={inputMode} value={value} onChange={updateDraftField} />
+    </label>
+  );
+}
 
 export function SshAreaDialog({
   onClose,
@@ -10,39 +102,38 @@ export function SshAreaDialog({
   onClose(): void;
   onCreate(input: CreateSshAreaInput): Promise<void>;
 }): JSX.Element {
-  const [host, setHost] = useState("delta-wsl");
-  const [rootPath, setRootPath] = useState("~/controltest");
-  const [username, setUsername] = useState("");
-  const [port, setPort] = useState("");
-  const [label, setLabel] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [draft, dispatch] = useReducer(areaDialogDraftReducer, undefined, createSshAreaDraft);
 
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    const normalizedHost = host.trim();
-    const normalizedRootPath = rootPath.trim();
-    const normalizedPort = port.trim();
+    const normalizedHost = draft.host.trim();
+    const normalizedRootPath = draft.rootPath.trim();
+    const normalizedPort = draft.port.trim();
 
     if (!normalizedHost || !normalizedRootPath) {
-      setError("Host and root path are required.");
+      dispatch({ type: "submitFailed", error: "Host and root path are required." });
       return;
     }
 
-    setSubmitting(true);
-    setError(null);
+    dispatch({ type: "submitStarted" });
     try {
       await onCreate({
         host: normalizedHost,
         rootPath: normalizedRootPath,
-        username: username.trim() || null,
-        label: label.trim() || normalizedHost,
+        username: draft.username.trim() || null,
+        label: draft.label.trim() || normalizedHost,
         port: normalizedPort ? Number(normalizedPort) : null
       });
     } catch (createError) {
-      setError(createError instanceof Error ? createError.message : "SSH Area could not be created.");
-      setSubmitting(false);
+      dispatch({
+        type: "submitFailed",
+        error: createError instanceof Error ? createError.message : "SSH Area could not be created."
+      });
     }
+  }
+
+  function submitSshArea(event: FormEvent<HTMLFormElement>): void {
+    void submit(event);
   }
 
   return (
@@ -50,8 +141,8 @@ export function SshAreaDialog({
       <form
         className="settings-panel ssh-area-dialog"
         aria-labelledby="ssh-area-dialog-title"
-        onMouseDown={(event) => event.stopPropagation()}
-        onSubmit={(event) => void submit(event)}
+        onMouseDown={stopDialogMouseDown}
+        onSubmit={submitSshArea}
       >
         <header>
           <div>
@@ -62,37 +153,25 @@ export function SshAreaDialog({
             <X size={16} />
           </button>
         </header>
-        <label>
-          Label
-          <input autoFocus value={label} onChange={(event) => setLabel(event.target.value)} />
-        </label>
-        <label>
-          Host
-          <input value={host} onChange={(event) => setHost(event.target.value)} />
-        </label>
-        <label>
-          Root path
-          <input value={rootPath} onChange={(event) => setRootPath(event.target.value)} />
-        </label>
-        <label>
-          Username
-          <input value={username} onChange={(event) => setUsername(event.target.value)} />
-        </label>
-        <label>
-          Port
-          <input
-            inputMode="numeric"
-            value={port}
-            onChange={(event) => setPort(event.target.value.replace(/\D/g, ""))}
-          />
-        </label>
-        {error && <div className="error-state">{error}</div>}
+        <AreaDraftInput label="Label" field="label" value={draft.label} dispatch={dispatch} />
+        <AreaDraftInput label="Host" field="host" value={draft.host} dispatch={dispatch} />
+        <AreaDraftInput label="Root path" field="rootPath" value={draft.rootPath} dispatch={dispatch} />
+        <AreaDraftInput label="Username" field="username" value={draft.username} dispatch={dispatch} />
+        <AreaDraftInput
+          label="Port"
+          field="port"
+          value={draft.port}
+          inputMode="numeric"
+          normalize={digitsOnly}
+          dispatch={dispatch}
+        />
+        {draft.error && <div className="error-state">{draft.error}</div>}
         <footer>
           <button className="secondary-button" type="button" onClick={onClose}>
             Cancel
           </button>
-          <button type="submit" disabled={submitting}>
-            <Plus size={16} /> {submitting ? "Adding" : "Add SSH Area"}
+          <button type="submit" disabled={draft.submitting}>
+            <Plus size={16} /> {draft.submitting ? "Adding" : "Add SSH Area"}
           </button>
         </footer>
       </form>
@@ -109,33 +188,25 @@ export function AreaEditDialog({
   onClose(): void;
   onSave(input: UpdateAreaInput): Promise<void>;
 }): JSX.Element {
-  const sshDefaults = sshDefaultsFromArea(area);
-  const [label, setLabel] = useState(area.label);
-  const [rootPath, setRootPath] = useState(area.rootPath ?? "");
-  const [host, setHost] = useState(sshDefaults.host);
-  const [username, setUsername] = useState(sshDefaults.username ?? "");
-  const [port, setPort] = useState(sshDefaults.port ? String(sshDefaults.port) : "");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [draft, dispatch] = useReducer(areaDialogDraftReducer, area, createAreaEditDraft);
 
   async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    const normalizedLabel = label.trim();
-    const normalizedRootPath = rootPath.trim();
-    const normalizedHost = host.trim();
-    const normalizedPort = port.trim();
+    const normalizedLabel = draft.label.trim();
+    const normalizedRootPath = draft.rootPath.trim();
+    const normalizedHost = draft.host.trim();
+    const normalizedPort = draft.port.trim();
 
     if (area.kind === "local" && !normalizedRootPath) {
-      setError("Root path is required.");
+      dispatch({ type: "submitFailed", error: "Root path is required." });
       return;
     }
     if (area.kind === "ssh" && (!normalizedHost || !normalizedRootPath)) {
-      setError("Host and root path are required.");
+      dispatch({ type: "submitFailed", error: "Host and root path are required." });
       return;
     }
 
-    setSubmitting(true);
-    setError(null);
+    dispatch({ type: "submitStarted" });
     try {
       if (area.kind === "github") {
         await onSave({ areaId: area.id, label: normalizedLabel || "GitHub" });
@@ -151,14 +222,20 @@ export function AreaEditDialog({
           label: normalizedLabel || normalizedHost,
           host: normalizedHost,
           rootPath: normalizedRootPath,
-          username: username.trim() || null,
+          username: draft.username.trim() || null,
           port: normalizedPort ? Number(normalizedPort) : null
         });
       }
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Area could not be saved.");
-      setSubmitting(false);
+      dispatch({
+        type: "submitFailed",
+        error: saveError instanceof Error ? saveError.message : "Area could not be saved."
+      });
     }
+  }
+
+  function submitAreaEdit(event: FormEvent<HTMLFormElement>): void {
+    void submit(event);
   }
 
   return (
@@ -166,8 +243,8 @@ export function AreaEditDialog({
       <form
         className="settings-panel area-edit-dialog"
         aria-labelledby="area-edit-dialog-title"
-        onMouseDown={(event) => event.stopPropagation()}
-        onSubmit={(event) => void submit(event)}
+        onMouseDown={stopDialogMouseDown}
+        onSubmit={submitAreaEdit}
       >
         <header>
           <div>
@@ -178,45 +255,33 @@ export function AreaEditDialog({
             <X size={16} />
           </button>
         </header>
-        <label>
-          Label
-          <input autoFocus value={label} onChange={(event) => setLabel(event.target.value)} />
-        </label>
+        <AreaDraftInput label="Label" field="label" value={draft.label} dispatch={dispatch} />
         {area.kind === "ssh" && (
-          <label>
-            Host
-            <input value={host} onChange={(event) => setHost(event.target.value)} />
-          </label>
+          <AreaDraftInput label="Host" field="host" value={draft.host} dispatch={dispatch} />
         )}
         {area.kind !== "github" && (
-          <label>
-            Root path
-            <input value={rootPath} onChange={(event) => setRootPath(event.target.value)} />
-          </label>
+          <AreaDraftInput label="Root path" field="rootPath" value={draft.rootPath} dispatch={dispatch} />
         )}
         {area.kind === "ssh" && (
           <>
-            <label>
-              Username
-              <input value={username} onChange={(event) => setUsername(event.target.value)} />
-            </label>
-            <label>
-              Port
-              <input
-                inputMode="numeric"
-                value={port}
-                onChange={(event) => setPort(event.target.value.replace(/\D/g, ""))}
-              />
-            </label>
+            <AreaDraftInput label="Username" field="username" value={draft.username} dispatch={dispatch} />
+            <AreaDraftInput
+              label="Port"
+              field="port"
+              value={draft.port}
+              inputMode="numeric"
+              normalize={digitsOnly}
+              dispatch={dispatch}
+            />
           </>
         )}
-        {error && <div className="error-state">{error}</div>}
+        {draft.error && <div className="error-state">{draft.error}</div>}
         <footer>
           <button className="secondary-button" type="button" onClick={onClose}>
             Cancel
           </button>
-          <button type="submit" disabled={submitting}>
-            <Pencil size={16} /> {submitting ? "Saving" : "Save Area"}
+          <button type="submit" disabled={draft.submitting}>
+            <Pencil size={16} /> {draft.submitting ? "Saving" : "Save Area"}
           </button>
         </footer>
       </form>
@@ -247,12 +312,16 @@ export function AreaDeleteDialog({
     }
   }
 
+  function submitDelete(): void {
+    void confirmDelete();
+  }
+
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
       <section
         className="settings-panel area-confirm-dialog"
         aria-labelledby="area-delete-dialog-title"
-        onMouseDown={(event) => event.stopPropagation()}
+        onMouseDown={stopDialogMouseDown}
       >
         <header>
           <div>
@@ -277,12 +346,7 @@ export function AreaDeleteDialog({
           <button className="secondary-button" type="button" onClick={onClose}>
             Cancel
           </button>
-          <button
-            className="danger-button"
-            type="button"
-            disabled={submitting}
-            onClick={() => void confirmDelete()}
-          >
+          <button className="danger-button" type="button" disabled={submitting} onClick={submitDelete}>
             <Trash2 size={16} /> {submitting ? "Deleting" : "Delete Area"}
           </button>
         </footer>

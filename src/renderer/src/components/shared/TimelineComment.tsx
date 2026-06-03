@@ -1,4 +1,4 @@
-import { useState, type JSX } from "react";
+import { useState, type ChangeEvent, type JSX } from "react";
 
 import { MarkdownBody, type MarkdownUrlContext } from "@renderer/components/MarkdownBody";
 
@@ -27,10 +27,31 @@ export function TimelineComment({
   onEdit,
   onDelete
 }: TimelineCommentProps): JSX.Element {
-  const [editing, setEditing] = useState(false);
-  const [editBody, setEditBody] = useState(body);
+  const [editBody, setEditBody] = useState<string | null>(null);
+  const editing = editBody !== null;
+  const currentEditBody = editBody ?? "";
   const hasActions = Boolean(onEdit || onDelete);
-  const editSubmitDisabledReason = disabledReason ?? (!editBody.trim() ? "Comment body is required." : null);
+  const editSubmitDisabledReason =
+    disabledReason ?? (!currentEditBody.trim() ? "Comment body is required." : null);
+
+  function startEditing(): void {
+    setEditBody(body);
+  }
+
+  function cancelEditing(): void {
+    setEditBody(null);
+  }
+
+  function updateEditBody(event: ChangeEvent<HTMLTextAreaElement>): void {
+    setEditBody(event.target.value);
+  }
+
+  function submitEdit(): void {
+    if (editSubmitDisabledReason) {
+      return;
+    }
+    onEdit?.(currentEditBody.trim());
+  }
 
   return (
     <article className="timeline-comment">
@@ -52,10 +73,7 @@ export function TimelineComment({
                   type="button"
                   disabled={Boolean(disabledReason)}
                   title={disabledReason ?? undefined}
-                  onClick={() => {
-                    setEditBody(body);
-                    setEditing(true);
-                  }}
+                  onClick={startEditing}
                 >
                   Edit comment
                 </button>
@@ -74,40 +92,32 @@ export function TimelineComment({
           )}
         </header>
         {editing ? (
-          <form
-            className="timeline-edit-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (editSubmitDisabledReason) {
-                return;
-              }
-              onEdit?.(editBody.trim());
-            }}
-          >
+          <div className="timeline-edit-form">
             <textarea
-              value={editBody}
+              value={currentEditBody}
               disabled={Boolean(disabledReason)}
               title={disabledReason ?? undefined}
-              onChange={(event) => setEditBody(event.target.value)}
+              onChange={updateEditBody}
               placeholder="Edit comment body"
             />
             <div>
               <button
                 className="dark-action"
-                type="submit"
+                type="button"
                 disabled={Boolean(editSubmitDisabledReason)}
                 title={editSubmitDisabledReason ?? undefined}
+                onClick={submitEdit}
               >
                 Save comment
               </button>
-              <button type="button" onClick={() => setEditing(false)}>
+              <button type="button" onClick={cancelEditing}>
                 Cancel
               </button>
               {editSubmitDisabledReason && (
                 <small className="action-disabled-note">{editSubmitDisabledReason}</small>
               )}
             </div>
-          </form>
+          </div>
         ) : (
           <MarkdownBody markdown={body} onOpenExternal={onOpenExternal} urlContext={markdownUrlContext} />
         )}

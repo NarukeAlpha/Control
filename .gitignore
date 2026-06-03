@@ -11,3 +11,5 @@ test-results/
 .vite/
 .cache/
 *.local
+target/
+crates/**/target/

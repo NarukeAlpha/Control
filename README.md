@@ -7,39 +7,37 @@ V1 is GitHub.com-only and signs in with GitHub through OAuth device flow. Contro
 ## Development
 
 ```sh
-npm install
-npm run dev
-```
-
-The project also supports Bun for local command execution:
-
-```sh
 bun install
 bun run dev
 ```
 
-`package-lock.json` is the canonical dependency lockfile unless the project explicitly switches package
-managers later. Bun installs are supported for local development and use `trustedDependencies` so Electron
-and native bindings can run their install scripts.
+`package-lock.json` is retained for npm-compatible dependency review and audit workflows, but Bun is the
+canonical local command path for agents and validation. Use npm only when intentionally refreshing the npm
+lockfile or running npm audit workflows:
+
+```sh
+npm install
+```
+
+Bun installs use `trustedDependencies` so Electron and native bindings can run their install scripts.
 
 If `node_modules` was copied between machines, Node/Electron versions changed, or install scripts were
 skipped, repair the Electron runtime before starting the app:
 
 ```sh
-npm run repair:runtime
 bun run repair:runtime
 ```
 
-GitHub account sign-in uses the app-owned OAuth App client ID embedded in the desktop build. In development you can override it with `CONTROL_GITHUB_CLIENT_ID=<client_id> npm run dev`. The OAuth App must have `Enable Device Flow` turned on in GitHub.
+GitHub account sign-in uses the app-owned OAuth App client ID embedded in the desktop build. In development you can override it with `CONTROL_GITHUB_CLIENT_ID=<client_id> bun run dev`. The OAuth App must have `Enable Device Flow` turned on in GitHub.
 
 ## Checks
 
 ```sh
-npm run typecheck
-npm run lint
-npm run test
-npm run test:e2e
-npm run test:e2e:profile
+bun run typecheck
+bun run lint
+bun run test
+bun run test:e2e
+bun run test:e2e:profile
 ```
 
 The Playwright E2E project is `testing-profile`. It runs with a fixed desktop viewport, light color scheme, `en-US` locale, `America/Puerto_Rico` timezone, and the storage seed at `tests/e2e/state/testing-profile.json`.

@@ -5,10 +5,10 @@ import { githubIpcRouteChannels } from "@shared/ipc";
 import {
   createGithubIpcRoutes,
   registeredGithubIpcRouteKeys,
-  registerGithubIpc,
   requireGitHubMutationInput,
   requireRepoListInput
 } from "./registerGithubIpc";
+import { registerIpcRoutes } from "./ipcRouter";
 
 function makeGithubIpcDependencies(overrides: Record<string, unknown> = {}) {
   const dependencies: Record<string, unknown> = {
@@ -76,11 +76,12 @@ function makeGithubIpcDependencies(overrides: Record<string, unknown> = {}) {
     );
   }
 
-  return dependencies as Parameters<typeof registerGithubIpc>[1] & Record<string, ReturnType<typeof vi.fn>>;
+  return dependencies as Parameters<typeof createGithubIpcRoutes>[0] &
+    Record<string, ReturnType<typeof vi.fn>>;
 }
 
-describe("registerGithubIpc", () => {
-  it("registers every GitHub route on the typed route channels", async () => {
+describe("createGithubIpcRoutes", () => {
+  it("creates every GitHub route on the typed route channels", async () => {
     const handlers = new Map<string, (event: unknown, ...args: unknown[]) => unknown>();
     const ipcMain = {
       handle: vi.fn((channel: string, listener: (event: unknown, ...args: unknown[]) => unknown) => {
@@ -89,7 +90,7 @@ describe("registerGithubIpc", () => {
     };
     const github = makeGithubIpcDependencies();
 
-    registerGithubIpc(ipcMain, github);
+    registerIpcRoutes(ipcMain, createGithubIpcRoutes(github));
 
     expect([...handlers.keys()]).toEqual(
       registeredGithubIpcRouteKeys.map((key) => githubIpcRouteChannels[key])
@@ -149,13 +150,13 @@ describe("registerGithubIpc", () => {
 
   it("rejects malformed moved GitHub route payloads before calling providers", async () => {
     const handlers = new Map<string, (event: unknown, ...args: unknown[]) => unknown>();
-    registerGithubIpc(
+    registerIpcRoutes(
       {
         handle: vi.fn((channel: string, listener: (event: unknown, ...args: unknown[]) => unknown) => {
           handlers.set(channel, listener);
         })
       },
-      makeGithubIpcDependencies()
+      createGithubIpcRoutes(makeGithubIpcDependencies())
     );
 
     await expect(

@@ -14,7 +14,7 @@ export interface ExternalWindowOpenResult {
   action: "deny";
 }
 
-export class ExternalLinkPolicyError extends Error {
+class ExternalLinkPolicyError extends Error {
   readonly code = "INVALID_EXTERNAL_URL";
 
   constructor(message = "Control only opens external HTTPS links.") {

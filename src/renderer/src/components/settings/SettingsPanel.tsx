@@ -1,21 +1,29 @@
 import {
-  Check,
+  ChevronDown,
   Database,
   GitBranch,
   LogIn,
+  Monitor,
+  Moon,
   Palette,
   Settings as SettingsIcon,
+  Sun,
   User,
   X,
   type LucideIcon
 } from "lucide-react";
-import { useEffect, useRef, useState, type CSSProperties, type JSX } from "react";
+import { useEffect, useReducer, useRef, useState, type CSSProperties, type JSX } from "react";
 
 import type {
   AppState,
   ControlAccentColor,
+  ControlCodeFont,
+  ControlSettings,
+  ControlThemeCustomSettings,
   ControlThemeMode,
+  ControlThemePaletteSettings,
   ControlThemePreset,
+  ControlUiFont,
   GlassMode,
   RepositoryTabPreference,
   RepositoryTabPreferenceKey
@@ -23,11 +31,15 @@ import type {
 import {
   CONTROL_ACCENT_COLORS,
   CONTROL_ACCENT_COLOR_LABELS,
+  CONTROL_CODE_FONTS,
+  CONTROL_CODE_FONT_LABELS,
   CONTROL_GLASS_MODES,
   CONTROL_GLASS_MODE_LABELS,
   CONTROL_THEME_MODES,
   CONTROL_THEME_PRESETS,
   CONTROL_THEME_PRESET_LABELS,
+  CONTROL_UI_FONTS,
+  CONTROL_UI_FONT_LABELS,
   DEFAULT_CONTROL_THEME_SETTINGS
 } from "@shared/github";
 import type { ProviderAuthController } from "../auth/providerAuthAdapters";
@@ -38,6 +50,8 @@ import {
 import { DataSyncPanel } from "./DataSyncPanel";
 
 type SettingsCategory = "account" | "appearance" | "repository" | "data";
+type SignOutStatus = "idle" | "running" | "signedOut" | "error";
+type SaveStatus = "idle" | "saving" | "saved" | "error";
 
 const settingsCategories: Array<{
   id: SettingsCategory;
@@ -63,38 +77,43 @@ const themePresetPreview: Record<
     foreground: string;
     surface: string;
     accent: string;
+    contrast: number;
   }
 > = {
   "control-light": {
-    background: "#f8fafc",
-    foreground: "#111827",
-    surface: "rgba(255, 255, 255, 0.78)",
-    accent: "#0969da"
+    background: "#EAF2FC",
+    foreground: "#0F172A",
+    surface: "rgba(234, 242, 252, 0.82)",
+    accent: "#2563EB",
+    contrast: 62
   },
   "control-dark": {
     background: "#101827",
-    foreground: "#e5edf7",
+    foreground: "#E5EDF7",
     surface: "rgba(30, 41, 59, 0.76)",
-    accent: "#60a5fa"
+    accent: "#60A5FA",
+    contrast: 60
   },
   "control-dim": {
     background: "#151e2c",
-    foreground: "#d8dee8",
+    foreground: "#D8DEE8",
     surface: "rgba(37, 49, 67, 0.78)",
-    accent: "#7dd3fc"
+    accent: "#7DD3FC",
+    contrast: 52
   },
   "control-high-contrast-dark": {
     background: "#020617",
-    foreground: "#ffffff",
+    foreground: "#FFFFFF",
     surface: "rgba(15, 23, 42, 0.92)",
-    accent: "#bfdbfe"
+    accent: "#BFDBFE",
+    contrast: 82
   }
 };
 
 const accentPreview: Record<ControlAccentColor, string> = {
-  blue: "#0969da",
-  green: "#1a7f37",
-  purple: "#7c3aed",
+  blue: "#2563EB",
+  green: "#1A7F37",
+  purple: "#7C3AED",
   gray: "#475569"
 };
 
@@ -104,76 +123,198 @@ const glassModeSummary: Record<GlassMode, string> = {
   solid: "Opaque surface"
 };
 
+const themeModeIcons: Record<ControlThemeMode, LucideIcon> = {
+  light: Sun,
+  dark: Moon,
+  system: Monitor
+};
+
+interface SettingsDraftState {
+  activeCategory: SettingsCategory;
+  signOutStatus: SignOutStatus;
+  signOutError: string | null;
+  saveStatus: SaveStatus;
+  saveError: string | null;
+  glassMode: GlassMode;
+  themeMode: ControlThemeMode;
+  themePreset: ControlThemePreset;
+  themeAccent: ControlAccentColor;
+  customTheme: ControlThemeCustomSettings;
+  repositoryTabPreferences: Partial<Record<RepositoryTabPreferenceKey, RepositoryTabPreference>>;
+}
+
+type SettingsDraftAction =
+  | { type: "setActiveCategory"; value: SettingsCategory }
+  | { type: "beginSignIn" }
+  | { type: "beginSignOut" }
+  | { type: "finishSignOut" }
+  | { type: "failSignOut"; error: string }
+  | { type: "beginSave" }
+  | { type: "finishSave" }
+  | { type: "failSave"; error: string }
+  | { type: "setGlassMode"; value: GlassMode }
+  | { type: "setThemeMode"; value: ControlThemeMode }
+  | { type: "setThemePreset"; value: ControlThemePreset }
+  | { type: "setThemeAccent"; scheme: "light" | "dark"; value: ControlAccentColor }
+  | {
+      type: "setThemePalette";
+      scheme: "light" | "dark";
+      key: keyof ControlThemePaletteSettings;
+      value: string;
+    }
+  | { type: "setUiFont"; value: ControlUiFont }
+  | { type: "setCodeFont"; value: ControlCodeFont }
+  | {
+      type: "setRepositoryTabPreference";
+      tab: RepositoryTabPreferenceKey;
+      preference: RepositoryTabPreference;
+    };
+
+interface SettingsPanelProps {
+  appState?: AppState;
+  authController: ProviderAuthController;
+  onClose(): void;
+  onOpenExternal(url: string): void;
+  onPreviewSettings?(settings: Partial<ControlSettings> | null): void;
+  onSave(settings: Partial<AppState["settings"]>): Promise<void>;
+}
+
+function createSettingsDraftState(appState?: AppState): SettingsDraftState {
+  return {
+    activeCategory: "account",
+    signOutStatus: "idle",
+    signOutError: null,
+    saveStatus: "idle",
+    saveError: null,
+    glassMode: appState?.settings.glassMode ?? "glass-shell",
+    themeMode: appState?.settings.theme.mode ?? DEFAULT_CONTROL_THEME_SETTINGS.mode,
+    themePreset: appState?.settings.theme.preset ?? DEFAULT_CONTROL_THEME_SETTINGS.preset,
+    themeAccent: appState?.settings.theme.accent ?? DEFAULT_CONTROL_THEME_SETTINGS.accent,
+    customTheme: cloneCustomThemeSettings(
+      appState?.settings.theme.custom ?? DEFAULT_CONTROL_THEME_SETTINGS.custom
+    ),
+    repositoryTabPreferences: appState?.settings.repositoryTabPreferences ?? {}
+  };
+}
+
+function withUnsavedChange(
+  state: SettingsDraftState,
+  changes: Partial<SettingsDraftState>
+): SettingsDraftState {
+  return {
+    ...state,
+    ...changes,
+    saveStatus: "idle",
+    saveError: null
+  };
+}
+
+function settingsDraftReducer(state: SettingsDraftState, action: SettingsDraftAction): SettingsDraftState {
+  switch (action.type) {
+    case "setActiveCategory":
+      return { ...state, activeCategory: action.value };
+    case "beginSignIn":
+      return { ...state, signOutStatus: "idle", signOutError: null };
+    case "beginSignOut":
+      return { ...state, signOutStatus: "running", signOutError: null };
+    case "finishSignOut":
+      return { ...state, signOutStatus: "signedOut", signOutError: null };
+    case "failSignOut":
+      return { ...state, signOutStatus: "error", signOutError: action.error };
+    case "beginSave":
+      return { ...state, saveStatus: "saving", saveError: null };
+    case "finishSave":
+      return { ...state, saveStatus: "saved", saveError: null };
+    case "failSave":
+      return { ...state, saveStatus: "error", saveError: action.error };
+    case "setGlassMode":
+      return withUnsavedChange(state, { glassMode: action.value });
+    case "setThemeMode":
+      return withUnsavedChange(state, { themeMode: action.value });
+    case "setThemePreset": {
+      const nextPresetAccent = readAccentForColor(themePresetPreview[action.value].accent);
+      return withUnsavedChange(state, {
+        themePreset: action.value,
+        themeAccent: nextPresetAccent ?? state.themeAccent,
+        customTheme: applyPresetToCustomTheme(state.customTheme, action.value)
+      });
+    }
+    case "setThemeAccent":
+      return withUnsavedChange(state, {
+        themeAccent: action.value,
+        customTheme: updateCustomThemePalette(
+          state.customTheme,
+          action.scheme,
+          "accent",
+          accentPreview[action.value]
+        )
+      });
+    case "setThemePalette":
+      return withUnsavedChange(state, {
+        customTheme: updateCustomThemePalette(state.customTheme, action.scheme, action.key, action.value)
+      });
+    case "setUiFont":
+      return withUnsavedChange(state, {
+        customTheme: { ...state.customTheme, uiFont: action.value }
+      });
+    case "setCodeFont":
+      return withUnsavedChange(state, {
+        customTheme: { ...state.customTheme, codeFont: action.value }
+      });
+    case "setRepositoryTabPreference":
+      return withUnsavedChange(state, {
+        repositoryTabPreferences: {
+          ...state.repositoryTabPreferences,
+          [action.tab]: action.preference
+        }
+      });
+  }
+}
+
 export function SettingsPanel({
   appState,
   authController,
   onClose,
   onOpenExternal,
+  onPreviewSettings,
   onSave
-}: {
-  appState?: AppState;
-  authController: ProviderAuthController;
-  onClose(): void;
-  onOpenExternal(url: string): void;
-  onSave(settings: Partial<AppState["settings"]>): Promise<void>;
-}): JSX.Element {
-  const [activeCategory, setActiveCategory] = useState<SettingsCategory>("account");
-  const [signOutStatus, setSignOutStatus] = useState<"idle" | "running" | "signedOut" | "error">("idle");
-  const [signOutError, setSignOutError] = useState<string | null>(null);
-  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [glassMode, setGlassMode] = useState<GlassMode>(appState?.settings.glassMode ?? "glass-shell");
-  const [themeMode, setThemeMode] = useState<ControlThemeMode>(
-    appState?.settings.theme.mode ?? DEFAULT_CONTROL_THEME_SETTINGS.mode
-  );
-  const [themePreset, setThemePreset] = useState<ControlThemePreset>(
-    appState?.settings.theme.preset ?? DEFAULT_CONTROL_THEME_SETTINGS.preset
-  );
-  const [themeAccent, setThemeAccent] = useState<ControlAccentColor>(
-    appState?.settings.theme.accent ?? DEFAULT_CONTROL_THEME_SETTINGS.accent
-  );
-  const [repositoryTabPreferences, setRepositoryTabPreferences] = useState<
-    Partial<Record<RepositoryTabPreferenceKey, RepositoryTabPreference>>
-  >(appState?.settings.repositoryTabPreferences ?? {});
+}: SettingsPanelProps): JSX.Element {
+  const [draft, dispatch] = useReducer(settingsDraftReducer, appState, createSettingsDraftState);
   const observedCompletedAt = useRef(authController.completedAt);
   const authenticated = appState?.github.authenticated ?? false;
   const githubUser = appState?.github.user ?? null;
   const signInConfigured = appState?.github.signInConfigured ?? true;
   const signInBusy = authController.status === "waiting";
   const signInSession = authController.session;
-  const signInError = authController.error;
-  const signOutBusy = signOutStatus === "running";
-  const saveBusy = saveStatus === "saving";
-  const githubConnectionLabel = signInBusy
-    ? `Enter ${signInSession?.userCode ?? "the code"} in GitHub.`
-    : signOutStatus === "signedOut"
-      ? "Not connected."
-      : authenticated
-        ? `Connected as ${githubUser ?? "GitHub"}`
-        : signInConfigured
-          ? "Not connected."
-          : "GitHub sign-in is not configured in this build.";
-  const signInDisabledReason = signOutBusy
-    ? "GitHub sign-out is still running."
-    : signInBusy
-      ? "GitHub sign-in is already in progress."
-      : !signInConfigured
-        ? "GitHub sign-in is not configured in this build."
-        : null;
-  const signOutDisabledReason = signOutBusy
-    ? "GitHub sign-out is still running."
-    : signOutStatus === "signedOut"
-      ? "No GitHub account is connected."
-      : signInBusy
-        ? "Cancel or complete GitHub sign-in before signing out."
-        : !authenticated
-          ? "No GitHub account is connected."
-          : null;
+  const signOutBusy = draft.signOutStatus === "running";
+  const saveBusy = draft.saveStatus === "saving";
+  const githubConnectionLabel = getGitHubConnectionLabel({
+    authenticated,
+    githubUser,
+    signInBusy,
+    signInConfigured,
+    signInSession,
+    signOutStatus: draft.signOutStatus
+  });
+  const signInDisabledReason = getSignInDisabledReason({
+    signInBusy,
+    signInConfigured,
+    signOutBusy
+  });
+  const signOutDisabledReason = getSignOutDisabledReason({
+    authenticated,
+    signInBusy,
+    signOutBusy,
+    signOutStatus: draft.signOutStatus
+  });
   const saveDisabledReason = saveBusy ? "Settings save is still running." : null;
   const activeCategoryLabel =
-    settingsCategories.find((category) => category.id === activeCategory)?.label ?? "Settings";
-  const activePresetPreview = themePresetPreview[themePreset];
-  const selectedAccent = accentPreview[themeAccent];
+    settingsCategories.find((category) => category.id === draft.activeCategory)?.label ?? "Settings";
+  const previewScheme =
+    draft.themeMode === "dark" || (draft.themeMode === "system" && draft.themePreset !== "control-light")
+      ? "dark"
+      : "light";
+  const selectedAccent = draft.customTheme[previewScheme].accent;
 
   useEffect(() => {
     if (!authController.completedAt || authController.completedAt === observedCompletedAt.current) {
@@ -184,10 +325,30 @@ export function SettingsPanel({
     onClose();
   }, [authController.completedAt, onClose]);
 
+  useEffect(() => () => onPreviewSettings?.(null), [onPreviewSettings]);
+
+  useEffect(() => {
+    onPreviewSettings?.({
+      glassMode: draft.glassMode,
+      theme: {
+        mode: draft.themeMode,
+        preset: draft.themePreset,
+        accent: draft.themeAccent,
+        custom: draft.customTheme
+      }
+    });
+  }, [
+    draft.customTheme,
+    draft.glassMode,
+    draft.themeAccent,
+    draft.themeMode,
+    draft.themePreset,
+    onPreviewSettings
+  ]);
+
   async function handleGitHubSignIn(): Promise<void> {
     authController.clearError();
-    setSignOutError(null);
-    setSignOutStatus("idle");
+    dispatch({ type: "beginSignIn" });
 
     if (!signInConfigured) {
       return;
@@ -196,47 +357,62 @@ export function SettingsPanel({
     await authController.signIn();
   }
 
-  async function handleClearToken(): Promise<void> {
+  function startGitHubSignIn(): void {
+    void handleGitHubSignIn();
+  }
+
+  async function clearGitHubToken(): Promise<void> {
     if (signOutDisabledReason) {
       return;
     }
 
-    setSignOutStatus("running");
-    setSignOutError(null);
+    dispatch({ type: "beginSignOut" });
 
     try {
       await authController.clearToken();
-      setSignOutStatus("signedOut");
+      dispatch({ type: "finishSignOut" });
     } catch (error) {
-      setSignOutStatus("error");
-      setSignOutError(error instanceof Error ? error.message : "GitHub sign-out failed.");
+      dispatch({
+        type: "failSignOut",
+        error: error instanceof Error ? error.message : "GitHub sign-out failed."
+      });
     }
   }
 
-  async function handleSaveSettings(): Promise<void> {
+  function startClearToken(): void {
+    void clearGitHubToken();
+  }
+
+  async function saveSettings(): Promise<void> {
     if (saveDisabledReason) {
       return;
     }
 
-    setSaveStatus("saving");
-    setSaveError(null);
+    dispatch({ type: "beginSave" });
 
     try {
       await onSave({
         credentialProvider: appState?.settings.credentialProvider ?? "github-oauth",
-        glassMode,
+        glassMode: draft.glassMode,
         theme: {
-          mode: themeMode,
-          preset: themePreset,
-          accent: themeAccent
+          mode: draft.themeMode,
+          preset: draft.themePreset,
+          accent: draft.themeAccent,
+          custom: draft.customTheme
         },
-        repositoryTabPreferences
+        repositoryTabPreferences: draft.repositoryTabPreferences
       });
-      setSaveStatus("saved");
+      dispatch({ type: "finishSave" });
     } catch (error) {
-      setSaveStatus("error");
-      setSaveError(error instanceof Error ? error.message : "Settings save failed.");
+      dispatch({
+        type: "failSave",
+        error: error instanceof Error ? error.message : "Settings save failed."
+      });
     }
+  }
+
+  function startSaveSettings(): void {
+    void saveSettings();
   }
 
   function handleCancelSignIn(): void {
@@ -247,36 +423,7 @@ export function SettingsPanel({
     tab: RepositoryTabPreferenceKey,
     preference: RepositoryTabPreference
   ): void {
-    setRepositoryTabPreferences((current) => ({
-      ...current,
-      [tab]: preference
-    }));
-    resetSaveState();
-  }
-
-  function updateGlassMode(nextGlassMode: GlassMode): void {
-    setGlassMode(nextGlassMode);
-    resetSaveState();
-  }
-
-  function updateThemeMode(nextThemeMode: ControlThemeMode): void {
-    setThemeMode(nextThemeMode);
-    resetSaveState();
-  }
-
-  function updateThemePreset(nextThemePreset: ControlThemePreset): void {
-    setThemePreset(nextThemePreset);
-    resetSaveState();
-  }
-
-  function updateThemeAccent(nextThemeAccent: ControlAccentColor): void {
-    setThemeAccent(nextThemeAccent);
-    resetSaveState();
-  }
-
-  function resetSaveState(): void {
-    setSaveStatus("idle");
-    setSaveError(null);
+    dispatch({ type: "setRepositoryTabPreference", tab, preference });
   }
 
   return (
@@ -297,10 +444,10 @@ export function SettingsPanel({
             {settingsCategories.map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
-                className={`settings-nav-button ${activeCategory === id ? "active" : ""}`}
+                className={`settings-nav-button ${draft.activeCategory === id ? "active" : ""}`}
                 type="button"
-                aria-current={activeCategory === id ? "page" : undefined}
-                onClick={() => setActiveCategory(id)}
+                aria-current={draft.activeCategory === id ? "page" : undefined}
+                onClick={() => dispatch({ type: "setActiveCategory", value: id })}
               >
                 <Icon size={17} />
                 <span>{label}</span>
@@ -321,229 +468,597 @@ export function SettingsPanel({
               <h3>{activeCategoryLabel}</h3>
             </div>
             <SettingsStatusMessages
-              signInError={signInError}
-              signOutError={signOutError}
-              saveError={saveError}
-              signOutStatus={signOutStatus}
-              saveStatus={saveStatus}
+              signInError={authController.error}
+              signOutError={draft.signOutError}
+              signOutStatus={draft.signOutStatus}
+              saveError={draft.saveError}
+              saveStatus={draft.saveStatus}
             />
           </header>
 
           <div className="settings-content">
-            {activeCategory === "account" && (
-              <section className="settings-section" aria-label="Account settings">
-                <div className="settings-account-card">
-                  <div>
-                    <span>GitHub</span>
-                    <strong>{githubConnectionLabel}</strong>
-                  </div>
-                  <div className="settings-inline-actions">
-                    <button
-                      type="button"
-                      disabled={Boolean(signInDisabledReason)}
-                      title={signInDisabledReason ?? undefined}
-                      onClick={() => void handleGitHubSignIn()}
-                    >
-                      <LogIn size={15} /> Sign in with GitHub
-                    </button>
-                    <button
-                      type="button"
-                      disabled={Boolean(signOutDisabledReason)}
-                      title={signOutDisabledReason ?? undefined}
-                      onClick={() => void handleClearToken()}
-                    >
-                      {signOutBusy ? "Signing out..." : "Sign out"}
-                    </button>
-                  </div>
-                </div>
-
-                {signInBusy && (
-                  <div className="settings-account-card">
-                    <div>
-                      <span>Device code</span>
-                      <strong>{signInSession?.verificationUri ?? "Open GitHub and enter your code."}</strong>
-                    </div>
-                    {signInSession?.userCode && (
-                      <strong className="settings-inline-code">{signInSession.userCode}</strong>
-                    )}
-                    <div className="settings-inline-actions">
-                      {(() => {
-                        const verificationUri = signInSession?.verificationUri;
-                        if (!verificationUri) {
-                          return null;
-                        }
-
-                        return (
-                          <button type="button" onClick={() => void onOpenExternal(verificationUri)}>
-                            Open GitHub
-                          </button>
-                        );
-                      })()}
-                      <button type="button" onClick={handleCancelSignIn}>
-                        Cancel sign-in
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </section>
+            {draft.activeCategory === "account" && (
+              <AccountSettingsSection
+                connectionLabel={githubConnectionLabel}
+                signInDisabledReason={signInDisabledReason}
+                signOutDisabledReason={signOutDisabledReason}
+                signInBusy={signInBusy}
+                signOutBusy={signOutBusy}
+                signInSession={signInSession}
+                onSignIn={startGitHubSignIn}
+                onSignOut={startClearToken}
+                onCancelSignIn={handleCancelSignIn}
+                onOpenExternal={onOpenExternal}
+              />
             )}
 
-            {activeCategory === "appearance" && (
-              <section className="settings-section settings-appearance-section" aria-label="Appearance settings">
-                <div className="settings-control-group">
-                  <div className="settings-field-heading">
-                    <h4>Theme mode</h4>
-                  </div>
-                  <div className="settings-segmented-control" role="group" aria-label="Theme mode">
-                    {CONTROL_THEME_MODES.map((mode) => (
-                      <button
-                        key={mode}
-                        className={themeMode === mode ? "active" : ""}
-                        type="button"
-                        aria-pressed={themeMode === mode}
-                        onClick={() => updateThemeMode(mode)}
-                      >
-                        {themeModeLabels[mode]}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="settings-control-group">
-                  <div className="settings-field-heading">
-                    <h4>Themes</h4>
-                  </div>
-                  <div className="theme-preset-grid" role="group" aria-label="Theme">
-                    {CONTROL_THEME_PRESETS.map((preset) => {
-                      const preview = themePresetPreview[preset];
-                      return (
-                        <button
-                          key={preset}
-                          className={`theme-preset-option ${themePreset === preset ? "active" : ""}`}
-                          type="button"
-                          aria-pressed={themePreset === preset}
-                          style={
-                            {
-                              "--theme-preview-background": preview.background,
-                              "--theme-preview-foreground": preview.foreground,
-                              "--theme-preview-surface": preview.surface,
-                              "--theme-preview-accent": preview.accent
-                            } as CSSProperties
-                          }
-                          onClick={() => updateThemePreset(preset)}
-                        >
-                          <span className="theme-preset-preview" aria-hidden="true">
-                            <span className="theme-preset-preview-window">
-                              <span />
-                              <strong />
-                              <small />
-                            </span>
-                            <span className="theme-preset-preview-accent" />
-                          </span>
-                          <span className="theme-preset-copy">
-                            <strong>{CONTROL_THEME_PRESET_LABELS[preset]}</strong>
-                          </span>
-                          {themePreset === preset && <Check size={16} />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="settings-control-group">
-                  <div className="settings-field-heading">
-                    <h4>Colors</h4>
-                  </div>
-                  <div className="settings-color-summary" aria-label="Selected theme colors">
-                    <ColorToken label="Accent" value={selectedAccent} />
-                    <ColorToken label="Background" value={activePresetPreview.background} />
-                    <ColorToken label="Foreground" value={activePresetPreview.foreground} />
-                  </div>
-                  <div className="settings-swatch-row" role="group" aria-label="Accent">
-                    {CONTROL_ACCENT_COLORS.map((accent) => (
-                      <button
-                        key={accent}
-                        className={`settings-swatch-button ${themeAccent === accent ? "active" : ""}`}
-                        type="button"
-                        aria-pressed={themeAccent === accent}
-                        aria-label={`${CONTROL_ACCENT_COLOR_LABELS[accent]} accent`}
-                        style={{ "--settings-swatch": accentPreview[accent] } as CSSProperties}
-                        onClick={() => updateThemeAccent(accent)}
-                      >
-                        <span aria-hidden="true" />
-                        <strong>{CONTROL_ACCENT_COLOR_LABELS[accent]}</strong>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="settings-control-group">
-                  <div className="settings-field-heading">
-                    <h4>Glass</h4>
-                  </div>
-                  <div className="settings-glass-grid" role="group" aria-label="Glass mode">
-                    {CONTROL_GLASS_MODES.map((mode) => (
-                      <button
-                        key={mode}
-                        className={glassMode === mode ? "active" : ""}
-                        type="button"
-                        aria-pressed={glassMode === mode}
-                        onClick={() => updateGlassMode(mode)}
-                      >
-                        <strong>{CONTROL_GLASS_MODE_LABELS[mode]}</strong>
-                        <span>{glassModeSummary[mode]}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </section>
+            {draft.activeCategory === "appearance" && (
+              <AppearanceSettingsSection
+                draft={draft}
+                selectedAccent={selectedAccent}
+                dispatch={dispatch}
+              />
             )}
 
-            {activeCategory === "repository" && (
-              <section className="settings-section" aria-label="Repository settings">
-                <div className="settings-preference-grid">
-                  {repositoryTabPreferenceKeys.map((tab) => (
-                    <label key={tab} className="settings-preference-row">
-                      <span>{repositoryTabPreferenceLabels[tab]}</span>
-                      <select
-                        aria-label={`${repositoryTabPreferenceLabels[tab]} tab visibility`}
-                        value={repositoryTabPreferences[tab] ?? "auto"}
-                        onChange={(event) =>
-                          updateRepositoryTabPreference(
-                            tab,
-                            readOptionValue(event.target.value, ["auto", "show", "hide"] as const, "auto")
-                          )
-                        }
-                      >
-                        <option value="auto">Auto</option>
-                        <option value="show">Show</option>
-                        <option value="hide">Hide</option>
-                      </select>
-                    </label>
-                  ))}
-                </div>
-              </section>
+            {draft.activeCategory === "repository" && (
+              <RepositoryTabPreferencesSection
+                preferences={draft.repositoryTabPreferences}
+                onPreferenceChange={updateRepositoryTabPreference}
+              />
             )}
 
-            {activeCategory === "data" && <DataSyncPanel />}
+            {draft.activeCategory === "data" && <DataSyncPanel />}
           </div>
 
-          <footer className="settings-footer">
-            <button type="button" onClick={onClose}>
-              Cancel
-            </button>
-            <button
-              className="dark-action"
-              type="button"
-              disabled={Boolean(saveDisabledReason)}
-              title={saveDisabledReason ?? undefined}
-              onClick={() => void handleSaveSettings()}
-            >
-              {saveBusy ? "Saving..." : "Save"}
-            </button>
-          </footer>
+          <SettingsPanelFooter
+            saveBusy={saveBusy}
+            saveDisabledReason={saveDisabledReason}
+            onClose={onClose}
+            onSave={startSaveSettings}
+          />
         </div>
       </section>
+    </div>
+  );
+}
+
+function AccountSettingsSection({
+  connectionLabel,
+  signInDisabledReason,
+  signOutDisabledReason,
+  signInBusy,
+  signOutBusy,
+  signInSession,
+  onSignIn,
+  onSignOut,
+  onCancelSignIn,
+  onOpenExternal
+}: {
+  connectionLabel: string;
+  signInDisabledReason: string | null;
+  signOutDisabledReason: string | null;
+  signInBusy: boolean;
+  signOutBusy: boolean;
+  signInSession: ProviderAuthController["session"];
+  onSignIn(): void;
+  onSignOut(): void;
+  onCancelSignIn(): void;
+  onOpenExternal(url: string): void;
+}): JSX.Element {
+  return (
+    <section className="settings-section" aria-label="Account settings">
+      <div className="settings-account-card">
+        <div>
+          <span>GitHub</span>
+          <strong>{connectionLabel}</strong>
+        </div>
+        <div className="settings-inline-actions">
+          <button
+            type="button"
+            disabled={Boolean(signInDisabledReason)}
+            title={signInDisabledReason ?? undefined}
+            onClick={onSignIn}
+          >
+            <LogIn size={15} /> Sign in with GitHub
+          </button>
+          <button
+            type="button"
+            disabled={Boolean(signOutDisabledReason)}
+            title={signOutDisabledReason ?? undefined}
+            onClick={onSignOut}
+          >
+            {signOutBusy ? "Signing out..." : "Sign out"}
+          </button>
+        </div>
+      </div>
+
+      {signInBusy && (
+        <GitHubSignInSession
+          session={signInSession}
+          onCancelSignIn={onCancelSignIn}
+          onOpenExternal={onOpenExternal}
+        />
+      )}
+    </section>
+  );
+}
+
+function GitHubSignInSession({
+  session,
+  onCancelSignIn,
+  onOpenExternal
+}: {
+  session: ProviderAuthController["session"];
+  onCancelSignIn(): void;
+  onOpenExternal(url: string): void;
+}): JSX.Element {
+  const verificationUri = session?.verificationUri ?? null;
+
+  function openVerificationUri(): void {
+    if (verificationUri) {
+      onOpenExternal(verificationUri);
+    }
+  }
+
+  return (
+    <div className="settings-account-card">
+      <div>
+        <span>Device code</span>
+        <strong>{verificationUri ?? "Open GitHub and enter your code."}</strong>
+      </div>
+      {session?.userCode && <strong className="settings-inline-code">{session.userCode}</strong>}
+      <div className="settings-inline-actions">
+        {verificationUri && (
+          <button type="button" onClick={openVerificationUri}>
+            Open GitHub
+          </button>
+        )}
+        <button type="button" onClick={onCancelSignIn}>
+          Cancel sign-in
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AppearanceSettingsSection({
+  draft,
+  selectedAccent,
+  dispatch
+}: {
+  draft: SettingsDraftState;
+  selectedAccent: string;
+  dispatch(action: SettingsDraftAction): void;
+}): JSX.Element {
+  return (
+    <section className="settings-section settings-appearance-section" aria-label="Appearance settings">
+      <div className="settings-theme-composer">
+        <div className="settings-theme-composer-header">
+          <div>
+            <h4>Theme</h4>
+            <span>Use light, dark, or match your system</span>
+          </div>
+          <div className="settings-mode-tabs" role="group" aria-label="Theme mode">
+            {CONTROL_THEME_MODES.map((mode) => {
+              const Icon = themeModeIcons[mode];
+              return (
+                <button
+                  key={mode}
+                  className={draft.themeMode === mode ? "active" : ""}
+                  type="button"
+                  aria-pressed={draft.themeMode === mode}
+                  onClick={() => dispatch({ type: "setThemeMode", value: mode })}
+                >
+                  <Icon size={14} />
+                  {themeModeLabels[mode]}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <ThemeCodePreview accent={selectedAccent} />
+      </div>
+
+      <ThemeDetailCard
+        title="Light theme"
+        selectLabel="Light theme"
+        scheme="light"
+        preset={draft.themePreset === "control-light" ? draft.themePreset : "control-light"}
+        presetOptions={["control-light"]}
+        palette={draft.customTheme.light}
+        uiFont={draft.customTheme.uiFont}
+        codeFont={draft.customTheme.codeFont}
+        glassMode={draft.glassMode}
+        dispatch={dispatch}
+      />
+
+      <ThemeDetailCard
+        title="Dark theme"
+        selectLabel="Dark theme"
+        scheme="dark"
+        preset={draft.themePreset === "control-light" ? "control-dark" : draft.themePreset}
+        presetOptions={["control-dark", "control-dim", "control-high-contrast-dark"]}
+        palette={draft.customTheme.dark}
+        uiFont={draft.customTheme.uiFont}
+        codeFont={draft.customTheme.codeFont}
+        glassMode={draft.glassMode}
+        dispatch={dispatch}
+      />
+
+      <div className="settings-appearance-list">
+        <AppearanceValueRow label="Active preset">
+          <div className="settings-theme-pill-group" role="group" aria-label="Theme">
+            {CONTROL_THEME_PRESETS.map((preset) => (
+              <button
+                key={preset}
+                className={draft.themePreset === preset ? "active" : ""}
+                type="button"
+                aria-pressed={draft.themePreset === preset}
+                onClick={() => dispatch({ type: "setThemePreset", value: preset })}
+              >
+                {CONTROL_THEME_PRESET_LABELS[preset]}
+              </button>
+            ))}
+          </div>
+        </AppearanceValueRow>
+        <AppearanceValueRow label="Glass mode">
+          <div className="settings-glass-segments" role="group" aria-label="Glass mode">
+            {CONTROL_GLASS_MODES.map((mode) => (
+              <button
+                key={mode}
+                className={draft.glassMode === mode ? "active" : ""}
+                type="button"
+                aria-pressed={draft.glassMode === mode}
+                title={glassModeSummary[mode]}
+                onClick={() => dispatch({ type: "setGlassMode", value: mode })}
+              >
+                {CONTROL_GLASS_MODE_LABELS[mode]}
+              </button>
+            ))}
+          </div>
+        </AppearanceValueRow>
+      </div>
+    </section>
+  );
+}
+
+function ThemeCodePreview({ accent }: { accent: string }): JSX.Element {
+  return (
+    <div className="settings-code-preview" style={{ "--settings-preview-accent": accent } as CSSProperties}>
+      <div className="settings-code-pane settings-code-pane-light" aria-hidden="true">
+        <div>
+          <span>1</span>
+          <code>
+            <strong>const</strong> themePreview: <em>ThemeConfig</em> = {"{"}
+          </code>
+        </div>
+        <div>
+          <span>2</span>
+          <code>surface: "sidebar",</code>
+        </div>
+        <div>
+          <span>3</span>
+          <code>
+            accent: <em>"{accent}"</em>,
+          </code>
+        </div>
+        <div>
+          <span>4</span>
+          <code>contrast: 42,</code>
+        </div>
+        <div>
+          <span>5</span>
+          <code>{"};"}</code>
+        </div>
+      </div>
+      <div className="settings-code-pane settings-code-pane-dark" aria-hidden="true">
+        <div>
+          <span>1</span>
+          <code>
+            <strong>const</strong> themePreview: <em>ThemeConfig</em> = {"{"}
+          </code>
+        </div>
+        <div>
+          <span>2</span>
+          <code>surface: "sidebar-elevated",</code>
+        </div>
+        <div>
+          <span>3</span>
+          <code>
+            accent: <em>"{accent}"</em>,
+          </code>
+        </div>
+        <div>
+          <span>4</span>
+          <code>contrast: 68,</code>
+        </div>
+        <div>
+          <span>5</span>
+          <code>{"};"}</code>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ThemeDetailCard({
+  title,
+  selectLabel,
+  scheme,
+  preset,
+  presetOptions,
+  palette,
+  uiFont,
+  codeFont,
+  glassMode,
+  dispatch
+}: {
+  title: string;
+  selectLabel: string;
+  scheme: "light" | "dark";
+  preset: ControlThemePreset;
+  presetOptions: ControlThemePreset[];
+  palette: ControlThemePaletteSettings;
+  uiFont: ControlUiFont;
+  codeFont: ControlCodeFont;
+  glassMode: GlassMode;
+  dispatch(action: SettingsDraftAction): void;
+}): JSX.Element {
+  const translucentShell = glassMode !== "solid";
+  const contrast = calculateContrastScore(palette);
+
+  return (
+    <div className="settings-theme-card">
+      <header>
+        <h4>{title}</h4>
+        <div className="settings-theme-card-actions">
+          <button type="button" disabled title="Theme import is not available yet.">
+            Import
+          </button>
+          <button type="button" disabled title="Theme copying is not available yet.">
+            Copy theme
+          </button>
+          <label className="settings-theme-select">
+            <span className="visually-hidden">{selectLabel}</span>
+            <select
+              aria-label={selectLabel}
+              value={preset}
+              onChange={(event) =>
+                dispatch({
+                  type: "setThemePreset",
+                  value: readOptionValue(event.target.value, presetOptions, presetOptions[0])
+                })
+              }
+            >
+              {presetOptions.map((option) => (
+                <option key={option} value={option}>
+                  {CONTROL_THEME_PRESET_LABELS[option]}
+                </option>
+              ))}
+            </select>
+            <ChevronDown size={14} aria-hidden="true" />
+          </label>
+        </div>
+      </header>
+
+      <AppearanceValueRow label="Accent">
+        <div className="settings-theme-swatch-group" role="group" aria-label={`${title} accent`}>
+          {CONTROL_ACCENT_COLORS.map((nextAccent) => (
+            <button
+              key={nextAccent}
+              className={palette.accent === accentPreview[nextAccent] ? "active" : ""}
+              type="button"
+              aria-pressed={palette.accent === accentPreview[nextAccent]}
+              aria-label={`${CONTROL_ACCENT_COLOR_LABELS[nextAccent]} accent`}
+              style={{ "--settings-swatch": accentPreview[nextAccent] } as CSSProperties}
+              onClick={() => dispatch({ type: "setThemeAccent", scheme, value: nextAccent })}
+            >
+              <span aria-hidden="true" />
+            </button>
+          ))}
+          <ColorField
+            label={`${title} accent color`}
+            value={palette.accent}
+            onChange={(value) => dispatch({ type: "setThemePalette", scheme, key: "accent", value })}
+          />
+        </div>
+      </AppearanceValueRow>
+
+      <AppearanceValueRow label="Background">
+        <ColorField
+          label={`${title} background color`}
+          value={palette.background}
+          onChange={(value) => dispatch({ type: "setThemePalette", scheme, key: "background", value })}
+        />
+      </AppearanceValueRow>
+      <AppearanceValueRow label="Foreground">
+        <ColorField
+          label={`${title} foreground color`}
+          value={palette.foreground}
+          onChange={(value) => dispatch({ type: "setThemePalette", scheme, key: "foreground", value })}
+        />
+      </AppearanceValueRow>
+      <AppearanceValueRow label="UI font">
+        <select
+          className="settings-compact-select"
+          aria-label={`${title} UI font`}
+          value={uiFont}
+          onChange={(event) =>
+            dispatch({
+              type: "setUiFont",
+              value: readOptionValue(event.target.value, CONTROL_UI_FONTS, uiFont)
+            })
+          }
+        >
+          {CONTROL_UI_FONTS.map((font) => (
+            <option key={font} value={font}>
+              {CONTROL_UI_FONT_LABELS[font]}
+            </option>
+          ))}
+        </select>
+      </AppearanceValueRow>
+      <AppearanceValueRow label="Code font">
+        <select
+          className="settings-compact-select"
+          aria-label={`${title} code font`}
+          value={codeFont}
+          onChange={(event) =>
+            dispatch({
+              type: "setCodeFont",
+              value: readOptionValue(event.target.value, CONTROL_CODE_FONTS, codeFont)
+            })
+          }
+        >
+          {CONTROL_CODE_FONTS.map((font) => (
+            <option key={font} value={font}>
+              {CONTROL_CODE_FONT_LABELS[font]}
+            </option>
+          ))}
+        </select>
+      </AppearanceValueRow>
+      <AppearanceValueRow label="Translucent shell">
+        <button
+          className={`settings-switch ${translucentShell ? "active" : ""}`}
+          type="button"
+          role="switch"
+          aria-checked={translucentShell}
+          onClick={() => dispatch({ type: "setGlassMode", value: translucentShell ? "solid" : "glass-shell" })}
+        >
+          <span />
+        </button>
+      </AppearanceValueRow>
+      <AppearanceValueRow label="Contrast">
+        <div className="settings-contrast-preview">
+          <span>
+            <i style={{ insetInlineEnd: `${100 - contrast}%` }} />
+          </span>
+          <strong>{contrast}</strong>
+        </div>
+      </AppearanceValueRow>
+    </div>
+  );
+}
+
+function RepositoryTabPreferencesSection({
+  preferences,
+  onPreferenceChange
+}: {
+  preferences: Partial<Record<RepositoryTabPreferenceKey, RepositoryTabPreference>>;
+  onPreferenceChange(tab: RepositoryTabPreferenceKey, preference: RepositoryTabPreference): void;
+}): JSX.Element {
+  return (
+    <section className="settings-section" aria-label="Repository settings">
+      <div className="settings-preference-grid">
+        {repositoryTabPreferenceKeys.map((tab) => (
+          <label key={tab} className="settings-preference-row">
+            <span>{repositoryTabPreferenceLabels[tab]}</span>
+            <select
+              aria-label={`${repositoryTabPreferenceLabels[tab]} tab visibility`}
+              value={preferences[tab] ?? "auto"}
+              onChange={(event) =>
+                onPreferenceChange(
+                  tab,
+                  readOptionValue(event.target.value, ["auto", "show", "hide"] as const, "auto")
+                )
+              }
+            >
+              <option value="auto">Auto</option>
+              <option value="show">Show</option>
+              <option value="hide">Hide</option>
+            </select>
+          </label>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function SettingsPanelFooter({
+  saveBusy,
+  saveDisabledReason,
+  onClose,
+  onSave
+}: {
+  saveBusy: boolean;
+  saveDisabledReason: string | null;
+  onClose(): void;
+  onSave(): void;
+}): JSX.Element {
+  return (
+    <footer className="settings-footer">
+      <button type="button" onClick={onClose}>
+        Cancel
+      </button>
+      <button
+        className="dark-action"
+        type="button"
+        disabled={Boolean(saveDisabledReason)}
+        title={saveDisabledReason ?? undefined}
+        onClick={onSave}
+      >
+        {saveBusy ? "Saving..." : "Save"}
+      </button>
+    </footer>
+  );
+}
+
+function AppearanceValueRow({
+  label,
+  children
+}: {
+  label: string;
+  children: JSX.Element | JSX.Element[];
+}): JSX.Element {
+  return (
+    <div className="settings-appearance-row">
+      <span>{label}</span>
+      <div>{children}</div>
+    </div>
+  );
+}
+
+function ColorField({
+  label,
+  value,
+  onChange
+}: {
+  label: string;
+  value: string;
+  onChange(value: string): void;
+}): JSX.Element {
+  const [draftState, setDraftState] = useState({ source: value, draft: value });
+  const draft = draftState.source === value ? draftState.draft : value;
+  const normalizedValue = normalizeHexColor(value) ?? "#000000";
+
+  return (
+    <div className="settings-color-field">
+      <input
+        aria-label={`${label} picker`}
+        className="settings-color-picker"
+        type="color"
+        value={normalizedValue}
+        onChange={(event) => {
+          const nextValue = event.target.value.toUpperCase();
+          setDraftState({ source: value, draft: nextValue });
+          onChange(nextValue);
+        }}
+      />
+      <input
+        aria-label={label}
+        className="settings-color-text"
+        spellCheck={false}
+        value={draft}
+        onBlur={() => setDraftState({ source: value, draft: value })}
+        onChange={(event) => {
+          const nextDraft = event.target.value.toUpperCase();
+          const nextValue = normalizeHexColor(nextDraft);
+          setDraftState({ source: value, draft: nextDraft });
+          if (nextValue) {
+            onChange(nextValue);
+          }
+        }}
+      />
     </div>
   );
 }
@@ -551,15 +1066,15 @@ export function SettingsPanel({
 function SettingsStatusMessages({
   signInError,
   signOutError,
-  saveError,
   signOutStatus,
+  saveError,
   saveStatus
 }: {
   signInError: string | null;
   signOutError: string | null;
+  signOutStatus: SignOutStatus;
   saveError: string | null;
-  signOutStatus: "idle" | "running" | "signedOut" | "error";
-  saveStatus: "idle" | "saving" | "saved" | "error";
+  saveStatus: SaveStatus;
 }): JSX.Element | null {
   if (signInError) {
     return <p className="settings-error">{signInError}</p>;
@@ -584,16 +1099,169 @@ function SettingsStatusMessages({
   return null;
 }
 
-function ColorToken({ label, value }: { label: string; value: string }): JSX.Element {
-  return (
-    <div className="settings-color-token">
-      <span style={{ "--settings-swatch": value } as CSSProperties} aria-hidden="true" />
-      <div>
-        <strong>{label}</strong>
-        <small>{value}</small>
-      </div>
-    </div>
+function getGitHubConnectionLabel({
+  authenticated,
+  githubUser,
+  signInBusy,
+  signInConfigured,
+  signInSession,
+  signOutStatus
+}: {
+  authenticated: boolean;
+  githubUser: string | null;
+  signInBusy: boolean;
+  signInConfigured: boolean;
+  signInSession: ProviderAuthController["session"];
+  signOutStatus: SignOutStatus;
+}): string {
+  if (signInBusy) {
+    return `Enter ${signInSession?.userCode ?? "the code"} in GitHub.`;
+  }
+  if (signOutStatus === "signedOut") {
+    return "Not connected.";
+  }
+  if (authenticated) {
+    return `Connected as ${githubUser ?? "GitHub"}`;
+  }
+  if (signInConfigured) {
+    return "Not connected.";
+  }
+  return "GitHub sign-in is not configured in this build.";
+}
+
+function getSignInDisabledReason({
+  signInBusy,
+  signInConfigured,
+  signOutBusy
+}: {
+  signInBusy: boolean;
+  signInConfigured: boolean;
+  signOutBusy: boolean;
+}): string | null {
+  if (signOutBusy) {
+    return "GitHub sign-out is still running.";
+  }
+  if (signInBusy) {
+    return "GitHub sign-in is already in progress.";
+  }
+  if (!signInConfigured) {
+    return "GitHub sign-in is not configured in this build.";
+  }
+  return null;
+}
+
+function getSignOutDisabledReason({
+  authenticated,
+  signInBusy,
+  signOutBusy,
+  signOutStatus
+}: {
+  authenticated: boolean;
+  signInBusy: boolean;
+  signOutBusy: boolean;
+  signOutStatus: SignOutStatus;
+}): string | null {
+  if (signOutBusy) {
+    return "GitHub sign-out is still running.";
+  }
+  if (signOutStatus === "signedOut") {
+    return "No GitHub account is connected.";
+  }
+  if (signInBusy) {
+    return "Cancel or complete GitHub sign-in before signing out.";
+  }
+  if (!authenticated) {
+    return "No GitHub account is connected.";
+  }
+  return null;
+}
+
+function cloneCustomThemeSettings(customTheme: ControlThemeCustomSettings): ControlThemeCustomSettings {
+  return {
+    light: { ...customTheme.light },
+    dark: { ...customTheme.dark },
+    uiFont: customTheme.uiFont,
+    codeFont: customTheme.codeFont
+  };
+}
+
+function updateCustomThemePalette(
+  customTheme: ControlThemeCustomSettings,
+  scheme: "light" | "dark",
+  key: keyof ControlThemePaletteSettings,
+  value: string
+): ControlThemeCustomSettings {
+  return {
+    ...customTheme,
+    [scheme]: {
+      ...customTheme[scheme],
+      [key]: value
+    }
+  };
+}
+
+function applyPresetToCustomTheme(
+  customTheme: ControlThemeCustomSettings,
+  preset: ControlThemePreset
+): ControlThemeCustomSettings {
+  const presetPreview = themePresetPreview[preset];
+  const scheme = preset === "control-light" ? "light" : "dark";
+
+  return updateCustomThemePalette(
+    updateCustomThemePalette(
+      updateCustomThemePalette(customTheme, scheme, "accent", presetPreview.accent),
+      scheme,
+      "background",
+      presetPreview.background
+    ),
+    scheme,
+    "foreground",
+    presetPreview.foreground
   );
+}
+
+function readAccentForColor(value: string): ControlAccentColor | null {
+  const normalizedValue = normalizeHexColor(value);
+  if (!normalizedValue) {
+    return null;
+  }
+
+  return CONTROL_ACCENT_COLORS.find((accent) => accentPreview[accent] === normalizedValue) ?? null;
+}
+
+function normalizeHexColor(value: string): string | null {
+  return /^#[0-9a-fA-F]{6}$/.test(value) ? value.toUpperCase() : null;
+}
+
+function calculateContrastScore(palette: ControlThemePaletteSettings): number {
+  const background = readRelativeLuminance(palette.background);
+  const foreground = readRelativeLuminance(palette.foreground);
+
+  if (background === null || foreground === null) {
+    return 0;
+  }
+
+  const lighter = Math.max(background, foreground);
+  const darker = Math.min(background, foreground);
+  const ratio = (lighter + 0.05) / (darker + 0.05);
+  return Math.round(Math.min(100, Math.max(0, ((ratio - 1) / 20) * 100)));
+}
+
+function readRelativeLuminance(hexColor: string): number | null {
+  const normalizedColor = normalizeHexColor(hexColor);
+  if (!normalizedColor) {
+    return null;
+  }
+
+  const channels = [1, 3, 5].map((start) => Number.parseInt(normalizedColor.slice(start, start + 2), 16));
+  const [red, green, blue] = channels.map((channel) => {
+    const normalizedChannel = channel / 255;
+    return normalizedChannel <= 0.03928
+      ? normalizedChannel / 12.92
+      : ((normalizedChannel + 0.055) / 1.055) ** 2.4;
+  });
+
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
 }
 
 function readOptionValue<T extends string>(value: string, values: readonly T[], fallback: T): T {

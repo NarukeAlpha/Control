@@ -2536,77 +2536,6 @@ p {
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 }
 
-.file-blame-panel {
-  margin-top: 14px;
-}
-
-.blame-range-list {
-  display: grid;
-  gap: 8px;
-  padding: 12px;
-}
-
-.blame-range-list > button,
-.blame-range-row {
-  display: grid;
-  grid-template-columns: 120px minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: 12px;
-  border: 1px solid rgba(73, 94, 126, 0.11);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.58);
-  color: #334963;
-  padding: 10px 12px;
-  text-align: left;
-}
-
-.blame-range-row {
-  grid-template-columns: 120px minmax(0, 1fr) auto auto auto;
-}
-
-.blame-range-list > button:disabled,
-.blame-range-row button:disabled {
-  cursor: default;
-  opacity: 0.72;
-}
-
-.blame-range-list span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.blame-range-list small {
-  color: #60748c;
-  white-space: nowrap;
-}
-
-.blame-range-list code {
-  color: var(--color-accent);
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: 12px;
-}
-
-.blame-range-row-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.blame-range-row-actions button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 30px;
-  border: 1px solid rgba(73, 94, 126, 0.12);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.66);
-  color: #334963;
-  font-size: 12px;
-  padding: 0 10px;
-  white-space: nowrap;
-}
-
 .wiki-browser {
   display: grid;
   grid-template-columns: minmax(180px, 260px) minmax(0, 1fr);
@@ -6125,8 +6054,19 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 
 .ssh-area-dialog,
 .area-edit-dialog,
-.area-confirm-dialog {
+.area-confirm-dialog,
+.confirmation-dialog {
   width: min(460px, calc(100vw - 40px));
+}
+
+.confirmation-dialog-details {
+  white-space: pre-wrap;
+  border-radius: 12px;
+  background: var(--color-surface-row);
+  padding: 12px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .area-delete-summary {

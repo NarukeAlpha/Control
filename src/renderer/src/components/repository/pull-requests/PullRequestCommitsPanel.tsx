@@ -71,7 +71,7 @@ export function PullRequestCommitsPanel({
                 }
               }}
             >
-              GitHub fallback
+              Open on GitHub
             </button>
           </div>
         ))}

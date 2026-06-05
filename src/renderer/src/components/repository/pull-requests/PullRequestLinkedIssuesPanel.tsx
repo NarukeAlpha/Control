@@ -68,7 +68,7 @@ export function PullRequestLinkedIssuesPanel({
                   }
                 }}
               >
-                GitHub fallback
+                Open on GitHub
               </button>
             </div>
           );

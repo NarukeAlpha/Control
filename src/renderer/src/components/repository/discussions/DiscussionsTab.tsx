@@ -188,7 +188,7 @@ function DiscussionsToolbar({
         <Plus size={16} /> New discussion
       </button>
       <button type="button" onClick={onOpenFallback}>
-        <ExternalLink size={16} /> GitHub fallback
+        <ExternalLink size={16} /> Open on GitHub
       </button>
     </div>
   );
@@ -233,8 +233,8 @@ function DiscussionListRow({
       <button
         className="pin-row-button"
         type="button"
-        aria-label={`Open discussion ${discussion.number} GitHub fallback`}
-        title={`GitHub fallback for discussion #${discussion.number}`}
+        aria-label={`Open discussion ${discussion.number} on GitHub`}
+        title={`Open discussion #${discussion.number} on GitHub`}
         onClick={handleOpenFallback}
       >
         <ExternalLink size={15} />
@@ -526,7 +526,7 @@ function DiscussionActions({
         {discussion.closed ? "Reopen discussion" : "Close discussion"}
       </button>
       <button type="button" onClick={handleOpenFallback}>
-        <ExternalLink size={16} /> GitHub fallback
+        <ExternalLink size={16} /> Open on GitHub
       </button>
       {disabledReason && <small className="action-disabled-note">{disabledReason}</small>}
     </div>
@@ -667,7 +667,7 @@ function DiscussionCommentThread({
           {repliesLimit >= expandedDiscussionRepliesLimit
             ? `Control is showing the first ${expandedDiscussionRepliesLimit} replies for this thread.`
             : "Some replies are not shown."}{" "}
-          Use GitHub fallback for the full thread.
+          Open the full thread on GitHub.
         </small>
       )}
     </div>

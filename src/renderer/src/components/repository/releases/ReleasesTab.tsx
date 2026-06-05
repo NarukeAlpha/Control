@@ -126,7 +126,7 @@ function ReleasesToolbar({
         <Plus size={16} /> New release
       </button>
       <button type="button" onClick={onOpenReleasesFallback}>
-        <ExternalLink size={16} /> GitHub fallback
+        <ExternalLink size={16} /> Open on GitHub
       </button>
     </div>
   );
@@ -176,8 +176,8 @@ function ReleaseListRow({
       <button
         className="pin-row-button"
         type="button"
-        aria-label={`Open GitHub fallback for ${releaseTitle}`}
-        title={`Open GitHub fallback for ${releaseTitle}`}
+        aria-label={`Open ${releaseTitle} on GitHub`}
+        title={`Open ${releaseTitle} on GitHub`}
         onClick={handleOpenFallback}
       >
         <ExternalLink size={15} />
@@ -701,7 +701,7 @@ function ReleaseDetail({
           Open target in Control
         </button>
         <button type="button" onClick={handleOpenFallback}>
-          <ExternalLink size={16} /> GitHub fallback
+          <ExternalLink size={16} /> Open on GitHub
         </button>
         <button
           type="button"

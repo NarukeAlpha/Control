@@ -109,7 +109,7 @@ function OrganizationsRouteHeader({
           <RefreshCw size={16} /> {refreshInFlight ? "Refreshing organizations" : "Refresh organizations"}
         </button>
         <button type="button" onClick={openFallback}>
-          <RefreshCw size={16} /> GitHub fallback
+          <RefreshCw size={16} /> Open on GitHub
         </button>
       </div>
     </header>
@@ -432,12 +432,12 @@ function OrganizationProjectDetailPanel({
       <div className="thread-actions">
         {project.htmlUrl && (
           <button type="button" onClick={openProject}>
-            <ExternalLink size={16} /> Project GitHub fallback
+            <ExternalLink size={16} /> Open project on GitHub
           </button>
         )}
         {project.ownerHtmlUrl && (
           <button type="button" onClick={openOwner}>
-            <ExternalLink size={16} /> Owner GitHub fallback
+            <ExternalLink size={16} /> Open owner on GitHub
           </button>
         )}
       </div>
@@ -826,7 +826,7 @@ function OrganizationRepositoryRow({
         <button
           className="pin-row-button"
           type="button"
-          aria-label={`Open GitHub fallback for ${repository.name}`}
+          aria-label={`Open ${repository.name} on GitHub`}
           title={fallbackLabel}
           onClick={openFallback}
         >
@@ -898,7 +898,7 @@ function OrganizationRepositoriesSection({
           repository={repository}
           pinned={pinnedRepositoryNameSet.has(repository.nameWithOwner.toLowerCase())}
           repositoryPinDisabledReason={repositoryPinDisabledReason}
-          fallbackLabel={`Open GitHub fallback for ${repository.nameWithOwner}`}
+          fallbackLabel={`Open ${repository.nameWithOwner} on GitHub`}
           onOpenRepository={onOpenRepository}
           onToggleRepositoryPin={onToggleRepositoryPin}
           onOpenExternal={onOpenExternal}
@@ -981,13 +981,9 @@ function OrganizationProjectRow({
       <button
         className="pin-row-button"
         type="button"
-        aria-label={`Open GitHub fallback for ${project.title}`}
+        aria-label={`Open ${project.title} on GitHub`}
         disabled={!project.htmlUrl}
-        title={
-          project.htmlUrl
-            ? `Open GitHub fallback for ${project.title}`
-            : "Organization project URL unavailable."
-        }
+        title={project.htmlUrl ? `Open ${project.title} on GitHub` : "Organization project URL unavailable."}
         onClick={openFallback}
       >
         <ExternalLink size={15} />
@@ -1307,7 +1303,7 @@ function TeamRepositoriesSection({
           repository={repository}
           pinned={pinnedRepositoryNameSet.has(repository.nameWithOwner.toLowerCase())}
           repositoryPinDisabledReason={repositoryPinDisabledReason}
-          fallbackLabel={`Open GitHub fallback for ${repository.name}`}
+          fallbackLabel={`Open ${repository.name} on GitHub`}
           onOpenRepository={onOpenRepository}
           onToggleRepositoryPin={onToggleRepositoryPin}
           onOpenExternal={onOpenExternal}

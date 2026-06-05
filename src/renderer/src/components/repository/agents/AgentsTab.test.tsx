@@ -145,7 +145,7 @@ afterEach(() => {
 });
 
 describe("AgentsTab", () => {
-  it("routes agent issue controls through Control and GitHub fallback URLs", async () => {
+  it("routes agent issue controls through Control and GitHub URLs", async () => {
     installControlApi();
     const props = renderAgents();
 
@@ -161,7 +161,7 @@ describe("AgentsTab", () => {
 
     fireEvent.click(issueSurface.getByRole("button", { name: "Open issue #42 in Control" }));
     fireEvent.click(issueSurface.getByRole("button", { name: "Open in Control" }));
-    fireEvent.click(issueSurface.getByRole("button", { name: "GitHub fallback" }));
+    fireEvent.click(issueSurface.getByRole("button", { name: "Open on GitHub" }));
 
     expect(props.onSelectIssue).toHaveBeenCalledWith(expect.objectContaining({ id: 42, number: 42 }));
     expect(props.onOpenFilteredSurface).toHaveBeenCalledWith("issues", "label:agent");

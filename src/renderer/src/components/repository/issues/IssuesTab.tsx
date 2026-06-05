@@ -311,7 +311,7 @@ function IssueSummaryTile({
           Open issue
         </button>
         <button type="button" onClick={handleOpenExternal}>
-          <ExternalLink size={16} /> GitHub fallback
+          <ExternalLink size={16} /> Open on GitHub
         </button>
       </div>
     </article>
@@ -387,8 +387,8 @@ function IssueListRow({
       <button
         className="pin-row-button"
         type="button"
-        aria-label={`Open issue ${issue.number} GitHub fallback`}
-        title={`GitHub fallback for issue #${issue.number}`}
+        aria-label={`Open issue ${issue.number} on GitHub`}
+        title={`Open issue #${issue.number} on GitHub`}
         onClick={handleOpenExternal}
       >
         <ExternalLink size={15} />
@@ -1203,7 +1203,7 @@ function IssueDetailHeader({
           <ArrowLeft size={16} /> Back to issues
         </button>
         <button type="button" onClick={handleOpenExternal}>
-          <ExternalLink size={16} /> GitHub fallback
+          <ExternalLink size={16} /> Open on GitHub
         </button>
       </div>
       <header className="thread-header">

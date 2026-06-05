@@ -287,7 +287,7 @@ export function RepositorySettingsTab({
           </small>
         </div>
         <button type="button" onClick={() => onOpenExternal(repositoryPath(repository, "/settings"))}>
-          <ExternalLink size={16} /> Open GitHub fallback
+          <ExternalLink size={16} /> Open on GitHub
         </button>
       </header>
 

@@ -153,7 +153,7 @@ export function PullRequestConversationActions({
       </div>
       <div className="thread-actions">
         <button type="button" onClick={() => onOpenExternal(selectedPull.htmlUrl)}>
-          <ExternalLink size={16} /> GitHub fallback
+          <ExternalLink size={16} /> Open on GitHub
         </button>
         <button
           type="button"

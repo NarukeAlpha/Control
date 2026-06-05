@@ -438,8 +438,8 @@ function WorkflowRunList({
             <button
               className="pin-row-button"
               type="button"
-              aria-label={`Open workflow run ${run.displayTitle ?? run.name} GitHub fallback`}
-              title="GitHub fallback for workflow run"
+              aria-label={`Open workflow run ${run.displayTitle ?? run.name} on GitHub`}
+              title="Open workflow run on GitHub"
               onClick={() => onOpenExternal(run.htmlUrl)}
             >
               <ExternalLink size={15} />
@@ -808,7 +808,7 @@ function WorkflowFailureSummaryCard({
             }
           }}
         >
-          GitHub fallback
+          Open on GitHub
         </button>
       </div>
     </article>
@@ -1282,7 +1282,7 @@ function WorkflowAnnotationRow({
           }
         }}
       >
-        GitHub fallback
+        Open on GitHub
       </button>
     </div>
   );
@@ -1521,7 +1521,7 @@ function WorkflowRunActionsSection({
         Open commit in Control
       </button>
       <button type="button" onClick={() => onOpenExternal(selectedRun.htmlUrl)}>
-        <ExternalLink size={16} /> GitHub fallback
+        <ExternalLink size={16} /> Open on GitHub
       </button>
       <button
         type="button"

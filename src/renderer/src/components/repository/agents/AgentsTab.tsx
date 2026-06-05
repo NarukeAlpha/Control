@@ -221,7 +221,7 @@ export function AgentsTab({
                   Open in Control
                 </button>
                 <button type="button" onClick={() => onOpenExternal(`${repository.htmlUrl}${item.path}`)}>
-                  GitHub fallback
+                  Open on GitHub
                 </button>
               </div>
             </article>

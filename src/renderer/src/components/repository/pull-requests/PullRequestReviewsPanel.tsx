@@ -82,7 +82,7 @@ export function PullRequestReviewsPanel({
                 }
               }}
             >
-              GitHub fallback
+              Open on GitHub
             </button>
           </div>
         ))}

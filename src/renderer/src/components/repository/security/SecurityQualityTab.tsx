@@ -896,7 +896,7 @@ function BranchProtectionSurface({
           <ChevronDown size={14} />
         </label>
         <button type="button" onClick={onOpenBranchRulesFallback}>
-          <ExternalLink size={16} /> Branch rules fallback
+          <ExternalLink size={16} /> Open branch rules on GitHub
         </button>
         {branchesNote && <small className="action-disabled-note">{branchesNote}</small>}
       </div>
@@ -949,7 +949,7 @@ function BranchProtectionSurface({
             <X size={15} /> Delete protection
           </button>
           <button type="button" onClick={onOpenBranchRulesFallback}>
-            <ExternalLink size={15} /> GitHub fallback
+            <ExternalLink size={15} /> Open on GitHub
           </button>
         </div>
         {protection && (
@@ -1082,7 +1082,7 @@ function RepositorySecurityAdvisoryCard({
           title={advisory.htmlUrl ? undefined : "Advisory URL unavailable."}
           onClick={handleOpenFallback}
         >
-          <ExternalLink size={15} /> GitHub fallback
+          <ExternalLink size={15} /> Open on GitHub
         </button>
       </div>
     </article>
@@ -1162,7 +1162,7 @@ function DependabotAlertCard({
           title={alert.htmlUrl ? undefined : "Dependabot alert URL unavailable."}
           onClick={handleOpenFallback}
         >
-          <ExternalLink size={15} /> GitHub fallback
+          <ExternalLink size={15} /> Open on GitHub
         </button>
       </div>
       {manifestDisabledReason && <small className="action-disabled-note">{manifestDisabledReason}</small>}
@@ -1243,7 +1243,7 @@ function CodeScanningAlertCard({
           title={alert.htmlUrl ? undefined : "Code scanning alert URL unavailable."}
           onClick={handleOpenFallback}
         >
-          <ExternalLink size={15} /> GitHub fallback
+          <ExternalLink size={15} /> Open on GitHub
         </button>
       </div>
       {codePathDisabledReason && <small className="action-disabled-note">{codePathDisabledReason}</small>}
@@ -1330,7 +1330,7 @@ function SecretScanningAlertCard({
           title={alert.htmlUrl ? undefined : "Secret scanning alert URL unavailable."}
           onClick={handleOpenFallback}
         >
-          <ExternalLink size={15} /> GitHub fallback
+          <ExternalLink size={15} /> Open on GitHub
         </button>
       </div>
       {secretLocationDisabledReason && (
@@ -1445,7 +1445,7 @@ function RepositoryRulesetCard({
           title={ruleset.htmlUrl ? undefined : "Ruleset URL unavailable."}
           onClick={handleOpenFallback}
         >
-          <ExternalLink size={15} /> GitHub fallback
+          <ExternalLink size={15} /> Open on GitHub
         </button>
       </div>
     </article>
@@ -1527,7 +1527,7 @@ function RepositoryRulesetsSection({
           <ShieldCheck size={15} /> Create evaluate ruleset
         </button>
         <button type="button" onClick={onOpenRulesetsFallback}>
-          <ExternalLink size={15} /> Rulesets fallback
+          <ExternalLink size={15} /> Open rulesets on GitHub
         </button>
       </div>
       {!loading && !error && !availabilityMessage && rulesets.length === 0 && (
@@ -1735,14 +1735,14 @@ function SecurityPolicySection({
               title={policy.htmlUrl ? undefined : "Policy URL unavailable."}
               onClick={handleOpenPolicyFallback}
             >
-              <ExternalLink size={15} /> GitHub fallback
+              <ExternalLink size={15} /> Open on GitHub
             </button>
           </div>
         </article>
       )}
       <div className="table-action-row">
         <button type="button" onClick={onOpenSecurityPolicyFallback}>
-          <ExternalLink size={16} /> GitHub fallback
+          <ExternalLink size={16} /> Open on GitHub
         </button>
       </div>
     </section>
@@ -1792,7 +1792,7 @@ function CommunityProfileFileCard({
           title={file.htmlUrl ? undefined : "File URL unavailable."}
           onClick={handleOpenFallback}
         >
-          <ExternalLink size={15} /> GitHub fallback
+          <ExternalLink size={15} /> Open on GitHub
         </button>
       </div>
     </article>
@@ -1885,11 +1885,11 @@ function CommunityProfileSection({
       <div className="table-action-row">
         {profile?.documentationUrl && (
           <button type="button" onClick={handleOpenDocumentation}>
-            <ExternalLink size={16} /> GitHub fallback
+            <ExternalLink size={16} /> Open on GitHub
           </button>
         )}
         <button type="button" onClick={onOpenCommunityFallback}>
-          <ExternalLink size={16} /> GitHub fallback
+          <ExternalLink size={16} /> Open on GitHub
         </button>
       </div>
     </section>

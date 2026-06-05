@@ -829,11 +829,11 @@ test("navigates repository tabs from the repository route", async ({ page }) => 
   await expect(page.getByRole("heading", { name: "Compiler quality" })).toBeVisible();
   await expect(page.locator(".thread-detail")).toContainText("Managed in Control");
   await expect(page.locator(".thread-detail")).toContainText("Project items");
-  await expect(page.getByRole("button", { name: "Project GitHub fallback", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open project on GitHub", exact: true })).toBeVisible();
 
   await page.locator(".repo-tabs").getByRole("button", { name: /^Wiki/ }).click();
   await expect(page.getByRole("heading", { name: "Repository wiki" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /GitHub wiki fallback/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Open wiki on GitHub/i })).toBeVisible();
 
   await page
     .locator(".repo-tabs")

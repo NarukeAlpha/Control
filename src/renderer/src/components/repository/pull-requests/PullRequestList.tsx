@@ -74,8 +74,8 @@ function PullRequestListRow({
       <button
         className="pin-row-button"
         type="button"
-        aria-label={`Open pull request ${pull.number} GitHub fallback`}
-        title={`GitHub fallback for pull request #${pull.number}`}
+        aria-label={`Open pull request ${pull.number} on GitHub`}
+        title={`Open pull request #${pull.number} on GitHub`}
         onClick={() => onOpenExternal(pull.htmlUrl)}
       >
         <ExternalLink size={15} />

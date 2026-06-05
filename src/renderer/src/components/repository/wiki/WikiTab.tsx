@@ -285,7 +285,7 @@ function WikiPagePreview({
             title={pageFallbackDisabledReason ?? undefined}
             onClick={handleOpenSelectedPageFallback}
           >
-            <ExternalLink size={15} /> GitHub fallback
+            <ExternalLink size={15} /> Open on GitHub
           </button>
         </div>
       </header>
@@ -430,11 +430,7 @@ function WikiEditorForm({
           type="text"
           value={wikiPageTitle}
           disabled={wikiFormMode === "edit" || Boolean(formDisabledReason)}
-          title={
-            wikiFormMode === "edit"
-              ? "Rename wiki pages on GitHub fallback."
-              : (formDisabledReason ?? undefined)
-          }
+          title={wikiFormMode === "edit" ? "Rename wiki pages on GitHub." : (formDisabledReason ?? undefined)}
           onChange={handleTitleChange}
           placeholder="Home"
         />
@@ -503,8 +499,8 @@ function WikiFallbackTiles({
     <div className="tile-grid">
       <button className="project-tile" type="button" onClick={handleOpenWikiFallback}>
         <BookOpen size={20} />
-        <strong>GitHub wiki fallback</strong>
-        <small>Use the GitHub wiki fallback for {repository.nameWithOwner}.</small>
+        <strong>Open wiki on GitHub</strong>
+        <small>Open the repository wiki on GitHub for {repository.nameWithOwner}.</small>
       </button>
       <button
         className="project-tile"

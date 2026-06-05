@@ -86,7 +86,7 @@ export function PullRequestFilesPanel({
                 }
               }}
             >
-              GitHub fallback
+              Open on GitHub
             </button>
             <button
               type="button"

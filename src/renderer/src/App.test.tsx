@@ -885,7 +885,7 @@ describe("Control renderer routing", () => {
     expect(within(tabs).getByRole("button", { name: /^Operations$/ })).toBeDisabled();
   });
 
-  it("opens connected local repositories in GitHub Area and external GitHub fallback", async () => {
+  it("opens connected local repositories in GitHub Area and external GitHub link", async () => {
     const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
 
     useUiStore.setState({
@@ -1709,7 +1709,7 @@ describe("Control renderer routing", () => {
     expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument();
   });
 
-  it("opens repository tab and external fallback commands from the command palette", async () => {
+  it("opens repository tab and external GitHub commands from the command palette", async () => {
     const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
 
     useUiStore.setState({
@@ -1777,7 +1777,7 @@ describe("Control renderer routing", () => {
 
     await openCommandPalette();
     palette = await screen.findByRole("dialog", { name: "Command palette" });
-    await userEvent.type(within(palette).getByLabelText("Command palette search"), "external fallback");
+    await userEvent.type(within(palette).getByLabelText("Command palette search"), "external github");
     await userEvent.click(within(palette).getByRole("option", { name: /Open apple\/swift on GitHub/i }));
 
     expect(openExternal).toHaveBeenCalledWith("https://github.com/apple/swift");
@@ -1882,7 +1882,7 @@ describe("Control renderer routing", () => {
     expect(listRepositories).toHaveBeenCalledWith({ limit: 80, cacheOnly: true });
   });
 
-  it("renders repository settings in-app with GitHub as a fallback", async () => {
+  it("renders repository settings in-app with GitHub links", async () => {
     const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
     const updateSettings = vi.fn<ControlApi["updateSettings"]>(async (settings) => ({
       ...mockAppState.settings,
@@ -1921,12 +1921,12 @@ describe("Control renderer routing", () => {
       })
     );
 
-    await userEvent.click(screen.getAllByRole("button", { name: /Open GitHub fallback/i })[0]);
+    await userEvent.click(screen.getAllByRole("button", { name: /Open on GitHub/i })[0]);
 
     expect(openExternal).toHaveBeenCalledWith("https://github.com/apple/swift/settings");
   });
 
-  it("renders wiki availability in-app with explicit GitHub fallback", async () => {
+  it("renders wiki availability in-app with explicit Open on GitHub", async () => {
     const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
     useUiStore.setState({
       ...defaultUiState,
@@ -1937,16 +1937,16 @@ describe("Control renderer routing", () => {
 
     expect(await screen.findByRole("heading", { name: "Repository wiki" })).toBeInTheDocument();
     expect(screen.getByText("Wiki is available for this repository.")).toBeInTheDocument();
-    expect(screen.getByText("GitHub wiki fallback")).toBeInTheDocument();
+    expect(screen.getByText("Open wiki on GitHub")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: /GitHub wiki fallback/i }));
+    await userEvent.click(screen.getByRole("button", { name: /Open wiki on GitHub/i }));
     await userEvent.click(screen.getByRole("button", { name: /New wiki page on GitHub/i }));
 
     expect(openExternal).toHaveBeenCalledWith("https://github.com/apple/swift/wiki");
     expect(openExternal).toHaveBeenCalledWith("https://github.com/apple/swift/wiki/_new");
   });
 
-  it("labels the Agents tab as an in-app workflow collection with GitHub fallbacks", async () => {
+  it("labels the Agents tab as an in-app workflow collection with Open on GitHubs", async () => {
     const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
     useUiStore.setState({
       ...defaultUiState,
@@ -1971,7 +1971,7 @@ describe("Control renderer routing", () => {
     expect(agentIssuesTile).not.toBeNull();
 
     await userEvent.click(
-      within(agentIssuesTile as HTMLElement).getByRole("button", { name: /GitHub fallback/i })
+      within(agentIssuesTile as HTMLElement).getByRole("button", { name: /Open on GitHub/i })
     );
 
     expect(openExternal).toHaveBeenCalledWith(
@@ -2440,7 +2440,7 @@ describe("Control renderer routing", () => {
     expect(openExternal).not.toHaveBeenCalled();
   });
 
-  it("opens discussion and release notifications in-app with external fallback unused", async () => {
+  it("opens discussion and release notifications in-app with external github unused", async () => {
     const notifications = [
       {
         ...mockNotifications[0],
@@ -3281,7 +3281,7 @@ describe("Control renderer routing", () => {
     const appFileName = within(changedFilesPanel as HTMLElement).getByText("src/renderer/src/App.tsx");
     const appFileRow = appFileName.closest(".pr-file-row");
     expect(appFileRow).not.toBeNull();
-    await userEvent.click(within(appFileRow as HTMLElement).getByRole("button", { name: "GitHub fallback" }));
+    await userEvent.click(within(appFileRow as HTMLElement).getByRole("button", { name: "Open on GitHub" }));
 
     expect(openExternal).toHaveBeenCalledWith(`${mockPullRequests[0].htmlUrl}/files#diff-app`);
   });
@@ -3842,7 +3842,7 @@ describe("Control renderer routing", () => {
     );
   });
 
-  it("renders repository discussions in-app with filtering and external fallback", async () => {
+  it("renders repository discussions in-app with filtering and external github", async () => {
     const listDiscussionsWithStatus = vi.fn<GitHubTestApi["listDiscussionsWithStatus"]>(async () => ({
       items: mockDiscussions,
       availability: { status: "available", message: null }
@@ -3875,7 +3875,7 @@ describe("Control renderer routing", () => {
       .closest(".thread-detail");
     expect(selectedDiscussionPanel).not.toBeNull();
     await userEvent.click(
-      within(selectedDiscussionPanel as HTMLElement).getByRole("button", { name: "GitHub fallback" })
+      within(selectedDiscussionPanel as HTMLElement).getByRole("button", { name: "Open on GitHub" })
     );
 
     expect(openExternal).toHaveBeenCalledWith(mockDiscussions[1].htmlUrl);
@@ -3923,7 +3923,7 @@ describe("Control renderer routing", () => {
       expect.objectContaining({ owner: "apple", repo: "swift", limit: 20, cacheOnly: false })
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "Project GitHub fallback" }));
+    await userEvent.click(screen.getByRole("button", { name: "Open project on GitHub" }));
     expect(openExternal).toHaveBeenCalledWith(mockProjects[0].htmlUrl);
 
     const palette = await openCommandPalette();
@@ -4046,14 +4046,14 @@ describe("Control renderer routing", () => {
     const codeScanningSection = screen.getByRole("region", { name: "Code scanning alerts" });
     const secretScanningSection = screen.getByRole("region", { name: "Secret scanning alerts" });
 
-    await userEvent.click(within(dependabotSection).getByRole("button", { name: "GitHub fallback" }));
+    await userEvent.click(within(dependabotSection).getByRole("button", { name: "Open on GitHub" }));
     expect(openExternal).toHaveBeenCalledWith(mockDependabotAlerts[0].htmlUrl);
-    await userEvent.click(within(codeScanningSection).getByRole("button", { name: "GitHub fallback" }));
+    await userEvent.click(within(codeScanningSection).getByRole("button", { name: "Open on GitHub" }));
     expect(openExternal).toHaveBeenCalledWith(mockCodeScanningAlerts[0].htmlUrl);
-    await userEvent.click(within(secretScanningSection).getByRole("button", { name: "GitHub fallback" }));
+    await userEvent.click(within(secretScanningSection).getByRole("button", { name: "Open on GitHub" }));
     expect(openExternal).toHaveBeenCalledWith(mockSecretScanningAlerts[0].htmlUrl);
 
-    await userEvent.click(screen.getByRole("button", { name: "Branch rules fallback" }));
+    await userEvent.click(screen.getByRole("button", { name: "Open branch rules on GitHub" }));
 
     expect(openExternal).toHaveBeenCalledWith("https://github.com/apple/swift/settings/branches");
   });

@@ -702,7 +702,7 @@ function RepositoryPageLoadError({
         </button>
         {routeRepositoryName && (
           <button type="button" onClick={openRepositoryOnGitHub}>
-            <ExternalLink size={16} /> GitHub fallback
+            <ExternalLink size={16} /> Open on GitHub
           </button>
         )}
       </div>

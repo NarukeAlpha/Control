@@ -291,7 +291,7 @@ function ProjectsToolbar({
         <Plus size={16} /> New project
       </button>
       <button type="button" onClick={onOpenProjectsFallback}>
-        <ExternalLink size={16} /> GitHub fallback
+        <ExternalLink size={16} /> Open on GitHub
       </button>
     </div>
   );
@@ -350,9 +350,9 @@ function ProjectListRow({
       <button
         className="pin-row-button"
         type="button"
-        aria-label={`Open GitHub fallback for ${project.title}`}
+        aria-label={`Open ${project.title} on GitHub`}
         disabled={!project.htmlUrl}
-        title={project.htmlUrl ? `Open GitHub fallback for ${project.title}` : "Project URL unavailable."}
+        title={project.htmlUrl ? `Open ${project.title} on GitHub` : "Project URL unavailable."}
         onClick={handleOpenFallback}
       >
         <ExternalLink size={15} />
@@ -914,7 +914,7 @@ function ProjectDetailActions({
         title={projectExternalReason ?? undefined}
         onClick={handleOpenProjectFallback}
       >
-        <ExternalLink size={16} /> Project GitHub fallback
+        <ExternalLink size={16} /> Open project on GitHub
       </button>
       <button
         type="button"
@@ -922,7 +922,7 @@ function ProjectDetailActions({
         title={ownerExternalReason ?? undefined}
         onClick={handleOpenOwnerFallback}
       >
-        <ExternalLink size={16} /> Owner GitHub fallback
+        <ExternalLink size={16} /> Open owner on GitHub
       </button>
       {(projectExternalReason || ownerExternalReason) && (
         <small className="action-disabled-note">

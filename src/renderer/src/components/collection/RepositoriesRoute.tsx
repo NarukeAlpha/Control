@@ -195,8 +195,8 @@ function GitHubRepositoryRow({
         <button
           className="pin-row-button"
           type="button"
-          aria-label={`Open GitHub fallback for ${repository.name}`}
-          title={`Open GitHub fallback for ${repository.nameWithOwner}`}
+          aria-label={`Open ${repository.name} on GitHub`}
+          title={`Open ${repository.nameWithOwner} on GitHub`}
           onClick={openFallback}
         >
           <ExternalLink size={15} />
@@ -276,8 +276,8 @@ function LocalRepositoryRow({
           <button
             className="pin-row-button"
             type="button"
-            aria-label={`Open GitHub fallback for ${repository.displayName}`}
-            title={`Open GitHub fallback for ${connection.nameWithOwner}`}
+            aria-label={`Open ${repository.displayName} on GitHub`}
+            title={`Open ${connection.nameWithOwner} on GitHub`}
             onClick={openFallback}
           >
             <ExternalLink size={15} />

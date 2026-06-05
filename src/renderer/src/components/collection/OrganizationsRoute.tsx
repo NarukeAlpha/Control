@@ -33,7 +33,9 @@ import {
 } from "./organizationUi";
 import {
   maxProfileRepositoryLimit,
+  projectSectionAvailabilityMessage,
   readAvailabilityMessage,
+  readAvailabilityStatusLabel,
   repositoryCollectionMetadataParts
 } from "../repository/repositoryUi";
 import { useOrganizationRouteDerivedState } from "./useOrganizationRouteDerivedState";
@@ -339,6 +341,10 @@ function OrganizationProjectDetailPanel({
   project: ProjectSummary;
   onOpenExternal(url: string): void;
 }): JSX.Element {
+  const readmeAvailabilityMessage = projectSectionAvailabilityMessage(project, "readme", "Project README");
+  const itemsAvailabilityMessage = projectSectionAvailabilityMessage(project, "items", "Project items");
+  const fieldsAvailabilityMessage = projectSectionAvailabilityMessage(project, "fields", "Project fields");
+
   function openProject(): void {
     if (project.htmlUrl) {
       onOpenExternal(project.htmlUrl);
@@ -398,6 +404,7 @@ function OrganizationProjectDetailPanel({
           <span>{project.viewerCanUpdate ? "Viewer can update" : "Viewer read-only"}</span>
         )}
       </div>
+      {itemsAvailabilityMessage && <div className="error-state">{itemsAvailabilityMessage}</div>}
       <div className="muted-row">
         {textParts([
           project.createdAt ? `Created ${formatRelativeDate(project.createdAt)}` : null,
@@ -406,6 +413,7 @@ function OrganizationProjectDetailPanel({
         ])}
       </div>
       {project.shortDescription && <p className="project-description">{project.shortDescription}</p>}
+      {readmeAvailabilityMessage && <div className="error-state">{readmeAvailabilityMessage}</div>}
       {project.readme ? (
         <div className="project-readme-panel">
           <MarkdownBody
@@ -415,19 +423,20 @@ function OrganizationProjectDetailPanel({
           />
         </div>
       ) : (
-        <div className="empty-state">No project README returned.</div>
+        !readmeAvailabilityMessage && <div className="empty-state">No project README returned.</div>
       )}
+      {fieldsAvailabilityMessage && <div className="error-state">{fieldsAvailabilityMessage}</div>}
       <div className="project-field-list" aria-label="Organization project fields">
-        {project.fields.length > 0 ? (
-          project.fields.map((field) => (
-            <span className="state-chip" key={field.id}>
-              {field.name}
-              {field.dataType ? ` · ${field.dataType.toLowerCase().replaceAll("_", " ")}` : ""}
-            </span>
-          ))
-        ) : (
-          <span className="action-disabled-note">No project fields returned.</span>
-        )}
+        {project.fields.length > 0
+          ? project.fields.map((field) => (
+              <span className="state-chip" key={field.id}>
+                {field.name}
+                {field.dataType ? ` · ${field.dataType.toLowerCase().replaceAll("_", " ")}` : ""}
+              </span>
+            ))
+          : !fieldsAvailabilityMessage && (
+              <span className="action-disabled-note">No project fields returned.</span>
+            )}
       </div>
       <div className="thread-actions">
         {project.htmlUrl && (
@@ -931,6 +940,9 @@ function OrganizationProjectRow({
     .slice(0, 4)
     .map((field) => field.name)
     .join(", ");
+  const readmeStatus = readAvailabilityStatusLabel(project.sectionAvailability?.readme ?? null);
+  const itemsStatus = readAvailabilityStatusLabel(project.sectionAvailability?.items ?? null);
+  const fieldsStatus = readAvailabilityStatusLabel(project.sectionAvailability?.fields ?? null);
 
   function selectProject(): void {
     onSelectOrganizationProject(project);
@@ -977,6 +989,9 @@ function OrganizationProjectRow({
         <span className={`state-chip ${project.closed ? "" : "success"}`}>
           {project.closed ? "closed" : "open"}
         </span>
+        {readmeStatus && <span className="state-chip attention">README {readmeStatus}</span>}
+        {itemsStatus && <span className="state-chip attention">items {itemsStatus}</span>}
+        {fieldsStatus && <span className="state-chip attention">fields {fieldsStatus}</span>}
       </button>
       <button
         className="pin-row-button"

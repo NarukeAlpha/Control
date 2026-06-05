@@ -17,15 +17,16 @@ import { MarkdownBody, markdownProjectUrlContext } from "@renderer/components/Ma
 
 import {
   githubActionLabel,
+  projectSectionAvailabilityMessage,
   readAvailabilityMessage,
   repositoryMutationDisabledReason,
   repositoryPath
 } from "@renderer/components/repository/repositoryUi";
 
 import { formatCompactNumber, formatRelativeDate } from "@renderer/utils/format";
-import { allIssueStateFilter, useIssuesTabQueries } from "../issues/IssuesTab.queries";
+import { defaultIssueStateFilter, useIssuesTabQueries } from "../issues/IssuesTab.queries";
 import {
-  allPullRequestStateFilter,
+  defaultPullRequestStateFilter,
   usePullRequestsTabQueries
 } from "../pull-requests/PullRequestsTab.queries";
 import { useProjectsTabQueries } from "./ProjectsTab.queries";
@@ -548,19 +549,24 @@ function ProjectForm({
 }
 
 function ProjectFieldChips({ project }: { project: ProjectSummary }): JSX.Element {
+  const fieldsAvailabilityMessage = projectSectionAvailabilityMessage(project, "fields", "Project fields");
+
   return (
-    <div className="project-field-list" aria-label="Project fields">
-      {project.fields.length > 0 ? (
-        project.fields.map((field) => (
-          <span className="state-chip" key={field.id}>
-            {field.name}
-            {field.dataType ? ` · ${field.dataType.toLowerCase().replaceAll("_", " ")}` : ""}
-          </span>
-        ))
-      ) : (
-        <span className="action-disabled-note">No project fields returned.</span>
-      )}
-    </div>
+    <>
+      {fieldsAvailabilityMessage && <div className="error-state">{fieldsAvailabilityMessage}</div>}
+      <div className="project-field-list" aria-label="Project fields">
+        {project.fields.length > 0
+          ? project.fields.map((field) => (
+              <span className="state-chip" key={field.id}>
+                {field.name}
+                {field.dataType ? ` · ${field.dataType.toLowerCase().replaceAll("_", " ")}` : ""}
+              </span>
+            ))
+          : !fieldsAvailabilityMessage && (
+              <span className="action-disabled-note">No project fields returned.</span>
+            )}
+      </div>
+    </>
   );
 }
 
@@ -816,32 +822,33 @@ function ProjectItemsPanel({
   onOpenExternal(url: string): void;
   onSubmitField(itemId: string, fieldValue: ProjectItemFieldValueSummary): void;
 }): JSX.Element {
+  const itemsAvailabilityMessage = projectSectionAvailabilityMessage(project, "items", "Project items");
+
   return (
     <section className="workflow-detail-grid">
       <div>
         <h3>Project items</h3>
-        {project.items.length > 0 ? (
-          project.items.map((item) => (
-            <ProjectItemRow
-              deleteItemDisabledReason={deleteItemDisabledReason}
-              editValue={editValue}
-              fieldEditKey={fieldEditKey}
-              item={item}
-              key={item.id}
-              project={project}
-              projectActionPendingReason={projectActionPendingReason}
-              selectedProjectMutationDisabledReason={selectedProjectMutationDisabledReason}
-              onBeginEditingField={onBeginEditingField}
-              onCancelEditingField={onCancelEditingField}
-              onDeleteItem={onDeleteItem}
-              onEditValueChange={onEditValueChange}
-              onOpenExternal={onOpenExternal}
-              onSubmitField={onSubmitField}
-            />
-          ))
-        ) : (
-          <div className="empty-state">No project items returned.</div>
-        )}
+        {itemsAvailabilityMessage && <div className="error-state">{itemsAvailabilityMessage}</div>}
+        {project.items.length > 0
+          ? project.items.map((item) => (
+              <ProjectItemRow
+                deleteItemDisabledReason={deleteItemDisabledReason}
+                editValue={editValue}
+                fieldEditKey={fieldEditKey}
+                item={item}
+                key={item.id}
+                project={project}
+                projectActionPendingReason={projectActionPendingReason}
+                selectedProjectMutationDisabledReason={selectedProjectMutationDisabledReason}
+                onBeginEditingField={onBeginEditingField}
+                onCancelEditingField={onCancelEditingField}
+                onDeleteItem={onDeleteItem}
+                onEditValueChange={onEditValueChange}
+                onOpenExternal={onOpenExternal}
+                onSubmitField={onSubmitField}
+              />
+            ))
+          : !itemsAvailabilityMessage && <div className="empty-state">No project items returned.</div>}
         {project.itemsTruncated && (
           <small className="action-disabled-note">
             Showing the first {formatCompactNumber(project.items.length)} of{" "}
@@ -993,7 +1000,7 @@ function AddProjectItemForm({
       />
       {!projectItemOptionsRequested ? (
         <button type="button" onClick={onRequestProjectItemOptions}>
-          Load issue and pull request options
+          Load open issue and pull request options
         </button>
       ) : (
         <select
@@ -1003,7 +1010,7 @@ function AddProjectItemForm({
           onChange={handleProjectItemChange}
         >
           {projectItemOptions.length === 0 ? (
-            <option value="">No loaded issue or pull request node IDs</option>
+            <option value="">No open issue or pull request node IDs loaded</option>
           ) : (
             projectItemOptions.map((item) => (
               <option key={item.id} value={item.id}>
@@ -1101,6 +1108,7 @@ function ProjectDetail({
     submittedProjectAction !== null &&
     submittedProjectAction !== "addProjectV2Item" &&
     mutationAction === submittedProjectAction;
+  const readmeAvailabilityMessage = projectSectionAvailabilityMessage(project, "readme", "Project README");
 
   return (
     <>
@@ -1138,6 +1146,7 @@ function ProjectDetail({
         <span>Managed in Control</span>
       </div>
       {project.shortDescription && <p className="project-description">{project.shortDescription}</p>}
+      {readmeAvailabilityMessage && <div className="error-state">{readmeAvailabilityMessage}</div>}
       {project.readme ? (
         <div className="project-readme-panel">
           <MarkdownBody
@@ -1147,7 +1156,7 @@ function ProjectDetail({
           />
         </div>
       ) : (
-        <div className="empty-state">No project README returned.</div>
+        !readmeAvailabilityMessage && <div className="empty-state">No project README returned.</div>
       )}
       <ProjectFieldChips project={project} />
       <ProjectItemsPanel
@@ -1368,7 +1377,7 @@ function useProjectsTabModel({
   const { issues } = useIssuesTabQueries({
     owner: repository.owner,
     repo: repository.name,
-    issueState: allIssueStateFilter,
+    issueState: defaultIssueStateFilter,
     issueListLimit: 100,
     issuesEnabled: projectItemOptionsRequested,
     resourcesEnabled: false,
@@ -1377,7 +1386,7 @@ function useProjectsTabModel({
   const { pulls } = usePullRequestsTabQueries({
     owner: repository.owner,
     repo: repository.name,
-    pullState: allPullRequestStateFilter,
+    pullState: defaultPullRequestStateFilter,
     pullRequestListLimit: 100,
     pullsEnabled: projectItemOptionsRequested,
     resourcesEnabled: false,
@@ -1455,8 +1464,10 @@ function useProjectsTabModel({
     projectActionPendingReason ??
     selectedProjectMutationDisabledReason ??
     (!selectedProject ? "Select a project first." : null) ??
-    (!projectItemOptionsRequested ? "Load issue and pull request options before adding an item." : null) ??
-    (!selectedProjectItem ? "No loaded issue or pull request has a GitHub node ID." : null);
+    (!projectItemOptionsRequested
+      ? "Load open issue and pull request options before adding an item."
+      : null) ??
+    (!selectedProjectItem ? "No loaded open issue or pull request has a GitHub node ID." : null);
   const projectDeleteItemDisabledReason =
     projectActionPendingReason ??
     selectedProjectMutationDisabledReason ??

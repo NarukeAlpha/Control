@@ -1234,6 +1234,10 @@ export type GitHubReadAvailabilityStatus =
   | "offline"
   | "permission_denied"
   | "rate_limited"
+  | "not_found"
+  | "missing_field"
+  | "unsupported_field"
+  | "partial_data"
   | "graphql_error"
   | "error";
 
@@ -1522,6 +1526,13 @@ export interface ProjectSummary {
   fields: ProjectFieldSummary[];
   viewerCanUpdate: boolean | null;
   htmlUrl: string | null;
+  sectionAvailability?: ProjectSectionAvailability;
+}
+
+export interface ProjectSectionAvailability {
+  readme: GitHubReadAvailability;
+  items: GitHubReadAvailability;
+  fields: GitHubReadAvailability;
 }
 
 export interface ProjectItemSummary {

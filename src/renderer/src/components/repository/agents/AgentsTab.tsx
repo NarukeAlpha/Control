@@ -9,6 +9,7 @@ import {
   defaultPullRequestStateFilter,
   usePullRequestsTabQueries
 } from "../pull-requests/PullRequestsTab.queries";
+import { readAvailabilityMessage } from "../repositoryUi";
 import { isWorkflowRunAttention } from "../workflows/workflowRunState";
 
 type AgentSurfaceTab = "issues" | "pulls" | "actions";
@@ -93,9 +94,12 @@ export function AgentsTab({
   const issuesLoading = issues.isLoading || issues.isFetching;
   const pullsLoading = pulls.isLoading || pulls.isFetching;
   const actionsLoading = actions.isLoading || actions.isFetching;
-  const issuesError = issues.error;
-  const pullsError = pulls.error;
-  const actionsError = actions.error;
+  const issuesUnavailableMessage =
+    issues.error?.message ?? readAvailabilityMessage("Agent issues", issues.data?.availability ?? null);
+  const pullsUnavailableMessage =
+    pulls.error?.message ?? readAvailabilityMessage("Pull request queue", pulls.data?.availability ?? null);
+  const actionsUnavailableMessage =
+    actions.error?.message ?? readAvailabilityMessage("Automation runs", actions.data?.availability ?? null);
   const agentIssues = issueItems.filter(
     (issue) =>
       issue.state.toLowerCase() === "open" &&
@@ -126,10 +130,14 @@ export function AgentsTab({
       title: "Agent issues",
       description: "Open repository work labeled for agents.",
       count: agentIssues.length,
-      errored: Boolean(issuesError),
-      chip: issuesError ? "unavailable" : issuesLoading ? "loading" : `${agentIssues.length} open`,
-      detail: issuesError
-        ? `Agent issues unavailable: ${issuesError.message}`
+      errored: Boolean(issuesUnavailableMessage),
+      chip: issuesUnavailableMessage
+        ? "unavailable"
+        : issuesLoading
+          ? "loading"
+          : `${agentIssues.length} open`,
+      detail: issuesUnavailableMessage
+        ? `Agent issues unavailable: ${issuesUnavailableMessage}`
         : issuesLoading
           ? "Loading issue labels from the repository cache."
           : `${agentIssues.length} open issue${agentIssues.length === 1 ? "" : "s"} currently carries the agent label.`,
@@ -144,10 +152,14 @@ export function AgentsTab({
       title: "Automation runs",
       description: "Review workflow runs agents can act on.",
       count: automationRuns.length,
-      errored: Boolean(actionsError),
-      chip: actionsError ? "unavailable" : actionsLoading ? "loading" : `${automationRuns.length} attention`,
-      detail: actionsError
-        ? `Automation runs unavailable: ${actionsError.message}`
+      errored: Boolean(actionsUnavailableMessage),
+      chip: actionsUnavailableMessage
+        ? "unavailable"
+        : actionsLoading
+          ? "loading"
+          : `${automationRuns.length} attention`,
+      detail: actionsUnavailableMessage
+        ? `Automation runs unavailable: ${actionsUnavailableMessage}`
         : actionsLoading
           ? "Loading workflow run status from the repository cache."
           : `${automationRuns.length} run${automationRuns.length === 1 ? "" : "s"} failed, need action, or are still active.`,
@@ -162,10 +174,10 @@ export function AgentsTab({
       title: "Pull request queue",
       description: "Open pull requests that may need review or fixes.",
       count: openPulls.length,
-      errored: Boolean(pullsError),
-      chip: pullsError ? "unavailable" : pullsLoading ? "loading" : `${openPulls.length} open`,
-      detail: pullsError
-        ? `PR queue unavailable: ${pullsError.message}`
+      errored: Boolean(pullsUnavailableMessage),
+      chip: pullsUnavailableMessage ? "unavailable" : pullsLoading ? "loading" : `${openPulls.length} open`,
+      detail: pullsUnavailableMessage
+        ? `PR queue unavailable: ${pullsUnavailableMessage}`
         : pullsLoading
           ? "Loading pull request state from the repository cache."
           : `${openPulls.length} open pull request${openPulls.length === 1 ? "" : "s"} are in the queue.`,
@@ -183,10 +195,10 @@ export function AgentsTab({
       <div className="external-workflow-note">
         <span className="state-chip success">in-app first</span>
         <div>
-          <h2>Agent workflows open in Control</h2>
+          <h2>Agents</h2>
           <p>
-            Control routes common agent triage paths to the existing Issues, Actions, and Pull requests
-            surfaces. GitHub remains available for unsupported filtered views.
+            Control routes agent triage through Issues, Actions, and Pull requests today. Local agents and
+            local repository context can join this surface as those integrations land.
           </p>
         </div>
       </div>

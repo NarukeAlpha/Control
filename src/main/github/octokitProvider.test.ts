@@ -2135,7 +2135,7 @@ describe("OctokitProvider query scopes", () => {
 
     expect(result.items).toEqual([]);
     expect(result.availability).toEqual({
-      status: "graphql_error",
+      status: "not_found",
       message: "GraphQL failed while loading repository projects"
     });
   });

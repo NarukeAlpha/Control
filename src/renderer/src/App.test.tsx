@@ -1949,7 +1949,7 @@ describe("Control renderer routing", () => {
     expect(openExternal).toHaveBeenCalledWith("https://github.com/apple/swift/wiki/_new");
   });
 
-  it("labels the Agents tab as an in-app workflow collection with Open on GitHubs", async () => {
+  it("labels the Agents tab as an in-app triage collection with Open on GitHubs", async () => {
     const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
     useUiStore.setState({
       ...defaultUiState,
@@ -1962,12 +1962,10 @@ describe("Control renderer routing", () => {
       openExternal
     });
 
-    expect(
-      await screen.findByRole("heading", { name: "Agent workflows open in Control" })
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Agents" })).toBeInTheDocument();
     expect(screen.getByText("in-app first")).toBeInTheDocument();
     expect(
-      screen.getByText(/routes common agent triage paths to the existing Issues, Actions, and Pull requests/i)
+      screen.getByText(/routes agent triage through Issues, Actions, and Pull requests today/i)
     ).toBeInTheDocument();
 
     const agentIssuesTile = screen.getByText("Agent issues").closest("article");

@@ -2553,16 +2553,61 @@ p {
   font-family: var(--font-code-family);
 }
 
+.wiki-tab-surface {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.wiki-workspace {
+  display: grid;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  align-items: stretch;
+  gap: 14px;
+}
+
+.wiki-browser,
+.wiki-empty-browser {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid rgba(73, 94, 126, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.48);
+}
+
 .wiki-browser {
   display: grid;
   grid-template-columns: minmax(180px, 260px) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto auto;
   gap: 14px;
+  max-height: min(720px, calc(100vh - 260px));
+  padding: 12px;
 }
 
 .wiki-page-list {
   display: grid;
+  min-width: 0;
+  min-height: 0;
+  max-height: 100%;
+  grid-column: 1;
+  grid-row: 1;
   align-content: start;
   gap: 8px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.wiki-browser > .table-action-row,
+.wiki-browser > .muted-row {
+  grid-column: 1;
+}
+
+.wiki-empty-browser {
+  display: grid;
+  min-height: 340px;
+  place-items: center;
+  padding: 16px;
 }
 
 .wiki-page-list button {
@@ -2591,7 +2636,13 @@ p {
 }
 
 .wiki-page-preview {
+  display: grid;
   min-width: 0;
+  min-height: 0;
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
   border: 1px solid rgba(73, 94, 126, 0.12);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.58);
@@ -2607,7 +2658,112 @@ p {
 }
 
 .wiki-page-preview h3 {
+  min-width: 0;
+  overflow: hidden;
   margin: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wiki-page-preview .markdown-body-lite {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.wiki-side-panel {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: minmax(0, auto) auto minmax(22px, auto);
+  align-content: start;
+  gap: 14px;
+}
+
+.wiki-editor-form {
+  max-height: min(640px, calc(100vh - 260px));
+  overflow: auto;
+  border: 1px solid rgba(73, 94, 126, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.62);
+  padding: 14px;
+}
+
+.wiki-editor-form textarea {
+  min-height: 180px;
+  max-height: min(46vh, 420px);
+  overflow: auto;
+  resize: vertical;
+}
+
+.wiki-external-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.wiki-external-action {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 10px;
+  align-items: center;
+  border: 1px solid rgba(73, 94, 126, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.58);
+  color: #334963;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.wiki-external-action strong,
+.wiki-external-action small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wiki-external-action small {
+  grid-column: 2;
+  color: #60748c;
+}
+
+.wiki-copy-status {
+  min-height: 22px;
+}
+
+@media (max-width: 980px) {
+  .wiki-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .wiki-browser,
+  .wiki-empty-browser,
+  .wiki-editor-form {
+    max-height: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .wiki-browser {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto auto;
+  }
+
+  .wiki-page-list,
+  .wiki-browser > .table-action-row,
+  .wiki-browser > .muted-row,
+  .wiki-page-preview {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .wiki-page-list {
+    max-height: 260px;
+  }
+
+  .wiki-page-preview {
+    max-height: min(560px, calc(100vh - 220px));
+  }
 }
 
 .code-viewer pre {
@@ -3312,8 +3468,11 @@ p {
 }
 
 .markdown-body-lite {
+  max-width: 100%;
+  min-width: 0;
   color: #25364d;
   line-height: 1.58;
+  overflow-wrap: anywhere;
   padding: 13px 14px;
 }
 
@@ -3389,6 +3548,7 @@ p {
 .markdown-image {
   display: block;
   max-width: 100%;
+  height: auto;
   max-height: 320px;
   border: 1px solid var(--color-border);
   border-radius: 8px;
@@ -3397,6 +3557,7 @@ p {
 }
 
 .markdown-code-block {
+  max-width: 100%;
   overflow: auto;
   border: 1px solid rgba(73, 94, 126, 0.12);
   border-radius: 8px;
@@ -3428,7 +3589,10 @@ p {
 }
 
 .markdown-table {
+  display: block;
   width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
   border-collapse: collapse;
   font-size: 13px;
 }

@@ -115,6 +115,7 @@ function WikiStatusMessages({
   availabilityMessage,
   hasPages,
   hasWikiData,
+  selectedPageMessage,
   wikiError,
   wikiErrorMessage,
   wikiFeature,
@@ -123,6 +124,7 @@ function WikiStatusMessages({
   availabilityMessage: string | null;
   hasPages: boolean;
   hasWikiData: boolean;
+  selectedPageMessage: string | null;
   wikiError: unknown;
   wikiErrorMessage: string | null;
   wikiFeature: boolean | null;
@@ -133,6 +135,7 @@ function WikiStatusMessages({
       {wikiFeature !== false && wikiLoading && !hasPages && (
         <div className="loading-state">Loading wiki pages…</div>
       )}
+      {selectedPageMessage && <div className="muted-row">{selectedPageMessage}</div>}
       {wikiErrorMessage && <div className="error-state">{wikiErrorMessage}</div>}
       {availabilityMessage && <div className="error-state">{availabilityMessage}</div>}
       {wikiFeature === false && <div className="empty-state">Wiki is disabled for this repository.</div>}
@@ -285,7 +288,7 @@ function WikiPagePreview({
             title={pageFallbackDisabledReason ?? undefined}
             onClick={handleOpenSelectedPageFallback}
           >
-            <ExternalLink size={15} /> Open on GitHub
+            <ExternalLink size={15} /> Open wiki page on GitHub
           </button>
         </div>
       </header>
@@ -470,7 +473,7 @@ function WikiEditorForm({
   );
 }
 
-function WikiFallbackTiles({
+function WikiExternalActions({
   repository,
   wikiActionDisabledReason,
   wikiCloneUrl,
@@ -483,7 +486,7 @@ function WikiFallbackTiles({
   onCopyWikiCloneUrl(): Promise<void>;
   onOpenExternal(url: string): void;
 }): JSX.Element {
-  function handleOpenWikiFallback(): void {
+  function handleOpenWiki(): void {
     onOpenExternal(repositoryPath(repository, "/wiki"));
   }
 
@@ -496,14 +499,14 @@ function WikiFallbackTiles({
   }
 
   return (
-    <div className="tile-grid">
-      <button className="project-tile" type="button" onClick={handleOpenWikiFallback}>
+    <div className="wiki-external-actions">
+      <button className="wiki-external-action" type="button" onClick={handleOpenWiki}>
         <BookOpen size={20} />
         <strong>Open wiki on GitHub</strong>
         <small>Open the repository wiki on GitHub for {repository.nameWithOwner}.</small>
       </button>
       <button
-        className="project-tile"
+        className="wiki-external-action"
         type="button"
         disabled={Boolean(wikiActionDisabledReason)}
         title={wikiActionDisabledReason ?? undefined}
@@ -514,7 +517,7 @@ function WikiFallbackTiles({
         <small>Create or edit long-form repository documentation on GitHub.</small>
       </button>
       <button
-        className="project-tile"
+        className="wiki-external-action"
         type="button"
         disabled={Boolean(wikiActionDisabledReason)}
         title={wikiActionDisabledReason ?? undefined}
@@ -618,6 +621,10 @@ export function WikiTab({
   const wikiPageLimitHit = pages.length >= wikiPageLimit;
   const canExpandWikiPages = wikiPageLimitHit && wikiPageLimit < maxWikiPageLimit;
   const selectedPage = wiki.data?.selectedPage ?? null;
+  const selectedPageMessage =
+    focusedPagePath && wiki.data && selectedPage?.path !== focusedPagePath
+      ? `Selected wiki page ${focusedPagePath} is not loaded. Showing ${selectedPage?.title ?? "the first returned page"}.`
+      : null;
   const wikiMarkdownUrlContext = selectedPage
     ? markdownWikiUrlContext(repository, selectedPage.path, selectedPage.htmlUrl)
     : undefined;
@@ -715,7 +722,7 @@ export function WikiTab({
   }
 
   return (
-    <section className="repository-settings-panel">
+    <section className="repository-settings-panel wiki-tab-surface">
       <WikiSurfaceHeader
         availability={wiki.data?.availability ?? null}
         hasPages={pages.length > 0}
@@ -729,6 +736,7 @@ export function WikiTab({
         availabilityMessage={wikiAvailabilityMessage}
         hasPages={pages.length > 0}
         hasWikiData={Boolean(wiki.data)}
+        selectedPageMessage={selectedPageMessage}
         wikiError={wiki.error}
         wikiErrorMessage={wikiErrorMessage}
         wikiFeature={wikiFeature}
@@ -741,46 +749,56 @@ export function WikiTab({
         mutationSucceeded={mutationSucceeded}
         wikiMutationBusy={wikiMutationBusy}
       />
-      {pages.length > 0 && (
-        <WikiBrowser
-          canExpandWikiPages={canExpandWikiPages}
-          deleteDisabledReason={wikiDeleteDisabledReason}
-          editDisabledReason={wikiEditDisabledReason}
-          markdownUrlContext={wikiMarkdownUrlContext}
-          pages={pages}
-          selectedPage={selectedPage}
-          wikiPageLimitHit={wikiPageLimitHit}
-          onDeleteSelectedWikiPage={deleteSelectedWikiPage}
-          onExpandWikiPages={expandWikiPages}
-          onOpenExternal={onOpenExternal}
-          onSelectWikiPage={onSelectWikiPage}
-          onStartWikiEdit={startWikiEdit}
-        />
-      )}
-      <WikiEditorForm
-        deleteDisabledReason={wikiDeleteDisabledReason}
-        editDisabledReason={wikiEditDisabledReason}
-        formDisabledReason={wikiFormDisabledReason}
-        selectedPage={selectedPage}
-        submitDisabledReason={wikiSubmitDisabledReason}
-        wikiFormMode={wikiFormMode}
-        wikiPageContent={wikiPageContent}
-        wikiPageTitle={wikiPageTitle}
-        onDeleteSelectedWikiPage={deleteSelectedWikiPage}
-        onResetCreateForm={resetWikiCreateForm}
-        onStartWikiEdit={startWikiEdit}
-        onSubmitWikiForm={submitWikiForm}
-        onWikiPageContentChange={updateWikiPageContent}
-        onWikiPageTitleChange={updateWikiPageTitle}
-      />
-      <WikiFallbackTiles
-        repository={repository}
-        wikiActionDisabledReason={wikiActionDisabledReason}
-        wikiCloneUrl={wikiCloneUrl}
-        onCopyWikiCloneUrl={copyWikiCloneUrl}
-        onOpenExternal={onOpenExternal}
-      />
-      {copyStatus && <div className="muted-row">{copyStatus}</div>}
+      <div className="wiki-workspace">
+        {pages.length > 0 ? (
+          <WikiBrowser
+            canExpandWikiPages={canExpandWikiPages}
+            deleteDisabledReason={wikiDeleteDisabledReason}
+            editDisabledReason={wikiEditDisabledReason}
+            markdownUrlContext={wikiMarkdownUrlContext}
+            pages={pages}
+            selectedPage={selectedPage}
+            wikiPageLimitHit={wikiPageLimitHit}
+            onDeleteSelectedWikiPage={deleteSelectedWikiPage}
+            onExpandWikiPages={expandWikiPages}
+            onOpenExternal={onOpenExternal}
+            onSelectWikiPage={onSelectWikiPage}
+            onStartWikiEdit={startWikiEdit}
+          />
+        ) : (
+          <div className="wiki-empty-browser">
+            <div className="empty-state">Wiki pages will appear here when GitHub returns them.</div>
+          </div>
+        )}
+        <aside className="wiki-side-panel">
+          <WikiEditorForm
+            deleteDisabledReason={wikiDeleteDisabledReason}
+            editDisabledReason={wikiEditDisabledReason}
+            formDisabledReason={wikiFormDisabledReason}
+            selectedPage={selectedPage}
+            submitDisabledReason={wikiSubmitDisabledReason}
+            wikiFormMode={wikiFormMode}
+            wikiPageContent={wikiPageContent}
+            wikiPageTitle={wikiPageTitle}
+            onDeleteSelectedWikiPage={deleteSelectedWikiPage}
+            onResetCreateForm={resetWikiCreateForm}
+            onStartWikiEdit={startWikiEdit}
+            onSubmitWikiForm={submitWikiForm}
+            onWikiPageContentChange={updateWikiPageContent}
+            onWikiPageTitleChange={updateWikiPageTitle}
+          />
+          <WikiExternalActions
+            repository={repository}
+            wikiActionDisabledReason={wikiActionDisabledReason}
+            wikiCloneUrl={wikiCloneUrl}
+            onCopyWikiCloneUrl={copyWikiCloneUrl}
+            onOpenExternal={onOpenExternal}
+          />
+          <div className="muted-row wiki-copy-status" aria-live="polite">
+            {copyStatus}
+          </div>
+        </aside>
+      </div>
     </section>
   );
 }

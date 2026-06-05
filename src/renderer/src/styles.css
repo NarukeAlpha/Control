@@ -7460,6 +7460,31 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
     .local-context-banner,
     .local-connected-panel,
     .table-panel,
+    .file-table,
+    .readme-panel,
+    .code-viewer,
+    .ref-picker,
+    .code-browser-header,
+    .code-markdown-preview,
+    .binary-file-fallback,
+    .wiki-browser,
+    .wiki-empty-browser,
+    .wiki-page-preview,
+    .wiki-editor-form,
+    .wiki-external-action,
+    .settings-surface-header,
+    .settings-summary-grid > div,
+    .settings-list-grid section,
+    .repository-settings-form,
+    .repository-admin-section,
+    .settings-access-grid section,
+    .repository-tab-visibility-section,
+    .settings-network-section,
+    .project-readme-panel,
+    .pr-inspection article,
+    .workflow-summary,
+    .diff-summary,
+    .shortcut-item,
     .github-surface,
     .collection-view,
     .repository-content-scroll,
@@ -7497,7 +7522,12 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
     .workflow-artifact-row,
     .local-file-row,
     .code-row,
-    .file-row
+    .file-row,
+    .commit-row,
+    .repository-admin-row,
+    .access-list button,
+    .fork-network-row,
+    .wiki-page-list button
   ) {
   border-color: var(--color-border);
   background: var(--color-surface-row);
@@ -7516,6 +7546,15 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
     .compose-form input,
     .compose-form select,
     .compose-form textarea,
+    .repository-settings-form input,
+    .repository-settings-form select,
+    .repository-settings-form textarea,
+    .repository-admin-form input,
+    .repository-admin-form select,
+    .repository-admin-form textarea,
+    .timeline-edit-form textarea,
+    .comment-composer textarea,
+    .issue-metadata-controls input,
     .dark-action
   ) {
   border-color: var(--color-border);
@@ -7532,9 +7571,67 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
     .workflow-action-availability,
     .finder-meta,
     .workflow-check-output,
-    .workflow-step-list div
+    .workflow-step-list div,
+    .repo-title-block p,
+    .repo-title-line h1 span,
+    .fork-meta,
+    .readme-content p,
+    .binary-file-fallback,
+    .shortcut-item small,
+    .wiki-external-action small,
+    .settings-status-actions small,
+    .repository-settings-form label,
+    .repository-admin-form label,
+    .project-description,
+    .workflow-failure-item span,
+    .workflow-step-list div,
+    .rail-panel p,
+    .about-list,
+    .contributor-detail-copy p,
+    .repository-row-main small,
+    .organization-row-main small,
+    .mailbox-work-row-main small,
+    .notification-row-main small
   ) {
   color: var(--color-text-muted);
+}
+
+.app-shell[data-color-scheme="dark"]
+  :is(
+    .repo-title-line h1,
+    .repo-tabs button.active,
+    .readme-content h2,
+    .readme-panel header,
+    .code-browser-header h1,
+    .code-viewer-toolbar span,
+    .binary-file-fallback strong,
+    .issue-summary-header h2,
+    .thread-header h2,
+    .compose-form h2,
+    .timeline-card-header strong,
+    .discussion-detail-section h3,
+    .pr-inspection h3,
+    .pr-inspection-list button,
+    .pr-file-row,
+    .workflow-detail-grid h3,
+    .workflow-check-output strong,
+    .repository-settings-form label,
+    .repository-admin-form label,
+    .settings-summary-grid strong,
+    .settings-list-grid strong,
+    .repository-admin-row strong,
+    .access-list strong,
+    .fork-network-row strong,
+    .wiki-page-list button,
+    .wiki-page-preview h3,
+    .wiki-external-action strong,
+    .shortcut-item strong,
+    .repository-row-main strong,
+    .organization-row-main strong,
+    .mailbox-work-row-main strong,
+    .notification-row-main strong
+  ) {
+  color: var(--color-heading);
 }
 
 .app-shell[data-color-scheme="dark"] :is(.settings-error, .rail-error, .markdown-unsafe, .deletions) {
@@ -7556,6 +7653,168 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
   border-color: var(--color-border);
   background: var(--color-code-background);
   color: var(--color-code-text);
+}
+
+.app-shell[data-color-scheme="dark"] .repo-tabs {
+  border-color: var(--color-border);
+}
+
+.app-shell[data-color-scheme="dark"] .repo-tabs button {
+  border-color: var(--color-border);
+  background: var(--color-surface-control);
+  color: var(--color-text-muted);
+  box-shadow: inset 0 1px 0 var(--color-surface-highlight);
+}
+
+.app-shell[data-color-scheme="dark"] .repo-tabs button:hover {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface-control-hover);
+  color: var(--color-text);
+}
+
+.app-shell[data-color-scheme="dark"] .repo-tabs button.active {
+  border-color: var(--color-accent);
+  background: var(--color-surface-selected);
+  color: var(--color-heading);
+  box-shadow: inset 0 0 0 1px var(--color-accent);
+}
+
+.app-shell[data-color-scheme="dark"] .repo-tabs button span {
+  color: var(--color-text-muted);
+}
+
+.app-shell[data-color-scheme="dark"] .repo-icon {
+  border-color: var(--color-border);
+  background: var(--color-surface-control);
+  color: var(--color-heading);
+}
+
+.app-shell[data-color-scheme="dark"] .fork-banner {
+  border-color: var(--color-border);
+  background: var(--color-surface-control);
+  color: var(--color-text-muted);
+}
+
+.app-shell[data-color-scheme="dark"]
+  :is(
+    .repo-action-row button,
+    .secondary-button,
+    .code-toolbar button,
+    .collection-view button,
+    .ui-filter-bar-actions button,
+    .issue-row button,
+    .settings-inline-actions button,
+    .settings-panel footer button,
+    .readme-panel header button,
+    .code-viewer-actions button,
+    .thread-actions button,
+    .timeline-actions button,
+    .comment-composer button,
+    .table-action-row button,
+    .workflow-card-actions button,
+    .issue-metadata-controls button,
+    .pr-file-row button,
+    .pin-row-button,
+    .local-file-list button,
+    .workflow-detail-grid section button,
+    .workflow-failure-item button,
+    .workflow-job-card button,
+    .workflow-artifact-row button,
+    .workflow-annotation-row button,
+    .repository-admin-row button,
+    .repository-admin-actions button,
+    .fork-network-row button,
+    .settings-surface-header button
+  ) {
+  border-color: var(--color-border);
+  background: var(--color-surface-control);
+  color: var(--color-text);
+  box-shadow: inset 0 1px 0 var(--color-surface-highlight);
+}
+
+.app-shell[data-color-scheme="dark"]
+  :is(
+    .repo-action-row button:hover:not(:disabled),
+    .secondary-button:hover:not(:disabled),
+    .code-toolbar button:hover:not(:disabled),
+    .collection-view button:hover:not(:disabled),
+    .ui-filter-bar-actions button:hover:not(:disabled),
+    .settings-inline-actions button:hover:not(:disabled),
+    .settings-panel footer button:hover:not(:disabled),
+    .readme-panel header button:hover:not(:disabled),
+    .code-viewer-actions button:hover:not(:disabled),
+    .thread-actions button:hover:not(:disabled),
+    .timeline-actions button:hover:not(:disabled),
+    .comment-composer button:hover:not(:disabled),
+    .table-action-row button:hover:not(:disabled),
+    .workflow-card-actions button:hover:not(:disabled),
+    .issue-metadata-controls button:hover:not(:disabled),
+    .pr-file-row button:hover:not(:disabled),
+    .pin-row-button:hover:not(:disabled),
+    .local-file-list button:hover:not(:disabled),
+    .workflow-detail-grid section button:hover:not(:disabled),
+    .workflow-failure-item button:hover:not(:disabled),
+    .workflow-job-card button:hover:not(:disabled),
+    .workflow-artifact-row button:hover:not(:disabled),
+    .workflow-annotation-row button:hover:not(:disabled),
+    .repository-admin-row button:hover:not(:disabled),
+    .repository-admin-actions button:hover:not(:disabled),
+    .fork-network-row button:hover:not(:disabled),
+    .settings-surface-header button:hover:not(:disabled)
+  ) {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface-control-hover);
+}
+
+.app-shell[data-color-scheme="dark"]
+  :is(
+    .root-markdown-tabs,
+    .readme-panel header,
+    .timeline-card-header,
+    .wiki-page-preview header,
+    .table-action-row,
+    .thread-list,
+    .workflow-list-stack
+  ) {
+  border-color: var(--color-border);
+}
+
+.app-shell[data-color-scheme="dark"]
+  :is(.root-markdown-tabs button, .timeline-card-header, .markdown-table th) {
+  background: var(--color-surface-control);
+  color: var(--color-text);
+}
+
+.app-shell[data-color-scheme="dark"] .root-markdown-tabs button.active {
+  border-color: var(--color-accent);
+  background: var(--color-surface-selected);
+  color: var(--color-accent-strong);
+}
+
+.app-shell[data-color-scheme="dark"] .markdown-body-lite :where(h3, h4, h5, h6) {
+  color: var(--color-heading);
+}
+
+.app-shell[data-color-scheme="dark"] .markdown-link {
+  color: var(--color-accent-strong);
+}
+
+.app-shell[data-color-scheme="dark"] .markdown-reference {
+  background: var(--color-accent-muted);
+  color: var(--color-accent-strong);
+}
+
+.app-shell[data-color-scheme="dark"] :is(.code-viewer pre, .code-markdown-preview) {
+  background: var(--color-code-background);
+  color: var(--color-code-text);
+}
+
+.app-shell[data-color-scheme="dark"] :is(.code-source-line-number, .code-highlight-status) {
+  color: var(--color-text-muted);
+}
+
+.app-shell[data-color-scheme="dark"] :is(.release-row:hover, .contributor-row:hover) {
+  background: var(--color-surface-row-hover);
 }
 
 @media (max-width: 1180px) {

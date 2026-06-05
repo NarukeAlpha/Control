@@ -11,6 +11,10 @@
 
 ## Current Planning Index
 
+- `wip/control_implementation_planning_report.md` - source Pro planning report
+  for the repository UX, theme, local parity, and cache redesign iteration.
+- `wip/control-ux-implementation/` - per-area implementation plan set derived
+  from the source report, with one detailed markdown plan per major area.
 - `v2/azure-devops-provider.md` - future Azure DevOps provider architecture.
 
 ## Done Index

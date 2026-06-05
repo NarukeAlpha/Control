@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 
-import type { RepositoryDetail } from "@shared/github";
+import type { IssueStateFilter, RepositoryDetail } from "@shared/github";
 import { refreshCodeBrowserData } from "../components/code-browser/codeBrowserQueries";
 import { refreshActionsTabData } from "../components/repository/actions/ActionsTab.queries";
 import { refreshAgentsTabData } from "../components/repository/agents/AgentsTab.queries";
@@ -38,6 +38,7 @@ interface UseRepositoryRefreshActionsInput {
   repositoryContributorLimit: number;
   repositoryCommitHistoryLimit: number;
   fileCommitHistoryLimit: number;
+  issueState: IssueStateFilter;
   issueListLimit: number;
   pullRequestListLimit: number;
   discussionsLimit: number;
@@ -78,6 +79,7 @@ export function useRepositoryRefreshActions({
   repositoryContributorLimit,
   repositoryCommitHistoryLimit,
   fileCommitHistoryLimit,
+  issueState,
   issueListLimit,
   pullRequestListLimit,
   discussionsLimit,
@@ -167,6 +169,7 @@ export function useRepositoryRefreshActions({
       api,
       owner,
       repo,
+      issueState,
       issueListLimit,
       focusedIssueNumber: route.kind === "repository" ? (route.issueNumber ?? null) : null,
       githubReady

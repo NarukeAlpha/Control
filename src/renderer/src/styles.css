@@ -2937,6 +2937,10 @@ p {
   gap: 10px;
 }
 
+.issue-filter-bar {
+  margin: 10px 12px;
+}
+
 .surface-filter {
   display: inline-flex;
   flex: 1 1 260px;
@@ -3078,6 +3082,20 @@ p {
 
 .issue-detail-page {
   min-height: min(720px, calc(100vh - 232px));
+}
+
+.issue-detail-layout {
+  align-items: start;
+}
+
+.issue-timeline-column {
+  align-content: start;
+}
+
+.ui-rail-section .issue-metadata-controls {
+  border: 0;
+  background: transparent;
+  padding: 0;
 }
 
 .issue-summary-tile {

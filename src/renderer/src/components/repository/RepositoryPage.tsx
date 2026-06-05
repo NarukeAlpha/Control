@@ -7,6 +7,7 @@ import type {
   GitHubAction,
   GitHubMutationFields,
   IssueSummary,
+  IssueStateFilter,
   ProjectSummary,
   PullRequestCommitSummary,
   PullRequestLinkedIssueSummary,
@@ -38,6 +39,7 @@ import { CodeTab } from "./code/CodeTab";
 import { ContributorsTab } from "./contributors/ContributorsTab";
 import { DiscussionsTab } from "./discussions/DiscussionsTab";
 import { IssuesTab } from "./issues/IssuesTab";
+import { normalizeIssueStateFilter } from "./issues/IssuesTab.queries";
 import { ProjectsTab } from "./projects/ProjectsTab";
 import { PullRequestsTab } from "./pull-requests/PullRequestsTab";
 import { ReleasesTab } from "./releases/ReleasesTab";
@@ -331,6 +333,7 @@ interface RepositoryRouteModel {
   focusedSecurityItemKind: LocalRecentSecurityItemKind | null;
   focusedSecurityItemId: string | null;
   focusedWikiPagePath: string | null;
+  issueState: IssueStateFilter;
   issueFilter: string;
   pullFilter: string;
   workflowFilter: string;
@@ -456,6 +459,7 @@ function getRepositoryRouteModel(
     focusedSecurityItemKind: repositoryRoute?.securityItemKind ?? null,
     focusedSecurityItemId: repositoryRoute?.securityItemId ?? null,
     focusedWikiPagePath: repositoryRoute?.wikiPagePath ?? null,
+    issueState: normalizeIssueStateFilter(repositoryRoute?.issueState),
     issueFilter: repositoryRoute?.issueFilter ?? "",
     pullFilter: repositoryRoute?.pullFilter ?? "",
     workflowFilter: repositoryRoute?.workflowFilter ?? "",
@@ -1202,16 +1206,53 @@ function RepositoryIssuesTabSurface({
   onSelectIssue,
   onSelectTab
 }: RepositoryActiveTabSurfaceProps): JSX.Element {
+  const navigate = useUiStore((state) => state.navigate);
+
+  function issueRouteUpdate(
+    issueState: IssueStateFilter,
+    filter: string,
+    includeFocusedIssue: boolean
+  ): Extract<AppRoute, { kind: "repository" }> {
+    return {
+      kind: "repository",
+      nameWithOwner: routeModel.routeRepositoryName ?? repository.nameWithOwner,
+      tab: "issues",
+      issueState,
+      issueFilter: filter || undefined,
+      issueComposer: routeModel.issueComposer ?? undefined,
+      issueNumber: includeFocusedIssue ? (routeModel.focusedIssueNumber ?? undefined) : undefined
+    };
+  }
+
   function openIssueList(): void {
-    onSelectTab("issues");
+    if (!routeModel.routeRepositoryName) {
+      onSelectTab("issues");
+      return;
+    }
+    navigate(issueRouteUpdate(routeModel.issueState, routeModel.issueFilter, false));
+  }
+
+  function changeIssueState(issueState: IssueStateFilter, filter: string): void {
+    navigate(issueRouteUpdate(issueState, filter, true));
+  }
+
+  function openIssueDetail(issue: IssueSummary, issueState: IssueStateFilter, filter: string): void {
+    onSelectIssue(issue);
+    navigate({
+      ...issueRouteUpdate(issueState, filter, true),
+      issueNumber: issue.number
+    });
   }
 
   return (
     <IssuesTab
-      key={`issues-${routeModel.focusedIssueNumber ?? routeModel.issueComposer ?? (routeModel.issueFilter || "default")}`}
+      key={`issues-${routeModel.issueState}-${routeModel.focusedIssueNumber ?? "none"}-${
+        routeModel.issueComposer ?? "none"
+      }-${routeModel.issueFilter || "default"}`}
       repository={repository}
       githubReady={githubReady}
       issueListLimit={limits.issueListLimit}
+      issueState={routeModel.issueState}
       focusedIssueNumber={routeModel.focusedIssueNumber}
       initialFilter={routeModel.issueFilter}
       initialCreating={routeModel.issueComposer === "create"}
@@ -1221,8 +1262,9 @@ function RepositoryIssuesTabSurface({
       mutationError={mutation.error}
       onMutate={mutation.onMutate}
       onOpenExternal={onOpenExternal}
-      onSelectIssue={onSelectIssue}
       onOpenIssueList={openIssueList}
+      onOpenIssueDetail={openIssueDetail}
+      onIssueStateChange={changeIssueState}
       onExpandIssues={expansion.onExpandIssues}
     />
   );

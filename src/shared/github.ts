@@ -911,6 +911,8 @@ export interface IssueListInput extends RepoDetailInput {
   limit?: number;
 }
 
+export type IssueStateFilter = NonNullable<IssueListInput["state"]>;
+
 export type IssueListResult = GitHubListResult<IssueSummary>;
 
 export interface IssueDetailInput extends RepoDetailInput {

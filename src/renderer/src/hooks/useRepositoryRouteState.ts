@@ -6,7 +6,11 @@ import { useActionsTabQueries } from "../components/repository/actions/ActionsTa
 import { useCodeTabQueries } from "../components/repository/code/CodeTab.queries";
 import { useContributorsTabQueries } from "../components/repository/contributors/ContributorsTab.queries";
 import { useDiscussionsTabQueries } from "../components/repository/discussions/DiscussionsTab.queries";
-import { useIssuesTabQueries } from "../components/repository/issues/IssuesTab.queries";
+import {
+  defaultIssueStateFilter,
+  normalizeIssueStateFilter,
+  useIssuesTabQueries
+} from "../components/repository/issues/IssuesTab.queries";
 import { useProjectsTabQueries } from "../components/repository/projects/ProjectsTab.queries";
 import { usePullRequestsTabQueries } from "../components/repository/pull-requests/PullRequestsTab.queries";
 import { useReleasesTabQueries } from "../components/repository/releases/ReleasesTab.queries";
@@ -53,6 +57,9 @@ export function useRepositoryRouteState({
   const isLocalRepositoryRoute = route.kind === "localRepository";
   const isRepositoryContext = isRepositoryRoute || isCodeBrowserRoute;
   const activeRepositoryTab = isRepositoryRoute ? route.tab : "code";
+  const issueState = isRepositoryRoute
+    ? normalizeIssueStateFilter(route.issueState)
+    : defaultIssueStateFilter;
   const activeLocalRepositoryTab = isLocalRepositoryRoute ? route.tab : "overview";
   const activeLocalRepositoryPath = isLocalRepositoryRoute ? (route.path ?? ".") : ".";
   const effectiveRepository = isRepositoryContext ? route.nameWithOwner : (selectedRepository ?? "");
@@ -154,6 +161,7 @@ export function useRepositoryRouteState({
   useIssuesTabQueries({
     owner,
     repo,
+    issueState,
     issueListLimit: limits.issueListLimit,
     issuesEnabled: activeTabQueryEnabled("issues") || agentsTabQueryEnabled,
     resourcesEnabled: false,
@@ -210,6 +218,7 @@ export function useRepositoryRouteState({
     selectedRef: repositorySelectedRef,
     defaultBranch: repositoryDetail?.defaultBranch ?? null,
     commitHistoryLimit: limits.repositoryCommitHistoryLimit,
+    issueState,
     issueListLimit: limits.issueListLimit,
     pullRequestListLimit: limits.pullRequestListLimit,
     actionsLimit: limits.actionsLimit,
@@ -266,6 +275,7 @@ export function useRepositoryRouteState({
     repositoryContributorLimit: limits.repositoryContributorLimit,
     repositoryCommitHistoryLimit: limits.repositoryCommitHistoryLimit,
     fileCommitHistoryLimit: limits.fileCommitHistoryLimit,
+    issueState,
     issueListLimit: limits.issueListLimit,
     pullRequestListLimit: limits.pullRequestListLimit,
     discussionsLimit: limits.discussionsLimit,

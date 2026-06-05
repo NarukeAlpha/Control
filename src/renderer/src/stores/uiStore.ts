@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { IssueStateFilter } from "@shared/github";
 import type { LocalRecentSecurityItemKind } from "@shared/local";
 
 export type RepositoryTab =
@@ -53,6 +54,7 @@ export type AppRoute =
       securityItemKind?: LocalRecentSecurityItemKind;
       securityItemId?: string;
       wikiPagePath?: string;
+      issueState?: IssueStateFilter;
       issueFilter?: string;
       pullFilter?: string;
       workflowFilter?: string;

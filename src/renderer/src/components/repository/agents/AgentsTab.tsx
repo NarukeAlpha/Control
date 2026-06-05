@@ -4,7 +4,7 @@ import type { JSX } from "react";
 import type { IssueSummary, PullRequestSummary, RepositoryDetail, WorkflowRunSummary } from "@shared/github";
 import { formatRelativeDate } from "../../../utils/format";
 import { useActionsTabQueries } from "../actions/ActionsTab.queries";
-import { useIssuesTabQueries } from "../issues/IssuesTab.queries";
+import { defaultIssueStateFilter, useIssuesTabQueries } from "../issues/IssuesTab.queries";
 import { usePullRequestsTabQueries } from "../pull-requests/PullRequestsTab.queries";
 import { isWorkflowRunAttention } from "../workflows/workflowRunState";
 
@@ -60,6 +60,7 @@ export function AgentsTab({
   const { issues } = useIssuesTabQueries({
     owner: repository.owner,
     repo: repository.name,
+    issueState: defaultIssueStateFilter,
     issueListLimit,
     issuesEnabled: true,
     resourcesEnabled: false,

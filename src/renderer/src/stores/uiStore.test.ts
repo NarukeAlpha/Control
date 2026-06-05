@@ -58,7 +58,14 @@ describe("useUiStore route selection derivation", () => {
     { kind: "mailbox" },
     { kind: "repositories" },
     { kind: "organizations" },
-    { kind: "repository", nameWithOwner: "apple/swift", tab: "issues", issueNumber: 1200 },
+    {
+      kind: "repository",
+      nameWithOwner: "apple/swift",
+      tab: "issues",
+      issueNumber: 1200,
+      issueState: "closed",
+      issueFilter: "label:compiler"
+    },
     {
       kind: "codeBrowser",
       nameWithOwner: "apple/swift",

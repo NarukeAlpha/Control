@@ -23,7 +23,7 @@ import {
 } from "@renderer/components/repository/repositoryUi";
 
 import { formatCompactNumber, formatRelativeDate } from "@renderer/utils/format";
-import { useIssuesTabQueries } from "../issues/IssuesTab.queries";
+import { allIssueStateFilter, useIssuesTabQueries } from "../issues/IssuesTab.queries";
 import { usePullRequestsTabQueries } from "../pull-requests/PullRequestsTab.queries";
 import { useProjectsTabQueries } from "./ProjectsTab.queries";
 
@@ -1365,6 +1365,7 @@ function useProjectsTabModel({
   const { issues } = useIssuesTabQueries({
     owner: repository.owner,
     repo: repository.name,
+    issueState: allIssueStateFilter,
     issueListLimit: 100,
     issuesEnabled: projectItemOptionsRequested,
     resourcesEnabled: false,

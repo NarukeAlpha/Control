@@ -3,7 +3,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import type { ControlApi } from "@shared/ipc";
 
 import { actionsTabQueryKey } from "../actions/ActionsTab.queries";
-import { issuesTabQueryKey } from "../issues/IssuesTab.queries";
+import { defaultIssueStateFilter, issuesTabQueryKey } from "../issues/IssuesTab.queries";
 import { pullRequestsTabQueryKey } from "../pull-requests/PullRequestsTab.queries";
 
 export interface AgentsTabRefreshInput {
@@ -25,13 +25,13 @@ export async function refreshAgentsTabData(
   try {
     await Promise.all([
       queryClient.fetchQuery({
-        queryKey: issuesTabQueryKey(owner, repo, issueListLimit),
+        queryKey: issuesTabQueryKey(owner, repo, defaultIssueStateFilter, issueListLimit),
         staleTime: 0,
         queryFn: () =>
           api.github.listIssuesWithStatus({
             owner,
             repo,
-            state: "all",
+            state: defaultIssueStateFilter,
             limit: issueListLimit,
             cacheOnly: cachedRead,
             forceRefresh: !cachedRead

@@ -1321,8 +1321,11 @@ describe("Control renderer routing", () => {
     });
     renderControl({ ...makeApi(), recordRecentItem });
 
-    const issueMeta = await screen.findByText(/#1199 opened by swift-ci/i);
-    await userEvent.click(issueMeta.closest("button") as HTMLButtonElement);
+    const issueMeta = (await screen.findAllByText(/#1199 opened by swift-ci/i)).find((element) =>
+      element.closest(".thread-list-row-main")
+    );
+    expect(issueMeta).toBeTruthy();
+    await userEvent.click(issueMeta?.closest("button") as HTMLButtonElement);
     const issueSummary = await screen.findByRole("article", { name: "Issue 1199 summary" });
     await userEvent.click(within(issueSummary).getByRole("button", { name: "Open issue" }));
 
@@ -2968,7 +2971,7 @@ describe("Control renderer routing", () => {
       expect.objectContaining({
         owner: "apple",
         repo: "swift",
-        issueNumber: mockIssues[0].number,
+        issueNumber: mockIssues[1].number,
         cacheOnly: false
       })
     );

@@ -112,6 +112,39 @@ afterEach(() => {
 });
 
 describe("repository tab prefetch helpers", () => {
+  it("keys issue lists by repository, state, and limit", () => {
+    expect(issuesTabQueryKey(owner, repo, "open", 30)).toEqual(["issues", owner, repo, "open", 30]);
+    expect(issuesTabQueryKey(owner, repo, "open", 30)).not.toEqual(
+      issuesTabQueryKey(owner, repo, "closed", 30)
+    );
+  });
+
+  it("defaults issue prefetches to open issue state", async () => {
+    const queryClient = makeQueryClient();
+    const issuesResult = listResult<never>();
+    const listIssuesWithStatus = vi.fn<ControlApi["github"]["listIssuesWithStatus"]>(
+      async () => issuesResult
+    );
+    const api = makeApi({ listIssuesWithStatus });
+
+    await prefetchIssuesTabData(queryClient, {
+      api,
+      owner,
+      repo,
+      issueListLimit: 30,
+      githubReady: true
+    });
+
+    expect(listIssuesWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      state: "open",
+      limit: 30,
+      cacheOnly: false
+    });
+    expect(queryClient.getQueryData(issuesTabQueryKey(owner, repo, "open", 30))).toBe(issuesResult);
+  });
+
   it("prefetches code tab data without mounting CodeTab", async () => {
     const queryClient = makeQueryClient();
     const rootMarkdown = {
@@ -660,7 +693,7 @@ describe("repository tab prefetch helpers", () => {
     expect(listIssuesWithStatus).toHaveBeenCalledWith({
       owner,
       repo,
-      state: "all",
+      state: "open",
       limit: 30,
       cacheOnly: false,
       forceRefresh: true
@@ -680,7 +713,7 @@ describe("repository tab prefetch helpers", () => {
       cacheOnly: false,
       forceRefresh: true
     });
-    expect(queryClient.getQueryData(issuesTabQueryKey(owner, repo, 30))).toBeDefined();
+    expect(queryClient.getQueryData(issuesTabQueryKey(owner, repo, "open", 30))).toBeDefined();
     expect(queryClient.getQueryData(pullRequestsTabQueryKey(owner, repo, 40))).toBeDefined();
     expect(queryClient.getQueryData(actionsTabQueryKey(owner, repo, 48))).toBeDefined();
   });
@@ -920,6 +953,7 @@ describe("repository tab prefetch helpers", () => {
       api,
       owner,
       repo,
+      issueState: "closed",
       issueListLimit: 30,
       githubReady: false
     });
@@ -927,7 +961,7 @@ describe("repository tab prefetch helpers", () => {
     expect(listIssuesWithStatus).toHaveBeenCalledWith({
       owner,
       repo,
-      state: "all",
+      state: "closed",
       limit: 30,
       cacheOnly: true
     });
@@ -950,7 +984,7 @@ describe("repository tab prefetch helpers", () => {
       limit: 100,
       cacheOnly: true
     });
-    expect(queryClient.getQueryData(issuesTabQueryKey(owner, repo, 30))).toBe(issuesResult);
+    expect(queryClient.getQueryData(issuesTabQueryKey(owner, repo, "closed", 30))).toBe(issuesResult);
     expect(queryClient.getQueryData(repositoryLabelsQueryKey(owner, repo))).toBe(labelsResult);
     expect(queryClient.getQueryData(repositoryAssignableUsersQueryKey(owner, repo))).toBe(
       assignableUsersResult
@@ -1054,6 +1088,7 @@ describe("repository tab prefetch helpers", () => {
       api,
       owner,
       repo,
+      issueState: "closed",
       issueListLimit: 30,
       focusedIssueNumber: 7,
       githubReady: false
@@ -1062,7 +1097,7 @@ describe("repository tab prefetch helpers", () => {
     expect(listIssuesWithStatus).toHaveBeenCalledWith({
       owner,
       repo,
-      state: "all",
+      state: "closed",
       limit: 30,
       cacheOnly: true,
       forceRefresh: false
@@ -1096,7 +1131,7 @@ describe("repository tab prefetch helpers", () => {
       cacheOnly: true,
       forceRefresh: false
     });
-    expect(queryClient.getQueryData(issuesTabQueryKey(owner, repo, 30))).toBeDefined();
+    expect(queryClient.getQueryData(issuesTabQueryKey(owner, repo, "closed", 30))).toBeDefined();
     expect(queryClient.getQueryData(repositoryLabelsQueryKey(owner, repo))).toBeDefined();
     expect(queryClient.getQueryData(repositoryAssignableUsersQueryKey(owner, repo))).toBeDefined();
     expect(queryClient.getQueryData(repositoryMilestonesQueryKey(owner, repo))).toBeDefined();

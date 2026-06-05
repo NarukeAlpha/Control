@@ -1,6 +1,6 @@
 import { useQuery, type QueryClient } from "@tanstack/react-query";
 
-import type { IssueDetailResult, IssueListResult } from "@shared/github";
+import type { IssueDetailResult, IssueListResult, IssueStateFilter } from "@shared/github";
 import type { ControlApi } from "@shared/ipc";
 
 import { issueDetailQueryKey } from "@renderer/components/repository/issues/useIssueDetail";
@@ -16,6 +16,7 @@ import {
 export interface IssuesTabQueryInput {
   owner: string;
   repo: string;
+  issueState?: IssueStateFilter;
   issueListLimit: number;
   issuesEnabled: boolean;
   resourcesEnabled: boolean;
@@ -26,6 +27,7 @@ export interface IssuesTabPrefetchInput {
   api: ControlApi;
   owner: string;
   repo: string;
+  issueState?: IssueStateFilter;
   issueListLimit: number;
   githubReady: boolean;
 }
@@ -34,30 +36,40 @@ export interface IssuesTabRefreshInput extends IssuesTabPrefetchInput {
   focusedIssueNumber: number | null;
 }
 
+export const defaultIssueStateFilter: IssueStateFilter = "open";
+export const allIssueStateFilter: IssueStateFilter = "all";
+
+export function normalizeIssueStateFilter(issueState?: IssueStateFilter): IssueStateFilter {
+  return issueState ?? defaultIssueStateFilter;
+}
+
 export function issuesTabQueryKey(
   owner: string,
   repo: string,
+  issueState: IssueStateFilter,
   issueListLimit: number
-): readonly ["issues", string, string, number] {
-  return ["issues", owner, repo, issueListLimit] as const;
+): readonly ["issues", string, string, IssueStateFilter, number] {
+  return ["issues", owner, repo, issueState, issueListLimit] as const;
 }
 
 export function useIssuesTabQueries({
   owner,
   repo,
+  issueState,
   issueListLimit,
   issuesEnabled,
   resourcesEnabled,
   githubReady
 }: IssuesTabQueryInput) {
   const api = useControlApi();
+  const normalizedIssueState = normalizeIssueStateFilter(issueState);
   const issues = useQuery<IssueListResult>({
-    queryKey: issuesTabQueryKey(owner, repo, issueListLimit),
+    queryKey: issuesTabQueryKey(owner, repo, normalizedIssueState, issueListLimit),
     queryFn: () =>
       api.github.listIssuesWithStatus({
         owner,
         repo,
-        state: "all",
+        state: normalizedIssueState,
         limit: issueListLimit,
         cacheOnly: !githubReady
       }),
@@ -71,16 +83,17 @@ export function useIssuesTabQueries({
 
 export async function prefetchIssuesTabData(
   queryClient: QueryClient,
-  { api, owner, repo, issueListLimit, githubReady }: IssuesTabPrefetchInput
+  { api, owner, repo, issueState, issueListLimit, githubReady }: IssuesTabPrefetchInput
 ): Promise<void> {
+  const normalizedIssueState = normalizeIssueStateFilter(issueState);
   await Promise.all([
     queryClient.prefetchQuery({
-      queryKey: issuesTabQueryKey(owner, repo, issueListLimit),
+      queryKey: issuesTabQueryKey(owner, repo, normalizedIssueState, issueListLimit),
       queryFn: () =>
         api.github.listIssuesWithStatus({
           owner,
           repo,
-          state: "all",
+          state: normalizedIssueState,
           limit: issueListLimit,
           cacheOnly: !githubReady
         }),
@@ -114,18 +127,19 @@ export async function prefetchIssuesTabData(
 
 export async function refreshIssuesTabData(
   queryClient: QueryClient,
-  { api, owner, repo, issueListLimit, focusedIssueNumber, githubReady }: IssuesTabRefreshInput
+  { api, owner, repo, issueState, issueListLimit, focusedIssueNumber, githubReady }: IssuesTabRefreshInput
 ): Promise<void> {
+  const normalizedIssueState = normalizeIssueStateFilter(issueState);
   const cachedRead = !githubReady;
   const refreshes: Array<Promise<unknown>> = [
     queryClient.fetchQuery({
-      queryKey: issuesTabQueryKey(owner, repo, issueListLimit),
+      queryKey: issuesTabQueryKey(owner, repo, normalizedIssueState, issueListLimit),
       staleTime: 0,
       queryFn: () =>
         api.github.listIssuesWithStatus({
           owner,
           repo,
-          state: "all",
+          state: normalizedIssueState,
           limit: issueListLimit,
           cacheOnly: cachedRead,
           forceRefresh: !cachedRead

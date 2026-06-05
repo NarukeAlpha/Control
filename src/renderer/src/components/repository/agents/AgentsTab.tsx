@@ -82,7 +82,9 @@ export function AgentsTab({
     owner: repository.owner,
     repo: repository.name,
     limit: actionsLimit,
+    workflowDefinitionLimit: 0,
     enabled: true,
+    workflowsEnabled: false,
     githubReady
   });
   const issueItems = issues.data?.items ?? [];

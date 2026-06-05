@@ -3068,6 +3068,22 @@ p {
   border-right: 1px solid rgba(85, 105, 135, 0.11);
 }
 
+.workflow-list-stack {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  overflow: auto;
+  border-right: 1px solid rgba(85, 105, 135, 0.11);
+  padding: 12px;
+}
+
+.workflow-list-stack > .thread-list {
+  display: grid;
+  gap: 8px;
+  overflow: visible;
+  border-right: 0;
+}
+
 .thread-detail {
   display: grid;
   align-content: start;
@@ -5648,6 +5664,68 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 .fork-network-row small {
   color: var(--color-text-muted);
   font-size: 12px;
+}
+
+.workflow-catalog {
+  display: grid;
+  gap: 8px;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 12px;
+}
+
+.workflow-catalog header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.workflow-catalog-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-surface-row) 78%, transparent);
+  color: inherit;
+  padding: 10px;
+  text-align: left;
+}
+
+.workflow-catalog > button.workflow-catalog-row {
+  width: 100%;
+}
+
+.workflow-catalog-row > button:first-child {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  text-align: left;
+}
+
+.workflow-catalog-row:is(:hover, .active) {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface-selected);
+}
+
+.workflow-catalog-row strong,
+.workflow-catalog-row small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow-catalog-row small {
+  color: var(--color-text-muted);
 }
 
 .workflow-detail-grid {

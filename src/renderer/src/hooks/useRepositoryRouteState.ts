@@ -214,7 +214,10 @@ export function useRepositoryRouteState({
     owner,
     repo,
     limit: limits.actionsLimit,
+    workflowRef: repositorySelectedRef ?? repositoryDetail?.defaultBranch ?? null,
+    workflowDefinitionLimit: limits.workflowDefinitionLimit,
     enabled: activeTabQueryEnabled("actions") || agentsTabQueryEnabled,
+    workflowsEnabled: activeTabQueryEnabled("actions"),
     githubReady
   }).actions;
 
@@ -231,6 +234,8 @@ export function useRepositoryRouteState({
     pullState,
     pullRequestListLimit: limits.pullRequestListLimit,
     actionsLimit: limits.actionsLimit,
+    workflowRef: repositorySelectedRef ?? repositoryDetail?.defaultBranch ?? null,
+    workflowDefinitionLimit: limits.workflowDefinitionLimit,
     githubReady
   });
 

@@ -21,6 +21,8 @@ interface UseRepositoryWarmPrefetchInput {
   pullState: PullRequestStateFilter;
   pullRequestListLimit: number;
   actionsLimit: number;
+  workflowRef: string | null;
+  workflowDefinitionLimit: number;
   githubReady: boolean;
 }
 
@@ -37,6 +39,8 @@ export function useRepositoryWarmPrefetch({
   pullState,
   pullRequestListLimit,
   actionsLimit,
+  workflowRef,
+  workflowDefinitionLimit,
   githubReady
 }: UseRepositoryWarmPrefetchInput): void {
   const api = useControlApi();
@@ -79,6 +83,8 @@ export function useRepositoryWarmPrefetch({
         owner,
         repo,
         limit: actionsLimit,
+        workflowRef,
+        workflowDefinitionLimit,
         githubReady
       })
     ]).catch(() => {
@@ -99,6 +105,8 @@ export function useRepositoryWarmPrefetch({
     pullRequestListLimit,
     queryClient,
     repo,
-    selectedRef
+    selectedRef,
+    workflowDefinitionLimit,
+    workflowRef
   ]);
 }

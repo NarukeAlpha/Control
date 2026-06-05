@@ -58,6 +58,7 @@ export type AppRoute =
       issueFilter?: string;
       pullState?: PullRequestStateFilter;
       pullFilter?: string;
+      workflowId?: string;
       workflowFilter?: string;
       issueComposer?: "create";
       pullComposer?: "create";

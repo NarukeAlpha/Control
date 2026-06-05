@@ -75,6 +75,14 @@ describe("useUiStore route selection derivation", () => {
       pullFilter: "author:swift-ci"
     },
     {
+      kind: "repository",
+      nameWithOwner: "apple/swift",
+      tab: "actions",
+      workflowId: ".github/workflows/ci.yml",
+      workflowRunId: 9000,
+      workflowFilter: "attention"
+    },
+    {
       kind: "codeBrowser",
       nameWithOwner: "apple/swift",
       path: "README.md",

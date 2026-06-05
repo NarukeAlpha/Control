@@ -364,15 +364,23 @@ describe("repository tab prefetch helpers", () => {
 
   it("prefetches actions data without mounting ActionsTab", async () => {
     const queryClient = makeQueryClient();
-    const result = listResult<never>();
-    const listActionsWithStatus = vi.fn<ControlApi["github"]["listActionsWithStatus"]>(async () => result);
-    const api = makeApi({ listActionsWithStatus });
+    const actionsResult = listResult<never>();
+    const workflowsResult = listResult<never>();
+    const listActionsWithStatus = vi.fn<ControlApi["github"]["listActionsWithStatus"]>(
+      async () => actionsResult
+    );
+    const listWorkflowsWithStatus = vi.fn<ControlApi["github"]["listWorkflowsWithStatus"]>(
+      async () => workflowsResult
+    );
+    const api = makeApi({ listActionsWithStatus, listWorkflowsWithStatus });
 
     await prefetchActionsTabData(queryClient, {
       api,
       owner,
       repo,
       limit: 48,
+      workflowRef: "main",
+      workflowDefinitionLimit: 24,
       githubReady: false
     });
 
@@ -382,7 +390,17 @@ describe("repository tab prefetch helpers", () => {
       limit: 48,
       cacheOnly: true
     });
-    expect(queryClient.getQueryData(actionsTabQueryKey(owner, repo, 48))).toBe(result);
+    expect(listWorkflowsWithStatus).toHaveBeenCalledWith({
+      owner,
+      repo,
+      ref: "main",
+      limit: 24,
+      cacheOnly: true
+    });
+    expect(queryClient.getQueryData(actionsTabQueryKey(owner, repo, 48))).toBe(actionsResult);
+    expect(queryClient.getQueryData(workflowDefinitionsQueryKey(owner, repo, "main", 24))).toBe(
+      workflowsResult
+    );
   });
 
   it("refreshes code tab data and refs with forced online reads", async () => {

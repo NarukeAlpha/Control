@@ -332,6 +332,7 @@ interface RepositoryRouteModel {
   focusedSettingsCollaboratorLogin: string | null;
   focusedWorkflowRunId: number | null;
   focusedWorkflowArtifactId: number | null;
+  focusedWorkflowId: string | null;
   focusedSecurityItemKind: LocalRecentSecurityItemKind | null;
   focusedSecurityItemId: string | null;
   focusedWikiPagePath: string | null;
@@ -459,6 +460,7 @@ function getRepositoryRouteModel(
     focusedSettingsCollaboratorLogin: repositoryRoute?.settingsCollaboratorLogin ?? null,
     focusedWorkflowRunId: repositoryRoute?.workflowRunId ?? null,
     focusedWorkflowArtifactId: repositoryRoute?.workflowArtifactId ?? null,
+    focusedWorkflowId: repositoryRoute?.workflowId ?? null,
     focusedSecurityItemKind: repositoryRoute?.securityItemKind ?? null,
     focusedSecurityItemId: repositoryRoute?.securityItemId ?? null,
     focusedWikiPagePath: repositoryRoute?.wikiPagePath ?? null,
@@ -1483,6 +1485,38 @@ function RepositoryActionsTabSurface({
   onSelectWorkflowRun,
   onSelectWorkflowArtifact
 }: RepositoryActiveTabSurfaceProps): JSX.Element {
+  const navigate = useUiStore((state) => state.navigate);
+
+  function workflowRouteUpdate(
+    workflowId: string | null,
+    filter: string,
+    includeFocusedRun: boolean
+  ): Extract<AppRoute, { kind: "repository" }> {
+    return {
+      kind: "repository",
+      nameWithOwner: routeModel.routeRepositoryName ?? repository.nameWithOwner,
+      tab: "actions",
+      workflowId: workflowId ?? undefined,
+      workflowFilter: filter || undefined,
+      workflowComposer: routeModel.workflowComposer ?? undefined,
+      workflowRunId: includeFocusedRun ? (routeModel.focusedWorkflowRunId ?? undefined) : undefined,
+      workflowArtifactId: includeFocusedRun ? (routeModel.focusedWorkflowArtifactId ?? undefined) : undefined
+    };
+  }
+
+  function selectWorkflow(workflowId: string | null, filter: string): void {
+    navigate(workflowRouteUpdate(workflowId, filter, false));
+  }
+
+  function openWorkflowRunDetail(run: WorkflowRunSummary, workflowId: string | null, filter: string): void {
+    onSelectWorkflowRun(run);
+    navigate({
+      ...workflowRouteUpdate(workflowId, filter, true),
+      workflowRunId: run.id,
+      workflowArtifactId: undefined
+    });
+  }
+
   function openActionsCodePath(
     path: string,
     ref: string | null,
@@ -1497,6 +1531,7 @@ function RepositoryActionsTabSurface({
     <ActionsTab
       key={`actions-${
         routeModel.focusedWorkflowRunId ??
+        routeModel.focusedWorkflowId ??
         routeModel.workflowComposer ??
         (routeModel.workflowFilter || "default")
       }-${routeModel.focusedWorkflowArtifactId ?? "artifact-default"}`}
@@ -1506,6 +1541,7 @@ function RepositoryActionsTabSurface({
       refListLimit={limits.refListLimit}
       actionsLimit={limits.actionsLimit}
       workflowDefinitionLimit={limits.workflowDefinitionLimit}
+      focusedWorkflowId={routeModel.focusedWorkflowId}
       focusedWorkflowRunId={routeModel.focusedWorkflowRunId}
       focusedWorkflowArtifactId={routeModel.focusedWorkflowArtifactId}
       initialFilter={routeModel.workflowFilter}
@@ -1519,7 +1555,8 @@ function RepositoryActionsTabSurface({
       onOpenWorkflowRunCommit={onOpenWorkflowRunCommit}
       onOpenWorkflowCheckSuiteCommit={onOpenWorkflowCheckSuiteCommit}
       onOpenCodePath={openActionsCodePath}
-      onSelectWorkflowRun={onSelectWorkflowRun}
+      onSelectWorkflow={selectWorkflow}
+      onOpenWorkflowRunDetail={openWorkflowRunDetail}
       onSelectWorkflowArtifact={onSelectWorkflowArtifact}
       onExpandActions={expansion.onExpandActions}
       onExpandWorkflowDefinitions={expansion.onExpandWorkflowDefinitions}

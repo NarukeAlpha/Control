@@ -626,7 +626,7 @@ body:not(.no-liquid-glass) .code-toolbar {
   left: 0;
   right: 0;
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) 40px;
+  grid-template-columns: 24px minmax(0, 1fr) minmax(42px, auto);
   align-items: center;
   gap: 10px;
   height: 50px;
@@ -676,8 +676,33 @@ body:not(.no-liquid-glass) .code-toolbar {
   font-weight: 700;
 }
 
-.repo-source {
+.repo-source-stack {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
   justify-self: end;
+  gap: 5px;
+  color: var(--color-text-muted);
+}
+
+.repo-source-stack svg {
+  flex: 0 0 auto;
+}
+
+.repo-source {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 20px;
+  overflow: hidden;
+  align-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface-control);
+  padding: 1px 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .repo-item.selected {
@@ -3915,6 +3940,7 @@ p {
   padding: 8px 10px 8px 14px;
 }
 
+.collection-row,
 .repository-row,
 .organization-row,
 .mailbox-work-row,
@@ -3924,12 +3950,18 @@ p {
   min-width: 0;
 }
 
+.collection-row:hover,
 .repository-row:hover,
 .organization-row:hover,
 .mailbox-work-row:hover,
 .notification-row:hover {
   border-color: rgba(37, 99, 235, 0.22);
   background: rgba(255, 255, 255, 0.9);
+}
+
+.collection-row.selected-action {
+  border-color: rgba(37, 99, 235, 0.32);
+  background: rgba(9, 105, 218, 0.08);
 }
 
 .repository-row-main strong,
@@ -7369,7 +7401,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 }
 
 .app-shell[data-color-scheme="dark"]
-  :is(.count-pill, .visibility-pill, .state-chip, .topic-wrap span, .label-stack span) {
+  :is(.count-pill, .visibility-pill, .state-chip, .repo-source, .topic-wrap span, .label-stack span) {
   border-color: var(--color-border);
   background: var(--color-surface-row);
   color: var(--color-text);
@@ -7390,7 +7422,8 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
   box-shadow: none;
 }
 
-.app-shell[data-color-scheme="dark"] :is(.area-item.selected, .local-repo-item.selected, .nav-item.active) {
+.app-shell[data-color-scheme="dark"]
+  :is(.area-item.selected, .local-repo-item.selected, .repo-item.selected, .nav-item.active) {
   background: var(--color-surface-selected);
   box-shadow: inset 0 0 0 1px var(--color-accent);
 }

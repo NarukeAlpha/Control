@@ -759,7 +759,7 @@ describe("Control renderer routing", () => {
       }),
       expect.anything()
     );
-    expect(await screen.findByText("JJ")).toBeInTheDocument();
+    expect((await screen.findAllByText("JJ")).length).toBeGreaterThan(0);
     expect(screen.getByText("Git-backed")).toBeInTheDocument();
     expect(screen.getByText("Colocated")).toBeInTheDocument();
     expect(screen.getByText("GitHub connected")).toBeInTheDocument();

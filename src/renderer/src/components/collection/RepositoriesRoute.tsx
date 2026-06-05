@@ -17,7 +17,7 @@ import {
 } from "../repository/repositorySearch";
 import { areaKindLabel } from "../areas/areaSearchUi";
 import { areaRepositoryPinKey } from "../areas/areaUi";
-import { matchesCollectionFilter } from "./collectionUi";
+import { collectionRowClassName, matchesCollectionFilter } from "./collectionUi";
 
 export interface RepositoriesRouteProps {
   title: string;
@@ -156,12 +156,12 @@ function GitHubRepositoryRow({
     onToggleRepositoryPin(repository.nameWithOwner);
   }
 
-  function openFallback(): void {
+  function openRepositoryOnGitHub(): void {
     onOpenExternal(`https://github.com/${repository.nameWithOwner}`);
   }
 
   return (
-    <div className="issue-row repository-row repository-row-with-actions">
+    <div className={collectionRowClassName("repository-row", { withActions: true })}>
       <button className="repository-row-main" type="button" onClick={openRepository}>
         <span className="repo-avatar">{repository.owner.slice(0, 1).toUpperCase()}</span>
         <div>
@@ -197,7 +197,7 @@ function GitHubRepositoryRow({
           type="button"
           aria-label={`Open ${repository.name} on GitHub`}
           title={`Open ${repository.nameWithOwner} on GitHub`}
-          onClick={openFallback}
+          onClick={openRepositoryOnGitHub}
         >
           <ExternalLink size={15} />
         </button>
@@ -235,14 +235,14 @@ function LocalRepositoryRow({
     onToggleAreaRepositoryPin(repository);
   }
 
-  function openFallback(): void {
+  function openConnectedRepositoryOnGitHub(): void {
     if (connection) {
       onOpenExternal(connection.url);
     }
   }
 
   return (
-    <div className="issue-row repository-row repository-row-with-actions">
+    <div className={collectionRowClassName("repository-row", { withActions: true })}>
       <button className="repository-row-main" type="button" onClick={openLocalRepository}>
         <span className="repo-avatar">{repository.displayName.slice(0, 1).toUpperCase()}</span>
         <div>
@@ -278,7 +278,7 @@ function LocalRepositoryRow({
             type="button"
             aria-label={`Open ${repository.displayName} on GitHub`}
             title={`Open ${connection.nameWithOwner} on GitHub`}
-            onClick={openFallback}
+            onClick={openConnectedRepositoryOnGitHub}
           >
             <ExternalLink size={15} />
           </button>
@@ -307,7 +307,7 @@ function DirectRepositoryTargetRow({
   }
 
   return (
-    <div className="issue-row repository-row repository-row-with-actions">
+    <div className={collectionRowClassName("repository-row", { withActions: true })}>
       <button className="repository-row-main" type="button" onClick={openDirectRepository}>
         <span className="repo-avatar">{directRepositoryOwner.slice(0, 1).toUpperCase()}</span>
         <div>

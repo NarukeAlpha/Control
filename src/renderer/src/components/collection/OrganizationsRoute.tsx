@@ -38,6 +38,7 @@ import {
   readAvailabilityStatusLabel,
   repositoryCollectionMetadataParts
 } from "../repository/repositoryUi";
+import { collectionRowClassName } from "./collectionUi";
 import { useOrganizationRouteDerivedState } from "./useOrganizationRouteDerivedState";
 import type { OrganizationsRouteState } from "./useOrganizationsRouteState";
 
@@ -94,7 +95,7 @@ function OrganizationsRouteHeader({
     void onRefresh();
   }
 
-  function openFallback(): void {
+  function openOrganizationsOnGitHub(): void {
     onOpenExternal("https://github.com/organizations");
   }
 
@@ -110,8 +111,8 @@ function OrganizationsRouteHeader({
         >
           <RefreshCw size={16} /> {refreshInFlight ? "Refreshing organizations" : "Refresh organizations"}
         </button>
-        <button type="button" onClick={openFallback}>
-          <RefreshCw size={16} /> Open on GitHub
+        <button type="button" title="Open organizations on GitHub" onClick={openOrganizationsOnGitHub}>
+          <ExternalLink size={16} /> Open on GitHub
         </button>
       </div>
     </header>
@@ -201,7 +202,11 @@ function OrganizationRow({
   }
 
   return (
-    <div className="issue-row organization-row">
+    <div
+      className={collectionRowClassName("organization-row", {
+        selected: organization.login === selectedOrganizationLogin
+      })}
+    >
       <button
         className={`organization-row-main ${
           organization.login === selectedOrganizationLogin ? "selected-action" : ""
@@ -673,7 +678,7 @@ function OrganizationMemberRow({
   }
 
   return (
-    <div className={`issue-row organization-member-row ${selected ? "selected-action" : ""}`}>
+    <div className={collectionRowClassName("organization-member-row", { selected })}>
       <button
         className="organization-member-row-main"
         type="button"
@@ -776,7 +781,7 @@ function OrganizationRepositoryRow({
   repository,
   pinned,
   repositoryPinDisabledReason,
-  fallbackLabel,
+  externalLinkTitle,
   onOpenRepository,
   onToggleRepositoryPin,
   onOpenExternal
@@ -784,7 +789,7 @@ function OrganizationRepositoryRow({
   repository: OrganizationCollectionRepositorySummary;
   pinned: boolean;
   repositoryPinDisabledReason: string | null;
-  fallbackLabel: string;
+  externalLinkTitle: string;
   onOpenRepository(nameWithOwner: string): void;
   onToggleRepositoryPin(nameWithOwner: string): void;
   onOpenExternal(url: string): void;
@@ -800,12 +805,12 @@ function OrganizationRepositoryRow({
     onToggleRepositoryPin(repository.nameWithOwner);
   }
 
-  function openFallback(): void {
+  function openRepositoryOnGitHub(): void {
     onOpenExternal(repository.htmlUrl);
   }
 
   return (
-    <div className="issue-row repository-row repository-row-with-actions">
+    <div className={collectionRowClassName("repository-row", { withActions: true })}>
       <button className="repository-row-main" type="button" onClick={openRepository}>
         <span className="repo-avatar">{repository.name.slice(0, 1).toUpperCase()}</span>
         <div>
@@ -836,8 +841,8 @@ function OrganizationRepositoryRow({
           className="pin-row-button"
           type="button"
           aria-label={`Open ${repository.name} on GitHub`}
-          title={fallbackLabel}
-          onClick={openFallback}
+          title={externalLinkTitle}
+          onClick={openRepositoryOnGitHub}
         >
           <ExternalLink size={15} />
         </button>
@@ -907,7 +912,7 @@ function OrganizationRepositoriesSection({
           repository={repository}
           pinned={pinnedRepositoryNameSet.has(repository.nameWithOwner.toLowerCase())}
           repositoryPinDisabledReason={repositoryPinDisabledReason}
-          fallbackLabel={`Open ${repository.nameWithOwner} on GitHub`}
+          externalLinkTitle={`Open ${repository.nameWithOwner} on GitHub`}
           onOpenRepository={onOpenRepository}
           onToggleRepositoryPin={onToggleRepositoryPin}
           onOpenExternal={onOpenExternal}
@@ -948,14 +953,14 @@ function OrganizationProjectRow({
     onSelectOrganizationProject(project);
   }
 
-  function openFallback(): void {
+  function openProjectOnGitHub(): void {
     if (project.htmlUrl) {
       onOpenExternal(project.htmlUrl);
     }
   }
 
   return (
-    <div className={`issue-row organization-project-row ${selected ? "selected-action" : ""}`}>
+    <div className={collectionRowClassName("organization-project-row", { selected })}>
       <button
         className="organization-project-row-main"
         type="button"
@@ -999,7 +1004,7 @@ function OrganizationProjectRow({
         aria-label={`Open ${project.title} on GitHub`}
         disabled={!project.htmlUrl}
         title={project.htmlUrl ? `Open ${project.title} on GitHub` : "Organization project URL unavailable."}
-        onClick={openFallback}
+        onClick={openProjectOnGitHub}
       >
         <ExternalLink size={15} />
       </button>
@@ -1098,7 +1103,7 @@ function OrganizationTeamRow({
   }
 
   return (
-    <div className={`issue-row organization-team-row ${selected ? "selected-action" : ""}`}>
+    <div className={collectionRowClassName("organization-team-row", { selected })}>
       <button className="organization-row-main" type="button" onClick={selectTeam}>
         <div>
           <strong>{team.name}</strong>
@@ -1318,7 +1323,7 @@ function TeamRepositoriesSection({
           repository={repository}
           pinned={pinnedRepositoryNameSet.has(repository.nameWithOwner.toLowerCase())}
           repositoryPinDisabledReason={repositoryPinDisabledReason}
-          fallbackLabel={`Open ${repository.name} on GitHub`}
+          externalLinkTitle={`Open ${repository.name} on GitHub`}
           onOpenRepository={onOpenRepository}
           onToggleRepositoryPin={onToggleRepositoryPin}
           onOpenExternal={onOpenExternal}

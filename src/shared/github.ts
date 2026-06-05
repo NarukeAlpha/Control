@@ -977,6 +977,8 @@ export interface PullRequestListInput extends RepoDetailInput {
   limit?: number;
 }
 
+export type PullRequestStateFilter = NonNullable<PullRequestListInput["state"]>;
+
 export type PullRequestListResult = GitHubListResult<PullRequestSummary>;
 
 export interface PullRequestDetailInput extends RepoDetailInput {

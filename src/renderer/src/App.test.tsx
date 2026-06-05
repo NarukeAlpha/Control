@@ -2996,10 +2996,11 @@ describe("Control renderer routing", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /^Pull requests/ }));
     expect(await screen.findByText(/This pull request updates/)).toBeInTheDocument();
+    const firstOpenPullRequest = mockPullRequests[1];
     expect(getPullRequestOverviewWithStatus).toHaveBeenCalledWith({
       owner: "apple",
       repo: "swift",
-      pullNumber: mockPullRequests[0].number,
+      pullNumber: firstOpenPullRequest.number,
       cacheOnly: false
     });
     await userEvent.click(await screen.findByRole("button", { name: "New pull request" }));
@@ -3109,6 +3110,7 @@ describe("Control renderer routing", () => {
     );
 
     await userEvent.click(screen.getByRole("button", { name: /^Pull requests/ }));
+    await userEvent.click(screen.getByRole("button", { name: "All" }));
     await userEvent.click(await screen.findByRole("button", { name: /#516 by slightbug/i }));
     expect(await screen.findByText("Merge unavailable: Pull request is already merged.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Merge pull request" })).toBeDisabled();
@@ -3257,16 +3259,17 @@ describe("Control renderer routing", () => {
     expect(screen.getByText(/All tests passed/)).toBeInTheDocument();
     expect(await screen.findByText("Add repository management controls")).toBeInTheDocument();
     expect((await screen.findAllByText("src/renderer/src/App.tsx")).length).toBeGreaterThan(0);
+    const firstOpenPullRequest = mockPullRequests[1];
     expect(getPullRequestOverviewWithStatus).toHaveBeenCalledWith({
       owner: "apple",
       repo: "swift",
-      pullNumber: mockPullRequests[0].number,
+      pullNumber: firstOpenPullRequest.number,
       cacheOnly: false
     });
     expect(listPullRequestFilesWithStatus).toHaveBeenCalledWith({
       owner: "apple",
       repo: "swift",
-      pullNumber: mockPullRequests[0].number,
+      pullNumber: firstOpenPullRequest.number,
       cacheOnly: false
     });
     expect(getPullRequestDetailWithStatus).not.toHaveBeenCalled();
@@ -3286,7 +3289,7 @@ describe("Control renderer routing", () => {
     expect(appFileRow).not.toBeNull();
     await userEvent.click(within(appFileRow as HTMLElement).getByRole("button", { name: "Open on GitHub" }));
 
-    expect(openExternal).toHaveBeenCalledWith(`${mockPullRequests[0].htmlUrl}/files#diff-app`);
+    expect(openExternal).toHaveBeenCalledWith(`${firstOpenPullRequest.htmlUrl}/files#diff-app`);
   });
 
   it("renders split pull request subresource availability without hiding the overview", async () => {
@@ -3309,10 +3312,11 @@ describe("Control renderer routing", () => {
     expect(
       await screen.findByText("GitHub rate-limited the pull request checks request. Try again later.")
     ).toBeInTheDocument();
+    const firstOpenPullRequest = mockPullRequests[1];
     expect(listPullRequestChecksWithStatus).toHaveBeenCalledWith({
       owner: "apple",
       repo: "swift",
-      pullNumber: mockPullRequests[0].number,
+      pullNumber: firstOpenPullRequest.number,
       cacheOnly: false
     });
   });

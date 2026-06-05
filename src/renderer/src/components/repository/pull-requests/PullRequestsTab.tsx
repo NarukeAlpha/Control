@@ -7,6 +7,7 @@ import type {
   GitHubMutationFields,
   PullRequestCommitSummary,
   PullRequestReviewSummary,
+  PullRequestStateFilter,
   PullRequestSummary,
   PullRequestTimelineEventSummary,
   RepositoryDetail
@@ -51,6 +52,7 @@ export interface PullRequestsTabProps {
   selectedRef: string | null;
   refListLimit: number;
   pullRequestListLimit: number;
+  pullState: PullRequestStateFilter;
   focusedPullNumber: number | null;
   initialFilter: string;
   initialCreating: boolean;
@@ -59,7 +61,12 @@ export interface PullRequestsTabProps {
   mutationSucceeded: boolean;
   mutationError: Error | null;
   onOpenExternal(url: string): void;
-  onSelectPullRequest(pullRequest: PullRequestSummary): void;
+  onOpenPullRequestDetail(
+    pullRequest: PullRequestSummary,
+    pullState: PullRequestStateFilter,
+    filter: string
+  ): void;
+  onPullStateChange(pullState: PullRequestStateFilter, filter: string): void;
   onOpenIssueReference(issue: PullRequestLinkedIssue): void;
   onOpenPullRequestCommit(
     commit: PullRequestCommitSummary,
@@ -91,6 +98,7 @@ function usePullRequestsTabModel({
   selectedRef,
   refListLimit,
   pullRequestListLimit,
+  pullState,
   focusedPullNumber,
   initialFilter,
   initialCreating,
@@ -99,7 +107,8 @@ function usePullRequestsTabModel({
   mutationSucceeded,
   mutationError,
   onOpenExternal,
-  onSelectPullRequest,
+  onOpenPullRequestDetail,
+  onPullStateChange,
   onOpenIssueReference,
   onOpenPullRequestCommit,
   onOpenPullRequestReviewCommit,
@@ -141,6 +150,7 @@ function usePullRequestsTabModel({
   } = usePullRequestsTabQueries({
     owner: repository.owner,
     repo: repository.name,
+    pullState,
     pullRequestListLimit,
     pullsEnabled: true,
     resourcesEnabled: true,
@@ -453,6 +463,14 @@ function usePullRequestsTabModel({
     maintainerCanModify
   };
 
+  function handleOpenPullRequestDetail(pull: PullRequestSummary): void {
+    onOpenPullRequestDetail(pull, pullState, filter);
+  }
+
+  function changePullState(nextPullState: PullRequestStateFilter): void {
+    onPullStateChange(nextPullState, filter);
+  }
+
   const pullActions = usePullRequestsTabActions({
     repository,
     selectedPull,
@@ -481,7 +499,7 @@ function usePullRequestsTabModel({
     parsedTeamReviewers,
     selectedLabels,
     selectedAssignees,
-    onSelectPullRequest,
+    onSelectPullRequest: handleOpenPullRequestDetail,
     onMutate,
     setRequestedPullDetailSectionState,
     setSelectedPullNumber,
@@ -507,6 +525,7 @@ function usePullRequestsTabModel({
 
   return {
     repository,
+    pullState,
     filter,
     creating,
     createPullDisabledReason,
@@ -592,6 +611,7 @@ function usePullRequestsTabModel({
     reviewCommentActions: pullActions.reviewCommentActions,
     commentActions: pullActions.commentActions,
     onFilterChange: setFilter,
+    onPullStateChange: changePullState,
     onStartCreating: pullActions.handleStartCreating,
     onSelectPull: pullActions.handleSelectPull,
     onOpenExternal,

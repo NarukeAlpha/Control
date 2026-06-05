@@ -24,7 +24,10 @@ import {
 
 import { formatCompactNumber, formatRelativeDate } from "@renderer/utils/format";
 import { allIssueStateFilter, useIssuesTabQueries } from "../issues/IssuesTab.queries";
-import { usePullRequestsTabQueries } from "../pull-requests/PullRequestsTab.queries";
+import {
+  allPullRequestStateFilter,
+  usePullRequestsTabQueries
+} from "../pull-requests/PullRequestsTab.queries";
 import { useProjectsTabQueries } from "./ProjectsTab.queries";
 
 const maxProjectsLimit = 100;
@@ -1374,6 +1377,7 @@ function useProjectsTabModel({
   const { pulls } = usePullRequestsTabQueries({
     owner: repository.owner,
     repo: repository.name,
+    pullState: allPullRequestStateFilter,
     pullRequestListLimit: 100,
     pullsEnabled: projectItemOptionsRequested,
     resourcesEnabled: false,

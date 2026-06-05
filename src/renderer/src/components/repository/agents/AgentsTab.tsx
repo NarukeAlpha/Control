@@ -5,7 +5,10 @@ import type { IssueSummary, PullRequestSummary, RepositoryDetail, WorkflowRunSum
 import { formatRelativeDate } from "../../../utils/format";
 import { useActionsTabQueries } from "../actions/ActionsTab.queries";
 import { defaultIssueStateFilter, useIssuesTabQueries } from "../issues/IssuesTab.queries";
-import { usePullRequestsTabQueries } from "../pull-requests/PullRequestsTab.queries";
+import {
+  defaultPullRequestStateFilter,
+  usePullRequestsTabQueries
+} from "../pull-requests/PullRequestsTab.queries";
 import { isWorkflowRunAttention } from "../workflows/workflowRunState";
 
 type AgentSurfaceTab = "issues" | "pulls" | "actions";
@@ -69,6 +72,7 @@ export function AgentsTab({
   const { pulls } = usePullRequestsTabQueries({
     owner: repository.owner,
     repo: repository.name,
+    pullState: defaultPullRequestStateFilter,
     pullRequestListLimit,
     pullsEnabled: true,
     resourcesEnabled: false,

@@ -12,6 +12,7 @@ import type {
   PullRequestRequestedTeamSummary,
   PullRequestReviewSummary,
   PullRequestReviewThreadCommentSummary,
+  PullRequestStateFilter,
   PullRequestSummary,
   PullRequestTimelineEventSummary,
   RepositoryDetail,
@@ -19,6 +20,7 @@ import type {
 } from "@shared/github";
 
 import type { MarkdownUrlContext } from "@renderer/components/MarkdownBody";
+import { FilterBar, StateSegmentedControl } from "@renderer/components/ui/primitives";
 
 import { PullRequestInspection } from "./PullRequestInspection";
 import { PullRequestCreateForm, type PullRequestCreateDraft } from "./PullRequestCreateForm";
@@ -37,6 +39,7 @@ import type { PullRequestLinkedIssue } from "./PullRequestsTab.types";
 
 export interface PullRequestsTabContentProps {
   repository: RepositoryDetail;
+  pullState: PullRequestStateFilter;
   filter: string;
   creating: boolean;
   createPullDisabledReason: string | null;
@@ -128,6 +131,7 @@ export interface PullRequestsTabContentProps {
     onDelete(comment: TimelineCommentSummary): void;
   };
   onFilterChange(value: string): void;
+  onPullStateChange(value: PullRequestStateFilter): void;
   onStartCreating(): void;
   onSelectPull(pull: PullRequestSummary): void;
   onOpenExternal(url: string): void;
@@ -185,25 +189,63 @@ export interface PullRequestsTabContentProps {
 
 type PullRequestsToolbarProps = Pick<
   PullRequestsTabContentProps,
-  "filter" | "createPullDisabledReason" | "onFilterChange" | "onStartCreating"
+  | "pullState"
+  | "filter"
+  | "createPullDisabledReason"
+  | "filteredPulls"
+  | "onFilterChange"
+  | "onPullStateChange"
+  | "onStartCreating"
 >;
+
+const pullRequestStateFilterOptions: Array<{ value: PullRequestStateFilter; label: string }> = [
+  { value: "open", label: "Open" },
+  { value: "closed", label: "Closed" },
+  { value: "all", label: "All" }
+];
 
 type PullRequestSelectedDetailProps = Omit<PullRequestsTabContentProps, "selectedPull"> & {
   selectedPull: PullRequestSummary;
 };
 
 function PullRequestsToolbar({
+  pullState,
   filter,
   createPullDisabledReason,
+  filteredPulls,
   onFilterChange,
+  onPullStateChange,
   onStartCreating
 }: PullRequestsToolbarProps): JSX.Element {
   function handleFilterChange(event: ChangeEvent<HTMLInputElement>): void {
     onFilterChange(event.target.value);
   }
 
+  const pullCountLabel = `${filteredPulls.length} ${
+    filteredPulls.length === 1 ? "pull request" : "pull requests"
+  }`;
+
   return (
-    <div className="table-action-row surface-filter-row">
+    <FilterBar
+      className="surface-filter-row"
+      label={pullCountLabel}
+      actions={
+        <button
+          type="button"
+          disabled={Boolean(createPullDisabledReason)}
+          title={createPullDisabledReason ?? undefined}
+          onClick={onStartCreating}
+        >
+          <Plus size={16} /> New pull request
+        </button>
+      }
+    >
+      <StateSegmentedControl
+        label="Pull request state"
+        value={pullState}
+        options={pullRequestStateFilterOptions}
+        onChange={onPullStateChange}
+      />
       <label className="surface-filter">
         <Search size={15} />
         <input
@@ -213,15 +255,7 @@ function PullRequestsToolbar({
           placeholder="Filter pull requests"
         />
       </label>
-      <button
-        type="button"
-        disabled={Boolean(createPullDisabledReason)}
-        title={createPullDisabledReason ?? undefined}
-        onClick={onStartCreating}
-      >
-        <Plus size={16} /> New pull request
-      </button>
-    </div>
+    </FilterBar>
   );
 }
 
@@ -229,9 +263,12 @@ export function PullRequestsTabContent(props: PullRequestsTabContentProps): JSX.
   return (
     <section className="table-panel github-surface">
       <PullRequestsToolbar
+        pullState={props.pullState}
         filter={props.filter}
+        filteredPulls={props.filteredPulls}
         createPullDisabledReason={props.createPullDisabledReason}
         onFilterChange={props.onFilterChange}
+        onPullStateChange={props.onPullStateChange}
         onStartCreating={props.onStartCreating}
       />
       <div className="github-split">

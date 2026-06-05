@@ -5,7 +5,7 @@ import { prefetchActionsTabData } from "../components/repository/actions/Actions
 import { prefetchCodeTabData } from "../components/repository/code/CodeTab.queries";
 import { prefetchIssuesTabData } from "../components/repository/issues/IssuesTab.queries";
 import { prefetchPullRequestsTabData } from "../components/repository/pull-requests/PullRequestsTab.queries";
-import type { IssueStateFilter } from "@shared/github";
+import type { IssueStateFilter, PullRequestStateFilter } from "@shared/github";
 import { useControlApi } from "./useControlApi";
 
 interface UseRepositoryWarmPrefetchInput {
@@ -18,6 +18,7 @@ interface UseRepositoryWarmPrefetchInput {
   commitHistoryLimit: number;
   issueState: IssueStateFilter;
   issueListLimit: number;
+  pullState: PullRequestStateFilter;
   pullRequestListLimit: number;
   actionsLimit: number;
   githubReady: boolean;
@@ -33,6 +34,7 @@ export function useRepositoryWarmPrefetch({
   commitHistoryLimit,
   issueState,
   issueListLimit,
+  pullState,
   pullRequestListLimit,
   actionsLimit,
   githubReady
@@ -68,6 +70,7 @@ export function useRepositoryWarmPrefetch({
         api,
         owner,
         repo,
+        pullState,
         pullRequestListLimit,
         githubReady
       }),
@@ -92,6 +95,7 @@ export function useRepositoryWarmPrefetch({
     issueState,
     issueListLimit,
     owner,
+    pullState,
     pullRequestListLimit,
     queryClient,
     repo,

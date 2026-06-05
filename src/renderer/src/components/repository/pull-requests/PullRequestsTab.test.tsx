@@ -93,6 +93,7 @@ function renderPullRequestsTab(): void {
         selectedRef={null}
         refListLimit={20}
         pullRequestListLimit={20}
+        pullState="open"
         focusedPullNumber={focusedPull.number}
         initialFilter=""
         initialCreating={false}
@@ -101,7 +102,8 @@ function renderPullRequestsTab(): void {
         mutationSucceeded={false}
         mutationError={null}
         onOpenExternal={vi.fn()}
-        onSelectPullRequest={vi.fn()}
+        onOpenPullRequestDetail={vi.fn()}
+        onPullStateChange={vi.fn()}
         onOpenIssueReference={vi.fn()}
         onOpenPullRequestCommit={vi.fn()}
         onOpenPullRequestReviewCommit={vi.fn()}
@@ -126,6 +128,13 @@ describe("PullRequestsTab", () => {
     renderPullRequestsTab();
 
     await screen.findByRole("heading", { name: focusedPull.title });
+    expect(api.listPullRequestsWithStatus).toHaveBeenCalledWith({
+      owner: mockRepository.owner,
+      repo: mockRepository.name,
+      state: "open",
+      limit: 20,
+      cacheOnly: false
+    });
     await waitFor(() => expect(api.getPullRequestOverviewWithStatus).toHaveBeenCalledTimes(1));
 
     expect(api.listPullRequestCommentsWithStatus).not.toHaveBeenCalled();

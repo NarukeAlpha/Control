@@ -67,6 +67,14 @@ describe("useUiStore route selection derivation", () => {
       issueFilter: "label:compiler"
     },
     {
+      kind: "repository",
+      nameWithOwner: "apple/swift",
+      tab: "pulls",
+      pullNumber: 42,
+      pullState: "closed",
+      pullFilter: "author:swift-ci"
+    },
+    {
       kind: "codeBrowser",
       nameWithOwner: "apple/swift",
       path: "README.md",

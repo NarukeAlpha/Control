@@ -9,6 +9,7 @@ import type {
   IssueSummary,
   IssueStateFilter,
   ProjectSummary,
+  PullRequestStateFilter,
   PullRequestCommitSummary,
   PullRequestLinkedIssueSummary,
   PullRequestReviewSummary,
@@ -42,6 +43,7 @@ import { IssuesTab } from "./issues/IssuesTab";
 import { normalizeIssueStateFilter } from "./issues/IssuesTab.queries";
 import { ProjectsTab } from "./projects/ProjectsTab";
 import { PullRequestsTab } from "./pull-requests/PullRequestsTab";
+import { normalizePullRequestStateFilter } from "./pull-requests/PullRequestsTab.queries";
 import { ReleasesTab } from "./releases/ReleasesTab";
 import { SecurityQualityTab } from "./security/SecurityQualityTab";
 import { RepositorySettingsTab } from "./settings/RepositorySettingsTab";
@@ -335,6 +337,7 @@ interface RepositoryRouteModel {
   focusedWikiPagePath: string | null;
   issueState: IssueStateFilter;
   issueFilter: string;
+  pullState: PullRequestStateFilter;
   pullFilter: string;
   workflowFilter: string;
   issueComposer: "create" | null;
@@ -461,6 +464,7 @@ function getRepositoryRouteModel(
     focusedWikiPagePath: repositoryRoute?.wikiPagePath ?? null,
     issueState: normalizeIssueStateFilter(repositoryRoute?.issueState),
     issueFilter: repositoryRoute?.issueFilter ?? "",
+    pullState: normalizePullRequestStateFilter(repositoryRoute?.pullState),
     pullFilter: repositoryRoute?.pullFilter ?? "",
     workflowFilter: repositoryRoute?.workflowFilter ?? "",
     issueComposer: repositoryRoute?.issueComposer ?? null,
@@ -1287,6 +1291,40 @@ function RepositoryPullRequestsTabSurface({
   onOpenWorkflowRun,
   onOpenCodePath
 }: RepositoryActiveTabSurfaceProps): JSX.Element {
+  const navigate = useUiStore((state) => state.navigate);
+
+  function pullRouteUpdate(
+    pullState: PullRequestStateFilter,
+    filter: string,
+    includeFocusedPull: boolean
+  ): Extract<AppRoute, { kind: "repository" }> {
+    return {
+      kind: "repository",
+      nameWithOwner: routeModel.routeRepositoryName ?? repository.nameWithOwner,
+      tab: "pulls",
+      pullState,
+      pullFilter: filter || undefined,
+      pullComposer: routeModel.pullComposer ?? undefined,
+      pullNumber: includeFocusedPull ? (routeModel.focusedPullNumber ?? undefined) : undefined
+    };
+  }
+
+  function changePullState(pullState: PullRequestStateFilter, filter: string): void {
+    navigate(pullRouteUpdate(pullState, filter, true));
+  }
+
+  function openPullRequestDetail(
+    pullRequest: PullRequestSummary,
+    pullState: PullRequestStateFilter,
+    filter: string
+  ): void {
+    onSelectPullRequest(pullRequest);
+    navigate({
+      ...pullRouteUpdate(pullState, filter, true),
+      pullNumber: pullRequest.number
+    });
+  }
+
   function openPullRequestCodePath(
     path: string,
     ref: string | null,
@@ -1299,12 +1337,13 @@ function RepositoryPullRequestsTabSurface({
 
   return (
     <PullRequestsTab
-      key={`pulls-${routeModel.focusedPullNumber ?? routeModel.pullComposer ?? (routeModel.pullFilter || "default")}`}
+      key={`pulls-${routeModel.pullState}-${routeModel.focusedPullNumber ?? routeModel.pullComposer ?? (routeModel.pullFilter || "default")}`}
       repository={repository}
       githubReady={githubReady}
       selectedRef={selectedRef}
       refListLimit={limits.refListLimit}
       pullRequestListLimit={limits.pullRequestListLimit}
+      pullState={routeModel.pullState}
       focusedPullNumber={routeModel.focusedPullNumber}
       initialFilter={routeModel.pullFilter}
       initialCreating={routeModel.pullComposer === "create"}
@@ -1314,7 +1353,8 @@ function RepositoryPullRequestsTabSurface({
       mutationError={mutation.error}
       onMutate={mutation.onMutate}
       onOpenExternal={onOpenExternal}
-      onSelectPullRequest={onSelectPullRequest}
+      onOpenPullRequestDetail={openPullRequestDetail}
+      onPullStateChange={changePullState}
       onOpenIssueReference={onOpenIssueReference}
       onOpenPullRequestCommit={onOpenPullRequestCommit}
       onOpenPullRequestReviewCommit={onOpenPullRequestReviewCommit}

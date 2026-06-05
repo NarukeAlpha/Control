@@ -119,6 +119,13 @@ describe("repository tab prefetch helpers", () => {
     );
   });
 
+  it("keys pull request lists by repository, state, and limit", () => {
+    expect(pullRequestsTabQueryKey(owner, repo, "open", 40)).toEqual(["pulls", owner, repo, "open", 40]);
+    expect(pullRequestsTabQueryKey(owner, repo, "open", 40)).not.toEqual(
+      pullRequestsTabQueryKey(owner, repo, "closed", 40)
+    );
+  });
+
   it("defaults issue prefetches to open issue state", async () => {
     const queryClient = makeQueryClient();
     const issuesResult = listResult<never>();
@@ -701,7 +708,7 @@ describe("repository tab prefetch helpers", () => {
     expect(listPullRequestsWithStatus).toHaveBeenCalledWith({
       owner,
       repo,
-      state: "all",
+      state: "open",
       limit: 40,
       cacheOnly: false,
       forceRefresh: true
@@ -714,7 +721,7 @@ describe("repository tab prefetch helpers", () => {
       forceRefresh: true
     });
     expect(queryClient.getQueryData(issuesTabQueryKey(owner, repo, "open", 30))).toBeDefined();
-    expect(queryClient.getQueryData(pullRequestsTabQueryKey(owner, repo, 40))).toBeDefined();
+    expect(queryClient.getQueryData(pullRequestsTabQueryKey(owner, repo, "open", 40))).toBeDefined();
     expect(queryClient.getQueryData(actionsTabQueryKey(owner, repo, 48))).toBeDefined();
   });
 
@@ -1021,6 +1028,7 @@ describe("repository tab prefetch helpers", () => {
       api,
       owner,
       repo,
+      pullState: "closed",
       pullRequestListLimit: 40,
       githubReady: false
     });
@@ -1028,7 +1036,7 @@ describe("repository tab prefetch helpers", () => {
     expect(listPullRequestsWithStatus).toHaveBeenCalledWith({
       owner,
       repo,
-      state: "all",
+      state: "closed",
       limit: 40,
       cacheOnly: true
     });
@@ -1051,7 +1059,7 @@ describe("repository tab prefetch helpers", () => {
       limit: 100,
       cacheOnly: true
     });
-    expect(queryClient.getQueryData(pullRequestsTabQueryKey(owner, repo, 40))).toBe(pullsResult);
+    expect(queryClient.getQueryData(pullRequestsTabQueryKey(owner, repo, "closed", 40))).toBe(pullsResult);
     expect(queryClient.getQueryData(repositoryLabelsQueryKey(owner, repo))).toBe(labelsResult);
     expect(queryClient.getQueryData(repositoryAssignableUsersQueryKey(owner, repo))).toBe(
       assignableUsersResult
@@ -1213,6 +1221,7 @@ describe("repository tab prefetch helpers", () => {
       api,
       owner,
       repo,
+      pullState: "closed",
       pullRequestListLimit: 40,
       refListLimit: 80,
       focusedPullNumber: 12,
@@ -1222,7 +1231,7 @@ describe("repository tab prefetch helpers", () => {
     expect(listPullRequestsWithStatus).toHaveBeenCalledWith({
       owner,
       repo,
-      state: "all",
+      state: "closed",
       limit: 40,
       cacheOnly: false,
       forceRefresh: true
@@ -1274,7 +1283,7 @@ describe("repository tab prefetch helpers", () => {
     expect(listPullRequestReviewThreadsWithStatus).not.toHaveBeenCalled();
     expect(listPullRequestLinkedIssuesWithStatus).not.toHaveBeenCalled();
 
-    expect(queryClient.getQueryData(pullRequestsTabQueryKey(owner, repo, 40))).toBeDefined();
+    expect(queryClient.getQueryData(pullRequestsTabQueryKey(owner, repo, "closed", 40))).toBeDefined();
     expect(queryClient.getQueryData(repositoryLabelsQueryKey(owner, repo))).toBeDefined();
     expect(queryClient.getQueryData(repositoryAssignableUsersQueryKey(owner, repo))).toBeDefined();
     expect(queryClient.getQueryData(repositoryMilestonesQueryKey(owner, repo))).toBeDefined();

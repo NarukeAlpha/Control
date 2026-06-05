@@ -4,7 +4,10 @@ import type { ControlApi } from "@shared/ipc";
 
 import { actionsTabQueryKey } from "../actions/ActionsTab.queries";
 import { defaultIssueStateFilter, issuesTabQueryKey } from "../issues/IssuesTab.queries";
-import { pullRequestsTabQueryKey } from "../pull-requests/PullRequestsTab.queries";
+import {
+  defaultPullRequestStateFilter,
+  pullRequestsTabQueryKey
+} from "../pull-requests/PullRequestsTab.queries";
 
 export interface AgentsTabRefreshInput {
   api: ControlApi;
@@ -38,13 +41,13 @@ export async function refreshAgentsTabData(
           })
       }),
       queryClient.fetchQuery({
-        queryKey: pullRequestsTabQueryKey(owner, repo, pullRequestListLimit),
+        queryKey: pullRequestsTabQueryKey(owner, repo, defaultPullRequestStateFilter, pullRequestListLimit),
         staleTime: 0,
         queryFn: () =>
           api.github.listPullRequestsWithStatus({
             owner,
             repo,
-            state: "all",
+            state: defaultPullRequestStateFilter,
             limit: pullRequestListLimit,
             cacheOnly: cachedRead,
             forceRefresh: !cachedRead

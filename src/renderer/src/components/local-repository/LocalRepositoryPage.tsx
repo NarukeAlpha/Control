@@ -28,9 +28,13 @@ import type {
   AreaSyncStatus,
   AreaWorkspaceSummary
 } from "@shared/areas";
+import type { IssueSummary, PullRequestSummary, WorkflowRunSummary } from "@shared/github";
 import { useControlApi } from "../../hooks/useControlApi";
 import type { AppRoute, LocalRepositoryTab } from "../../stores/uiStore";
+import { formatRelativeDate } from "../../utils/format";
+import { collectionRowClassName } from "../collection/collectionUi";
 import type { ConfirmAction } from "../dialogs/confirmation";
+import { RepositoryChrome, type RepositoryChromeModel } from "../repository/RepositoryChrome";
 import { readAvailabilityMessage } from "../repository/repositoryUi";
 
 const localRepoTabs: Array<{ key: LocalRepositoryTab; label: string; icon: typeof Code2 }> = [
@@ -66,6 +70,9 @@ interface LocalRepositoryPageProps {
   onOpenPath(entry: AreaFileEntry): void;
   onTogglePin(repository: AreaRepositorySummary, workspaceId: string | null): void;
   onOpenGitHub(nameWithOwner: string): void;
+  onOpenIssue(issue: IssueSummary): void;
+  onOpenPullRequest(pullRequest: PullRequestSummary): void;
+  onOpenWorkflowRun(nameWithOwner: string, run: WorkflowRunSummary): void;
   onOpenExternal(url: string): void;
   onConfirm: ConfirmAction;
   githubReady: boolean;
@@ -96,6 +103,9 @@ function useLocalRepositoryPageModel({
   onOpenPath,
   onTogglePin,
   onOpenGitHub,
+  onOpenIssue,
+  onOpenPullRequest,
+  onOpenWorkflowRun,
   onOpenExternal,
   onConfirm,
   githubReady
@@ -320,6 +330,9 @@ function useLocalRepositoryPageModel({
     onOpenPath,
     onTogglePin,
     onOpenGitHub,
+    onOpenIssue,
+    onOpenPullRequest,
+    onOpenWorkflowRun,
     onOpenExternal,
     onRunOperation: runGatewayOperation
   };
@@ -343,6 +356,7 @@ export function LocalRepositoryPage(props: LocalRepositoryPageProps): JSX.Elemen
   return (
     <section className="local-repository-page">
       <LocalRepositoryHeader model={model} />
+      <LocalRepositoryContextBanner model={model} />
       <LocalRepositoryTabs
         activeTab={model.activeTab}
         detail={model.detail}
@@ -359,6 +373,7 @@ function LocalRepositoryHeader({
   model: ReturnType<typeof useLocalRepositoryPageModel>;
 }): JSX.Element {
   const { detail, githubConnection, pinBusy, pinned, route, selectedWorkspace, workspaceItems } = model;
+  const chromeModel = localRepositoryChromeModel(model);
 
   function selectWorkspace(event: ChangeEvent<HTMLSelectElement>): void {
     if (event.target.value) {
@@ -383,63 +398,121 @@ function LocalRepositoryHeader({
   }
 
   return (
-    <header className="local-repository-header">
-      <div>
-        <div className="eyebrow-row">
-          <span className="status-pill">{detail!.kind.toUpperCase()}</span>
-          {detail!.capabilities.isGitBacked && <span className="status-pill">Git-backed</span>}
-          {detail!.capabilities.isColocated && <span className="status-pill">Colocated</span>}
-          {githubConnection && <span className="status-pill">GitHub connected</span>}
-        </div>
-        <h1>{detail!.displayName}</h1>
-        {detail!.path && <p className="muted-row">{detail!.path}</p>}
+    <RepositoryChrome
+      model={chromeModel}
+      actions={
+        <>
+          {detail!.capabilities.supportsWorkspaces && workspaceItems.length > 0 && (
+            <label className="local-workspace-select">
+              <span>Workspace</span>
+              <select value={route.workspaceId ?? ""} onChange={selectWorkspace}>
+                {!route.workspaceId && <option value="">Repository root</option>}
+                {workspaceItems.map((workspace) => (
+                  <option key={workspace.id} value={workspace.id}>
+                    {workspace.name}
+                    {workspace.isStale ? " (stale)" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <button
+            className="icon-button"
+            type="button"
+            aria-label={pinned ? "Unpin local repository" : "Pin local repository"}
+            title={pinned ? "Unpin local repository" : "Pin local repository"}
+            disabled={pinBusy}
+            onClick={toggleLocalRepositoryPin}
+          >
+            <Pin size={16} fill={pinned ? "currentColor" : "none"} />
+          </button>
+          {githubConnection?.matchedGitHubAreaId && (
+            <button className="secondary-button" type="button" onClick={openMatchedGitHubArea}>
+              Open in GitHub Area
+            </button>
+          )}
+          {githubConnection && (
+            <button
+              className="icon-button"
+              type="button"
+              title="Open on GitHub"
+              onClick={openRepositoryOnGitHub}
+            >
+              <ExternalLink size={16} />
+            </button>
+          )}
+        </>
+      }
+    >
+      <>
         {detail!.health.message && <p className="error-state">{detail!.health.message}</p>}
         {detail!.kind === "jj" && route.workspaceId && !selectedWorkspace && (
           <p className="error-state">Local workspace was not found.</p>
         )}
-      </div>
-      <div className="button-row">
-        {detail!.capabilities.supportsWorkspaces && workspaceItems.length > 0 && (
-          <label className="local-workspace-select">
-            <span>Workspace</span>
-            <select value={route.workspaceId ?? ""} onChange={selectWorkspace}>
-              {!route.workspaceId && <option value="">Repository root</option>}
-              {workspaceItems.map((workspace) => (
-                <option key={workspace.id} value={workspace.id}>
-                  {workspace.name}
-                  {workspace.isStale ? " (stale)" : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        <button
-          className="icon-button"
-          type="button"
-          aria-label={pinned ? "Unpin local repository" : "Pin local repository"}
-          title={pinned ? "Unpin local repository" : "Pin local repository"}
-          disabled={pinBusy}
-          onClick={toggleLocalRepositoryPin}
-        >
-          <Pin size={16} fill={pinned ? "currentColor" : "none"} />
-        </button>
-        {githubConnection?.matchedGitHubAreaId && (
-          <button className="secondary-button" type="button" onClick={openMatchedGitHubArea}>
-            Open in GitHub Area
-          </button>
-        )}
-        {githubConnection && (
-          <button
-            className="icon-button"
-            type="button"
-            title="Open on GitHub"
-            onClick={openRepositoryOnGitHub}
-          >
-            <ExternalLink size={16} />
-          </button>
-        )}
-      </div>
-    </header>
+      </>
+    </RepositoryChrome>
+  );
+}
+
+function localRepositoryChromeModel(
+  model: ReturnType<typeof useLocalRepositoryPageModel>
+): RepositoryChromeModel {
+  const { detail, githubConnection, route, selectedWorkspace, workspaceItems } = model;
+  const repository = detail!;
+  const workspaceLabel = selectedWorkspace?.name ?? (route.workspaceId ? "Workspace unavailable" : null);
+  const statusChips: RepositoryChromeModel["statusChips"] = [
+    { label: repository.kind.toUpperCase() },
+    repository.capabilities.isGitBacked ? { label: "Git-backed" } : null,
+    repository.capabilities.isColocated ? { label: "Colocated" } : null,
+    githubConnection ? { label: "GitHub connected", tone: "success" } : null,
+    workspaceLabel
+      ? { label: workspaceLabel, tone: selectedWorkspace?.isStale ? "attention" : "default" }
+      : null,
+    repository.status.clean ? { label: "Clean", tone: "success" } : { label: "Changed", tone: "attention" }
+  ].filter((chip): chip is RepositoryChromeModel["statusChips"][number] => Boolean(chip));
+  const subtitleParts = [
+    repository.kind === "jj"
+      ? `Working copy ${selectedWorkspace?.workingCopyChangeId ?? workspaceItems[0]?.workingCopyChangeId ?? "unavailable"}`
+      : `Branch ${repository.currentBranch ?? "unavailable"}`,
+    githubConnection?.nameWithOwner ?? "Local-only repository"
+  ];
+
+  return {
+    source: githubConnection ? "local-connected-github" : "local",
+    iconLabel: repository.kind === "jj" ? "J" : "G",
+    title: repository.displayName,
+    subtitle: subtitleParts.join(" · "),
+    path: repository.path,
+    statusChips
+  };
+}
+
+function LocalRepositoryContextBanner({
+  model
+}: {
+  model: ReturnType<typeof useLocalRepositoryPageModel>;
+}): JSX.Element {
+  const { detail, githubConnection, route, selectedWorkspace, status, workspaceItems } = model;
+  const repository = detail!;
+  const workingCopyLabel =
+    repository.kind === "jj"
+      ? (selectedWorkspace?.workingCopyChangeId ?? workspaceItems[0]?.workingCopyChangeId ?? "No change")
+      : (repository.currentBranch ?? "No branch");
+  const workspaceLabel =
+    selectedWorkspace?.name ?? (route.workspaceId ? "Workspace unavailable" : "Repository root");
+
+  return (
+    <div className="cached-mode-banner local-context-banner">
+      <span className="state-chip">{repository.kind.toUpperCase()}</span>
+      <span className="state-chip">{workspaceLabel}</span>
+      <span className="state-chip">{workingCopyLabel}</span>
+      <span className={`state-chip ${status?.clean ? "success" : "attention"}`}>
+        {status?.clean ? "clean" : `${status?.dirtyCount ?? 0} changed`}
+      </span>
+      <span className={`state-chip ${githubConnection ? "success" : ""}`}>
+        {githubConnection?.nameWithOwner ?? "no GitHub remote"}
+      </span>
+    </div>
   );
 }
 
@@ -592,41 +665,38 @@ function LocalRepositoryTabContent({
       return <LocalListPanel title="Remotes" rows={detail!.remotes.map(localRemoteRow)} />;
     case "issues":
       return (
-        <LocalListPanel
-          title="GitHub Issues"
-          rows={(model.localIssues.data?.items ?? []).map((issue) => `#${issue.number} ${issue.title}`)}
-          emptyLabel={
-            model.localIssuesAvailabilityMessage ??
-            (githubConnection ? "No open issues." : "No GitHub remote is connected.")
-          }
+        <LocalConnectedIssuesPanel
+          issues={model.localIssues.data?.items ?? []}
+          availabilityMessage={model.localIssuesAvailabilityMessage}
+          githubConnectionReady={Boolean(githubConnection)}
           loading={model.localIssues.isLoading || model.localIssues.isFetching}
           error={model.localIssues.error}
+          onOpenIssue={model.onOpenIssue}
+          onOpenExternal={model.onOpenExternal}
         />
       );
     case "pulls":
       return (
-        <LocalListPanel
-          title="GitHub Pull Requests"
-          rows={(model.localPulls.data?.items ?? []).map((pull) => `#${pull.number} ${pull.title}`)}
-          emptyLabel={
-            model.localPullsAvailabilityMessage ??
-            (githubConnection ? "No open pull requests." : "No GitHub remote is connected.")
-          }
+        <LocalConnectedPullRequestsPanel
+          pullRequests={model.localPulls.data?.items ?? []}
+          availabilityMessage={model.localPullsAvailabilityMessage}
+          githubConnectionReady={Boolean(githubConnection)}
           loading={model.localPulls.isLoading || model.localPulls.isFetching}
           error={model.localPulls.error}
+          onOpenPullRequest={model.onOpenPullRequest}
+          onOpenExternal={model.onOpenExternal}
         />
       );
     case "actions":
       return (
-        <LocalListPanel
-          title="GitHub Actions"
-          rows={(model.localActions.data?.items ?? []).map((run) => `${run.name} ${run.status ?? "unknown"}`)}
-          emptyLabel={
-            model.localActionsAvailabilityMessage ??
-            (githubConnection ? "No workflow runs." : "No GitHub remote is connected.")
-          }
+        <LocalConnectedActionsPanel
+          runs={model.localActions.data?.items ?? []}
+          availabilityMessage={model.localActionsAvailabilityMessage}
+          nameWithOwner={githubConnection?.nameWithOwner ?? null}
           loading={model.localActions.isLoading || model.localActions.isFetching}
           error={model.localActions.error}
+          onOpenWorkflowRun={model.onOpenWorkflowRun}
+          onOpenExternal={model.onOpenExternal}
         />
       );
     case "sync":
@@ -723,6 +793,300 @@ function LocalRepositoryOverview({
           <p className="muted-row">No extra workspaces.</p>
         )}
       </section>
+    </div>
+  );
+}
+
+function LocalConnectedIssuesPanel({
+  issues,
+  availabilityMessage,
+  githubConnectionReady,
+  loading,
+  error,
+  onOpenIssue,
+  onOpenExternal
+}: {
+  issues: IssueSummary[];
+  availabilityMessage: string | null;
+  githubConnectionReady: boolean;
+  loading: boolean;
+  error: Error | null;
+  onOpenIssue(issue: IssueSummary): void;
+  onOpenExternal(url: string): void;
+}): JSX.Element {
+  return (
+    <section className="glass-panel local-connected-panel">
+      <h2>GitHub Issues</h2>
+      {loading ? (
+        <div className="loading-state">Loading connected GitHub issues…</div>
+      ) : error ? (
+        <div className="error-state">{error.message}</div>
+      ) : availabilityMessage ? (
+        <div className="error-state">{availabilityMessage}</div>
+      ) : issues.length ? (
+        <div className="local-connected-list">
+          {issues.map((issue) => (
+            <LocalConnectedIssueRow
+              issue={issue}
+              key={issue.id}
+              onOpenExternal={onOpenExternal}
+              onOpenIssue={onOpenIssue}
+            />
+          ))}
+        </div>
+      ) : (
+        <p className="muted-row">
+          {githubConnectionReady ? "No open issues." : "No GitHub remote is connected."}
+        </p>
+      )}
+    </section>
+  );
+}
+
+function LocalConnectedIssueRow({
+  issue,
+  onOpenIssue,
+  onOpenExternal
+}: {
+  issue: IssueSummary;
+  onOpenIssue(issue: IssueSummary): void;
+  onOpenExternal(url: string): void;
+}): JSX.Element {
+  function openIssueInApp(): void {
+    onOpenIssue(issue);
+  }
+
+  function openIssueOnGitHub(): void {
+    onOpenExternal(issue.htmlUrl);
+  }
+
+  return (
+    <div className={collectionRowClassName("repository-row", { withActions: true })}>
+      <button className="repository-row-main" type="button" onClick={openIssueInApp}>
+        <CircleDot size={17} />
+        <div>
+          <strong>{issue.title}</strong>
+          <small>
+            #{issue.number} · {issue.state} · {issue.comments} comments · updated{" "}
+            {formatRelativeDate(issue.updatedAt)}
+          </small>
+        </div>
+        <span className="row-chip-stack">
+          <span className={`state-chip ${issue.state === "open" ? "success" : ""}`}>{issue.state}</span>
+          {issue.locked && <span className="state-chip attention">locked</span>}
+          {issue.labels.slice(0, 3).map((label) => (
+            <span className="state-chip" key={`${issue.id}-${label.name}`}>
+              {label.name}
+            </span>
+          ))}
+        </span>
+      </button>
+      <span className="row-action-stack">
+        <button
+          className="pin-row-button"
+          type="button"
+          aria-label={`Open issue ${issue.number} on GitHub`}
+          title={`Open issue #${issue.number} on GitHub`}
+          onClick={openIssueOnGitHub}
+        >
+          <ExternalLink size={15} />
+        </button>
+      </span>
+    </div>
+  );
+}
+
+function LocalConnectedPullRequestsPanel({
+  pullRequests,
+  availabilityMessage,
+  githubConnectionReady,
+  loading,
+  error,
+  onOpenPullRequest,
+  onOpenExternal
+}: {
+  pullRequests: PullRequestSummary[];
+  availabilityMessage: string | null;
+  githubConnectionReady: boolean;
+  loading: boolean;
+  error: Error | null;
+  onOpenPullRequest(pullRequest: PullRequestSummary): void;
+  onOpenExternal(url: string): void;
+}): JSX.Element {
+  return (
+    <section className="glass-panel local-connected-panel">
+      <h2>GitHub Pull Requests</h2>
+      {loading ? (
+        <div className="loading-state">Loading connected GitHub pull requests…</div>
+      ) : error ? (
+        <div className="error-state">{error.message}</div>
+      ) : availabilityMessage ? (
+        <div className="error-state">{availabilityMessage}</div>
+      ) : pullRequests.length ? (
+        <div className="local-connected-list">
+          {pullRequests.map((pullRequest) => (
+            <LocalConnectedPullRequestRow
+              key={pullRequest.id}
+              pullRequest={pullRequest}
+              onOpenExternal={onOpenExternal}
+              onOpenPullRequest={onOpenPullRequest}
+            />
+          ))}
+        </div>
+      ) : (
+        <p className="muted-row">
+          {githubConnectionReady ? "No open pull requests." : "No GitHub remote is connected."}
+        </p>
+      )}
+    </section>
+  );
+}
+
+function LocalConnectedPullRequestRow({
+  pullRequest,
+  onOpenPullRequest,
+  onOpenExternal
+}: {
+  pullRequest: PullRequestSummary;
+  onOpenPullRequest(pullRequest: PullRequestSummary): void;
+  onOpenExternal(url: string): void;
+}): JSX.Element {
+  function openPullRequestInApp(): void {
+    onOpenPullRequest(pullRequest);
+  }
+
+  function openPullRequestOnGitHub(): void {
+    onOpenExternal(pullRequest.htmlUrl);
+  }
+
+  return (
+    <div className={collectionRowClassName("repository-row", { withActions: true })}>
+      <button className="repository-row-main" type="button" onClick={openPullRequestInApp}>
+        <GitPullRequest size={17} />
+        <div>
+          <strong>{pullRequest.title}</strong>
+          <small>
+            #{pullRequest.number} · {pullRequest.headRefName} → {pullRequest.baseRefName} · updated{" "}
+            {formatRelativeDate(pullRequest.updatedAt)}
+          </small>
+        </div>
+        <span className="row-chip-stack">
+          <span className={`state-chip ${pullRequest.state === "open" ? "success" : ""}`}>
+            {pullRequest.state}
+          </span>
+          {pullRequest.isDraft && <span className="state-chip attention">draft</span>}
+          {pullRequest.reviewDecision && <span className="state-chip">{pullRequest.reviewDecision}</span>}
+          {pullRequest.merged && <span className="state-chip success">merged</span>}
+        </span>
+      </button>
+      <span className="row-action-stack">
+        <button
+          className="pin-row-button"
+          type="button"
+          aria-label={`Open pull request ${pullRequest.number} on GitHub`}
+          title={`Open pull request #${pullRequest.number} on GitHub`}
+          onClick={openPullRequestOnGitHub}
+        >
+          <ExternalLink size={15} />
+        </button>
+      </span>
+    </div>
+  );
+}
+
+function LocalConnectedActionsPanel({
+  runs,
+  availabilityMessage,
+  nameWithOwner,
+  loading,
+  error,
+  onOpenWorkflowRun,
+  onOpenExternal
+}: {
+  runs: WorkflowRunSummary[];
+  availabilityMessage: string | null;
+  nameWithOwner: string | null;
+  loading: boolean;
+  error: Error | null;
+  onOpenWorkflowRun(nameWithOwner: string, run: WorkflowRunSummary): void;
+  onOpenExternal(url: string): void;
+}): JSX.Element {
+  return (
+    <section className="glass-panel local-connected-panel">
+      <h2>GitHub Actions</h2>
+      {loading ? (
+        <div className="loading-state">Loading connected GitHub workflow runs…</div>
+      ) : error ? (
+        <div className="error-state">{error.message}</div>
+      ) : availabilityMessage ? (
+        <div className="error-state">{availabilityMessage}</div>
+      ) : runs.length && nameWithOwner ? (
+        <div className="local-connected-list">
+          {runs.map((run) => (
+            <LocalConnectedWorkflowRunRow
+              key={run.id}
+              nameWithOwner={nameWithOwner}
+              run={run}
+              onOpenExternal={onOpenExternal}
+              onOpenWorkflowRun={onOpenWorkflowRun}
+            />
+          ))}
+        </div>
+      ) : (
+        <p className="muted-row">{nameWithOwner ? "No workflow runs." : "No GitHub remote is connected."}</p>
+      )}
+    </section>
+  );
+}
+
+function LocalConnectedWorkflowRunRow({
+  nameWithOwner,
+  run,
+  onOpenWorkflowRun,
+  onOpenExternal
+}: {
+  nameWithOwner: string;
+  run: WorkflowRunSummary;
+  onOpenWorkflowRun(nameWithOwner: string, run: WorkflowRunSummary): void;
+  onOpenExternal(url: string): void;
+}): JSX.Element {
+  const statusLabel = run.conclusion ?? run.status ?? "unknown";
+
+  function openWorkflowRunInApp(): void {
+    onOpenWorkflowRun(nameWithOwner, run);
+  }
+
+  function openWorkflowRunOnGitHub(): void {
+    onOpenExternal(run.htmlUrl);
+  }
+
+  return (
+    <div className={collectionRowClassName("repository-row", { withActions: true })}>
+      <button className="repository-row-main" type="button" onClick={openWorkflowRunInApp}>
+        <PlayCircle size={17} />
+        <div>
+          <strong>{run.displayTitle ?? run.name}</strong>
+          <small>
+            {run.name} · {run.event} · updated {formatRelativeDate(run.updatedAt)}
+          </small>
+        </div>
+        <span className="row-chip-stack">
+          <span className={`state-chip ${statusLabel === "success" ? "success" : ""}`}>{statusLabel}</span>
+          {run.branch && <span className="state-chip">{run.branch}</span>}
+          {run.runNumber !== null && <span className="state-chip">#{run.runNumber}</span>}
+        </span>
+      </button>
+      <span className="row-action-stack">
+        <button
+          className="pin-row-button"
+          type="button"
+          aria-label={`Open workflow run ${run.id} on GitHub`}
+          title={`Open workflow run ${run.id} on GitHub`}
+          onClick={openWorkflowRunOnGitHub}
+        >
+          <ExternalLink size={15} />
+        </button>
+      </span>
     </div>
   );
 }

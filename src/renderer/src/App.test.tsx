@@ -763,7 +763,7 @@ describe("Control renderer routing", () => {
     expect(screen.getByText("Git-backed")).toBeInTheDocument();
     expect(screen.getByText("Colocated")).toBeInTheDocument();
     expect(screen.getByText("GitHub connected")).toBeInTheDocument();
-    expect(screen.getByText("review-stack")).toBeInTheDocument();
+    expect(screen.getAllByText("review-stack").length).toBeGreaterThan(0);
     expect(screen.getByText("Stale")).toBeInTheDocument();
 
     const tabs = document.querySelector(".repo-tabs") as HTMLElement;
@@ -981,10 +981,13 @@ describe("Control renderer routing", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "Control App" })).toBeInTheDocument();
+    expect(screen.getByText("Repository root")).toBeInTheDocument();
     const tabs = document.querySelector(".repo-tabs") as HTMLElement;
 
     await userEvent.click(within(tabs).getByRole("button", { name: /^Issues$/ }));
-    expect(await screen.findByText("#1199 Compiler crash in async closure")).toBeInTheDocument();
+    expect(
+      (await screen.findAllByRole("button", { name: /Compiler crash in async closure/i })).length
+    ).toBeGreaterThan(0);
     await waitFor(() =>
       expect(listGitHubIssues).toHaveBeenCalledWith({
         areaId: localArea.id,
@@ -997,7 +1000,9 @@ describe("Control renderer routing", () => {
     );
 
     await userEvent.click(within(tabs).getByRole("button", { name: /^Pull requests$/ }));
-    expect(await screen.findByText("#519 Update concurrency runtime tests")).toBeInTheDocument();
+    expect(
+      (await screen.findAllByRole("button", { name: /Update concurrency runtime tests/i })).length
+    ).toBeGreaterThan(0);
     await waitFor(() =>
       expect(listGitHubPullRequests).toHaveBeenCalledWith({
         areaId: localArea.id,
@@ -1010,7 +1015,7 @@ describe("Control renderer routing", () => {
     );
 
     await userEvent.click(within(tabs).getByRole("button", { name: /^Actions$/ }));
-    expect((await screen.findAllByText("Swift CI completed")).length).toBeGreaterThan(0);
+    const workflowRunRow = (await screen.findAllByRole("button", { name: /Validate compiler changes/i }))[0];
     await waitFor(() =>
       expect(listGitHubActions).toHaveBeenCalledWith({
         areaId: localArea.id,
@@ -1023,6 +1028,16 @@ describe("Control renderer routing", () => {
     expect(githubListIssues).not.toHaveBeenCalled();
     expect(githubListPullRequests).not.toHaveBeenCalled();
     expect(githubListActions).not.toHaveBeenCalled();
+
+    await userEvent.click(workflowRunRow);
+    await waitFor(() =>
+      expect(useUiStore.getState().route).toEqual({
+        kind: "repository",
+        nameWithOwner: "NarukeAlpha/control",
+        tab: "actions",
+        workflowRunId: mockActions[0].id
+      })
+    );
   });
 
   it("uses cache-only reads for connected local repository GitHub tabs before authentication", async () => {
@@ -1069,7 +1084,9 @@ describe("Control renderer routing", () => {
       }
     });
 
-    expect(await screen.findByText("#1199 Compiler crash in async closure")).toBeInTheDocument();
+    expect(
+      (await screen.findAllByRole("button", { name: /Compiler crash in async closure/i })).length
+    ).toBeGreaterThan(0);
     await waitFor(() =>
       expect(listGitHubIssues).toHaveBeenCalledWith({
         areaId: localArea.id,

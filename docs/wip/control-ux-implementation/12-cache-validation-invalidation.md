@@ -18,6 +18,11 @@ while preserving local-first resilience.
   writes currently use `etag: null`.
 - Renderer query hooks set `staleTime`, but main process cache is the real data
   reliability boundary.
+- `src/renderer/src/components/shell/appInvalidations.ts` already owns
+  renderer-side React Query invalidation after successful GitHub mutation
+  responses.
+- `src/renderer/src/hooks/useRepositoryWarmPrefetch.ts` currently warms several
+  repository tabs on route entry and must remain rate-limit aware.
 
 ## Principles
 
@@ -31,6 +36,20 @@ while preserving local-first resilience.
 - Queue or throttle live validation when multiple tabs warm at once.
 - Respect primary and secondary rate-limit signals; validation must back off
   before it turns a cached app into an API burst.
+
+## Process Boundaries
+
+- Define serializable cache validation contracts in `src/shared` before they are
+  used by storage, main-process providers, preload, or renderer code.
+- Keep cache persistence and live validator decisions in `src/main`.
+- Update `src/preload` only when a validation feature changes the IPC surface;
+  metadata-only storage changes should not widen the bridge.
+- Keep React Query invalidation in the renderer when the renderer receives a
+  successful mutation response through existing IPC calls.
+- Add main-to-renderer invalidation events only for data changes that originate
+  outside renderer-owned commands, such as local gateway repository events.
+- Do not expose raw ETag or Last-Modified header values to renderer components
+  unless a user-visible cache diagnostic requires it.
 
 ## Cache Envelope
 
@@ -160,6 +179,19 @@ Renderer route opens
 - When secondary rate-limit headers or abuse-detection responses appear, stop
   optional validators and preserve cached UI.
 
+## Risks
+
+- IPC payload bloat if full cache envelopes are sent across the bridge instead
+  of compact status-bearing results.
+- Backward compatibility with existing cache rows that have `etag: null` and no
+  validator metadata.
+- Race conditions between background validation, route warmup, and
+  user-triggered `forceRefresh`.
+- Over-invalidating broad repository query families after narrow mutations.
+- Turning hidden tab prefetch into an API burst when opening large repositories.
+- Local gateway events invalidating GitHub-connected local repository keys too
+  broadly.
+
 ## Snapshot Examples
 
 ```ts
@@ -221,6 +253,14 @@ type CacheValidationState =
 - Validation scheduler throttles tab warmup and backs off on secondary
   rate-limit signals.
 - Local gateway event invalidates local keys.
+- Repository warm prefetch runs through an ordered queue instead of launching
+  every tab surface at once.
+- Required validation commands:
+  - `bun run format`
+  - `bun run lint`
+  - `bun run typecheck`
+  - `bun run test`
+  - `bun run build`
 
 ## Acceptance Criteria
 
@@ -229,4 +269,6 @@ type CacheValidationState =
 - `304` extends freshness without replacing payload.
 - Mutation invalidation is narrower than broad repository refresh.
 - Offline/rate-limited behavior remains useful.
-- Required validation passes.
+- Repository route entry does not create simultaneous hidden-tab refresh bursts.
+- Required validation passes through repository scripts, not direct tool
+  invocations.

@@ -4,6 +4,7 @@ import type {
   RepositoryListResult,
   RepositorySummary
 } from "@shared/github";
+import type { CacheValidatorSnapshot } from "@shared/cache";
 import type { CacheEntry, CachedRepositoryList, LocalStore } from "../storage";
 import { Effect, Ref } from "effect";
 
@@ -121,11 +122,16 @@ export class GitHubReadCache {
         cachedResult
       );
       if (result.availability.status === "available") {
+        const validatedAt = new Date().toISOString();
         dependencies.store.setGitHubRepositoriesWithStatusCache({
           repositories: result.items,
           cacheKey,
           result,
           etag: null,
+          lastModified: repositoryStatusLastModified(result.items),
+          validator: repositoryStatusValidatorSnapshot(limit, result.items),
+          validatedAt,
+          validationState: "validated",
           expiresAt: new Date(Date.now() + dependencies.ttlMs).toISOString()
         });
         const changed = !dependencies.areMateriallyEqual(previous, result.items);
@@ -145,6 +151,7 @@ export class GitHubReadCache {
           cacheKey: negativeCacheKey,
           payload: result,
           etag: null,
+          validationState: "error",
           expiresAt: new Date(Date.now() + permanentMissTtlMs).toISOString()
         });
         dependencies.log("repository list status negative cache write", {
@@ -349,6 +356,51 @@ function repositoryStatusStaleResult(result: RepositoryListResult, message: stri
       message
     }
   };
+}
+
+function repositoryStatusValidatorSnapshot(
+  limit: number,
+  repositories: RepositorySummary[]
+): CacheValidatorSnapshot {
+  return {
+    kind: "github.repository-list.status",
+    version: 1,
+    values: {
+      limit,
+      count: repositories.length,
+      repositoryIdsHash: stableStringHash(repositories.map((repository) => repository.id).join("|")),
+      pushedAtHash: stableStringHash(repositories.map((repository) => repository.pushedAt ?? "").join("|")),
+      updatedAtHash: stableStringHash(repositories.map((repository) => repository.updatedAt ?? "").join("|")),
+      openIssues: repositories.reduce((total, repository) => total + repository.counts.openIssues, 0),
+      openPullRequests: repositories.reduce(
+        (total, repository) => total + repository.counts.openPullRequests,
+        0
+      )
+    }
+  };
+}
+
+function repositoryStatusLastModified(repositories: RepositorySummary[]): string | null {
+  const timestamps = repositories
+    .flatMap((repository) => [repository.pushedAt, repository.updatedAt])
+    .filter((timestamp): timestamp is string => Boolean(timestamp))
+    .map((timestamp) => Date.parse(timestamp))
+    .filter((timestamp) => Number.isFinite(timestamp));
+
+  if (timestamps.length === 0) {
+    return null;
+  }
+
+  return new Date(Math.max(...timestamps)).toISOString();
+}
+
+function stableStringHash(value: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(36);
 }
 
 function repositoryStatusStaleFallbackMessage(availability: GitHubReadAvailability): string {

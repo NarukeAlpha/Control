@@ -105,6 +105,51 @@ describe("GitHubReadCache", () => {
     expect(updated).toHaveBeenCalledTimes(1);
   });
 
+  it("writes repository list validator metadata for available live refreshes", async () => {
+    const repository = {
+      ...repositorySummary("NarukeAlpha/control"),
+      pushedAt: "2026-06-05T04:00:00.000Z",
+      updatedAt: "2026-06-05T05:00:00.000Z",
+      counts: {
+        ...repositorySummary("NarukeAlpha/control").counts,
+        openIssues: 2,
+        openPullRequests: 3
+      }
+    };
+    const store = createStore();
+    const refreshLive = vi.fn(
+      async (): Promise<RepositoryListResult> => ({
+        items: [repository],
+        availability: { status: "available", message: null }
+      })
+    );
+    const cache = new GitHubReadCache();
+
+    await cache.listRepositoriesWithStatus(
+      { limit: 7, forceRefresh: true },
+      dependencies(store, { refreshLive })
+    );
+
+    expect(store.setGitHubRepositoriesWithStatusCache).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cacheKey: "repositories-with-status:7",
+        lastModified: "2026-06-05T05:00:00.000Z",
+        validatedAt: expect.any(String),
+        validationState: "validated",
+        validator: {
+          kind: "github.repository-list.status",
+          version: 1,
+          values: expect.objectContaining({
+            limit: 7,
+            count: 1,
+            openIssues: 2,
+            openPullRequests: 3
+          })
+        }
+      })
+    );
+  });
+
   it("force refreshes even when fresh rows exist", async () => {
     const staleRepository = repositorySummary("NarukeAlpha/stale");
     const freshRepository = repositorySummary("NarukeAlpha/fresh");
@@ -406,6 +451,10 @@ function createStore(
   if (input.genericResult) {
     entries.set("repositories-with-status:50", {
       etag: null,
+      lastModified: null,
+      validator: null,
+      validatedAt: null,
+      validationState: null,
       expiresAt: null,
       updatedAt: null,
       isExpired: false,
@@ -416,10 +465,23 @@ function createStore(
     listGitHubRepositoriesWithMetadata: vi.fn(() => input.repositoryRows ?? { items: [], syncedAt: null }),
     getCacheEntry: vi.fn((_provider: string, cacheKey: string) => entries.get(cacheKey) ?? null),
     setCache: vi.fn(
-      (record: { cacheKey: string; payload: RepositoryListResult; expiresAt: string | null }) => {
+      (record: {
+        cacheKey: string;
+        payload: RepositoryListResult;
+        etag?: string | null;
+        lastModified?: string | null;
+        validator?: CacheEntry<RepositoryListResult>["validator"];
+        validatedAt?: string | null;
+        validationState?: CacheEntry<RepositoryListResult>["validationState"];
+        expiresAt: string | null;
+      }) => {
         entries.set(record.cacheKey, {
           payload: record.payload,
-          etag: null,
+          etag: record.etag ?? null,
+          lastModified: record.lastModified ?? null,
+          validator: record.validator ?? null,
+          validatedAt: record.validatedAt ?? null,
+          validationState: record.validationState ?? null,
           expiresAt: record.expiresAt,
           updatedAt: null,
           isExpired: false
@@ -434,11 +496,24 @@ function createStore(
       }
     }),
     setGitHubRepositoriesWithStatusCache: vi.fn(
-      (record: { repositories: RepositorySummary[]; cacheKey: string; result: RepositoryListResult }) => {
+      (record: {
+        repositories: RepositorySummary[];
+        cacheKey: string;
+        result: RepositoryListResult;
+        etag?: string | null;
+        lastModified?: string | null;
+        validator?: CacheEntry<RepositoryListResult>["validator"];
+        validatedAt?: string | null;
+        validationState?: CacheEntry<RepositoryListResult>["validationState"];
+      }) => {
         input.repositoryRows = { items: record.repositories, syncedAt: new Date().toISOString() };
         entries.set(record.cacheKey, {
           payload: record.result,
-          etag: null,
+          etag: record.etag ?? null,
+          lastModified: record.lastModified ?? null,
+          validator: record.validator ?? null,
+          validatedAt: record.validatedAt ?? null,
+          validationState: record.validationState ?? null,
           expiresAt: null,
           updatedAt: null,
           isExpired: false

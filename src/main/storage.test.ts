@@ -1173,6 +1173,17 @@ function assertLocalStoreCacheContract(store: LocalStore): void {
     cacheKey: "contract:cache",
     payload: { ok: true },
     etag: "cache-etag",
+    lastModified: "2026-06-05T04:00:00.000Z",
+    validator: {
+      kind: "github.contract",
+      version: 1,
+      values: {
+        ok: true,
+        count: 1
+      }
+    },
+    validatedAt: "2026-06-05T05:00:00.000Z",
+    validationState: "validated",
     expiresAt: new Date(Date.now() + 60_000).toISOString()
   });
   expect(store.getCache("github", "contract:cache")).toEqual({ ok: true });
@@ -1180,6 +1191,17 @@ function assertLocalStoreCacheContract(store: LocalStore): void {
     expect.objectContaining({
       payload: { ok: true },
       etag: "cache-etag",
+      lastModified: "2026-06-05T04:00:00.000Z",
+      validator: {
+        kind: "github.contract",
+        version: 1,
+        values: {
+          ok: true,
+          count: 1
+        }
+      },
+      validatedAt: "2026-06-05T05:00:00.000Z",
+      validationState: "validated",
       isExpired: false
     })
   );
@@ -1189,6 +1211,17 @@ function assertLocalStoreCacheContract(store: LocalStore): void {
     cacheKey: "repositories-with-status:contract",
     result: { items: [repository], availability: { status: "available", message: null } },
     etag: "status-etag",
+    lastModified: "2026-06-05T04:30:00.000Z",
+    validator: {
+      kind: "github.repository-list.status",
+      version: 1,
+      values: {
+        count: 1,
+        limit: 50
+      }
+    },
+    validatedAt: "2026-06-05T05:30:00.000Z",
+    validationState: "validated",
     expiresAt: new Date(Date.now() + 60_000).toISOString()
   });
   expect(store.getGitHubRepository("NarukeAlpha/control")).toEqual(repository);
@@ -1196,6 +1229,17 @@ function assertLocalStoreCacheContract(store: LocalStore): void {
     expect.objectContaining({
       payload: expect.objectContaining({ items: [repository] }),
       etag: "status-etag",
+      lastModified: "2026-06-05T04:30:00.000Z",
+      validator: {
+        kind: "github.repository-list.status",
+        version: 1,
+        values: {
+          count: 1,
+          limit: 50
+        }
+      },
+      validatedAt: "2026-06-05T05:30:00.000Z",
+      validationState: "validated",
       isExpired: false
     })
   );

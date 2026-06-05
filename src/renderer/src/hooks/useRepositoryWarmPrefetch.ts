@@ -8,6 +8,8 @@ import { prefetchPullRequestsTabData } from "../components/repository/pull-reque
 import type { IssueStateFilter, PullRequestStateFilter } from "@shared/github";
 import { useControlApi } from "./useControlApi";
 
+export type RepositoryWarmPrefetchTask = () => Promise<void>;
+
 interface UseRepositoryWarmPrefetchInput {
   appReady: boolean;
   enabled: boolean;
@@ -51,45 +53,55 @@ export function useRepositoryWarmPrefetch({
       return;
     }
 
-    void Promise.all([
-      prefetchCodeTabData(queryClient, {
-        api,
-        owner,
-        repo,
-        selectedRef,
-        defaultBranch,
-        commitHistoryLimit,
-        selectedRootMarkdownPath: null,
-        githubReady
-      }),
-      prefetchIssuesTabData(queryClient, {
-        api,
-        owner,
-        repo,
-        issueState,
-        issueListLimit,
-        githubReady
-      }),
-      prefetchPullRequestsTabData(queryClient, {
-        api,
-        owner,
-        repo,
-        pullState,
-        pullRequestListLimit,
-        githubReady
-      }),
-      prefetchActionsTabData(queryClient, {
-        api,
-        owner,
-        repo,
-        limit: actionsLimit,
-        workflowRef,
-        workflowDefinitionLimit,
-        githubReady
-      })
-    ]).catch(() => {
-      // Mounted tabs own visible error states; warm prefetch should stay silent.
-    });
+    let active = true;
+    void runRepositoryWarmPrefetchQueue(
+      [
+        () =>
+          prefetchCodeTabData(queryClient, {
+            api,
+            owner,
+            repo,
+            selectedRef,
+            defaultBranch,
+            commitHistoryLimit,
+            selectedRootMarkdownPath: null,
+            githubReady
+          }),
+        () =>
+          prefetchIssuesTabData(queryClient, {
+            api,
+            owner,
+            repo,
+            issueState,
+            issueListLimit,
+            githubReady
+          }),
+        () =>
+          prefetchPullRequestsTabData(queryClient, {
+            api,
+            owner,
+            repo,
+            pullState,
+            pullRequestListLimit,
+            githubReady
+          }),
+        () =>
+          prefetchActionsTabData(queryClient, {
+            api,
+            owner,
+            repo,
+            limit: actionsLimit,
+            workflowRef,
+            workflowDefinitionLimit,
+            githubReady
+          })
+      ],
+      () => active
+    );
+
+    return () => {
+      active = false;
+    };
   }, [
     actionsLimit,
     api,
@@ -109,4 +121,21 @@ export function useRepositoryWarmPrefetch({
     workflowDefinitionLimit,
     workflowRef
   ]);
+}
+
+export async function runRepositoryWarmPrefetchQueue(
+  tasks: readonly RepositoryWarmPrefetchTask[],
+  shouldContinue: () => boolean = () => true
+): Promise<void> {
+  for (const task of tasks) {
+    if (!shouldContinue()) {
+      return;
+    }
+
+    try {
+      await task();
+    } catch {
+      // Mounted tabs own visible error states; warm prefetch should stay silent.
+    }
+  }
 }

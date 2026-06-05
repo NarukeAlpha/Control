@@ -1,5 +1,5 @@
 import { ExternalLink, GitFork } from "lucide-react";
-import { useState, type JSX } from "react";
+import { useState, type JSX, type ReactNode } from "react";
 
 import type {
   GitHubAction,
@@ -25,6 +25,7 @@ import { RepositoryAccessSection } from "./RepositoryAccessSection";
 import { BranchProtectionSection } from "./BranchProtectionSection";
 import {
   RepositoryFeatureSettingsForm,
+  RepositorySettingsOverview,
   repositorySettingsMutationDisabledReason
 } from "./RepositoryFeatureSettingsForm";
 import { useRepositorySettingsTabQueries } from "./RepositorySettingsTab.queries";
@@ -32,6 +33,29 @@ import { RepositoryRulesetsSection } from "./RepositoryRulesetsSection";
 import { useBranchProtectionDraft } from "./useBranchProtectionDraft";
 
 const maxForksLimit = 100;
+
+const accessAdminActions: GitHubAction[] = [
+  "addRepositoryCollaborator",
+  "removeRepositoryCollaborator",
+  "updateCollaboratorPermission",
+  "addRepositoryTeam",
+  "removeRepositoryTeam",
+  "updateTeamPermission"
+];
+
+const branchProtectionAdminActions: GitHubAction[] = ["updateBranchProtection", "deleteBranchProtection"];
+
+const rulesetAdminActions: GitHubAction[] = [
+  "createRepositoryRuleset",
+  "updateRepositoryRuleset",
+  "deleteRepositoryRuleset"
+];
+
+const repositoryAdminActions: GitHubAction[] = [
+  ...accessAdminActions,
+  ...branchProtectionAdminActions,
+  ...rulesetAdminActions
+];
 
 function repositoryStatusMutationDisabledReason(repository: RepositoryDetail): string | null {
   if (repository.permissions.isDisabled) {
@@ -45,6 +69,64 @@ function repositoryStatusMutationDisabledReason(repository: RepositoryDetail): s
 
 function readRepositoryTabPreference(value: string): RepositoryTabPreference {
   return value === "show" || value === "hide" ? value : "auto";
+}
+
+function RepositorySettingsGroup({
+  title,
+  description,
+  children
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}): JSX.Element {
+  return (
+    <section className="settings-admin-group" aria-label={title}>
+      <header className="settings-admin-group-header">
+        <div>
+          <h3>{title}</h3>
+          <small>{description}</small>
+        </div>
+      </header>
+      <div className="settings-admin-group-body">{children}</div>
+    </section>
+  );
+}
+
+function RepositoryAdminMutationFeedback({
+  actions,
+  mutationAction,
+  mutationPending,
+  mutationSucceeded,
+  mutationError
+}: {
+  actions: GitHubAction[];
+  mutationAction: GitHubAction | null;
+  mutationPending: boolean;
+  mutationSucceeded: boolean;
+  mutationError: Error | null;
+}): JSX.Element | null {
+  if (!mutationAction || !actions.includes(mutationAction)) {
+    return null;
+  }
+
+  if (mutationPending) {
+    return <div className="loading-state">{githubActionLabel(mutationAction)} is still running.</div>;
+  }
+
+  if (mutationSucceeded) {
+    return <div className="muted-row">{githubActionLabel(mutationAction)} completed.</div>;
+  }
+
+  if (mutationError) {
+    return (
+      <div className="error-state">
+        Could not run {githubActionLabel(mutationAction)}: {mutationError.message}
+      </div>
+    );
+  }
+
+  return null;
 }
 
 function RepositoryTabVisibilityPreferencesSection({
@@ -89,8 +171,8 @@ function RepositoryTabVisibilityPreferencesSection({
     <section className="repository-tab-visibility-section">
       <header>
         <div>
-          <h3>Tab visibility</h3>
-          <small>Per-repository Control overrides</small>
+          <h3>Repository tab preferences</h3>
+          <small>Control-only visibility overrides for this repository.</small>
         </div>
         {savingTab && <span className="state-chip">Saving {repositoryTabPreferenceLabels[savingTab]}</span>}
       </header>
@@ -235,25 +317,8 @@ export function RepositorySettingsTab({
       : forkNetworkUnavailable
         ? "unavailable"
         : String(forks.length);
-  const repositoryAdminActions: GitHubAction[] = [
-    "addRepositoryCollaborator",
-    "removeRepositoryCollaborator",
-    "updateCollaboratorPermission",
-    "addRepositoryTeam",
-    "removeRepositoryTeam",
-    "updateTeamPermission",
-    "updateBranchProtection",
-    "deleteBranchProtection",
-    "createRepositoryRuleset",
-    "updateRepositoryRuleset",
-    "deleteRepositoryRuleset"
-  ];
   const repositoryAdminMutationActive =
     mutationPending && mutationAction !== null && repositoryAdminActions.includes(mutationAction);
-  const repositoryAdminMutationSucceeded =
-    mutationSucceeded && mutationAction !== null && repositoryAdminActions.includes(mutationAction);
-  const repositoryAdminMutationError =
-    mutationAction !== null && repositoryAdminActions.includes(mutationAction) ? mutationError : null;
   const adminDisabledReason = repositoryAdminMutationActive
     ? `${githubActionLabel(mutationAction)} is still running.`
     : settingsDisabledReason;
@@ -287,7 +352,7 @@ export function RepositorySettingsTab({
           </small>
         </div>
         <button type="button" onClick={() => onOpenExternal(repositoryPath(repository, "/settings"))}>
-          <ExternalLink size={16} /> Open on GitHub
+          <ExternalLink size={16} /> Open settings on GitHub
         </button>
       </header>
 
@@ -295,131 +360,179 @@ export function RepositorySettingsTab({
         <div className="error-state">{administrationAvailabilityMessage}</div>
       )}
 
-      <RepositoryTabVisibilityPreferencesSection
-        preferences={tabPreferences}
-        onPreferencesChange={onTabPreferencesChange}
-      />
+      <RepositorySettingsGroup
+        title="Status summary"
+        description="Repository visibility, default branch, feature availability, and current permission snapshot."
+      >
+        <RepositorySettingsOverview administration={administration} />
+      </RepositorySettingsGroup>
 
-      <RepositoryFeatureSettingsForm
-        repository={repository}
-        branches={branches}
-        branchesError={branchesError}
-        saving={saving}
-        saveSucceeded={saveSucceeded}
-        saveError={saveError}
-        settingsDisabledReason={settingsDisabledReason}
-        statusDisabledReason={statusDisabledReason}
-        onMutate={onMutate}
-      />
+      <RepositorySettingsGroup
+        title="Control display"
+        description="Local Control preferences that change how this repository appears in the app."
+      >
+        <RepositoryTabVisibilityPreferencesSection
+          preferences={tabPreferences}
+          onPreferencesChange={onTabPreferencesChange}
+        />
+      </RepositorySettingsGroup>
 
-      <BranchProtectionSection
-        branch={branchProtectionBranch}
-        branchProtection={branchProtection}
-        loading={branchProtectionLoading}
-        error={branchProtectionError}
-        availabilityMessage={branchProtectionAvailabilityMessage}
-        disabledReason={branchProtectionDisabledReason}
-        draft={branchProtectionDraft}
-        onRequiresPullRequestReviewsChange={setRequiresPullRequestReviews}
-        onRequiredApprovingReviewCountChange={setRequiredApprovingReviewCount}
-        onEnforceAdminsChange={setEnforceAdmins}
-        onRequiredLinearHistoryChange={setRequiredLinearHistory}
-        onRequiredConversationResolutionChange={setRequiredConversationResolution}
-        onMutate={onMutate}
-      />
+      <RepositorySettingsGroup
+        title="GitHub features"
+        description="Repository metadata, feature toggles, merge behavior, and destructive status actions."
+      >
+        <RepositoryFeatureSettingsForm
+          repository={repository}
+          branches={branches}
+          branchesError={branchesError}
+          saving={saving}
+          saveSucceeded={saveSucceeded}
+          saveError={saveError}
+          settingsDisabledReason={settingsDisabledReason}
+          statusDisabledReason={statusDisabledReason}
+          onMutate={onMutate}
+        />
+      </RepositorySettingsGroup>
 
-      <RepositoryRulesetsSection
-        repositoryName={repository.name}
-        defaultBranch={administration.defaultBranch ?? repository.defaultBranch}
-        rulesets={repositoryRulesets}
-        rulesetsLimit={repositoryRulesetsLimit}
-        loading={repositoryRulesetsLoading}
-        error={repositoryRulesetsError}
-        availabilityMessage={repositoryRulesetsAvailabilityMessage}
-        disabledReason={rulesetDisabledReason}
-        onOpenExternal={onOpenExternal}
-        onMutate={onMutate}
-      />
+      <RepositorySettingsGroup
+        title="Access"
+        description="Collaborator and team access returned by GitHub with section-local permission states."
+      >
+        <RepositoryAdminMutationFeedback
+          actions={accessAdminActions}
+          mutationAction={mutationAction}
+          mutationPending={mutationPending}
+          mutationSucceeded={mutationSucceeded}
+          mutationError={mutationError}
+        />
+        <RepositoryAccessSection
+          githubReady={githubReady}
+          repositoryAccess={repositoryAccess}
+          repositoryAccessLoading={repositoryAccessLoading}
+          repositoryAccessError={repositoryAccessError}
+          repositoryAccessLimit={repositoryAccessLimit}
+          focusedCollaboratorLogin={focusedCollaboratorLogin}
+          disabled={adminDisabled}
+          disabledReason={adminDisabledReason}
+          onMutate={onMutate}
+          onOpenExternal={onOpenExternal}
+          onOpenRepository={onOpenRepository}
+          onOpenTeam={onOpenTeam}
+          onSelectCollaborator={onSelectCollaborator}
+          onExpandRepositoryAccess={onExpandRepositoryAccess}
+        />
+      </RepositorySettingsGroup>
 
-      {repositoryAdminMutationSucceeded && mutationAction && (
-        <div className="muted-row">{githubActionLabel(mutationAction)} completed.</div>
-      )}
-      {repositoryAdminMutationError && (
-        <div className="error-state">
-          Could not run {mutationAction ? githubActionLabel(mutationAction) : "repository admin action"}:{" "}
-          {repositoryAdminMutationError.message}
-        </div>
-      )}
+      <RepositorySettingsGroup
+        title="Branch protection"
+        description="Reusable branch protection controls shared with security administration workflows."
+      >
+        <RepositoryAdminMutationFeedback
+          actions={branchProtectionAdminActions}
+          mutationAction={mutationAction}
+          mutationPending={mutationPending}
+          mutationSucceeded={mutationSucceeded}
+          mutationError={mutationError}
+        />
+        <BranchProtectionSection
+          branch={branchProtectionBranch}
+          branchProtection={branchProtection}
+          loading={branchProtectionLoading}
+          error={branchProtectionError}
+          availabilityMessage={branchProtectionAvailabilityMessage}
+          disabledReason={branchProtectionDisabledReason}
+          draft={branchProtectionDraft}
+          onRequiresPullRequestReviewsChange={setRequiresPullRequestReviews}
+          onRequiredApprovingReviewCountChange={setRequiredApprovingReviewCount}
+          onEnforceAdminsChange={setEnforceAdmins}
+          onRequiredLinearHistoryChange={setRequiredLinearHistory}
+          onRequiredConversationResolutionChange={setRequiredConversationResolution}
+          onMutate={onMutate}
+        />
+      </RepositorySettingsGroup>
 
-      <section className="settings-network-section">
-        <header>
-          <h3>Fork network</h3>
-          <span className={`state-chip ${forkNetworkUnavailable ? "attention" : ""}`}>
-            {forkNetworkStatusLabel}
-          </span>
-        </header>
-        {repositoryForksLoading && !repositoryForks && <div className="loading-state">Loading forks…</div>}
-        {repositoryForksError && (
-          <div className="error-state">Fork network unavailable: {repositoryForksError.message}</div>
-        )}
-        {forkNetworkAvailabilityMessage && (
-          <div className="error-state">{forkNetworkAvailabilityMessage}</div>
-        )}
-        {!repositoryForksLoading &&
-          !repositoryForksError &&
-          !forkNetworkAvailabilityMessage &&
-          forks.length === 0 && <div className="empty-state">No visible forks returned.</div>}
-        {forks.length > 0 && (
-          <div className="fork-network-list">
-            {forks.map((fork) => (
-              <div key={fork.id} className="fork-network-row">
-                <button type="button" onClick={() => onOpenRepository(fork.nameWithOwner)}>
-                  <GitFork size={15} />
-                  <span>
-                    <strong>{fork.nameWithOwner}</strong>
-                    <small>{repositoryForkMetadataLabel(fork)}</small>
-                  </span>
-                </button>
-                <button
-                  className="pin-row-button"
-                  type="button"
-                  title={`Open ${fork.nameWithOwner} on GitHub`}
-                  onClick={() => onOpenExternal(fork.htmlUrl)}
-                >
-                  <ExternalLink size={14} />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-        {canExpandForks && (
-          <div className="table-action-row">
-            <button type="button" onClick={onExpandForks}>
-              Load more forks
-            </button>
-          </div>
-        )}
-        {!canExpandForks && forksLimitHit && (
-          <div className="muted-row">Showing the first {forks.length} forks returned by GitHub.</div>
-        )}
-      </section>
+      <RepositorySettingsGroup
+        title="Rulesets"
+        description="Repository-owned ruleset controls aligned with branch protection and reusable admin surfaces."
+      >
+        <RepositoryAdminMutationFeedback
+          actions={rulesetAdminActions}
+          mutationAction={mutationAction}
+          mutationPending={mutationPending}
+          mutationSucceeded={mutationSucceeded}
+          mutationError={mutationError}
+        />
+        <RepositoryRulesetsSection
+          repositoryName={repository.name}
+          defaultBranch={administration.defaultBranch ?? repository.defaultBranch}
+          rulesets={repositoryRulesets}
+          rulesetsLimit={repositoryRulesetsLimit}
+          loading={repositoryRulesetsLoading}
+          error={repositoryRulesetsError}
+          availabilityMessage={repositoryRulesetsAvailabilityMessage}
+          disabledReason={rulesetDisabledReason}
+          onOpenExternal={onOpenExternal}
+          onMutate={onMutate}
+        />
+      </RepositorySettingsGroup>
 
-      <RepositoryAccessSection
-        githubReady={githubReady}
-        repositoryAccess={repositoryAccess}
-        repositoryAccessLoading={repositoryAccessLoading}
-        repositoryAccessError={repositoryAccessError}
-        repositoryAccessLimit={repositoryAccessLimit}
-        focusedCollaboratorLogin={focusedCollaboratorLogin}
-        disabled={adminDisabled}
-        disabledReason={adminDisabledReason}
-        onMutate={onMutate}
-        onOpenExternal={onOpenExternal}
-        onOpenRepository={onOpenRepository}
-        onOpenTeam={onOpenTeam}
-        onSelectCollaborator={onSelectCollaborator}
-        onExpandRepositoryAccess={onExpandRepositoryAccess}
-      />
+      <RepositorySettingsGroup
+        title="Fork network"
+        description="Read-only fork network inspection for repository relationship and ownership checks."
+      >
+        <section className="settings-network-section">
+          <header>
+            <h3>Fork network</h3>
+            <span className={`state-chip ${forkNetworkUnavailable ? "attention" : ""}`}>
+              {forkNetworkStatusLabel}
+            </span>
+          </header>
+          {repositoryForksLoading && !repositoryForks && <div className="loading-state">Loading forks…</div>}
+          {repositoryForksError && (
+            <div className="error-state">Fork network unavailable: {repositoryForksError.message}</div>
+          )}
+          {forkNetworkAvailabilityMessage && (
+            <div className="error-state">{forkNetworkAvailabilityMessage}</div>
+          )}
+          {!repositoryForksLoading &&
+            !repositoryForksError &&
+            !forkNetworkAvailabilityMessage &&
+            forks.length === 0 && <div className="empty-state">No visible forks returned.</div>}
+          {forks.length > 0 && (
+            <div className="fork-network-list">
+              {forks.map((fork) => (
+                <div key={fork.id} className="fork-network-row">
+                  <button type="button" onClick={() => onOpenRepository(fork.nameWithOwner)}>
+                    <GitFork size={15} />
+                    <span>
+                      <strong>{fork.nameWithOwner}</strong>
+                      <small>{repositoryForkMetadataLabel(fork)}</small>
+                    </span>
+                  </button>
+                  <button
+                    className="pin-row-button"
+                    type="button"
+                    title={`Open ${fork.nameWithOwner} on GitHub`}
+                    onClick={() => onOpenExternal(fork.htmlUrl)}
+                  >
+                    <ExternalLink size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          {canExpandForks && (
+            <div className="table-action-row">
+              <button type="button" onClick={onExpandForks}>
+                Load more forks
+              </button>
+            </div>
+          )}
+          {!canExpandForks && forksLimitHit && (
+            <div className="muted-row">Showing the first {forks.length} forks returned by GitHub.</div>
+          )}
+        </section>
+      </RepositorySettingsGroup>
     </section>
   );
 }

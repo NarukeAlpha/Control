@@ -1905,7 +1905,11 @@ describe("Control renderer routing", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Repository settings" }));
 
     expect(await screen.findByRole("heading", { name: "Repository settings" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Tab visibility" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Status summary" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Control display" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Repository tab preferences" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "GitHub features" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Danger zone" })).toBeInTheDocument();
     expect(screen.getByText(/default branch main/i)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Features" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Merge policy" })).toBeInTheDocument();
@@ -1924,7 +1928,7 @@ describe("Control renderer routing", () => {
       })
     );
 
-    await userEvent.click(screen.getAllByRole("button", { name: /Open on GitHub/i })[0]);
+    await userEvent.click(screen.getByRole("button", { name: "Open settings on GitHub" }));
 
     expect(openExternal).toHaveBeenCalledWith("https://github.com/apple/swift/settings");
   });

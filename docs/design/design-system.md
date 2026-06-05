@@ -13,11 +13,44 @@ Control targets a glass shell inspired by the provided GitHub concept and Apple 
 
 - On macOS, use `electron-liquid-glass` as the native window material. The renderer root, body, and app shell must stay transparent so the native glass remains visible.
 - Use a neutral native tint. Avoid colored native tints because active and inactive macOS window states can shift the surface toward cyan, yellow, or wallpaper-derived casts.
+- Keep native glass options centralized in `src/main/theme/liquidGlassOptions.ts` and covered by tests before changing tint, opacity, scrim, or subdued values.
 - Use CSS `backdrop-filter` only on renderer panels that sit above the native shell, and keep those panels low-alpha and neutral.
 - Avoid backdrop blur on every table row.
 - Keep borders subtle and white-tinted to preserve the Music.app style.
 - Provide a settings toggle for reduced or solid glass.
 - Non-macOS fallback glass belongs behind a platform-scoped class only. It should not affect the macOS renderer path.
+
+## Shared Surface Primitives
+
+New repository work should prefer the shared primitives in
+`src/renderer/src/components/ui` before adding route-local shells:
+
+- `Surface`
+- `FilterBar`
+- `StateSegmentedControl`
+- `IconButton`
+- `ExternalLinkButton`
+- `StateChip`
+- `DetailLayout`
+- `DetailRail`
+- `RailSection`
+- `Timeline`
+- `TimelineEventCard`
+- `Composer`
+- `FormSection`
+- `AvailabilityBanner`
+- `EmptyState`
+- `LimitHitNotice`
+- `RepositoryChrome`
+- `RepositoryHero`
+- `RepositoryTabs`
+- `RepositoryTabSurface`
+- `RepositoryRightRail`
+
+These components are behavioral contracts as much as styling hooks. They keep
+open/closed filters, external actions, rail sections, timeline events, limit
+notices, and repository chrome consistent across remote and local repository
+surfaces.
 
 ## macOS Visual Verification
 

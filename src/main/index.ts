@@ -14,6 +14,7 @@ import { createEffectIpcBridge } from "./effect/ipcBridge";
 import { denyAndOpenExternalHttps } from "./externalLinks";
 import { sendMainToRendererEvent } from "./ipc/events";
 import { registerControlIpc } from "./ipc/registerControlIpc";
+import { controlLiquidGlassConfiguration } from "./theme/liquidGlassOptions";
 import { applyNativeThemeSource } from "./theme/nativeThemeSource";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -77,21 +78,16 @@ function applyLiquidGlass(window: BrowserWindowType | null): void {
   }
 
   try {
-    liquidGlassViewId = liquidGlass.addView(window.getNativeWindowHandle(), {
-      // tintColor uses #RRGGBBAA byte order (verified in
-      // electron-liquid-glass/src/glass_effect.mm). Keep alpha at zero, but
-      // use the module's opaque backing so Control is an app surface instead
-      // of a full-window lens over whatever sits behind it.
-      cornerRadius: 30,
-      tintColor: "#FFFFFF00",
-      opaque: true
-    });
+    liquidGlassViewId = liquidGlass.addView(
+      window.getNativeWindowHandle(),
+      controlLiquidGlassConfiguration.viewOptions
+    );
 
     if (liquidGlassViewId >= 0) {
       // Avoid private material variants by default. Some variants shift hard
       // cyan/yellow between active and inactive window states on macOS 26.
-      liquidGlass.unstable_setScrim(liquidGlassViewId, 0);
-      liquidGlass.unstable_setSubdued(liquidGlassViewId, 0);
+      liquidGlass.unstable_setScrim(liquidGlassViewId, controlLiquidGlassConfiguration.tuning.scrim);
+      liquidGlass.unstable_setSubdued(liquidGlassViewId, controlLiquidGlassConfiguration.tuning.subdued);
     }
   } catch (error) {
     console.warn("Control could not apply native liquid glass.", error);

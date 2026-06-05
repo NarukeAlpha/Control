@@ -4051,12 +4051,37 @@ describe("Control renderer routing", () => {
     const codeScanningSection = screen.getByRole("region", { name: "Code scanning alerts" });
     const secretScanningSection = screen.getByRole("region", { name: "Secret scanning alerts" });
 
-    await userEvent.click(within(dependabotSection).getByRole("button", { name: "Open on GitHub" }));
+    await userEvent.click(
+      within(dependabotSection).getByRole("button", { name: "Open Dependabot alert on GitHub" })
+    );
     expect(openExternal).toHaveBeenCalledWith(mockDependabotAlerts[0].htmlUrl);
-    await userEvent.click(within(codeScanningSection).getByRole("button", { name: "Open on GitHub" }));
+    await userEvent.click(
+      within(codeScanningSection).getByRole("button", { name: "Open code scanning alert on GitHub" })
+    );
     expect(openExternal).toHaveBeenCalledWith(mockCodeScanningAlerts[0].htmlUrl);
-    await userEvent.click(within(secretScanningSection).getByRole("button", { name: "Open on GitHub" }));
+    await userEvent.click(
+      within(secretScanningSection).getByRole("button", { name: "Open secret scanning alert on GitHub" })
+    );
     expect(openExternal).toHaveBeenCalledWith(mockSecretScanningAlerts[0].htmlUrl);
+
+    await userEvent.click(within(dependabotSection).getByRole("button", { name: "Dismissed" }));
+    await waitFor(() =>
+      expect(listDependabotAlerts).toHaveBeenLastCalledWith(
+        expect.objectContaining({ owner: "apple", repo: "swift", state: "dismissed", limit: 20 })
+      )
+    );
+    await userEvent.click(within(codeScanningSection).getByRole("button", { name: "Fixed" }));
+    await waitFor(() =>
+      expect(listCodeScanningAlerts).toHaveBeenLastCalledWith(
+        expect.objectContaining({ owner: "apple", repo: "swift", state: "fixed", limit: 20 })
+      )
+    );
+    await userEvent.click(within(secretScanningSection).getByRole("button", { name: "Resolved" }));
+    await waitFor(() =>
+      expect(listSecretScanningAlerts).toHaveBeenLastCalledWith(
+        expect.objectContaining({ owner: "apple", repo: "swift", state: "resolved", limit: 20 })
+      )
+    );
 
     await userEvent.click(screen.getByRole("button", { name: "Open branch rules on GitHub" }));
 
@@ -4084,6 +4109,34 @@ describe("Control renderer routing", () => {
       )
     ).toBeInTheDocument();
     expect(screen.queryByText("No open Dependabot alerts.")).not.toBeInTheDocument();
+  });
+
+  it("reports focused security items missing from the loaded filtered list", async () => {
+    const listDependabotAlerts = vi.fn<GitHubTestApi["listDependabotAlerts"]>(async () => ({
+      items: [],
+      availability: { status: "available", message: null }
+    }));
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: {
+        kind: "repository",
+        nameWithOwner: "apple/swift",
+        tab: "securityQuality",
+        securityItemKind: "dependabot",
+        securityItemId: "99"
+      }
+    });
+    renderControl({
+      ...makeApi({ listDependabotAlerts }),
+      getAppState: async () => appStateWithRepositoryTabPreferences({ securityQuality: "show" })
+    });
+
+    expect(
+      await screen.findByText(
+        "Dependabot alert 99 is not loaded in the current security list, state filter, or result limit."
+      )
+    ).toBeInTheDocument();
   });
 
   it("renders code scanning feature-disabled states without confusing them with empty alerts", async () => {

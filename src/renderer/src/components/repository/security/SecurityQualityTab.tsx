@@ -32,6 +32,11 @@ import type {
 import type { LocalRecentSecurityItemKind } from "@shared/local";
 
 import {
+  FilterBar,
+  StateSegmentedControl,
+  type StateSegmentedControlOption
+} from "@renderer/components/ui/primitives";
+import {
   accessRoleLabel,
   githubActionLabel,
   readAvailabilityMessage,
@@ -39,7 +44,19 @@ import {
   repositoryPath
 } from "@renderer/components/repository/repositoryUi";
 import { formatCompactNumber, formatRelativeDate } from "@renderer/utils/format";
-import { useSecurityQualityTabQueries } from "./SecurityQualityTab.queries";
+import {
+  codeScanningAlertStateFilterOptions,
+  defaultCodeScanningAlertStateFilter,
+  defaultDependabotAlertStateFilter,
+  defaultSecretScanningAlertStateFilter,
+  dependabotAlertStateFilterOptions,
+  secretScanningAlertStateFilterOptions,
+  securityAlertStateFilterLabel,
+  useSecurityQualityTabQueries,
+  type CodeScanningAlertStateFilter,
+  type DependabotAlertStateFilter,
+  type SecretScanningAlertStateFilter
+} from "./SecurityQualityTab.queries";
 
 interface SecurityItemRecentInput {
   kind: LocalRecentSecurityItemKind;
@@ -64,6 +81,11 @@ type OpenSecurityPath = (path: string | null, ref: string | null | undefined, li
 type SelectSecurityItem = (securityItem: SecurityItemRecentInput) => void;
 
 type SecurityItemActive = (kind: LocalRecentSecurityItemKind, id: string | number) => boolean;
+
+type SupportedSecurityAlertState =
+  | DependabotAlertStateFilter
+  | CodeScanningAlertStateFilter
+  | SecretScanningAlertStateFilter;
 
 interface SecurityQualityLink {
   title: string;
@@ -161,13 +183,16 @@ interface SecurityQualityActions {
 }
 
 interface SecurityQualityQueryStateInput {
+  codeScanningAlertState: CodeScanningAlertStateFilter;
   codeScanningAlertsLimit: number;
+  dependabotAlertState: DependabotAlertStateFilter;
   dependabotAlertsLimit: number;
   githubReady: boolean;
   refListLimit: number;
   repository: RepositoryDetail;
   repositoryRulesetsLimit: number;
   repositorySecurityAdvisoriesLimit: number;
+  secretScanningAlertState: SecretScanningAlertStateFilter;
   secretScanningAlertsLimit: number;
   selectedRef: string | null;
 }
@@ -195,6 +220,39 @@ function securityFeatureStatusLabel(value: string | null): string {
   }
 
   return value.replace(/[_-]/g, " ");
+}
+
+function securityAlertStateLabel(state: SupportedSecurityAlertState): string {
+  return securityAlertStateFilterLabel(state).toLowerCase();
+}
+
+function securityAlertStateSentenceLabel(state: SupportedSecurityAlertState): string {
+  return securityAlertStateFilterLabel(state);
+}
+
+function securityAlertEmptyStateLabel(state: SupportedSecurityAlertState, label: string): string {
+  return `No ${securityAlertStateLabel(state)} ${label}.`;
+}
+
+function securityAlertStatusLabel(
+  loading: boolean,
+  unavailable: boolean,
+  count: number,
+  state: SupportedSecurityAlertState
+): string {
+  if (loading && count === 0) {
+    return "loading";
+  }
+
+  if (unavailable) {
+    return "unavailable";
+  }
+
+  if (count === 0) {
+    return state === "open" ? "clear" : `no ${securityAlertStateLabel(state)}`;
+  }
+
+  return `${count} ${securityAlertStateLabel(state)}`;
 }
 
 function repositorySecurityFeatureRows(
@@ -498,13 +556,16 @@ function createSecurityQualityActions({
 }
 
 function useSecurityQualityQueryState({
+  codeScanningAlertState,
   codeScanningAlertsLimit,
+  dependabotAlertState,
   dependabotAlertsLimit,
   githubReady,
   refListLimit,
   repository,
   repositoryRulesetsLimit,
   repositorySecurityAdvisoriesLimit,
+  secretScanningAlertState,
   secretScanningAlertsLimit,
   selectedRef
 }: SecurityQualityQueryStateInput) {
@@ -527,8 +588,11 @@ function useSecurityQualityQueryState({
     selectedRef,
     defaultBranch: repository.defaultBranch ?? null,
     refListLimit,
+    dependabotAlertState,
     dependabotAlertsLimit,
+    codeScanningAlertState,
     codeScanningAlertsLimit,
+    secretScanningAlertState,
     secretScanningAlertsLimit,
     repositoryRulesetsLimit,
     repositorySecurityAdvisoriesLimit,
@@ -551,14 +615,17 @@ function useSecurityQualityQueryState({
     protection: branchProtection?.protection ?? null,
     branchProtectionLoading: branchProtectionQuery.isLoading || branchProtectionQuery.isFetching,
     branchProtectionError: branchProtectionQuery.error,
+    dependabotAlertState,
     dependabotAlerts,
     dependabotAlertsLoading: dependabotAlertsQuery.isLoading || dependabotAlertsQuery.isFetching,
     dependabotAlertsAvailability: dependabotAlertsQuery.data?.availability ?? null,
     dependabotAlertsError: dependabotAlertsQuery.error,
+    codeScanningAlertState,
     codeScanningAlerts,
     codeScanningAlertsLoading: codeScanningAlertsQuery.isLoading || codeScanningAlertsQuery.isFetching,
     codeScanningAlertsAvailability: codeScanningAlertsQuery.data?.availability ?? null,
     codeScanningAlertsError: codeScanningAlertsQuery.error,
+    secretScanningAlertState,
     secretScanningAlerts,
     secretScanningAlertsLoading: secretScanningAlertsQuery.isLoading || secretScanningAlertsQuery.isFetching,
     secretScanningAlertsAvailability: secretScanningAlertsQuery.data?.availability ?? null,
@@ -585,6 +652,80 @@ function useSecurityQualityQueryState({
 }
 
 type SecurityQualityQueryState = ReturnType<typeof useSecurityQualityQueryState>;
+
+function securityItemKindLabel(kind: LocalRecentSecurityItemKind): string {
+  switch (kind) {
+    case "dependabot":
+      return "Dependabot alert";
+    case "codeScanning":
+      return "Code scanning alert";
+    case "secretScanning":
+      return "Secret scanning alert";
+    case "ruleset":
+      return "Repository ruleset";
+    case "advisory":
+      return "Security advisory";
+  }
+}
+
+function readFocusedSecurityItemMessage({
+  focusedSecurityItemId,
+  focusedSecurityItemKind,
+  queryState
+}: {
+  focusedSecurityItemId: string | null;
+  focusedSecurityItemKind: LocalRecentSecurityItemKind | null;
+  queryState: SecurityQualityQueryState;
+}): string | null {
+  if (!focusedSecurityItemKind || !focusedSecurityItemId) {
+    return null;
+  }
+
+  const itemLoaded = (() => {
+    switch (focusedSecurityItemKind) {
+      case "dependabot":
+        if (queryState.dependabotAlertsLoading && queryState.dependabotAlerts.length === 0) {
+          return true;
+        }
+        return queryState.dependabotAlerts.some((alert) => String(alert.number) === focusedSecurityItemId);
+      case "codeScanning":
+        if (queryState.codeScanningAlertsLoading && queryState.codeScanningAlerts.length === 0) {
+          return true;
+        }
+        return queryState.codeScanningAlerts.some((alert) => String(alert.number) === focusedSecurityItemId);
+      case "secretScanning":
+        if (queryState.secretScanningAlertsLoading && queryState.secretScanningAlerts.length === 0) {
+          return true;
+        }
+        return queryState.secretScanningAlerts.some(
+          (alert) => String(alert.number) === focusedSecurityItemId
+        );
+      case "ruleset":
+        if (queryState.repositoryRulesetsLoading && queryState.repositoryRulesets.length === 0) {
+          return true;
+        }
+        return queryState.repositoryRulesets.some((ruleset) => String(ruleset.id) === focusedSecurityItemId);
+      case "advisory":
+        if (
+          queryState.repositorySecurityAdvisoriesLoading &&
+          queryState.repositorySecurityAdvisories.length === 0
+        ) {
+          return true;
+        }
+        return queryState.repositorySecurityAdvisories.some(
+          (advisory) => advisory.ghsaId === focusedSecurityItemId
+        );
+    }
+  })();
+
+  if (itemLoaded) {
+    return null;
+  }
+
+  return `${securityItemKindLabel(
+    focusedSecurityItemKind
+  )} ${focusedSecurityItemId} is not loaded in the current security list, state filter, or result limit.`;
+}
 
 function readSecurityQualityDerivedState({
   githubReady,
@@ -686,14 +827,12 @@ function readSecurityQualityDerivedState({
     branchProtectionStatusUnavailable:
       Boolean(queryState.branchProtectionError) || Boolean(branchProtectionAvailabilityLabel),
     codeScanningAvailabilityMessage,
-    codeScanningStatusLabel:
-      queryState.codeScanningAlertsLoading && queryState.codeScanningAlerts.length === 0
-        ? "loading"
-        : codeScanningStatusUnavailable
-          ? "unavailable"
-          : queryState.codeScanningAlerts.length === 0
-            ? "clear"
-            : `${queryState.codeScanningAlerts.length} open`,
+    codeScanningStatusLabel: securityAlertStatusLabel(
+      queryState.codeScanningAlertsLoading,
+      codeScanningStatusUnavailable,
+      queryState.codeScanningAlerts.length,
+      queryState.codeScanningAlertState
+    ),
     codeScanningStatusUnavailable,
     createRulesetDisabledReason:
       (mutationPending && securityMutationRelevant ? "A security setting update is still running." : null) ??
@@ -701,14 +840,12 @@ function readSecurityQualityDerivedState({
       (!defaultSecurityRef ? "Repository default branch is unavailable." : null),
     defaultSecurityRef,
     dependabotAvailabilityMessage,
-    dependabotStatusLabel:
-      queryState.dependabotAlertsLoading && queryState.dependabotAlerts.length === 0
-        ? "loading"
-        : dependabotStatusUnavailable
-          ? "unavailable"
-          : queryState.dependabotAlerts.length === 0
-            ? "clear"
-            : `${queryState.dependabotAlerts.length} open`,
+    dependabotStatusLabel: securityAlertStatusLabel(
+      queryState.dependabotAlertsLoading,
+      dependabotStatusUnavailable,
+      queryState.dependabotAlerts.length,
+      queryState.dependabotAlertState
+    ),
     dependabotStatusUnavailable,
     hasBranchProtectionBranchOption: queryState.branchProtectionBranches.some(
       (branch) => branch.name === queryState.branchProtectionBranch
@@ -768,14 +905,12 @@ function readSecurityQualityDerivedState({
       Boolean(queryState.repositorySecurityPolicyError) ||
       Boolean(repositorySecurityPolicyAvailabilityMessage),
     secretScanningAvailabilityMessage,
-    secretScanningStatusLabel:
-      queryState.secretScanningAlertsLoading && queryState.secretScanningAlerts.length === 0
-        ? "loading"
-        : secretScanningStatusUnavailable
-          ? "unavailable"
-          : queryState.secretScanningAlerts.length === 0
-            ? "clear"
-            : `${queryState.secretScanningAlerts.length} open`,
+    secretScanningStatusLabel: securityAlertStatusLabel(
+      queryState.secretScanningAlertsLoading,
+      secretScanningStatusUnavailable,
+      queryState.secretScanningAlerts.length,
+      queryState.secretScanningAlertState
+    ),
     secretScanningStatusUnavailable,
     securityFeatureRows: repositorySecurityFeatureRows(repository.administration.securityAndAnalysis),
     securityMutationDisabledReason,
@@ -949,7 +1084,7 @@ function BranchProtectionSurface({
             <X size={15} /> Delete protection
           </button>
           <button type="button" onClick={onOpenBranchRulesFallback}>
-            <ExternalLink size={15} /> Open on GitHub
+            <ExternalLink size={15} /> Open branch protection on GitHub
           </button>
         </div>
         {protection && (
@@ -1082,7 +1217,7 @@ function RepositorySecurityAdvisoryCard({
           title={advisory.htmlUrl ? undefined : "Advisory URL unavailable."}
           onClick={handleOpenFallback}
         >
-          <ExternalLink size={15} /> Open on GitHub
+          <ExternalLink size={15} /> Open security advisory on GitHub
         </button>
       </div>
     </article>
@@ -1162,7 +1297,7 @@ function DependabotAlertCard({
           title={alert.htmlUrl ? undefined : "Dependabot alert URL unavailable."}
           onClick={handleOpenFallback}
         >
-          <ExternalLink size={15} /> Open on GitHub
+          <ExternalLink size={15} /> Open Dependabot alert on GitHub
         </button>
       </div>
       {manifestDisabledReason && <small className="action-disabled-note">{manifestDisabledReason}</small>}
@@ -1243,7 +1378,7 @@ function CodeScanningAlertCard({
           title={alert.htmlUrl ? undefined : "Code scanning alert URL unavailable."}
           onClick={handleOpenFallback}
         >
-          <ExternalLink size={15} /> Open on GitHub
+          <ExternalLink size={15} /> Open code scanning alert on GitHub
         </button>
       </div>
       {codePathDisabledReason && <small className="action-disabled-note">{codePathDisabledReason}</small>}
@@ -1330,7 +1465,7 @@ function SecretScanningAlertCard({
           title={alert.htmlUrl ? undefined : "Secret scanning alert URL unavailable."}
           onClick={handleOpenFallback}
         >
-          <ExternalLink size={15} /> Open on GitHub
+          <ExternalLink size={15} /> Open secret scanning alert on GitHub
         </button>
       </div>
       {secretLocationDisabledReason && (
@@ -1445,7 +1580,7 @@ function RepositoryRulesetCard({
           title={ruleset.htmlUrl ? undefined : "Ruleset URL unavailable."}
           onClick={handleOpenFallback}
         >
-          <ExternalLink size={15} /> Open on GitHub
+          <ExternalLink size={15} /> Open ruleset on GitHub
         </button>
       </div>
     </article>
@@ -1735,14 +1870,14 @@ function SecurityPolicySection({
               title={policy.htmlUrl ? undefined : "Policy URL unavailable."}
               onClick={handleOpenPolicyFallback}
             >
-              <ExternalLink size={15} /> Open on GitHub
+              <ExternalLink size={15} /> Open security policy on GitHub
             </button>
           </div>
         </article>
       )}
       <div className="table-action-row">
         <button type="button" onClick={onOpenSecurityPolicyFallback}>
-          <ExternalLink size={16} /> Open on GitHub
+          <ExternalLink size={16} /> Open security policy on GitHub
         </button>
       </div>
     </section>
@@ -1792,7 +1927,7 @@ function CommunityProfileFileCard({
           title={file.htmlUrl ? undefined : "File URL unavailable."}
           onClick={handleOpenFallback}
         >
-          <ExternalLink size={15} /> Open on GitHub
+          <ExternalLink size={15} /> Open community file on GitHub
         </button>
       </div>
     </article>
@@ -1885,11 +2020,11 @@ function CommunityProfileSection({
       <div className="table-action-row">
         {profile?.documentationUrl && (
           <button type="button" onClick={handleOpenDocumentation}>
-            <ExternalLink size={16} /> Open on GitHub
+            <ExternalLink size={16} /> Open community documentation on GitHub
           </button>
         )}
         <button type="button" onClick={onOpenCommunityFallback}>
-          <ExternalLink size={16} /> Open on GitHub
+          <ExternalLink size={16} /> Open community profile on GitHub
         </button>
       </div>
     </section>
@@ -1930,11 +2065,30 @@ function SecurityFeatureAvailabilitySection({
   );
 }
 
+function SecurityAlertStateFilterControl<TValue extends string>({
+  label,
+  options,
+  value,
+  onChange
+}: {
+  label: string;
+  options: Array<StateSegmentedControlOption<TValue>>;
+  value: TValue;
+  onChange(value: TValue): void;
+}): JSX.Element {
+  return (
+    <FilterBar label="State">
+      <StateSegmentedControl label={label} options={options} value={value} onChange={onChange} />
+    </FilterBar>
+  );
+}
+
 function DependabotAlertsSection({
   alerts,
   availabilityMessage,
   defaultSecurityRef,
   error,
+  alertState,
   limit,
   loading,
   repositoryNameWithOwner,
@@ -1944,12 +2098,14 @@ function DependabotAlertsSection({
   onOpenExternal,
   onOpenSecurityPath,
   onSelectSecurityItem,
+  onAlertStateChange,
   securityItemActive
 }: {
   alerts: DependabotAlertSummary[];
   availabilityMessage: string | null;
   defaultSecurityRef: string | null;
   error: Error | null;
+  alertState: DependabotAlertStateFilter;
   limit: number;
   loading: boolean;
   repositoryNameWithOwner: string;
@@ -1959,14 +2115,17 @@ function DependabotAlertsSection({
   onOpenExternal(url: string): void;
   onOpenSecurityPath: OpenSecurityPath;
   onSelectSecurityItem: SelectSecurityItem;
+  onAlertStateChange(value: DependabotAlertStateFilter): void;
   securityItemActive: SecurityItemActive;
 }): JSX.Element {
+  const alertStateLabel = securityAlertStateSentenceLabel(alertState);
+
   return (
     <section className="security-protection-summary" aria-label="Dependabot alerts">
       <header>
         <div>
           <h2>Dependabot alerts</h2>
-          <small>Open vulnerability alerts returned by GitHub for this repository.</small>
+          <small>{alertStateLabel} vulnerability alerts returned by GitHub for this repository.</small>
         </div>
         <span
           className={`state-chip ${
@@ -1980,11 +2139,17 @@ function DependabotAlertsSection({
           {statusLabel}
         </span>
       </header>
+      <SecurityAlertStateFilterControl
+        label="Dependabot alert state"
+        options={dependabotAlertStateFilterOptions}
+        value={alertState}
+        onChange={onAlertStateChange}
+      />
       {loading && alerts.length === 0 && <div className="loading-state">Loading Dependabot alerts…</div>}
       {error && <div className="error-state">Dependabot alerts unavailable: {error.message}</div>}
       {availabilityMessage && <div className="error-state">{availabilityMessage}</div>}
       {!loading && !error && !availabilityMessage && alerts.length === 0 && (
-        <div className="empty-state">No open Dependabot alerts.</div>
+        <div className="empty-state">{securityAlertEmptyStateLabel(alertState, "Dependabot alerts")}</div>
       )}
       <SecurityListDepthControl
         count={alerts.length}
@@ -2017,6 +2182,7 @@ function CodeScanningAlertsSection({
   alerts,
   availabilityMessage,
   error,
+  alertState,
   limit,
   loading,
   repositoryNameWithOwner,
@@ -2026,11 +2192,13 @@ function CodeScanningAlertsSection({
   onOpenExternal,
   onOpenSecurityPath,
   onSelectSecurityItem,
+  onAlertStateChange,
   securityItemActive
 }: {
   alerts: CodeScanningAlertSummary[];
   availabilityMessage: string | null;
   error: Error | null;
+  alertState: CodeScanningAlertStateFilter;
   limit: number;
   loading: boolean;
   repositoryNameWithOwner: string;
@@ -2040,14 +2208,17 @@ function CodeScanningAlertsSection({
   onOpenExternal(url: string): void;
   onOpenSecurityPath: OpenSecurityPath;
   onSelectSecurityItem: SelectSecurityItem;
+  onAlertStateChange(value: CodeScanningAlertStateFilter): void;
   securityItemActive: SecurityItemActive;
 }): JSX.Element {
+  const alertStateLabel = securityAlertStateSentenceLabel(alertState);
+
   return (
     <section className="security-protection-summary" aria-label="Code scanning alerts">
       <header>
         <div>
           <h2>Code scanning alerts</h2>
-          <small>Open static analysis findings returned by GitHub for this repository.</small>
+          <small>{alertStateLabel} static analysis findings returned by GitHub for this repository.</small>
         </div>
         <span
           className={`state-chip ${
@@ -2061,11 +2232,17 @@ function CodeScanningAlertsSection({
           {statusLabel}
         </span>
       </header>
+      <SecurityAlertStateFilterControl
+        label="Code scanning alert state"
+        options={codeScanningAlertStateFilterOptions}
+        value={alertState}
+        onChange={onAlertStateChange}
+      />
       {loading && alerts.length === 0 && <div className="loading-state">Loading code scanning alerts…</div>}
       {error && <div className="error-state">Code scanning alerts unavailable: {error.message}</div>}
       {availabilityMessage && <div className="error-state">{availabilityMessage}</div>}
       {!loading && !error && !availabilityMessage && alerts.length === 0 && (
-        <div className="empty-state">No open code scanning alerts.</div>
+        <div className="empty-state">{securityAlertEmptyStateLabel(alertState, "code scanning alerts")}</div>
       )}
       <SecurityListDepthControl
         count={alerts.length}
@@ -2098,6 +2275,7 @@ function SecretScanningAlertsSection({
   availabilityMessage,
   defaultSecurityRef,
   error,
+  alertState,
   limit,
   loading,
   repositoryNameWithOwner,
@@ -2107,12 +2285,14 @@ function SecretScanningAlertsSection({
   onOpenExternal,
   onOpenSecurityPath,
   onSelectSecurityItem,
+  onAlertStateChange,
   securityItemActive
 }: {
   alerts: SecretScanningAlertSummary[];
   availabilityMessage: string | null;
   defaultSecurityRef: string | null;
   error: Error | null;
+  alertState: SecretScanningAlertStateFilter;
   limit: number;
   loading: boolean;
   repositoryNameWithOwner: string;
@@ -2122,14 +2302,17 @@ function SecretScanningAlertsSection({
   onOpenExternal(url: string): void;
   onOpenSecurityPath: OpenSecurityPath;
   onSelectSecurityItem: SelectSecurityItem;
+  onAlertStateChange(value: SecretScanningAlertStateFilter): void;
   securityItemActive: SecurityItemActive;
 }): JSX.Element {
+  const alertStateLabel = securityAlertStateSentenceLabel(alertState);
+
   return (
     <section className="security-protection-summary" aria-label="Secret scanning alerts">
       <header>
         <div>
           <h2>Secret scanning alerts</h2>
-          <small>Open leaked-secret alerts returned by GitHub for this repository.</small>
+          <small>{alertStateLabel} leaked-secret alerts returned by GitHub for this repository.</small>
         </div>
         <span
           className={`state-chip ${
@@ -2143,11 +2326,19 @@ function SecretScanningAlertsSection({
           {statusLabel}
         </span>
       </header>
+      <SecurityAlertStateFilterControl
+        label="Secret scanning alert state"
+        options={secretScanningAlertStateFilterOptions}
+        value={alertState}
+        onChange={onAlertStateChange}
+      />
       {loading && alerts.length === 0 && <div className="loading-state">Loading secret scanning alerts…</div>}
       {error && <div className="error-state">Secret scanning alerts unavailable: {error.message}</div>}
       {availabilityMessage && <div className="error-state">{availabilityMessage}</div>}
       {!loading && !error && !availabilityMessage && alerts.length === 0 && (
-        <div className="empty-state">No open secret scanning alerts.</div>
+        <div className="empty-state">
+          {securityAlertEmptyStateLabel(alertState, "secret scanning alerts")}
+        </div>
       )}
       <SecurityListDepthControl
         count={alerts.length}
@@ -2236,6 +2427,7 @@ interface SecurityQualityTabSectionsProps {
   branchProtectionMutationDisabledReason: string | null;
   branchProtectionStatusLabel: string;
   branchProtectionStatusUnavailable: boolean;
+  codeScanningAlertState: CodeScanningAlertStateFilter;
   codeScanningAlerts: CodeScanningAlertSummary[];
   codeScanningAlertsError: Error | null;
   codeScanningAlertsLimit: number;
@@ -2245,6 +2437,7 @@ interface SecurityQualityTabSectionsProps {
   codeScanningStatusUnavailable: boolean;
   createRulesetDisabledReason: string | null;
   defaultSecurityRef: string | null;
+  dependabotAlertState: DependabotAlertStateFilter;
   dependabotAlerts: DependabotAlertSummary[];
   dependabotAlertsError: Error | null;
   dependabotAlertsLimit: number;
@@ -2252,6 +2445,7 @@ interface SecurityQualityTabSectionsProps {
   dependabotAvailabilityMessage: string | null;
   dependabotStatusLabel: string;
   dependabotStatusUnavailable: boolean;
+  focusedSecurityItemMessage: string | null;
   hasBranchProtectionBranchOption: boolean;
   mutationAction: GitHubAction | null;
   mutationError: Error | null;
@@ -2262,7 +2456,10 @@ interface SecurityQualityTabSectionsProps {
   onExpandRepositoryRulesets(): void;
   onExpandRepositorySecurityAdvisories(): void;
   onExpandSecretScanningAlerts(): void;
+  onCodeScanningAlertStateChange(value: CodeScanningAlertStateFilter): void;
+  onDependabotAlertStateChange(value: DependabotAlertStateFilter): void;
   onOpenExternal(url: string): void;
+  onSecretScanningAlertStateChange(value: SecretScanningAlertStateFilter): void;
   onSelectSecurityItem: SelectSecurityItem;
   onSelectSecurityQualityBranch(ref: string): void;
   presentCommunityFiles: CommunityProfileFileSummary[];
@@ -2295,6 +2492,7 @@ interface SecurityQualityTabSectionsProps {
   repositorySecurityPolicyStatusUnavailable: boolean;
   repositorySecurityPolicyHasResult: boolean;
   repositorySecurityPolicyAvailabilityMessage: string | null;
+  secretScanningAlertState: SecretScanningAlertStateFilter;
   secretScanningAlerts: SecretScanningAlertSummary[];
   secretScanningAlertsError: Error | null;
   secretScanningAlertsLimit: number;
@@ -2341,6 +2539,7 @@ function SecurityQualityTabSections({
   branchProtectionMutationDisabledReason,
   branchProtectionStatusLabel,
   branchProtectionStatusUnavailable,
+  codeScanningAlertState,
   codeScanningAlerts,
   codeScanningAlertsError,
   codeScanningAlertsLimit,
@@ -2350,6 +2549,7 @@ function SecurityQualityTabSections({
   codeScanningStatusUnavailable,
   createRulesetDisabledReason,
   defaultSecurityRef,
+  dependabotAlertState,
   dependabotAlerts,
   dependabotAlertsError,
   dependabotAlertsLimit,
@@ -2357,6 +2557,7 @@ function SecurityQualityTabSections({
   dependabotAvailabilityMessage,
   dependabotStatusLabel,
   dependabotStatusUnavailable,
+  focusedSecurityItemMessage,
   hasBranchProtectionBranchOption,
   mutationAction,
   mutationError,
@@ -2367,7 +2568,10 @@ function SecurityQualityTabSections({
   onExpandRepositoryRulesets,
   onExpandRepositorySecurityAdvisories,
   onExpandSecretScanningAlerts,
+  onCodeScanningAlertStateChange,
+  onDependabotAlertStateChange,
   onOpenExternal,
+  onSecretScanningAlertStateChange,
   onSelectSecurityItem,
   onSelectSecurityQualityBranch,
   presentCommunityFiles,
@@ -2400,6 +2604,7 @@ function SecurityQualityTabSections({
   repositorySecurityPolicyLoading,
   repositorySecurityPolicyStatusLabel,
   repositorySecurityPolicyStatusUnavailable,
+  secretScanningAlertState,
   secretScanningAlerts,
   secretScanningAlertsError,
   secretScanningAlertsLimit,
@@ -2432,6 +2637,7 @@ function SecurityQualityTabSections({
 }: SecurityQualityTabSectionsProps): JSX.Element {
   return (
     <section className="table-panel github-surface security-quality-panel">
+      {focusedSecurityItemMessage && <div className="muted-row">{focusedSecurityItemMessage}</div>}
       <BranchProtectionSurface
         availabilityMessage={availabilityMessage}
         branch={branchProtectionBranch}
@@ -2527,12 +2733,14 @@ function SecurityQualityTabSections({
         rows={securityFeatureRows}
       />
       <DependabotAlertsSection
+        alertState={dependabotAlertState}
         alerts={dependabotAlerts}
         availabilityMessage={dependabotAvailabilityMessage}
         defaultSecurityRef={defaultSecurityRef}
         error={dependabotAlertsError}
         limit={dependabotAlertsLimit}
         loading={dependabotAlertsLoading}
+        onAlertStateChange={onDependabotAlertStateChange}
         onExpand={onExpandDependabotAlerts}
         onOpenExternal={onOpenExternal}
         onOpenSecurityPath={openSecurityPath}
@@ -2543,11 +2751,13 @@ function SecurityQualityTabSections({
         statusUnavailable={dependabotStatusUnavailable}
       />
       <CodeScanningAlertsSection
+        alertState={codeScanningAlertState}
         alerts={codeScanningAlerts}
         availabilityMessage={codeScanningAvailabilityMessage}
         error={codeScanningAlertsError}
         limit={codeScanningAlertsLimit}
         loading={codeScanningAlertsLoading}
+        onAlertStateChange={onCodeScanningAlertStateChange}
         onExpand={onExpandCodeScanningAlerts}
         onOpenExternal={onOpenExternal}
         onOpenSecurityPath={openSecurityPath}
@@ -2558,12 +2768,14 @@ function SecurityQualityTabSections({
         statusUnavailable={codeScanningStatusUnavailable}
       />
       <SecretScanningAlertsSection
+        alertState={secretScanningAlertState}
         alerts={secretScanningAlerts}
         availabilityMessage={secretScanningAvailabilityMessage}
         defaultSecurityRef={defaultSecurityRef}
         error={secretScanningAlertsError}
         limit={secretScanningAlertsLimit}
         loading={secretScanningAlertsLoading}
+        onAlertStateChange={onSecretScanningAlertStateChange}
         onExpand={onExpandSecretScanningAlerts}
         onOpenExternal={onOpenExternal}
         onOpenSecurityPath={openSecurityPath}
@@ -2608,12 +2820,24 @@ export function SecurityQualityTab({
   onExpandRepositorySecurityAdvisories,
   onMutate
 }: SecurityQualityTabProps): JSX.Element {
+  const [dependabotAlertState, setDependabotAlertState] = useState<DependabotAlertStateFilter>(
+    defaultDependabotAlertStateFilter
+  );
+  const [codeScanningAlertState, setCodeScanningAlertState] = useState<CodeScanningAlertStateFilter>(
+    defaultCodeScanningAlertStateFilter
+  );
+  const [secretScanningAlertState, setSecretScanningAlertState] = useState<SecretScanningAlertStateFilter>(
+    defaultSecretScanningAlertStateFilter
+  );
   const queryState = useSecurityQualityQueryState({
     selectedRef,
     repository,
     refListLimit,
+    dependabotAlertState,
     dependabotAlertsLimit,
+    codeScanningAlertState,
     codeScanningAlertsLimit,
+    secretScanningAlertState,
     secretScanningAlertsLimit,
     repositoryRulesetsLimit,
     repositorySecurityAdvisoriesLimit,
@@ -2702,6 +2926,11 @@ export function SecurityQualityTab({
     repository,
     securityPolicy
   });
+  const focusedSecurityItemMessage = readFocusedSecurityItemMessage({
+    focusedSecurityItemId,
+    focusedSecurityItemKind,
+    queryState
+  });
   const {
     applyBaselineBranchProtection,
     createActiveRepositoryRuleset,
@@ -2750,6 +2979,7 @@ export function SecurityQualityTab({
       branchProtectionMutationDisabledReason={branchProtectionMutationDisabledReason}
       branchProtectionStatusLabel={branchProtectionStatusLabel}
       branchProtectionStatusUnavailable={branchProtectionStatusUnavailable}
+      codeScanningAlertState={codeScanningAlertState}
       codeScanningAlerts={codeScanningAlerts}
       codeScanningAlertsError={codeScanningAlertsError}
       codeScanningAlertsLimit={codeScanningAlertsLimit}
@@ -2763,6 +2993,7 @@ export function SecurityQualityTab({
       defaultSecurityRef={defaultSecurityRef}
       deleteBranchProtection={deleteBranchProtection}
       deleteRepositoryRuleset={deleteRepositoryRuleset}
+      dependabotAlertState={dependabotAlertState}
       dependabotAlerts={dependabotAlerts}
       dependabotAlertsError={dependabotAlertsError}
       dependabotAlertsLimit={dependabotAlertsLimit}
@@ -2770,6 +3001,7 @@ export function SecurityQualityTab({
       dependabotAvailabilityMessage={dependabotAvailabilityMessage}
       dependabotStatusLabel={dependabotStatusLabel}
       dependabotStatusUnavailable={dependabotStatusUnavailable}
+      focusedSecurityItemMessage={focusedSecurityItemMessage}
       hasBranchProtectionBranchOption={hasBranchProtectionBranchOption}
       inspectRepositoryRuleset={inspectRepositoryRuleset}
       missingCommunityFiles={missingCommunityFiles}
@@ -2782,7 +3014,10 @@ export function SecurityQualityTab({
       onExpandRepositoryRulesets={onExpandRepositoryRulesets}
       onExpandRepositorySecurityAdvisories={onExpandRepositorySecurityAdvisories}
       onExpandSecretScanningAlerts={onExpandSecretScanningAlerts}
+      onCodeScanningAlertStateChange={setCodeScanningAlertState}
+      onDependabotAlertStateChange={setDependabotAlertState}
       onOpenExternal={onOpenExternal}
+      onSecretScanningAlertStateChange={setSecretScanningAlertState}
       onSelectSecurityItem={onSelectSecurityItem}
       onSelectSecurityQualityBranch={onSelectSecurityQualityBranch}
       openBranchRulesFallback={openBranchRulesFallback}
@@ -2822,6 +3057,7 @@ export function SecurityQualityTab({
       repositorySecurityPolicyStatusLabel={repositorySecurityPolicyStatusLabel}
       repositorySecurityPolicyStatusUnavailable={repositorySecurityPolicyStatusUnavailable}
       rulesetMutationDisabledReason={rulesetMutationDisabledReason}
+      secretScanningAlertState={secretScanningAlertState}
       secretScanningAlerts={secretScanningAlerts}
       secretScanningAlertsError={secretScanningAlertsError}
       secretScanningAlertsLimit={secretScanningAlertsLimit}

@@ -786,8 +786,11 @@ describe("repository tab prefetch helpers", () => {
       repo,
       branchProtectionBranch: "main",
       defaultBranch: "main",
+      dependabotAlertState: "dismissed",
       dependabotAlertsLimit: 10,
+      codeScanningAlertState: "fixed",
       codeScanningAlertsLimit: 11,
+      secretScanningAlertState: "resolved",
       secretScanningAlertsLimit: 12,
       repositoryRulesetsLimit: 13,
       repositorySecurityAdvisoriesLimit: 14,
@@ -797,7 +800,7 @@ describe("repository tab prefetch helpers", () => {
     expect(listDependabotAlerts).toHaveBeenCalledWith({
       owner,
       repo,
-      state: "open",
+      state: "dismissed",
       limit: 10,
       cacheOnly: false,
       forceRefresh: true
@@ -805,7 +808,7 @@ describe("repository tab prefetch helpers", () => {
     expect(listCodeScanningAlerts).toHaveBeenCalledWith({
       owner,
       repo,
-      state: "open",
+      state: "fixed",
       limit: 11,
       cacheOnly: false,
       forceRefresh: true
@@ -813,7 +816,7 @@ describe("repository tab prefetch helpers", () => {
     expect(listSecretScanningAlerts).toHaveBeenCalledWith({
       owner,
       repo,
-      state: "open",
+      state: "resolved",
       limit: 12,
       cacheOnly: false,
       forceRefresh: true
@@ -853,9 +856,9 @@ describe("repository tab prefetch helpers", () => {
       cacheOnly: false,
       forceRefresh: true
     });
-    expect(queryClient.getQueryData(dependabotAlertsQueryKey(owner, repo, 10))).toBeDefined();
-    expect(queryClient.getQueryData(codeScanningAlertsQueryKey(owner, repo, 11))).toBeDefined();
-    expect(queryClient.getQueryData(secretScanningAlertsQueryKey(owner, repo, 12))).toBeDefined();
+    expect(queryClient.getQueryData(dependabotAlertsQueryKey(owner, repo, "dismissed", 10))).toBeDefined();
+    expect(queryClient.getQueryData(codeScanningAlertsQueryKey(owner, repo, "fixed", 11))).toBeDefined();
+    expect(queryClient.getQueryData(secretScanningAlertsQueryKey(owner, repo, "resolved", 12))).toBeDefined();
     expect(queryClient.getQueryData(repositoryRulesetsQueryKey(owner, repo, 13))).toBeDefined();
     expect(queryClient.getQueryData(repositorySecurityAdvisoriesQueryKey(owner, repo, 14))).toBeDefined();
     expect(queryClient.getQueryData(repositoryCommunityProfileQueryKey(owner, repo))).toBeDefined();

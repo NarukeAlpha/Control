@@ -11,7 +11,12 @@ import { refreshIssuesTabData } from "../components/repository/issues/IssuesTab.
 import { refreshProjectsTabData } from "../components/repository/projects/ProjectsTab.queries";
 import { refreshPullRequestsTabData } from "../components/repository/pull-requests/PullRequestsTab.queries";
 import { refreshReleasesTabData } from "../components/repository/releases/ReleasesTab.queries";
-import { refreshSecurityQualityTabData } from "../components/repository/security/SecurityQualityTab.queries";
+import {
+  defaultCodeScanningAlertStateFilter,
+  defaultDependabotAlertStateFilter,
+  defaultSecretScanningAlertStateFilter,
+  refreshSecurityQualityTabData
+} from "../components/repository/security/SecurityQualityTab.queries";
 import { refreshRepositorySettingsTabData } from "../components/repository/settings/RepositorySettingsTab.queries";
 import { refreshWikiTabData } from "../components/repository/wiki/WikiTab.queries";
 import { refreshRepositoryDetailData } from "./useRepositoryDetail";
@@ -299,8 +304,11 @@ export function useRepositoryRefreshActions({
       repo,
       branchProtectionBranch,
       defaultBranch: repositoryDetail?.defaultBranch ?? null,
+      dependabotAlertState: defaultDependabotAlertStateFilter,
       dependabotAlertsLimit,
+      codeScanningAlertState: defaultCodeScanningAlertStateFilter,
       codeScanningAlertsLimit,
+      secretScanningAlertState: defaultSecretScanningAlertStateFilter,
       secretScanningAlertsLimit,
       repositoryRulesetsLimit,
       repositorySecurityAdvisoriesLimit,

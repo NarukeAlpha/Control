@@ -1,4 +1,4 @@
-import { Plus, Search } from "lucide-react";
+import { ArrowLeft, ExternalLink, Plus, Search } from "lucide-react";
 import { useEffect, useRef, useState, type ChangeEvent, type JSX, type RefObject } from "react";
 
 import type {
@@ -134,6 +134,7 @@ export interface PullRequestsTabContentProps {
   onPullStateChange(value: PullRequestStateFilter): void;
   onStartCreating(): void;
   onSelectPull(pull: PullRequestSummary): void;
+  onOpenPullRequestList(): void;
   onOpenExternal(url: string): void;
   onExpandPullRequests(): void;
   onDraftChange(draft: PullRequestCreateDraft): void;
@@ -264,12 +265,13 @@ export function PullRequestsTabContent(props: PullRequestsTabContentProps): JSX.
   const detailPaneRef = useRef<HTMLDivElement | null>(null);
   const [detailActivationCount, setDetailActivationCount] = useState(0);
   const selectedPullNumber = props.selectedPull?.number ?? null;
+  const pullDetailRoute = props.focusedPullNumber !== null && !props.creating;
 
   useEffect(() => {
     if (props.creating || selectedPullNumber === null) {
       return;
     }
-    if (props.focusedPullNumber === null && detailActivationCount === 0) {
+    if (!pullDetailRoute && detailActivationCount === 0) {
       return;
     }
 
@@ -280,7 +282,7 @@ export function PullRequestsTabContent(props: PullRequestsTabContentProps): JSX.
 
     detailPane.scrollIntoView?.({ block: "nearest", inline: "nearest" });
     detailPane.focus({ preventScroll: true });
-  }, [detailActivationCount, props.creating, props.focusedPullNumber, selectedPullNumber]);
+  }, [detailActivationCount, props.creating, pullDetailRoute, selectedPullNumber]);
 
   function handleSelectPull(pull: PullRequestSummary): void {
     setDetailActivationCount((current) => current + 1);
@@ -289,31 +291,35 @@ export function PullRequestsTabContent(props: PullRequestsTabContentProps): JSX.
 
   return (
     <section className="table-panel github-surface">
-      <PullRequestsToolbar
-        pullState={props.pullState}
-        filter={props.filter}
-        filteredPulls={props.filteredPulls}
-        createPullDisabledReason={props.createPullDisabledReason}
-        onFilterChange={props.onFilterChange}
-        onPullStateChange={props.onPullStateChange}
-        onStartCreating={props.onStartCreating}
-      />
-      <div className="github-split">
-        <PullRequestList
-          repository={props.repository}
-          pulls={props.filteredPulls}
-          selectedPullNumber={props.selectedPull?.number ?? null}
-          creating={props.creating}
-          loading={props.loading}
-          availabilityMessage={props.pullsAvailabilityMessage}
+      {!pullDetailRoute && (
+        <PullRequestsToolbar
+          pullState={props.pullState}
           filter={props.filter}
-          pullRequestListLimit={props.pullRequestListLimit}
-          onSelect={handleSelectPull}
-          onOpenExternal={props.onOpenExternal}
-          onExpandPullRequests={props.onExpandPullRequests}
+          filteredPulls={props.filteredPulls}
+          createPullDisabledReason={props.createPullDisabledReason}
+          onFilterChange={props.onFilterChange}
+          onPullStateChange={props.onPullStateChange}
+          onStartCreating={props.onStartCreating}
         />
+      )}
+      <div className={`github-split${pullDetailRoute ? " detail-route" : ""}`}>
+        {!pullDetailRoute && (
+          <PullRequestList
+            repository={props.repository}
+            pulls={props.filteredPulls}
+            selectedPullNumber={props.selectedPull?.number ?? null}
+            creating={props.creating}
+            loading={props.loading}
+            availabilityMessage={props.pullsAvailabilityMessage}
+            filter={props.filter}
+            pullRequestListLimit={props.pullRequestListLimit}
+            onSelect={handleSelectPull}
+            onOpenExternal={props.onOpenExternal}
+            onExpandPullRequests={props.onExpandPullRequests}
+          />
+        )}
 
-        <PullRequestDetailPane {...props} detailPaneRef={detailPaneRef} />
+        <PullRequestDetailPane {...props} detailPaneRef={detailPaneRef} pullDetailRoute={pullDetailRoute} />
       </div>
     </section>
   );
@@ -321,8 +327,12 @@ export function PullRequestsTabContent(props: PullRequestsTabContentProps): JSX.
 
 function PullRequestDetailPane({
   detailPaneRef,
+  pullDetailRoute,
   ...props
-}: PullRequestsTabContentProps & { detailPaneRef: RefObject<HTMLDivElement | null> }): JSX.Element {
+}: PullRequestsTabContentProps & {
+  detailPaneRef: RefObject<HTMLDivElement | null>;
+  pullDetailRoute: boolean;
+}): JSX.Element {
   if (props.creating) {
     return (
       <div
@@ -371,12 +381,44 @@ function PullRequestDetailPane({
   return (
     <div
       ref={detailPaneRef}
-      className="thread-detail"
+      className={`thread-detail${pullDetailRoute ? " detail-page" : ""}`}
       role="region"
       aria-label={`Pull request ${props.selectedPull.number} detail`}
       tabIndex={-1}
     >
+      {pullDetailRoute && (
+        <PullRequestDetailRouteToolbar
+          selectedPull={props.selectedPull}
+          onOpenPullRequestList={props.onOpenPullRequestList}
+          onOpenExternal={props.onOpenExternal}
+        />
+      )}
       <PullRequestSelectedDetail {...props} selectedPull={props.selectedPull} />
+    </div>
+  );
+}
+
+function PullRequestDetailRouteToolbar({
+  selectedPull,
+  onOpenPullRequestList,
+  onOpenExternal
+}: {
+  selectedPull: PullRequestSummary;
+  onOpenPullRequestList(): void;
+  onOpenExternal(url: string): void;
+}): JSX.Element {
+  function handleOpenExternal(): void {
+    onOpenExternal(selectedPull.htmlUrl);
+  }
+
+  return (
+    <div className="detail-toolbar">
+      <button type="button" onClick={onOpenPullRequestList}>
+        <ArrowLeft size={16} /> Back to pull requests
+      </button>
+      <button type="button" onClick={handleOpenExternal}>
+        <ExternalLink size={16} /> Open on GitHub
+      </button>
     </div>
   );
 }

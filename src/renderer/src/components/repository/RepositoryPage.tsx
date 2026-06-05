@@ -523,7 +523,9 @@ function buildRepositoryPageModel(input: {
 }
 
 function repositoryPageClassName(routeModel: RepositoryRouteModel): string {
-  return routeModel.focusedIssueNumber !== null ? "repo-page repo-page-focused-issue" : "repo-page";
+  return routeModel.focusedIssueNumber !== null || routeModel.focusedPullNumber !== null
+    ? "repo-page repo-page-focused-detail"
+    : "repo-page";
 }
 
 function uniqueRepositoryActionDisabledNotes(notes: readonly (string | null)[]): string {
@@ -672,7 +674,7 @@ export function RepositoryPage(props: RepositoryPageProps): JSX.Element {
         onSelectRef={props.onSelectRef}
         onSelectSettingsCollaborator={props.onSelectSettingsCollaborator}
       />
-      {routeModel.focusedIssueNumber === null && props.rightRail}
+      {routeModel.focusedIssueNumber === null && routeModel.focusedPullNumber === null && props.rightRail}
     </article>
   );
 }
@@ -1291,7 +1293,8 @@ function RepositoryPullRequestsTabSurface({
   onOpenPullRequestReviewCommit,
   onOpenPullRequestTimelineEventCommit,
   onOpenWorkflowRun,
-  onOpenCodePath
+  onOpenCodePath,
+  onSelectTab
 }: RepositoryActiveTabSurfaceProps): JSX.Element {
   const navigate = useUiStore((state) => state.navigate);
 
@@ -1313,6 +1316,14 @@ function RepositoryPullRequestsTabSurface({
 
   function changePullState(pullState: PullRequestStateFilter, filter: string): void {
     navigate(pullRouteUpdate(pullState, filter, true));
+  }
+
+  function openPullRequestList(): void {
+    if (!routeModel.routeRepositoryName) {
+      onSelectTab("pulls");
+      return;
+    }
+    navigate(pullRouteUpdate(routeModel.pullState, routeModel.pullFilter, false));
   }
 
   function openPullRequestDetail(
@@ -1356,6 +1367,7 @@ function RepositoryPullRequestsTabSurface({
       onMutate={mutation.onMutate}
       onOpenExternal={onOpenExternal}
       onOpenPullRequestDetail={openPullRequestDetail}
+      onOpenPullRequestList={openPullRequestList}
       onPullStateChange={changePullState}
       onOpenIssueReference={onOpenIssueReference}
       onOpenPullRequestCommit={onOpenPullRequestCommit}

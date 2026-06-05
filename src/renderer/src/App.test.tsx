@@ -1378,6 +1378,7 @@ describe("Control renderer routing", () => {
       )
     );
 
+    await userEvent.click(screen.getByRole("button", { name: "Back to pull requests" }));
     await userEvent.click(screen.getByRole("button", { name: /^Actions/i }));
     const runMeta = (await screen.findAllByText(/push on main/i))[0];
     await userEvent.click(runMeta.closest("button") as HTMLButtonElement);
@@ -3137,6 +3138,7 @@ describe("Control renderer routing", () => {
     expect(await screen.findByText("Merge unavailable: Pull request is already merged.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Merge pull request" })).toBeDisabled();
 
+    await userEvent.click(screen.getByRole("button", { name: "Back to pull requests" }));
     await userEvent.click(
       (await screen.findAllByRole("button", { name: /Update concurrency runtime tests/i }))[0]
     );
@@ -3367,6 +3369,8 @@ describe("Control renderer routing", () => {
     renderControl(makeApi({ listPullRequests, getPullRequestOverviewWithStatus }));
 
     expect(await screen.findByRole("heading", { name: focusedPull.title })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Back to pull requests" })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Filter pull requests" })).not.toBeInTheDocument();
     expect(screen.getByText(`${focusedPull.changedFiles} files changed`)).toBeInTheDocument();
     expect(screen.queryByText("4096 files changed")).not.toBeInTheDocument();
     expect(getPullRequestOverviewWithStatus).toHaveBeenCalledWith({
@@ -3375,6 +3379,10 @@ describe("Control renderer routing", () => {
       pullNumber: focusedPull.number,
       cacheOnly: false
     });
+
+    await userEvent.click(screen.getByRole("button", { name: "Back to pull requests" }));
+    expect(await screen.findByRole("textbox", { name: "Filter pull requests" })).toBeInTheDocument();
+    expect(await screen.findByText("4096 files changed")).toBeInTheDocument();
   });
 
   it("edits an issue title and body through the provider mutation path", async () => {

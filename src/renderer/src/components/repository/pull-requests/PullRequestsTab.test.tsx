@@ -103,6 +103,7 @@ function renderPullRequestsTab(): void {
         mutationError={null}
         onOpenExternal={vi.fn()}
         onOpenPullRequestDetail={vi.fn()}
+        onOpenPullRequestList={vi.fn()}
         onPullStateChange={vi.fn()}
         onOpenIssueReference={vi.fn()}
         onOpenPullRequestCommit={vi.fn()}

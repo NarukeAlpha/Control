@@ -66,6 +66,7 @@ export interface PullRequestsTabProps {
     pullState: PullRequestStateFilter,
     filter: string
   ): void;
+  onOpenPullRequestList(): void;
   onPullStateChange(pullState: PullRequestStateFilter, filter: string): void;
   onOpenIssueReference(issue: PullRequestLinkedIssue): void;
   onOpenPullRequestCommit(
@@ -108,6 +109,7 @@ function usePullRequestsTabModel({
   mutationError,
   onOpenExternal,
   onOpenPullRequestDetail,
+  onOpenPullRequestList,
   onPullStateChange,
   onOpenIssueReference,
   onOpenPullRequestCommit,
@@ -614,6 +616,7 @@ function usePullRequestsTabModel({
     onPullStateChange: changePullState,
     onStartCreating: pullActions.handleStartCreating,
     onSelectPull: pullActions.handleSelectPull,
+    onOpenPullRequestList,
     onOpenExternal,
     onExpandPullRequests,
     onDraftChange: pullActions.updateCreatePullDraft,

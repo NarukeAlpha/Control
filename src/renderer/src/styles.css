@@ -1853,13 +1853,13 @@ body:not(.no-liquid-glass) .home-content-scroll {
   gap: 12px;
 }
 
-.repo-page-focused-issue {
+.repo-page-focused-detail {
   grid-template-columns: minmax(0, 1fr);
   padding-top: 58px;
 }
 
-.repo-page-focused-issue .repo-hero,
-.repo-page-focused-issue .repo-tabs {
+.repo-page-focused-detail .repo-hero,
+.repo-page-focused-detail .repo-tabs {
   display: none;
 }
 
@@ -3263,7 +3263,8 @@ p {
   min-height: 520px;
 }
 
-.github-split.issue-detail-route {
+.github-split.issue-detail-route,
+.github-split.detail-route {
   grid-template-columns: minmax(0, 1fr);
 }
 
@@ -3300,7 +3301,8 @@ p {
   background: rgba(247, 250, 255, 0.5);
 }
 
-.issue-detail-page {
+.issue-detail-page,
+.detail-page {
   min-height: min(720px, calc(100vh - 232px));
 }
 
@@ -3367,7 +3369,8 @@ p {
   padding: 14px 16px;
 }
 
-.issue-detail-toolbar {
+.issue-detail-toolbar,
+.detail-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -3376,6 +3379,7 @@ p {
 }
 
 .issue-detail-toolbar button,
+.detail-toolbar button,
 .thread-actions button {
   display: inline-flex;
   min-height: 36px;
@@ -7494,6 +7498,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
     .issue-summary-tile,
     .issue-summary-body,
     .issue-detail-toolbar button,
+    .detail-toolbar button,
     .thread-actions button,
     .timeline-card,
     .timeline-card-header,

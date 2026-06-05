@@ -649,7 +649,8 @@ function usePullRequestsTabModel({
     onSubmitComment: pullActions.submitPullComment,
     onSubmitReview: pullActions.submitPullRequestReview,
     onRunPullAction: pullActions.runPullAction,
-    onMerge: pullActions.mergeSelectedPull
+    onMerge: pullActions.mergeSelectedPull,
+    focusedPullNumber
   };
 }
 

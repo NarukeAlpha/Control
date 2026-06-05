@@ -1362,6 +1362,9 @@ describe("Control renderer routing", () => {
     await userEvent.click(
       (await screen.findAllByRole("button", { name: /Update concurrency runtime tests/i }))[0]
     );
+    await waitFor(() =>
+      expect(screen.getByRole("region", { name: "Pull request 519 detail" })).toHaveFocus()
+    );
 
     await waitFor(() =>
       expect(recordRecentItem).toHaveBeenCalledWith(

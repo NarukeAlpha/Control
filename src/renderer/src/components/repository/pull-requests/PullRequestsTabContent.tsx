@@ -1,5 +1,5 @@
 import { Plus, Search } from "lucide-react";
-import type { ChangeEvent, JSX } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type JSX, type RefObject } from "react";
 
 import type {
   AssignableUserSummary,
@@ -185,6 +185,7 @@ export interface PullRequestsTabContentProps {
   onSubmitReview(action: GitHubAction, dangerous: boolean): void;
   onRunPullAction(): void;
   onMerge(): void;
+  focusedPullNumber: number | null;
 }
 
 type PullRequestsToolbarProps = Pick<
@@ -260,6 +261,32 @@ function PullRequestsToolbar({
 }
 
 export function PullRequestsTabContent(props: PullRequestsTabContentProps): JSX.Element {
+  const detailPaneRef = useRef<HTMLDivElement | null>(null);
+  const [detailActivationCount, setDetailActivationCount] = useState(0);
+  const selectedPullNumber = props.selectedPull?.number ?? null;
+
+  useEffect(() => {
+    if (props.creating || selectedPullNumber === null) {
+      return;
+    }
+    if (props.focusedPullNumber === null && detailActivationCount === 0) {
+      return;
+    }
+
+    const detailPane = detailPaneRef.current;
+    if (!detailPane) {
+      return;
+    }
+
+    detailPane.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+    detailPane.focus({ preventScroll: true });
+  }, [detailActivationCount, props.creating, props.focusedPullNumber, selectedPullNumber]);
+
+  function handleSelectPull(pull: PullRequestSummary): void {
+    setDetailActivationCount((current) => current + 1);
+    props.onSelectPull(pull);
+  }
+
   return (
     <section className="table-panel github-surface">
       <PullRequestsToolbar
@@ -281,21 +308,30 @@ export function PullRequestsTabContent(props: PullRequestsTabContentProps): JSX.
           availabilityMessage={props.pullsAvailabilityMessage}
           filter={props.filter}
           pullRequestListLimit={props.pullRequestListLimit}
-          onSelect={props.onSelectPull}
+          onSelect={handleSelectPull}
           onOpenExternal={props.onOpenExternal}
           onExpandPullRequests={props.onExpandPullRequests}
         />
 
-        <PullRequestDetailPane {...props} />
+        <PullRequestDetailPane {...props} detailPaneRef={detailPaneRef} />
       </div>
     </section>
   );
 }
 
-function PullRequestDetailPane(props: PullRequestsTabContentProps): JSX.Element {
+function PullRequestDetailPane({
+  detailPaneRef,
+  ...props
+}: PullRequestsTabContentProps & { detailPaneRef: RefObject<HTMLDivElement | null> }): JSX.Element {
   if (props.creating) {
     return (
-      <div className="thread-detail">
+      <div
+        ref={detailPaneRef}
+        className="thread-detail"
+        role="region"
+        aria-label="Pull request composer"
+        tabIndex={-1}
+      >
         <PullRequestCreateForm
           repository={props.repository}
           branchOptions={props.branchOptions}
@@ -320,14 +356,26 @@ function PullRequestDetailPane(props: PullRequestsTabContentProps): JSX.Element 
 
   if (!props.selectedPull) {
     return (
-      <div className="thread-detail">
+      <div
+        ref={detailPaneRef}
+        className="thread-detail"
+        role="region"
+        aria-label="Pull request detail"
+        tabIndex={-1}
+      >
         <div className="empty-state">No pull requests found.</div>
       </div>
     );
   }
 
   return (
-    <div className="thread-detail">
+    <div
+      ref={detailPaneRef}
+      className="thread-detail"
+      role="region"
+      aria-label={`Pull request ${props.selectedPull.number} detail`}
+      tabIndex={-1}
+    >
       <PullRequestSelectedDetail {...props} selectedPull={props.selectedPull} />
     </div>
   );

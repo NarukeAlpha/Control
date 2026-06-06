@@ -1,5 +1,5 @@
-import { ArrowLeft, CircleDot, ExternalLink, Plus, Search } from "lucide-react";
-import { useEffect, useReducer, useRef, type ChangeEvent, type JSX } from "react";
+import { ArrowLeft, CircleDot, Plus, Search } from "lucide-react";
+import { useEffect, useReducer, useRef, type CSSProperties, type ChangeEvent, type JSX } from "react";
 
 import type {
   GitHubAction,
@@ -7,15 +7,12 @@ import type {
   IssueDetail,
   IssueStateFilter,
   IssueSummary,
+  LabelSummary,
   RepositoryDetail,
   TimelineCommentSummary
 } from "@shared/github";
 
-import {
-  MarkdownBody,
-  markdownRepositoryUrlContext,
-  type MarkdownUrlContext
-} from "@renderer/components/MarkdownBody";
+import { markdownRepositoryUrlContext, type MarkdownUrlContext } from "@renderer/components/MarkdownBody";
 import { useIssueDetail } from "@renderer/components/repository/issues/useIssueDetail";
 import {
   fieldsMatchSearchParts,
@@ -51,7 +48,6 @@ type IssueCloseReason = "completed" | "not_planned";
 type IssueStateAction = "closeIssue" | "reopenIssue";
 
 interface IssuesTabUiState {
-  selectedIssueNumber: number | null;
   filter: string;
   creating: boolean;
   editingIssue: boolean;
@@ -77,7 +73,6 @@ type IssuesTabUiAction =
   | { type: "set"; values: Partial<IssuesTabUiState> }
   | { type: "startCreating" }
   | { type: "cancelCreating" }
-  | { type: "selectIssue"; issueNumber: number }
   | {
       type: "startEditing";
       title: string;
@@ -94,7 +89,6 @@ function createIssuesTabUiState({
   initialCreating: boolean;
 }): IssuesTabUiState {
   return {
-    selectedIssueNumber: null,
     filter: initialFilter,
     creating: initialCreating,
     editingIssue: false,
@@ -143,13 +137,6 @@ function issuesTabUiReducer(state: IssuesTabUiState, action: IssuesTabUiAction):
         createAssigneeEntry: "",
         createMilestoneNumber: "",
         creating: false
-      };
-    case "selectIssue":
-      return {
-        ...state,
-        creating: false,
-        editingIssue: false,
-        selectedIssueNumber: action.issueNumber
       };
     case "startEditing":
       return {
@@ -235,130 +222,44 @@ function issueStateLabel(issue: IssueSummary): string {
   return issue.stateReason ? `${issue.state} · ${issue.stateReason.replace(/_/g, " ")}` : issue.state;
 }
 
-function IssueSummaryTile({
-  issue,
-  body,
-  commentsAvailable,
-  loading,
-  availabilityMessage,
-  markdownUrlContext,
-  onOpenIssue,
-  onOpenExternal
-}: {
-  issue: IssueSummary;
-  body: string | null | undefined;
-  commentsAvailable: number;
-  loading: boolean;
-  availabilityMessage: string | null;
-  markdownUrlContext: MarkdownUrlContext;
-  onOpenIssue(issue: IssueSummary): void;
-  onOpenExternal(url: string): void;
-}): JSX.Element {
-  const labels = issue.labels.slice(0, 4);
-  const hiddenLabelCount = issue.labels.length - labels.length;
-  const assignees = (issue.assignees ?? []).slice(0, 3);
-  const hiddenAssigneeCount = (issue.assignees ?? []).length - assignees.length;
+function issueStateIconClassName(issue: IssueSummary): string {
+  const closedTone = issue.stateReason === "not_planned" ? "not-planned" : "completed";
+  return `issue-state-icon ${issue.state === "open" ? "open" : closedTone}`;
+}
 
-  function handleOpenIssue(): void {
-    onOpenIssue(issue);
-  }
+function labelColorStyle(label: LabelSummary): CSSProperties {
+  return { "--issue-label-color": `#${label.color}` } as CSSProperties;
+}
 
-  function handleOpenExternal(): void {
-    onOpenExternal(issue.htmlUrl);
-  }
-
+function IssueLabelChip({ label }: { label: LabelSummary }): JSX.Element {
   return (
-    <article className="issue-summary-tile" aria-label={`Issue ${issue.number} summary`}>
-      <header className="issue-summary-header">
-        <div>
-          <h2>{issue.title}</h2>
-          <small>
-            #{issue.number} opened by {issue.authorLogin ?? "unknown"} · {formatRelativeDate(issue.createdAt)}
-          </small>
-        </div>
-        <span className={`state-chip ${issue.state === "open" ? "success" : ""}`}>
-          {issueStateLabel(issue)}
-        </span>
-      </header>
-      <div className="issue-summary-meta">
-        <span>{commentsAvailable} comments</span>
-        <span>Updated {formatRelativeDate(issue.updatedAt)}</span>
-        {issue.milestone && <span>Milestone {issue.milestone.title}</span>}
-        {issue.locked && <span>Locked</span>}
-      </div>
-      {(labels.length > 0 || assignees.length > 0) && (
-        <div className="label-stack issue-summary-labels">
-          {labels.map((label) => (
-            <span key={label.id}>{label.name}</span>
-          ))}
-          {hiddenLabelCount > 0 && (
-            <span>
-              +{hiddenLabelCount} {hiddenLabelCount === 1 ? "label" : "labels"}
-            </span>
-          )}
-          {assignees.map((assignee) => (
-            <span key={assignee.id}>@{assignee.login}</span>
-          ))}
-          {hiddenAssigneeCount > 0 && (
-            <span>
-              +{hiddenAssigneeCount} {hiddenAssigneeCount === 1 ? "assignee" : "assignees"}
-            </span>
-          )}
-        </div>
-      )}
-      <section className="issue-summary-body" aria-label="Original issue comment">
-        {loading ? (
-          <div className="loading-state">Loading issue summary…</div>
-        ) : (
-          <MarkdownBody
-            markdown={body}
-            emptyText="No description provided."
-            onOpenExternal={onOpenExternal}
-            urlContext={markdownUrlContext}
-          />
-        )}
-      </section>
-      {availabilityMessage && <div className="error-state">{availabilityMessage}</div>}
-      <div className="thread-actions">
-        <button className="dark-action" type="button" onClick={handleOpenIssue}>
-          Open issue
-        </button>
-        <button type="button" onClick={handleOpenExternal}>
-          <ExternalLink size={16} /> Open on GitHub
-        </button>
-      </div>
-    </article>
+    <span className="issue-label-chip" style={labelColorStyle(label)}>
+      <i aria-hidden="true" />
+      {label.name}
+    </span>
   );
 }
 
 function IssueListRow({
   issue,
-  active,
-  onSelectIssueNumber,
-  onOpenExternal
+  onOpenIssue
 }: {
   issue: IssueSummary;
-  active: boolean;
-  onSelectIssueNumber(issueNumber: number): void;
-  onOpenExternal(url: string): void;
+  onOpenIssue(issue: IssueSummary): void;
 }): JSX.Element {
   const visibleLabels = issue.labels.slice(0, 2);
   const hiddenLabels = issue.labels.slice(2);
   const visibleAssignees = (issue.assignees ?? []).slice(0, 2);
   const hiddenAssignees = (issue.assignees ?? []).slice(2);
 
-  function handleSelectIssue(): void {
-    onSelectIssueNumber(issue.number);
-  }
-
-  function handleOpenExternal(): void {
-    onOpenExternal(issue.htmlUrl);
+  function handleOpenIssue(): void {
+    onOpenIssue(issue);
   }
 
   return (
-    <div className={`issue-row thread-list-action-row ${active ? "active" : ""}`}>
-      <button className="thread-list-row-main" type="button" onClick={handleSelectIssue}>
-        <CircleDot size={17} />
+    <div className="issue-row thread-list-action-row">
+      <button className="thread-list-row-main" type="button" onClick={handleOpenIssue}>
+        <CircleDot className={issueStateIconClassName(issue)} size={17} />
         <div>
           <strong>{issue.title}</strong>
           <small>
@@ -368,7 +269,7 @@ function IssueListRow({
         <div className="thread-list-row-badges">
           <div className="label-stack">
             {visibleLabels.map((label) => (
-              <span key={label.id}>{label.name}</span>
+              <IssueLabelChip key={label.id} label={label} />
             ))}
             {hiddenLabels.length > 0 && (
               <span title={`Hidden labels: ${hiddenLabels.map((label) => label.name).join(", ")}`}>
@@ -397,56 +298,35 @@ function IssueListRow({
           {issue.locked && <span className="state-chip attention">locked</span>}
         </div>
       </button>
-      <button
-        className="pin-row-button"
-        type="button"
-        aria-label={`Open issue ${issue.number} on GitHub`}
-        title={`Open issue #${issue.number} on GitHub`}
-        onClick={handleOpenExternal}
-      >
-        <ExternalLink size={15} />
-      </button>
     </div>
   );
 }
 
 function IssueList({
   issues,
-  selectedIssueNumber,
-  creating,
   loading,
   availabilityMessage,
   filter,
   issueListLimit,
   unfilteredIssueListLimitHit,
-  onSelectIssueNumber,
-  onOpenExternal,
+  onOpenIssue,
   onExpandIssues
 }: {
   issues: IssueSummary[];
-  selectedIssueNumber: number | null;
-  creating: boolean;
   loading: boolean;
   availabilityMessage: string | null;
   filter: string;
   issueListLimit: number;
   unfilteredIssueListLimitHit: boolean;
-  onSelectIssueNumber(issueNumber: number): void;
-  onOpenExternal(url: string): void;
+  onOpenIssue(issue: IssueSummary): void;
   onExpandIssues(): void;
 }): JSX.Element {
   return (
-    <div className="thread-list">
+    <div className="thread-list issues-list-content">
       {loading && issues.length === 0 && <div className="loading-state">Loading issues…</div>}
       {!loading && availabilityMessage && <div className="error-state">{availabilityMessage}</div>}
       {issues.map((issue) => (
-        <IssueListRow
-          key={issue.id}
-          issue={issue}
-          active={selectedIssueNumber === issue.number && !creating}
-          onSelectIssueNumber={onSelectIssueNumber}
-          onOpenExternal={onOpenExternal}
-        />
+        <IssueListRow key={issue.id} issue={issue} onOpenIssue={onOpenIssue} />
       ))}
       {!loading && issues.length === 0 && (
         <div className="empty-state">
@@ -582,7 +462,6 @@ function useIssuesTabModel({
     createIssuesTabUiState
   );
   const {
-    selectedIssueNumber,
     filter,
     creating,
     editingIssue,
@@ -656,20 +535,19 @@ function useIssuesTabModel({
       filterParts
     )
   );
-  const requestedIssueNumber = selectedIssueNumber ?? focusedIssueNumber;
+  const issueDetailRoute = focusedIssueNumber !== null && !creating;
+  const requestedIssueNumber = focusedIssueNumber;
   const selectedIssueSummary =
     (requestedIssueNumber !== null ? issues.find((issue) => issue.number === requestedIssueNumber) : null) ??
-    filteredIssues[0] ??
     null;
-  const issueDetailNumber = requestedIssueNumber ?? selectedIssueSummary?.number ?? null;
-  const issueDetail = useIssueDetail(issueDetailNumber, !creating && issueDetailNumber !== null);
+  const issueDetailNumber = issueDetailRoute ? requestedIssueNumber : null;
+  const issueDetail = useIssueDetail(issueDetailNumber, issueDetailNumber !== null);
   const detail = issueDetail.data?.detail ?? null;
   const selectedIssue = detail ?? selectedIssueSummary;
   const issueDetailAvailabilityMessage = readAvailabilityMessage(
     "Issue detail",
     issueDetail.data?.availability ?? null
   );
-  const issueDetailRoute = focusedIssueNumber !== null && !creating;
   const selectedLabels = detail?.labels ?? selectedIssue?.labels ?? [];
   const selectedAssignees = detail?.assignees ?? selectedIssue?.assignees ?? [];
   const selectedMilestone = detail?.milestone ?? selectedIssue?.milestone ?? null;
@@ -940,10 +818,6 @@ function useIssuesTabModel({
     });
   }
 
-  function selectIssueNumber(issueNumber: number): void {
-    dispatchUiState({ type: "selectIssue", issueNumber });
-  }
-
   function editComment(commentId: number, commentBody: string): void {
     updateUiState({ submittedIssueAction: "editComment" });
     onMutate("editComment", false, { commentId, body: commentBody });
@@ -981,7 +855,6 @@ function useIssuesTabModel({
     issuesAvailabilityMessage,
     issueListLimit,
     unfilteredIssueListLimitHit,
-    selectIssueNumber,
     onOpenExternal,
     onExpandIssues,
     title,
@@ -1181,90 +1054,46 @@ function IssueCreatePane({
   );
 }
 
-function IssueSummaryPane({
-  selectedIssue,
-  detail,
-  issueDetail,
-  issueDetailAvailabilityMessage,
-  issueMarkdownUrlContext,
-  openIssueDetail,
-  onOpenExternal
-}: IssueRouteProps): JSX.Element {
-  return (
-    <IssueSummaryTile
-      issue={selectedIssue}
-      body={detail?.body}
-      commentsAvailable={detail?.commentsList.length ?? selectedIssue.comments}
-      loading={issueDetail.isLoading || issueDetail.isFetching}
-      availabilityMessage={issueDetail.error?.message ?? issueDetailAvailabilityMessage}
-      markdownUrlContext={issueMarkdownUrlContext}
-      onOpenIssue={openIssueDetail}
-      onOpenExternal={onOpenExternal}
-    />
-  );
-}
-
 function IssueDetailHeader({
   selectedIssue,
   selectedMilestone,
   selectedAssignees,
-  selectedLabels,
-  onOpenIssueList,
-  onOpenExternal
+  selectedLabels
 }: Pick<
   IssueRouteProps,
-  | "selectedIssue"
-  | "selectedMilestone"
-  | "selectedAssignees"
-  | "selectedLabels"
-  | "onOpenIssueList"
-  | "onOpenExternal"
+  "selectedIssue" | "selectedMilestone" | "selectedAssignees" | "selectedLabels"
 >): JSX.Element {
-  function handleOpenExternal(): void {
-    onOpenExternal(selectedIssue.htmlUrl);
-  }
-
   return (
-    <>
-      <div className="issue-detail-toolbar">
-        <button type="button" onClick={onOpenIssueList}>
-          <ArrowLeft size={16} /> Back to issues
-        </button>
-        <button type="button" onClick={handleOpenExternal}>
-          <ExternalLink size={16} /> Open on GitHub
-        </button>
-      </div>
-      <header className="thread-header">
-        <h2>{selectedIssue.title}</h2>
-        <small>
-          #{selectedIssue.number} opened by {selectedIssue.authorLogin ?? "unknown"} ·{" "}
-          {formatRelativeDate(selectedIssue.createdAt)}
-        </small>
-        <span className={`state-chip ${selectedIssue.state === "open" ? "success" : ""}`}>
-          {issueStateLabel(selectedIssue)}
+    <header className="thread-header">
+      <h2>{selectedIssue.title}</h2>
+      <small>
+        #{selectedIssue.number} opened by {selectedIssue.authorLogin ?? "unknown"} ·{" "}
+        {formatRelativeDate(selectedIssue.createdAt)}
+      </small>
+      <span className={`state-chip ${selectedIssue.state === "open" ? "success" : ""}`}>
+        {issueStateLabel(selectedIssue)}
+      </span>
+      {selectedMilestone && (
+        <span className="state-chip" title={selectedMilestone.description ?? undefined}>
+          Milestone {selectedMilestone.title}
         </span>
-        {selectedMilestone && (
-          <span className="state-chip" title={selectedMilestone.description ?? undefined}>
-            Milestone {selectedMilestone.title}
-          </span>
-        )}
-        {selectedIssue.locked && <span className="state-chip attention">Locked</span>}
-        {selectedAssignees.length > 0 && (
-          <div className="label-stack label-row">
-            {selectedAssignees.map((assignee) => (
-              <span key={assignee.id}>Assigned @{assignee.login}</span>
-            ))}
-          </div>
-        )}
-        {selectedLabels.length > 0 && (
-          <div className="label-stack label-row">
-            {selectedLabels.map((label) => (
-              <span key={label.id}>{label.name}</span>
-            ))}
-          </div>
-        )}
-      </header>
-    </>
+      )}
+      {selectedIssue.locked && <span className="state-chip attention">Locked</span>}
+      {selectedAssignees.length > 0 && (
+        <div className="label-stack label-row">
+          {selectedAssignees.map((assignee) => (
+            <span key={assignee.id}>Assigned @{assignee.login}</span>
+          ))}
+        </div>
+      )}
+      {selectedLabels.length > 0 && (
+        <div className="label-stack label-row">
+          {selectedLabels.map((label) => (
+            <IssueLabelChip key={label.id} label={label} />
+          ))}
+        </div>
+      )}
+    </header>
   );
 }
 
@@ -1275,7 +1104,6 @@ function IssueDetailRouteView({
   issueDetailAvailabilityMessage,
   issueMarkdownUrlContext,
   onOpenExternal,
-  onOpenIssueList,
   selectedMilestone,
   selectedAssignees,
   selectedLabels,
@@ -1395,8 +1223,6 @@ function IssueDetailRouteView({
         selectedMilestone={selectedMilestone}
         selectedAssignees={selectedAssignees}
         selectedLabels={selectedLabels}
-        onOpenIssueList={onOpenIssueList}
-        onOpenExternal={onOpenExternal}
       />
       {issueDetail.error && <div className="error-state">{issueDetail.error.message}</div>}
       {issueDetailAvailabilityMessage && <div className="error-state">{issueDetailAvailabilityMessage}</div>}
@@ -1459,11 +1285,9 @@ function IssueDetailPane(model: IssuesTabModel): JSX.Element {
   const { creating, selectedIssue, issueDetailRoute, issueDetail, requestedIssueNumber } = model;
 
   return (
-    <div className={`thread-detail${issueDetailRoute ? " issue-detail-page" : " issue-summary-pane"}`}>
+    <div className={`thread-detail${issueDetailRoute ? " issue-detail-page" : " issue-create-pane"}`}>
       {creating ? (
         <IssueCreatePane {...model} />
-      ) : selectedIssue && !issueDetailRoute ? (
-        <IssueSummaryPane {...model} selectedIssue={selectedIssue} />
       ) : selectedIssue ? (
         <IssueDetailRouteView {...model} selectedIssue={selectedIssue} />
       ) : issueDetail.isLoading && requestedIssueNumber !== null ? (
@@ -1486,71 +1310,81 @@ function IssuesTabContent(model: IssuesTabModel): JSX.Element {
     createIssueDisabledReason,
     startCreatingIssue,
     filteredIssues,
-    selectedIssue,
     creating,
     loading,
     issuesAvailabilityMessage,
     issueListLimit,
     unfilteredIssueListLimitHit,
-    selectIssueNumber,
-    onOpenExternal,
+    openIssueDetail,
+    onOpenIssueList,
     onExpandIssues
   } = model;
   const issueCountLabel = `${filteredIssues.length} ${filteredIssues.length === 1 ? "issue" : "issues"}`;
 
   return (
-    <section className="table-panel github-surface" ref={surfaceRef}>
-      {!issueDetailRoute && (
-        <FilterBar
-          className="surface-filter-row issue-filter-bar"
-          label={issueCountLabel}
-          actions={
-            <button
-              type="button"
-              disabled={Boolean(createIssueDisabledReason)}
-              title={createIssueDisabledReason ?? undefined}
-              onClick={startCreatingIssue}
-            >
-              <Plus size={16} /> New issue
-            </button>
-          }
-        >
-          <StateSegmentedControl
-            label="Issue state"
-            value={issueState}
-            options={issueStateFilterOptions}
-            onChange={changeIssueState}
-          />
-          <label className="surface-filter">
-            <Search size={15} />
-            <input
-              aria-label="Filter issues"
-              value={filter}
-              onChange={handleFilterChange}
-              placeholder="Filter issues"
-            />
-          </label>
-        </FilterBar>
+    <section
+      className={`issues-route-shell${issueDetailRoute ? " issue-detail-route" : ""}`}
+      ref={surfaceRef}
+    >
+      {issueDetailRoute && (
+        <div className="issue-detail-route-top">
+          <button className="issue-detail-back-button" type="button" onClick={onOpenIssueList}>
+            <ArrowLeft size={16} /> Back to issues
+          </button>
+        </div>
       )}
-      <div className={`github-split${issueDetailRoute ? " issue-detail-route" : ""}`}>
-        {!issueDetailRoute && (
-          <IssueList
-            issues={filteredIssues}
-            selectedIssueNumber={selectedIssue?.number ?? null}
-            creating={creating}
-            loading={loading}
-            availabilityMessage={issuesAvailabilityMessage}
-            filter={filter}
-            issueListLimit={issueListLimit}
-            unfilteredIssueListLimitHit={unfilteredIssueListLimitHit}
-            onSelectIssueNumber={selectIssueNumber}
-            onOpenExternal={onOpenExternal}
-            onExpandIssues={onExpandIssues}
-          />
+      <section
+        className={`table-panel github-surface issues-surface${issueDetailRoute ? " issue-detail-surface" : ""}`}
+      >
+        {!issueDetailRoute && !creating && (
+          <FilterBar
+            className="surface-filter-row issue-filter-bar"
+            label={issueCountLabel}
+            actions={
+              <button
+                type="button"
+                disabled={Boolean(createIssueDisabledReason)}
+                title={createIssueDisabledReason ?? undefined}
+                onClick={startCreatingIssue}
+              >
+                <Plus size={16} /> New issue
+              </button>
+            }
+          >
+            <StateSegmentedControl
+              label="Issue state"
+              value={issueState}
+              options={issueStateFilterOptions}
+              onChange={changeIssueState}
+            />
+            <label className="surface-filter">
+              <Search size={15} />
+              <input
+                aria-label="Filter issues"
+                value={filter}
+                onChange={handleFilterChange}
+                placeholder="Filter issues"
+              />
+            </label>
+          </FilterBar>
         )}
-
-        <IssueDetailPane {...model} />
-      </div>
+        <div className={`issues-content${issueDetailRoute ? " issue-detail-route" : ""}`}>
+          {!issueDetailRoute && !creating ? (
+            <IssueList
+              issues={filteredIssues}
+              loading={loading}
+              availabilityMessage={issuesAvailabilityMessage}
+              filter={filter}
+              issueListLimit={issueListLimit}
+              unfilteredIssueListLimitHit={unfilteredIssueListLimitHit}
+              onOpenIssue={openIssueDetail}
+              onExpandIssues={onExpandIssues}
+            />
+          ) : (
+            <IssueDetailPane {...model} />
+          )}
+        </div>
+      </section>
     </section>
   );
 }

@@ -64,7 +64,7 @@ export function IssueCommentComposer({
         disabled={Boolean(submitDisabledReason)}
         title={submitDisabledReason ?? undefined}
       >
-        Comment
+        Add comment
       </button>
       {disabledReason && (
         <small className="action-disabled-note">Comment unavailable: {disabledReason}</small>

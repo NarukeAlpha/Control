@@ -55,6 +55,7 @@ function CurrentLabelButton({
       onClick={handleRemoveLabel}
     >
       <X size={13} />
+      <span style={{ backgroundColor: `#${label.color}` }} />
       {label.name}
     </button>
   );

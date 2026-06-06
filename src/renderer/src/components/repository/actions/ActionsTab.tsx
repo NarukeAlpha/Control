@@ -6,7 +6,6 @@ import type {
   GitHubAction,
   GitHubMutationFields,
   RepositoryDetail,
-  WorkflowDefinitionListResult,
   WorkflowDefinitionSummary,
   WorkflowDispatchInputSummary,
   WorkflowJobLogsResult,
@@ -32,14 +31,25 @@ import { useControlApi } from "@renderer/hooks/useControlApi";
 import { useRepositoryRefs } from "@renderer/hooks/useRepositoryRefs";
 
 import { formatCompactNumber, formatRelativeDate } from "@renderer/utils/format";
-import {
-  useActionsTabQueries,
-  workflowDefinitionsQueryKey,
-  workflowRunDetailQueryKey
-} from "./ActionsTab.queries";
+import { useActionsTabQueries, workflowRunDetailQueryKey } from "./ActionsTab.queries";
 
 const maxActionsLimit = 100;
 const maxWorkflowDefinitionLimit = 100;
+
+function workflowIdentity(workflow: WorkflowDefinitionSummary): string {
+  return workflow.path || String(workflow.id);
+}
+
+function workflowMatchesIdentity(workflow: WorkflowDefinitionSummary, workflowId: string | null): boolean {
+  return Boolean(
+    workflowId &&
+    (workflow.path === workflowId || workflow.name === workflowId || String(workflow.id) === workflowId)
+  );
+}
+
+function workflowMatchesRun(workflow: WorkflowDefinitionSummary, run: WorkflowRunSummary): boolean {
+  return workflow.name.toLowerCase() === run.name.toLowerCase();
+}
 
 function workflowRerunDisabledReason(repository: RepositoryDetail, run: WorkflowRunSummary): string | null {
   const repositoryReason = repositoryMutationDisabledReason(repository);
@@ -345,6 +355,120 @@ function WorkflowRunFilterBar({
   );
 }
 
+function WorkflowCatalogPane({
+  workflows,
+  actions,
+  selectedWorkflowId,
+  workflowsLoading,
+  workflowsFetching,
+  workflowsError,
+  workflowDefinitionsAvailabilityMessage,
+  workflowDefinitionsLimitHit,
+  canExpandWorkflowDefinitions,
+  workflowDefinitionLimit,
+  onSelectWorkflow,
+  onOpenExternal,
+  onExpandWorkflowDefinitions
+}: {
+  workflows: WorkflowDefinitionSummary[];
+  actions: WorkflowRunSummary[];
+  selectedWorkflowId: string | null;
+  workflowsLoading: boolean;
+  workflowsFetching: boolean;
+  workflowsError: Error | null;
+  workflowDefinitionsAvailabilityMessage: string | null;
+  workflowDefinitionsLimitHit: boolean;
+  canExpandWorkflowDefinitions: boolean;
+  workflowDefinitionLimit: number;
+  onSelectWorkflow(workflowId: string | null): void;
+  onOpenExternal(url: string): void;
+  onExpandWorkflowDefinitions(): void;
+}): JSX.Element {
+  const selectedAllRuns = selectedWorkflowId === null;
+
+  return (
+    <section className="workflow-catalog" aria-label="Workflow catalog">
+      <header>
+        <strong>Workflows</strong>
+        <span className="state-chip">{workflows.length} definitions</span>
+      </header>
+      {workflowsLoading && workflows.length === 0 && <div className="loading-state">Loading workflows…</div>}
+      {workflowsError && (
+        <div className="error-state">Workflow definitions unavailable: {workflowsError.message}</div>
+      )}
+      {workflowDefinitionsAvailabilityMessage && (
+        <div className="error-state">{workflowDefinitionsAvailabilityMessage}</div>
+      )}
+      <button
+        type="button"
+        className={`workflow-catalog-row ${selectedAllRuns ? "active" : ""}`}
+        onClick={() => onSelectWorkflow(null)}
+      >
+        <div>
+          <strong>All runs</strong>
+          <small>Repository workflow activity across every workflow.</small>
+        </div>
+        <span className="state-chip">{actions.length} runs</span>
+      </button>
+      {workflows.map((workflow) => {
+        const workflowRuns = actions.filter((run) => workflowMatchesRun(workflow, run));
+        const latestRun = workflowRuns[0] ?? null;
+        const selected = workflowMatchesIdentity(workflow, selectedWorkflowId);
+
+        return (
+          <article key={workflow.id} className={`workflow-catalog-row ${selected ? "active" : ""}`}>
+            <button type="button" onClick={() => onSelectWorkflow(workflowIdentity(workflow))}>
+              <div>
+                <strong>{workflow.name}</strong>
+                <small>
+                  {workflow.path} · {workflow.state}
+                  {latestRun
+                    ? ` · latest ${latestRun.conclusion ?? latestRun.status ?? "queued"} ${formatRelativeDate(
+                        latestRun.updatedAt
+                      )}`
+                    : " · no run in current list"}
+                </small>
+              </div>
+              <span className={`state-chip ${workflow.dispatchable ? "success" : ""}`}>
+                {workflow.dispatchable ? "dispatchable" : workflow.state}
+              </span>
+            </button>
+            <button
+              type="button"
+              className="pin-row-button"
+              disabled={!workflow.htmlUrl}
+              title={workflow.htmlUrl ? "Open workflow on GitHub" : "Workflow URL unavailable."}
+              onClick={() => {
+                if (workflow.htmlUrl) {
+                  onOpenExternal(workflow.htmlUrl);
+                }
+              }}
+            >
+              <ExternalLink size={15} />
+            </button>
+          </article>
+        );
+      })}
+      {!workflowsLoading && !workflowDefinitionsAvailabilityMessage && workflows.length === 0 && (
+        <div className="empty-state">No workflow definitions returned for this repository.</div>
+      )}
+      {canExpandWorkflowDefinitions && (
+        <div className="table-action-row">
+          <button type="button" disabled={workflowsFetching} onClick={onExpandWorkflowDefinitions}>
+            <ChevronDown size={16} /> {workflowsFetching ? "Loading workflows…" : "Load more workflows"}
+          </button>
+        </div>
+      )}
+      {!canExpandWorkflowDefinitions && workflowDefinitionsLimitHit && (
+        <div className="muted-row">
+          Showing the first {workflows.length || workflowDefinitionLimit} workflow definitions returned by
+          GitHub.
+        </div>
+      )}
+    </section>
+  );
+}
+
 function WorkflowRunList({
   repository,
   actions,
@@ -438,8 +562,8 @@ function WorkflowRunList({
             <button
               className="pin-row-button"
               type="button"
-              aria-label={`Open workflow run ${run.displayTitle ?? run.name} GitHub fallback`}
-              title="GitHub fallback for workflow run"
+              aria-label={`Open workflow run ${run.displayTitle ?? run.name} on GitHub`}
+              title="Open workflow run on GitHub"
               onClick={() => onOpenExternal(run.htmlUrl)}
             >
               <ExternalLink size={15} />
@@ -808,7 +932,7 @@ function WorkflowFailureSummaryCard({
             }
           }}
         >
-          GitHub fallback
+          Open on GitHub
         </button>
       </div>
     </article>
@@ -1282,7 +1406,7 @@ function WorkflowAnnotationRow({
           }
         }}
       >
-        GitHub fallback
+        Open on GitHub
       </button>
     </div>
   );
@@ -1521,7 +1645,7 @@ function WorkflowRunActionsSection({
         Open commit in Control
       </button>
       <button type="button" onClick={() => onOpenExternal(selectedRun.htmlUrl)}>
-        <ExternalLink size={16} /> GitHub fallback
+        <ExternalLink size={16} /> Open on GitHub
       </button>
       <button
         type="button"
@@ -1569,6 +1693,7 @@ type ActionsTabProps = {
   refListLimit: number;
   actionsLimit: number;
   workflowDefinitionLimit: number;
+  focusedWorkflowId: string | null;
   focusedWorkflowRunId: number | null;
   focusedWorkflowArtifactId: number | null;
   initialFilter: string;
@@ -1593,7 +1718,8 @@ type ActionsTabProps = {
     line?: number | null,
     targetRepositoryNameWithOwner?: string | null
   ): void;
-  onSelectWorkflowRun(run: WorkflowRunSummary): void;
+  onSelectWorkflow(workflowId: string | null, filter: string): void;
+  onOpenWorkflowRunDetail(run: WorkflowRunSummary, workflowId: string | null, filter: string): void;
   onSelectWorkflowArtifact(
     run: WorkflowRunSummary | WorkflowRunDetail,
     artifact: WorkflowRunArtifactSummary
@@ -1610,6 +1736,7 @@ function useActionsTabModel({
   refListLimit,
   actionsLimit,
   workflowDefinitionLimit,
+  focusedWorkflowId,
   focusedWorkflowRunId,
   focusedWorkflowArtifactId,
   initialFilter,
@@ -1622,17 +1749,28 @@ function useActionsTabModel({
   onOpenWorkflowRunCommit,
   onOpenWorkflowCheckSuiteCommit,
   onOpenCodePath,
-  onSelectWorkflowRun,
+  onSelectWorkflow,
+  onOpenWorkflowRunDetail,
   onSelectWorkflowArtifact,
   onExpandActions,
   onExpandWorkflowDefinitions,
   onMutate
 }: ActionsTabProps) {
-  const { actions: actionsQuery } = useActionsTabQueries({
+  const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(focusedWorkflowId);
+  const [filter, setFilter] = useState(initialFilter);
+  const [dispatching, setDispatching] = useState(initialDispatching);
+  const [workflowId, setWorkflowId] = useState("");
+  const [workflowRef, setWorkflowRef] = useState(selectedRef ?? repository.defaultBranch ?? "main");
+  const [workflowInputOverrides, setWorkflowInputOverrides] = useState<WorkflowDispatchInputValues>({});
+  const { actions: actionsQuery, workflows } = useActionsTabQueries({
     owner: repository.owner,
     repo: repository.name,
     limit: actionsLimit,
+    workflowRef,
+    workflowDefinitionLimit,
     enabled: true,
+    workflowsEnabled: true,
     githubReady
   });
   const {
@@ -1645,12 +1783,6 @@ function useActionsTabModel({
   const availability = actionsQuery.data?.availability ?? null;
   const loading = actionsQuery.isLoading || actionsQuery.isFetching;
   const error = actionsQuery.error;
-  const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
-  const [filter, setFilter] = useState(initialFilter);
-  const [dispatching, setDispatching] = useState(initialDispatching);
-  const [workflowId, setWorkflowId] = useState("");
-  const [workflowRef, setWorkflowRef] = useState(selectedRef ?? repository.defaultBranch ?? "main");
-  const [workflowInputOverrides, setWorkflowInputOverrides] = useState<WorkflowDispatchInputValues>({});
   const [selectedLogJobSelection, setSelectedLogJobSelection] = useState<{
     runId: number;
     jobId: number;
@@ -1684,8 +1816,17 @@ function useActionsTabModel({
   const actionSearchParts = filterParts.filter((part) => part !== "attention");
   const actionsLimitHit = actions.length >= actionsLimit;
   const canExpandActions = actionsLimitHit && actionsLimit < maxActionsLimit;
+  const workflowItems = workflows.data?.items ?? [];
+  const selectedWorkflowForRuns =
+    workflowItems.find((workflow) => workflowMatchesIdentity(workflow, selectedWorkflowId)) ?? null;
+  const workflowDefinitionsAvailability = workflows.data?.availability ?? null;
+  const workflowDefinitionsAvailabilityMessage = readAvailabilityMessage(
+    "Workflow definitions",
+    workflowDefinitionsAvailability
+  );
   const filteredActions = actions.filter((run) => {
     return (
+      (!selectedWorkflowForRuns || workflowMatchesRun(selectedWorkflowForRuns, run)) &&
       (!requiresAttentionFilter || isWorkflowRunAttention(run)) &&
       fieldsMatchSearchParts(
         [
@@ -1730,24 +1871,6 @@ function useActionsTabModel({
       ? expandedWorkflowDetailState.items
       : initialExpandedWorkflowDetailItems;
   const api = useControlApi();
-  const workflows = useQuery<WorkflowDefinitionListResult>({
-    queryKey: workflowDefinitionsQueryKey(
-      repository.owner,
-      repository.name,
-      workflowRef,
-      workflowDefinitionLimit
-    ),
-    queryFn: () =>
-      api.github.listWorkflowsWithStatus({
-        owner: repository.owner,
-        repo: repository.name,
-        ref: workflowRef.trim() || null,
-        limit: workflowDefinitionLimit,
-        cacheOnly: !githubReady
-      }),
-    enabled: dispatching && !repositoryDispatchDisabledReason,
-    staleTime: 120_000
-  });
   const runDetail = useQuery<WorkflowRunDetailResult>({
     queryKey: workflowRunDetailQueryKey(repository.owner, repository.name, effectiveSelectedRunId),
     queryFn: () =>
@@ -1760,12 +1883,6 @@ function useActionsTabModel({
     enabled: Boolean(effectiveSelectedRunId !== null && !dispatching),
     staleTime: 60_000
   });
-  const workflowItems = workflows.data?.items ?? [];
-  const workflowDefinitionsAvailability = workflows.data?.availability ?? null;
-  const workflowDefinitionsAvailabilityMessage = readAvailabilityMessage(
-    "Workflow definitions",
-    workflowDefinitionsAvailability
-  );
   const detail = runDetail.data?.detail ?? null;
   const workflowRunDetailAvailability = runDetail.data?.availability ?? null;
   const workflowRunDetailAvailabilityMessage = readAvailabilityMessage(
@@ -1833,7 +1950,11 @@ function useActionsTabModel({
       liveWorkflowDisabledReason ??
       workflowCancelDisabledReason(repository, selectedRun))
     : null;
-  const firstWorkflow = workflowItems.find((workflow) => workflow.dispatchable) ?? workflowItems[0] ?? null;
+  const firstWorkflow =
+    selectedWorkflowForRuns ??
+    workflowItems.find((workflow) => workflow.dispatchable) ??
+    workflowItems[0] ??
+    null;
   const effectiveWorkflowId = workflowId || firstWorkflow?.path || "";
   const selectedWorkflow =
     workflowItems.find(
@@ -1896,13 +2017,23 @@ function useActionsTabModel({
 
   function startWorkflowDispatch(): void {
     setSubmittedWorkflowAction(null);
+    if (!workflowId && selectedWorkflowForRuns) {
+      setWorkflowId(workflowIdentity(selectedWorkflowForRuns));
+    }
     setDispatching(true);
+  }
+
+  function selectWorkflow(workflowId: string | null): void {
+    setDispatching(false);
+    setSelectedRunId(null);
+    setSelectedWorkflowId(workflowId);
+    onSelectWorkflow(workflowId, filter);
   }
 
   function selectWorkflowRun(run: WorkflowRunSummary): void {
     setDispatching(false);
     setSelectedRunId(run.id);
-    onSelectWorkflowRun(run);
+    onOpenWorkflowRunDetail(run, selectedWorkflowId, filter);
   }
 
   function changeWorkflowId(value: string): void {
@@ -2069,6 +2200,8 @@ function useActionsTabModel({
     actionsAvailabilityMessage,
     canExpandActions,
     actionsLimitHit,
+    selectedWorkflowId,
+    selectWorkflow,
     selectWorkflowRun,
     onOpenExternal,
     onExpandActions,
@@ -2157,6 +2290,8 @@ export function ActionsTab(props: ActionsTabProps): JSX.Element {
     actionsAvailabilityMessage,
     canExpandActions,
     actionsLimitHit,
+    selectedWorkflowId,
+    selectWorkflow,
     selectWorkflowRun,
     onOpenExternal,
     onExpandActions,
@@ -2236,22 +2371,39 @@ export function ActionsTab(props: ActionsTabProps): JSX.Element {
         onStartDispatch={startWorkflowDispatch}
       />
       <div className="github-split">
-        <WorkflowRunList
-          repository={repository}
-          actions={actions}
-          filteredActions={filteredActions}
-          selectedRunId={selectedRun?.id ?? null}
-          dispatching={dispatching}
-          loading={loading}
-          error={error instanceof Error ? error : null}
-          actionsAvailabilityMessage={actionsAvailabilityMessage}
-          filter={filter}
-          canExpandActions={canExpandActions}
-          actionsLimitHit={actionsLimitHit}
-          onSelectRun={selectWorkflowRun}
-          onOpenExternal={onOpenExternal}
-          onExpandActions={onExpandActions}
-        />
+        <div className="thread-list workflow-list-stack">
+          <WorkflowCatalogPane
+            workflows={workflowItems}
+            actions={actions}
+            selectedWorkflowId={selectedWorkflowId}
+            workflowsLoading={workflows.isLoading}
+            workflowsFetching={workflows.isFetching}
+            workflowsError={workflows.error instanceof Error ? workflows.error : null}
+            workflowDefinitionsAvailabilityMessage={workflowDefinitionsAvailabilityMessage}
+            workflowDefinitionsLimitHit={workflowDefinitionsLimitHit}
+            canExpandWorkflowDefinitions={canExpandWorkflowDefinitions}
+            workflowDefinitionLimit={workflowDefinitionLimit}
+            onSelectWorkflow={selectWorkflow}
+            onOpenExternal={onOpenExternal}
+            onExpandWorkflowDefinitions={onExpandWorkflowDefinitions}
+          />
+          <WorkflowRunList
+            repository={repository}
+            actions={actions}
+            filteredActions={filteredActions}
+            selectedRunId={selectedRun?.id ?? null}
+            dispatching={dispatching}
+            loading={loading}
+            error={error instanceof Error ? error : null}
+            actionsAvailabilityMessage={actionsAvailabilityMessage}
+            filter={filter}
+            canExpandActions={canExpandActions}
+            actionsLimitHit={actionsLimitHit}
+            onSelectRun={selectWorkflowRun}
+            onOpenExternal={onOpenExternal}
+            onExpandActions={onExpandActions}
+          />
+        </div>
 
         <div className="thread-detail">
           {dispatching ? (

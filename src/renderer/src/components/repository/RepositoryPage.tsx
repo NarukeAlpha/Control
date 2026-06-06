@@ -7,7 +7,9 @@ import type {
   GitHubAction,
   GitHubMutationFields,
   IssueSummary,
+  IssueStateFilter,
   ProjectSummary,
+  PullRequestStateFilter,
   PullRequestCommitSummary,
   PullRequestLinkedIssueSummary,
   PullRequestReviewSummary,
@@ -38,8 +40,10 @@ import { CodeTab } from "./code/CodeTab";
 import { ContributorsTab } from "./contributors/ContributorsTab";
 import { DiscussionsTab } from "./discussions/DiscussionsTab";
 import { IssuesTab } from "./issues/IssuesTab";
+import { normalizeIssueStateFilter } from "./issues/IssuesTab.queries";
 import { ProjectsTab } from "./projects/ProjectsTab";
 import { PullRequestsTab } from "./pull-requests/PullRequestsTab";
+import { normalizePullRequestStateFilter } from "./pull-requests/PullRequestsTab.queries";
 import { ReleasesTab } from "./releases/ReleasesTab";
 import { SecurityQualityTab } from "./security/SecurityQualityTab";
 import { RepositorySettingsTab } from "./settings/RepositorySettingsTab";
@@ -328,10 +332,13 @@ interface RepositoryRouteModel {
   focusedSettingsCollaboratorLogin: string | null;
   focusedWorkflowRunId: number | null;
   focusedWorkflowArtifactId: number | null;
+  focusedWorkflowId: string | null;
   focusedSecurityItemKind: LocalRecentSecurityItemKind | null;
   focusedSecurityItemId: string | null;
   focusedWikiPagePath: string | null;
+  issueState: IssueStateFilter;
   issueFilter: string;
+  pullState: PullRequestStateFilter;
   pullFilter: string;
   workflowFilter: string;
   issueComposer: "create" | null;
@@ -453,10 +460,13 @@ function getRepositoryRouteModel(
     focusedSettingsCollaboratorLogin: repositoryRoute?.settingsCollaboratorLogin ?? null,
     focusedWorkflowRunId: repositoryRoute?.workflowRunId ?? null,
     focusedWorkflowArtifactId: repositoryRoute?.workflowArtifactId ?? null,
+    focusedWorkflowId: repositoryRoute?.workflowId ?? null,
     focusedSecurityItemKind: repositoryRoute?.securityItemKind ?? null,
     focusedSecurityItemId: repositoryRoute?.securityItemId ?? null,
     focusedWikiPagePath: repositoryRoute?.wikiPagePath ?? null,
+    issueState: normalizeIssueStateFilter(repositoryRoute?.issueState),
     issueFilter: repositoryRoute?.issueFilter ?? "",
+    pullState: normalizePullRequestStateFilter(repositoryRoute?.pullState),
     pullFilter: repositoryRoute?.pullFilter ?? "",
     workflowFilter: repositoryRoute?.workflowFilter ?? "",
     issueComposer: repositoryRoute?.issueComposer ?? null,
@@ -513,7 +523,9 @@ function buildRepositoryPageModel(input: {
 }
 
 function repositoryPageClassName(routeModel: RepositoryRouteModel): string {
-  return routeModel.focusedIssueNumber !== null ? "repo-page repo-page-focused-issue" : "repo-page";
+  return routeModel.focusedIssueNumber !== null || routeModel.focusedPullNumber !== null
+    ? "repo-page repo-page-focused-detail"
+    : "repo-page";
 }
 
 function uniqueRepositoryActionDisabledNotes(notes: readonly (string | null)[]): string {
@@ -662,7 +674,7 @@ export function RepositoryPage(props: RepositoryPageProps): JSX.Element {
         onSelectRef={props.onSelectRef}
         onSelectSettingsCollaborator={props.onSelectSettingsCollaborator}
       />
-      {routeModel.focusedIssueNumber === null && props.rightRail}
+      {routeModel.focusedIssueNumber === null && routeModel.focusedPullNumber === null && props.rightRail}
     </article>
   );
 }
@@ -702,7 +714,7 @@ function RepositoryPageLoadError({
         </button>
         {routeRepositoryName && (
           <button type="button" onClick={openRepositoryOnGitHub}>
-            <ExternalLink size={16} /> GitHub fallback
+            <ExternalLink size={16} /> Open on GitHub
           </button>
         )}
       </div>
@@ -1202,16 +1214,53 @@ function RepositoryIssuesTabSurface({
   onSelectIssue,
   onSelectTab
 }: RepositoryActiveTabSurfaceProps): JSX.Element {
+  const navigate = useUiStore((state) => state.navigate);
+
+  function issueRouteUpdate(
+    issueState: IssueStateFilter,
+    filter: string,
+    includeFocusedIssue: boolean
+  ): Extract<AppRoute, { kind: "repository" }> {
+    return {
+      kind: "repository",
+      nameWithOwner: routeModel.routeRepositoryName ?? repository.nameWithOwner,
+      tab: "issues",
+      issueState,
+      issueFilter: filter || undefined,
+      issueComposer: routeModel.issueComposer ?? undefined,
+      issueNumber: includeFocusedIssue ? (routeModel.focusedIssueNumber ?? undefined) : undefined
+    };
+  }
+
   function openIssueList(): void {
-    onSelectTab("issues");
+    if (!routeModel.routeRepositoryName) {
+      onSelectTab("issues");
+      return;
+    }
+    navigate(issueRouteUpdate(routeModel.issueState, routeModel.issueFilter, false));
+  }
+
+  function changeIssueState(issueState: IssueStateFilter, filter: string): void {
+    navigate(issueRouteUpdate(issueState, filter, true));
+  }
+
+  function openIssueDetail(issue: IssueSummary, issueState: IssueStateFilter, filter: string): void {
+    onSelectIssue(issue);
+    navigate({
+      ...issueRouteUpdate(issueState, filter, true),
+      issueNumber: issue.number
+    });
   }
 
   return (
     <IssuesTab
-      key={`issues-${routeModel.focusedIssueNumber ?? routeModel.issueComposer ?? (routeModel.issueFilter || "default")}`}
+      key={`issues-${routeModel.issueState}-${routeModel.focusedIssueNumber ?? "none"}-${
+        routeModel.issueComposer ?? "none"
+      }-${routeModel.issueFilter || "default"}`}
       repository={repository}
       githubReady={githubReady}
       issueListLimit={limits.issueListLimit}
+      issueState={routeModel.issueState}
       focusedIssueNumber={routeModel.focusedIssueNumber}
       initialFilter={routeModel.issueFilter}
       initialCreating={routeModel.issueComposer === "create"}
@@ -1221,8 +1270,9 @@ function RepositoryIssuesTabSurface({
       mutationError={mutation.error}
       onMutate={mutation.onMutate}
       onOpenExternal={onOpenExternal}
-      onSelectIssue={onSelectIssue}
       onOpenIssueList={openIssueList}
+      onOpenIssueDetail={openIssueDetail}
+      onIssueStateChange={changeIssueState}
       onExpandIssues={expansion.onExpandIssues}
     />
   );
@@ -1243,8 +1293,51 @@ function RepositoryPullRequestsTabSurface({
   onOpenPullRequestReviewCommit,
   onOpenPullRequestTimelineEventCommit,
   onOpenWorkflowRun,
-  onOpenCodePath
+  onOpenCodePath,
+  onSelectTab
 }: RepositoryActiveTabSurfaceProps): JSX.Element {
+  const navigate = useUiStore((state) => state.navigate);
+
+  function pullRouteUpdate(
+    pullState: PullRequestStateFilter,
+    filter: string,
+    includeFocusedPull: boolean
+  ): Extract<AppRoute, { kind: "repository" }> {
+    return {
+      kind: "repository",
+      nameWithOwner: routeModel.routeRepositoryName ?? repository.nameWithOwner,
+      tab: "pulls",
+      pullState,
+      pullFilter: filter || undefined,
+      pullComposer: routeModel.pullComposer ?? undefined,
+      pullNumber: includeFocusedPull ? (routeModel.focusedPullNumber ?? undefined) : undefined
+    };
+  }
+
+  function changePullState(pullState: PullRequestStateFilter, filter: string): void {
+    navigate(pullRouteUpdate(pullState, filter, true));
+  }
+
+  function openPullRequestList(): void {
+    if (!routeModel.routeRepositoryName) {
+      onSelectTab("pulls");
+      return;
+    }
+    navigate(pullRouteUpdate(routeModel.pullState, routeModel.pullFilter, false));
+  }
+
+  function openPullRequestDetail(
+    pullRequest: PullRequestSummary,
+    pullState: PullRequestStateFilter,
+    filter: string
+  ): void {
+    onSelectPullRequest(pullRequest);
+    navigate({
+      ...pullRouteUpdate(pullState, filter, true),
+      pullNumber: pullRequest.number
+    });
+  }
+
   function openPullRequestCodePath(
     path: string,
     ref: string | null,
@@ -1257,12 +1350,13 @@ function RepositoryPullRequestsTabSurface({
 
   return (
     <PullRequestsTab
-      key={`pulls-${routeModel.focusedPullNumber ?? routeModel.pullComposer ?? (routeModel.pullFilter || "default")}`}
+      key={`pulls-${routeModel.pullState}-${routeModel.focusedPullNumber ?? routeModel.pullComposer ?? (routeModel.pullFilter || "default")}`}
       repository={repository}
       githubReady={githubReady}
       selectedRef={selectedRef}
       refListLimit={limits.refListLimit}
       pullRequestListLimit={limits.pullRequestListLimit}
+      pullState={routeModel.pullState}
       focusedPullNumber={routeModel.focusedPullNumber}
       initialFilter={routeModel.pullFilter}
       initialCreating={routeModel.pullComposer === "create"}
@@ -1272,7 +1366,9 @@ function RepositoryPullRequestsTabSurface({
       mutationError={mutation.error}
       onMutate={mutation.onMutate}
       onOpenExternal={onOpenExternal}
-      onSelectPullRequest={onSelectPullRequest}
+      onOpenPullRequestDetail={openPullRequestDetail}
+      onOpenPullRequestList={openPullRequestList}
+      onPullStateChange={changePullState}
       onOpenIssueReference={onOpenIssueReference}
       onOpenPullRequestCommit={onOpenPullRequestCommit}
       onOpenPullRequestReviewCommit={onOpenPullRequestReviewCommit}
@@ -1401,6 +1497,38 @@ function RepositoryActionsTabSurface({
   onSelectWorkflowRun,
   onSelectWorkflowArtifact
 }: RepositoryActiveTabSurfaceProps): JSX.Element {
+  const navigate = useUiStore((state) => state.navigate);
+
+  function workflowRouteUpdate(
+    workflowId: string | null,
+    filter: string,
+    includeFocusedRun: boolean
+  ): Extract<AppRoute, { kind: "repository" }> {
+    return {
+      kind: "repository",
+      nameWithOwner: routeModel.routeRepositoryName ?? repository.nameWithOwner,
+      tab: "actions",
+      workflowId: workflowId ?? undefined,
+      workflowFilter: filter || undefined,
+      workflowComposer: routeModel.workflowComposer ?? undefined,
+      workflowRunId: includeFocusedRun ? (routeModel.focusedWorkflowRunId ?? undefined) : undefined,
+      workflowArtifactId: includeFocusedRun ? (routeModel.focusedWorkflowArtifactId ?? undefined) : undefined
+    };
+  }
+
+  function selectWorkflow(workflowId: string | null, filter: string): void {
+    navigate(workflowRouteUpdate(workflowId, filter, false));
+  }
+
+  function openWorkflowRunDetail(run: WorkflowRunSummary, workflowId: string | null, filter: string): void {
+    onSelectWorkflowRun(run);
+    navigate({
+      ...workflowRouteUpdate(workflowId, filter, true),
+      workflowRunId: run.id,
+      workflowArtifactId: undefined
+    });
+  }
+
   function openActionsCodePath(
     path: string,
     ref: string | null,
@@ -1415,6 +1543,7 @@ function RepositoryActionsTabSurface({
     <ActionsTab
       key={`actions-${
         routeModel.focusedWorkflowRunId ??
+        routeModel.focusedWorkflowId ??
         routeModel.workflowComposer ??
         (routeModel.workflowFilter || "default")
       }-${routeModel.focusedWorkflowArtifactId ?? "artifact-default"}`}
@@ -1424,6 +1553,7 @@ function RepositoryActionsTabSurface({
       refListLimit={limits.refListLimit}
       actionsLimit={limits.actionsLimit}
       workflowDefinitionLimit={limits.workflowDefinitionLimit}
+      focusedWorkflowId={routeModel.focusedWorkflowId}
       focusedWorkflowRunId={routeModel.focusedWorkflowRunId}
       focusedWorkflowArtifactId={routeModel.focusedWorkflowArtifactId}
       initialFilter={routeModel.workflowFilter}
@@ -1437,7 +1567,8 @@ function RepositoryActionsTabSurface({
       onOpenWorkflowRunCommit={onOpenWorkflowRunCommit}
       onOpenWorkflowCheckSuiteCommit={onOpenWorkflowCheckSuiteCommit}
       onOpenCodePath={openActionsCodePath}
-      onSelectWorkflowRun={onSelectWorkflowRun}
+      onSelectWorkflow={selectWorkflow}
+      onOpenWorkflowRunDetail={openWorkflowRunDetail}
       onSelectWorkflowArtifact={onSelectWorkflowArtifact}
       onExpandActions={expansion.onExpandActions}
       onExpandWorkflowDefinitions={expansion.onExpandWorkflowDefinitions}

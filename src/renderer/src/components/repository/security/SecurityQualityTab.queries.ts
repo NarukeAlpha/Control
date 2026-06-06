@@ -2,12 +2,15 @@ import { useQuery, type QueryClient } from "@tanstack/react-query";
 
 import type {
   BranchProtectionResult,
+  CodeScanningAlertsInput,
   CodeScanningAlertsResult,
+  DependabotAlertsInput,
   DependabotAlertsResult,
   RepositoryCommunityProfileResult,
   RepositoryRulesetsResult,
   RepositorySecurityAdvisoriesResult,
   RepositorySecurityPolicyResult,
+  SecretScanningAlertsInput,
   SecretScanningAlertsResult
 } from "@shared/github";
 import type { ControlApi } from "@shared/ipc";
@@ -20,14 +23,64 @@ import {
 import { useControlApi } from "@renderer/hooks/useControlApi";
 import { useRepositoryRefs } from "@renderer/hooks/useRepositoryRefs";
 
+export type DependabotAlertStateFilter = Extract<
+  NonNullable<DependabotAlertsInput["state"]>,
+  "open" | "dismissed" | "fixed"
+>;
+export type CodeScanningAlertStateFilter = NonNullable<CodeScanningAlertsInput["state"]>;
+export type SecretScanningAlertStateFilter = NonNullable<SecretScanningAlertsInput["state"]>;
+
+export const defaultDependabotAlertStateFilter: DependabotAlertStateFilter = "open";
+export const defaultCodeScanningAlertStateFilter: CodeScanningAlertStateFilter = "open";
+export const defaultSecretScanningAlertStateFilter: SecretScanningAlertStateFilter = "open";
+
+export const dependabotAlertStateFilterOptions: Array<{
+  value: DependabotAlertStateFilter;
+  label: string;
+}> = [
+  { value: "open", label: "Open" },
+  { value: "dismissed", label: "Dismissed" },
+  { value: "fixed", label: "Fixed" }
+];
+
+export const codeScanningAlertStateFilterOptions: Array<{
+  value: CodeScanningAlertStateFilter;
+  label: string;
+}> = [
+  { value: "open", label: "Open" },
+  { value: "dismissed", label: "Dismissed" },
+  { value: "fixed", label: "Fixed" }
+];
+
+export const secretScanningAlertStateFilterOptions: Array<{
+  value: SecretScanningAlertStateFilter;
+  label: string;
+}> = [
+  { value: "open", label: "Open" },
+  { value: "resolved", label: "Resolved" }
+];
+
+export function securityAlertStateFilterLabel(
+  state: DependabotAlertStateFilter | CodeScanningAlertStateFilter | SecretScanningAlertStateFilter
+): string {
+  return (
+    dependabotAlertStateFilterOptions.find((option) => option.value === state)?.label ??
+    secretScanningAlertStateFilterOptions.find((option) => option.value === state)?.label ??
+    state
+  );
+}
+
 export interface SecurityQualityTabQueryInput {
   owner: string;
   repo: string;
   selectedRef: string | null;
   defaultBranch: string | null;
   refListLimit: number;
+  dependabotAlertState: DependabotAlertStateFilter;
   dependabotAlertsLimit: number;
+  codeScanningAlertState: CodeScanningAlertStateFilter;
   codeScanningAlertsLimit: number;
+  secretScanningAlertState: SecretScanningAlertStateFilter;
   secretScanningAlertsLimit: number;
   repositoryRulesetsLimit: number;
   repositorySecurityAdvisoriesLimit: number;
@@ -41,8 +94,11 @@ interface SecurityQualityTabRefreshInput {
   repo: string;
   branchProtectionBranch: string | null;
   defaultBranch: string | null;
+  dependabotAlertState: DependabotAlertStateFilter;
   dependabotAlertsLimit: number;
+  codeScanningAlertState: CodeScanningAlertStateFilter;
   codeScanningAlertsLimit: number;
+  secretScanningAlertState: SecretScanningAlertStateFilter;
   secretScanningAlertsLimit: number;
   repositoryRulesetsLimit: number;
   repositorySecurityAdvisoriesLimit: number;
@@ -52,25 +108,28 @@ interface SecurityQualityTabRefreshInput {
 export function dependabotAlertsQueryKey(
   owner: string,
   repo: string,
+  state: DependabotAlertStateFilter,
   limit: number
-): readonly ["dependabot-alerts", string, string, number] {
-  return ["dependabot-alerts", owner, repo, limit] as const;
+): readonly ["dependabot-alerts", string, string, DependabotAlertStateFilter, number] {
+  return ["dependabot-alerts", owner, repo, state, limit] as const;
 }
 
 export function codeScanningAlertsQueryKey(
   owner: string,
   repo: string,
+  state: CodeScanningAlertStateFilter,
   limit: number
-): readonly ["code-scanning-alerts", string, string, number] {
-  return ["code-scanning-alerts", owner, repo, limit] as const;
+): readonly ["code-scanning-alerts", string, string, CodeScanningAlertStateFilter, number] {
+  return ["code-scanning-alerts", owner, repo, state, limit] as const;
 }
 
 export function secretScanningAlertsQueryKey(
   owner: string,
   repo: string,
+  state: SecretScanningAlertStateFilter,
   limit: number
-): readonly ["secret-scanning-alerts", string, string, number] {
-  return ["secret-scanning-alerts", owner, repo, limit] as const;
+): readonly ["secret-scanning-alerts", string, string, SecretScanningAlertStateFilter, number] {
+  return ["secret-scanning-alerts", owner, repo, state, limit] as const;
 }
 
 export function repositorySecurityAdvisoriesQueryKey(
@@ -102,8 +161,11 @@ export function useSecurityQualityTabQueries({
   selectedRef,
   defaultBranch,
   refListLimit,
+  dependabotAlertState,
   dependabotAlertsLimit,
+  codeScanningAlertState,
   codeScanningAlertsLimit,
+  secretScanningAlertState,
   secretScanningAlertsLimit,
   repositoryRulesetsLimit,
   repositorySecurityAdvisoriesLimit,
@@ -134,12 +196,12 @@ export function useSecurityQualityTabQueries({
   });
 
   const dependabotAlerts = useQuery<DependabotAlertsResult>({
-    queryKey: dependabotAlertsQueryKey(owner, repo, dependabotAlertsLimit),
+    queryKey: dependabotAlertsQueryKey(owner, repo, dependabotAlertState, dependabotAlertsLimit),
     queryFn: () =>
       api.github.listDependabotAlerts({
         owner,
         repo,
-        state: "open",
+        state: dependabotAlertState,
         limit: dependabotAlertsLimit,
         cacheOnly: !githubReady
       }),
@@ -148,12 +210,12 @@ export function useSecurityQualityTabQueries({
   });
 
   const codeScanningAlerts = useQuery<CodeScanningAlertsResult>({
-    queryKey: codeScanningAlertsQueryKey(owner, repo, codeScanningAlertsLimit),
+    queryKey: codeScanningAlertsQueryKey(owner, repo, codeScanningAlertState, codeScanningAlertsLimit),
     queryFn: () =>
       api.github.listCodeScanningAlerts({
         owner,
         repo,
-        state: "open",
+        state: codeScanningAlertState,
         limit: codeScanningAlertsLimit,
         cacheOnly: !githubReady
       }),
@@ -162,12 +224,12 @@ export function useSecurityQualityTabQueries({
   });
 
   const secretScanningAlerts = useQuery<SecretScanningAlertsResult>({
-    queryKey: secretScanningAlertsQueryKey(owner, repo, secretScanningAlertsLimit),
+    queryKey: secretScanningAlertsQueryKey(owner, repo, secretScanningAlertState, secretScanningAlertsLimit),
     queryFn: () =>
       api.github.listSecretScanningAlerts({
         owner,
         repo,
-        state: "open",
+        state: secretScanningAlertState,
         limit: secretScanningAlertsLimit,
         cacheOnly: !githubReady
       }),
@@ -246,8 +308,11 @@ export async function refreshSecurityQualityTabData(
     repo,
     branchProtectionBranch,
     defaultBranch,
+    dependabotAlertState,
     dependabotAlertsLimit,
+    codeScanningAlertState,
     codeScanningAlertsLimit,
+    secretScanningAlertState,
     secretScanningAlertsLimit,
     repositoryRulesetsLimit,
     repositorySecurityAdvisoriesLimit,
@@ -257,39 +322,44 @@ export async function refreshSecurityQualityTabData(
   const cachedRead = !githubReady;
   const refreshes: Array<Promise<unknown>> = [
     queryClient.fetchQuery({
-      queryKey: dependabotAlertsQueryKey(owner, repo, dependabotAlertsLimit),
+      queryKey: dependabotAlertsQueryKey(owner, repo, dependabotAlertState, dependabotAlertsLimit),
       staleTime: 0,
       queryFn: () =>
         api.github.listDependabotAlerts({
           owner,
           repo,
-          state: "open",
+          state: dependabotAlertState,
           limit: dependabotAlertsLimit,
           cacheOnly: cachedRead,
           forceRefresh: !cachedRead
         })
     }),
     queryClient.fetchQuery({
-      queryKey: codeScanningAlertsQueryKey(owner, repo, codeScanningAlertsLimit),
+      queryKey: codeScanningAlertsQueryKey(owner, repo, codeScanningAlertState, codeScanningAlertsLimit),
       staleTime: 0,
       queryFn: () =>
         api.github.listCodeScanningAlerts({
           owner,
           repo,
-          state: "open",
+          state: codeScanningAlertState,
           limit: codeScanningAlertsLimit,
           cacheOnly: cachedRead,
           forceRefresh: !cachedRead
         })
     }),
     queryClient.fetchQuery({
-      queryKey: secretScanningAlertsQueryKey(owner, repo, secretScanningAlertsLimit),
+      queryKey: secretScanningAlertsQueryKey(
+        owner,
+        repo,
+        secretScanningAlertState,
+        secretScanningAlertsLimit
+      ),
       staleTime: 0,
       queryFn: () =>
         api.github.listSecretScanningAlerts({
           owner,
           repo,
-          state: "open",
+          state: secretScanningAlertState,
           limit: secretScanningAlertsLimit,
           cacheOnly: cachedRead,
           forceRefresh: !cachedRead

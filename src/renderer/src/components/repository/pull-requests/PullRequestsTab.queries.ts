@@ -12,6 +12,7 @@ import type {
   PullRequestOverviewResult,
   PullRequestReviewsResult,
   PullRequestReviewThreadsResult,
+  PullRequestStateFilter,
   PullRequestTimelineResult,
   RepositoryDetail
 } from "@shared/github";
@@ -50,6 +51,7 @@ export function isPullRequestDetailSectionRequested(
 export interface PullRequestsTabQueryInput {
   owner: string;
   repo: string;
+  pullState?: PullRequestStateFilter;
   pullRequestListLimit: number;
   pullsEnabled: boolean;
   resourcesEnabled: boolean;
@@ -60,6 +62,7 @@ export interface PullRequestsTabPrefetchInput {
   api: ControlApi;
   owner: string;
   repo: string;
+  pullState?: PullRequestStateFilter;
   pullRequestListLimit: number;
   githubReady: boolean;
 }
@@ -70,12 +73,20 @@ export interface PullRequestsTabRefreshInput extends PullRequestsTabPrefetchInpu
   requestedDetailSections?: PullRequestDetailSection[];
 }
 
+export const defaultPullRequestStateFilter: PullRequestStateFilter = "open";
+export const allPullRequestStateFilter: PullRequestStateFilter = "all";
+
+export function normalizePullRequestStateFilter(pullState?: PullRequestStateFilter): PullRequestStateFilter {
+  return pullState ?? defaultPullRequestStateFilter;
+}
+
 export function pullRequestsTabQueryKey(
   owner: string,
   repo: string,
+  pullState: PullRequestStateFilter,
   pullRequestListLimit: number
-): readonly ["pulls", string, string, number] {
-  return ["pulls", owner, repo, pullRequestListLimit] as const;
+): readonly ["pulls", string, string, PullRequestStateFilter, number] {
+  return ["pulls", owner, repo, pullState, pullRequestListLimit] as const;
 }
 
 export function pullRequestDetailQueryKey(
@@ -111,19 +122,21 @@ function cachedPullRequestDetailSections(
 export function usePullRequestsTabQueries({
   owner,
   repo,
+  pullState,
   pullRequestListLimit,
   pullsEnabled,
   resourcesEnabled,
   githubReady
 }: PullRequestsTabQueryInput) {
   const api = useControlApi();
+  const normalizedPullState = normalizePullRequestStateFilter(pullState);
   const pulls = useQuery<PullRequestListResult>({
-    queryKey: pullRequestsTabQueryKey(owner, repo, pullRequestListLimit),
+    queryKey: pullRequestsTabQueryKey(owner, repo, normalizedPullState, pullRequestListLimit),
     queryFn: () =>
       api.github.listPullRequestsWithStatus({
         owner,
         repo,
-        state: "all",
+        state: normalizedPullState,
         limit: pullRequestListLimit,
         cacheOnly: !githubReady
       }),
@@ -299,16 +312,17 @@ function composePullRequestDetail({
 
 export async function prefetchPullRequestsTabData(
   queryClient: QueryClient,
-  { api, owner, repo, pullRequestListLimit, githubReady }: PullRequestsTabPrefetchInput
+  { api, owner, repo, pullState, pullRequestListLimit, githubReady }: PullRequestsTabPrefetchInput
 ): Promise<void> {
+  const normalizedPullState = normalizePullRequestStateFilter(pullState);
   await Promise.all([
     queryClient.prefetchQuery({
-      queryKey: pullRequestsTabQueryKey(owner, repo, pullRequestListLimit),
+      queryKey: pullRequestsTabQueryKey(owner, repo, normalizedPullState, pullRequestListLimit),
       queryFn: () =>
         api.github.listPullRequestsWithStatus({
           owner,
           repo,
-          state: "all",
+          state: normalizedPullState,
           limit: pullRequestListLimit,
           cacheOnly: !githubReady
         }),
@@ -346,6 +360,7 @@ export async function refreshPullRequestsTabData(
     api,
     owner,
     repo,
+    pullState,
     pullRequestListLimit,
     refListLimit,
     focusedPullNumber,
@@ -353,16 +368,17 @@ export async function refreshPullRequestsTabData(
     githubReady
   }: PullRequestsTabRefreshInput
 ): Promise<void> {
+  const normalizedPullState = normalizePullRequestStateFilter(pullState);
   const cachedRead = !githubReady;
   const refreshes: Array<Promise<unknown>> = [
     queryClient.fetchQuery({
-      queryKey: pullRequestsTabQueryKey(owner, repo, pullRequestListLimit),
+      queryKey: pullRequestsTabQueryKey(owner, repo, normalizedPullState, pullRequestListLimit),
       staleTime: 0,
       queryFn: () =>
         api.github.listPullRequestsWithStatus({
           owner,
           repo,
-          state: "all",
+          state: normalizedPullState,
           limit: pullRequestListLimit,
           cacheOnly: cachedRead,
           forceRefresh: !cachedRead

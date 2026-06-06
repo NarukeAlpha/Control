@@ -381,7 +381,7 @@ function useSidebarRepositoryModel({
   const virtualizer = useVirtualizer({
     count: sidebarRepositories.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 54,
+    estimateSize: () => 48,
     overscan: 8
   });
 
@@ -828,7 +828,7 @@ function LocalAreaRepositoryRow({
 
   return (
     <button
-      className={`repo-item local-repo-item ${selected ? "selected" : ""}`}
+      className={`repo-item sidebar-repo-item local-repo-item ${selected ? "selected" : ""}`}
       type="button"
       aria-label={`Open ${repository.displayName}`}
       title={repository.path ?? repository.displayName}
@@ -841,13 +841,11 @@ function LocalAreaRepositoryRow({
           {repository.connection?.nameWithOwner ?? repository.path ?? repository.kind}
         </span>
       </span>
-      {pinned ? (
-        <Pin size={13} />
-      ) : repository.connection ? (
-        <ExternalLink size={13} />
-      ) : (
-        <span className="repo-source">{repository.kind}</span>
-      )}
+      <span className="repo-source-stack">
+        {pinned && <Pin size={13} />}
+        {repository.connection && <ExternalLink size={13} />}
+        <span className="repo-source">{repository.kind.toUpperCase()}</span>
+      </span>
     </button>
   );
 }
@@ -870,7 +868,7 @@ function DirectRepositoryRow({
 
   return (
     <button
-      className={`repo-item sidebar-direct-repo-item ${selected ? "selected" : ""}`}
+      className={`repo-item sidebar-repo-item sidebar-direct-repo-item ${selected ? "selected" : ""}`}
       type="button"
       aria-label={`Open ${nameWithOwner} repository directly`}
       title={`Open ${nameWithOwner} directly`}
@@ -881,7 +879,9 @@ function DirectRepositoryRow({
         <span className="repo-name">{nameWithOwner}</span>
         <span className="repo-meta">Direct repository</span>
       </span>
-      <span className="repo-source">Direct</span>
+      <span className="repo-source-stack">
+        <span className="repo-source">Direct</span>
+      </span>
     </button>
   );
 }
@@ -941,6 +941,8 @@ function SidebarRepositoryVirtualRow({
   const metadataParts = sidebarRepositoryMetadataParts(repository, source, filtered);
   const metadata = metadataParts.join(" · ");
   const rowLabel = metadata ? `${displayName}, ${metadata}` : displayName;
+  const sourceClassName = source ? `repo-item-${source.toLowerCase()}-source` : "repo-item-cached-source";
+  const showSourceStack = Boolean((filtered && source) || repository.isPrivate);
 
   function selectRepository(): void {
     onSelectRepository(repository.nameWithOwner);
@@ -948,7 +950,7 @@ function SidebarRepositoryVirtualRow({
 
   return (
     <button
-      className={`repo-item ${selected ? "selected" : ""}`}
+      className={`repo-item sidebar-repo-item ${sourceClassName} ${selected ? "selected" : ""}`}
       type="button"
       aria-label={`Open ${rowLabel}`}
       title={rowLabel}
@@ -962,10 +964,11 @@ function SidebarRepositoryVirtualRow({
         <span className="repo-name">{displayName}</span>
         {metadata && <span className="repo-meta">{metadata}</span>}
       </span>
-      {filtered && source ? (
-        <span className="repo-source">{source}</span>
-      ) : (
-        repository.isPrivate && <Lock size={13} />
+      {showSourceStack && (
+        <span className="repo-source-stack">
+          {filtered && source && <span className="repo-source">{source}</span>}
+          {repository.isPrivate && <Lock size={13} />}
+        </span>
       )}
     </button>
   );

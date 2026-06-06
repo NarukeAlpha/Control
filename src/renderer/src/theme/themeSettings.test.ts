@@ -132,6 +132,10 @@ describe("themeSettings", () => {
     ).toMatchObject({
       "--color-accent": "#FF5C5C",
       "--color-surface-solid": "#111827",
+      "--color-surface-glass": "color-mix(in srgb, #263449 58%, transparent)",
+      "--color-surface-primary": "color-mix(in srgb, #263449 58%, transparent)",
+      "--color-surface-secondary": "color-mix(in srgb, #263449 66%, #111827)",
+      "--color-surface-hover": "color-mix(in srgb, #263449 78%, #111827)",
       "--color-surface-row": "color-mix(in srgb, #263449 66%, #111827)",
       "--color-surface-selected": "color-mix(in srgb, #FF5C5C 22%, #263449)",
       "--color-text": "#E4E4E7",

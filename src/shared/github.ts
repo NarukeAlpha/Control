@@ -911,6 +911,8 @@ export interface IssueListInput extends RepoDetailInput {
   limit?: number;
 }
 
+export type IssueStateFilter = NonNullable<IssueListInput["state"]>;
+
 export type IssueListResult = GitHubListResult<IssueSummary>;
 
 export interface IssueDetailInput extends RepoDetailInput {
@@ -974,6 +976,8 @@ export interface PullRequestListInput extends RepoDetailInput {
   state?: "open" | "closed" | "all";
   limit?: number;
 }
+
+export type PullRequestStateFilter = NonNullable<PullRequestListInput["state"]>;
 
 export type PullRequestListResult = GitHubListResult<PullRequestSummary>;
 
@@ -1230,6 +1234,10 @@ export type GitHubReadAvailabilityStatus =
   | "offline"
   | "permission_denied"
   | "rate_limited"
+  | "not_found"
+  | "missing_field"
+  | "unsupported_field"
+  | "partial_data"
   | "graphql_error"
   | "error";
 
@@ -1518,6 +1526,13 @@ export interface ProjectSummary {
   fields: ProjectFieldSummary[];
   viewerCanUpdate: boolean | null;
   htmlUrl: string | null;
+  sectionAvailability?: ProjectSectionAvailability;
+}
+
+export interface ProjectSectionAvailability {
+  readme: GitHubReadAvailability;
+  items: GitHubReadAvailability;
+  fields: GitHubReadAvailability;
 }
 
 export interface ProjectItemSummary {

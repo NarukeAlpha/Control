@@ -1,4 +1,5 @@
 import type { RepositoryDetail, RepositoryListResult, RepositorySummary } from "@shared/github";
+import type { CacheValidationState, CacheValidatorSnapshot } from "@shared/cache";
 
 import { writeCacheEntry } from "./cacheStore";
 import type { DatabaseConnection, StorageDatabase } from "./database";
@@ -151,6 +152,10 @@ export function setGitHubRepositoriesWithStatusCache(
     cacheKey: string;
     result: RepositoryListResult;
     etag: string | null;
+    lastModified?: string | null;
+    validator?: CacheValidatorSnapshot | null;
+    validatedAt?: string | null;
+    validationState?: CacheValidationState | null;
     expiresAt: string | null;
   }
 ): void {
@@ -163,6 +168,10 @@ export function setGitHubRepositoriesWithStatusCache(
       cacheKey: input.cacheKey,
       payload: input.result,
       etag: input.etag,
+      lastModified: input.lastModified ?? null,
+      validator: input.validator ?? null,
+      validatedAt: input.validatedAt ?? null,
+      validationState: input.validationState ?? null,
       expiresAt: input.expiresAt
     });
   });

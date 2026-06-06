@@ -20,6 +20,7 @@ import type {
   RepositoryListResult,
   RepositorySummary
 } from "@shared/github";
+import type { CacheValidationState, CacheValidatorSnapshot } from "@shared/cache";
 import type { LocalRecentItem, LocalRecentListInput, RepositoryPinRecord } from "@shared/local";
 import { deleteAccountRecords, readLastAccount, saveAccountRecord } from "./accountStore";
 import {
@@ -106,6 +107,10 @@ export interface CacheRecord {
   cacheKey: string;
   payload: unknown;
   etag: string | null;
+  lastModified?: string | null;
+  validator?: CacheValidatorSnapshot | null;
+  validatedAt?: string | null;
+  validationState?: CacheValidationState | null;
   expiresAt: string | null;
 }
 
@@ -116,6 +121,10 @@ export interface CacheReadOptions {
 export interface CacheEntry<T> {
   payload: T;
   etag: string | null;
+  lastModified: string | null;
+  validator: CacheValidatorSnapshot | null;
+  validatedAt: string | null;
+  validationState: CacheValidationState | null;
   expiresAt: string | null;
   updatedAt: string | null;
   isExpired: boolean;
@@ -199,6 +208,10 @@ export interface LocalStore {
     cacheKey: string;
     result: RepositoryListResult;
     etag: string | null;
+    lastModified?: string | null;
+    validator?: CacheValidatorSnapshot | null;
+    validatedAt?: string | null;
+    validationState?: CacheValidationState | null;
     expiresAt: string | null;
   }): void;
   pinRepository(nameWithOwner: string): void;
@@ -473,6 +486,10 @@ class SqliteLocalStore implements LocalStore {
     cacheKey: string;
     result: RepositoryListResult;
     etag: string | null;
+    lastModified?: string | null;
+    validator?: CacheValidatorSnapshot | null;
+    validatedAt?: string | null;
+    validationState?: CacheValidationState | null;
     expiresAt: string | null;
   }): void {
     runStorageSync("githubRepositories.writeStatusCache", () => {

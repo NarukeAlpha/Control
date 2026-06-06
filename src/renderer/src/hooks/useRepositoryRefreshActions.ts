@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 
-import type { RepositoryDetail } from "@shared/github";
+import type { IssueStateFilter, PullRequestStateFilter, RepositoryDetail } from "@shared/github";
 import { refreshCodeBrowserData } from "../components/code-browser/codeBrowserQueries";
 import { refreshActionsTabData } from "../components/repository/actions/ActionsTab.queries";
 import { refreshAgentsTabData } from "../components/repository/agents/AgentsTab.queries";
@@ -11,7 +11,12 @@ import { refreshIssuesTabData } from "../components/repository/issues/IssuesTab.
 import { refreshProjectsTabData } from "../components/repository/projects/ProjectsTab.queries";
 import { refreshPullRequestsTabData } from "../components/repository/pull-requests/PullRequestsTab.queries";
 import { refreshReleasesTabData } from "../components/repository/releases/ReleasesTab.queries";
-import { refreshSecurityQualityTabData } from "../components/repository/security/SecurityQualityTab.queries";
+import {
+  defaultCodeScanningAlertStateFilter,
+  defaultDependabotAlertStateFilter,
+  defaultSecretScanningAlertStateFilter,
+  refreshSecurityQualityTabData
+} from "../components/repository/security/SecurityQualityTab.queries";
 import { refreshRepositorySettingsTabData } from "../components/repository/settings/RepositorySettingsTab.queries";
 import { refreshWikiTabData } from "../components/repository/wiki/WikiTab.queries";
 import { refreshRepositoryDetailData } from "./useRepositoryDetail";
@@ -38,7 +43,9 @@ interface UseRepositoryRefreshActionsInput {
   repositoryContributorLimit: number;
   repositoryCommitHistoryLimit: number;
   fileCommitHistoryLimit: number;
+  issueState: IssueStateFilter;
   issueListLimit: number;
+  pullState: PullRequestStateFilter;
   pullRequestListLimit: number;
   discussionsLimit: number;
   projectsLimit: number;
@@ -78,7 +85,9 @@ export function useRepositoryRefreshActions({
   repositoryContributorLimit,
   repositoryCommitHistoryLimit,
   fileCommitHistoryLimit,
+  issueState,
   issueListLimit,
+  pullState,
   pullRequestListLimit,
   discussionsLimit,
   projectsLimit,
@@ -167,6 +176,7 @@ export function useRepositoryRefreshActions({
       api,
       owner,
       repo,
+      issueState,
       issueListLimit,
       focusedIssueNumber: route.kind === "repository" ? (route.issueNumber ?? null) : null,
       githubReady
@@ -182,6 +192,7 @@ export function useRepositoryRefreshActions({
       api,
       owner,
       repo,
+      pullState,
       pullRequestListLimit,
       refListLimit: repositoryRefListLimit,
       focusedPullNumber: route.kind === "repository" ? (route.pullNumber ?? null) : null,
@@ -293,8 +304,11 @@ export function useRepositoryRefreshActions({
       repo,
       branchProtectionBranch,
       defaultBranch: repositoryDetail?.defaultBranch ?? null,
+      dependabotAlertState: defaultDependabotAlertStateFilter,
       dependabotAlertsLimit,
+      codeScanningAlertState: defaultCodeScanningAlertStateFilter,
       codeScanningAlertsLimit,
+      secretScanningAlertState: defaultSecretScanningAlertStateFilter,
       secretScanningAlertsLimit,
       repositoryRulesetsLimit,
       repositorySecurityAdvisoriesLimit,

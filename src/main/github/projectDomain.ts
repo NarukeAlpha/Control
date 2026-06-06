@@ -2,6 +2,7 @@ import type {
   GitHubReadAvailability,
   OrganizationProjectsInput,
   ProjectListResult,
+  ProjectSectionAvailability,
   ProjectSummary,
   ProjectsInput
 } from "@shared/github";
@@ -17,96 +18,68 @@ export class OctokitProjectDomain {
   ) {}
 
   async listProjects(input: ProjectsInput): Promise<ProjectSummary[]> {
-    return this.fetchProjects(input);
+    return (await this.fetchRepositoryProjectsResult(input)).items;
   }
 
   async listProjectsWithStatus(input: ProjectsInput): Promise<ProjectListResult> {
-    try {
-      return {
-        items: await this.fetchProjects(input),
-        availability: { status: "available", message: null }
-      };
-    } catch (error: unknown) {
-      return {
-        items: [],
-        availability: this.mapError(error)
-      };
-    }
+    return this.fetchRepositoryProjectsResult(input);
   }
 
   async listOrganizationProjectsWithStatus(input: OrganizationProjectsInput): Promise<ProjectListResult> {
     try {
-      const limit = input.limit ?? 20;
-      const data = await this.client.graphql<{
-        organization: {
-          projectsV2: {
-            nodes: GitHubProjectV2Node[];
-          };
-        } | null;
-      }>(
-        `
-        query OrganizationProjects($org: String!, $limit: Int!) {
-          organization(login: $org) {
-            projectsV2(first: $limit, orderBy: { field: UPDATED_AT, direction: DESC }) {
-              nodes {
-                id
-                number
-                title
-                shortDescription
-                readme
-                public
-                closed
-                closedAt
-                createdAt
-                updatedAt
-                viewerCanUpdate
-                url
-                owner {
-                  __typename
-                  ... on Organization { login url }
-                  ... on User { login url }
-                  ... on Repository { nameWithOwner url }
-                }
-                items(first: 1) { totalCount }
-                fields(first: 12) {
-                  totalCount
-                  nodes {
-                    ... on ProjectV2FieldCommon {
-                      id
-                      name
-                      dataType
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      `,
-        { org: input.org, limit }
-      );
+      const data = await this.fetchOrganizationProjectsData(input);
+      if (!data.organization?.projectsV2) {
+        return unavailableProjectListResult("Organization projects", {
+          status: "not_found",
+          message: `GitHub did not return projects for organization ${input.org}.`
+        });
+      }
+
+      return mapProjectListResult("Organization projects", data.organization.projectsV2.nodes, []);
+    } catch (error: unknown) {
+      const partial = graphQLPartialDataFromError<OrganizationProjectsGraphQLData>(error);
+      if (partial?.data.organization?.projectsV2) {
+        return mapProjectListResult(
+          "Organization projects",
+          partial.data.organization.projectsV2.nodes,
+          partial.errors
+        );
+      }
 
       return {
-        items: data.organization?.projectsV2.nodes.map(mapProjectV2) ?? [],
-        availability: { status: "available", message: null }
-      };
-    } catch (error: unknown) {
-      return {
         items: [],
-        availability: this.mapError(error)
+        availability: mapProjectGraphQLError(error, this.mapError)
       };
     }
   }
 
-  private async fetchProjects(input: ProjectsInput): Promise<ProjectSummary[]> {
-    const limit = input.limit ?? 20;
-    const data = await this.client.graphql<{
-      repository: {
-        projectsV2: {
-          nodes: GitHubProjectV2Node[];
-        };
+  private async fetchRepositoryProjectsResult(input: ProjectsInput): Promise<ProjectListResult> {
+    try {
+      const data = await this.fetchRepositoryProjectsData(input);
+      if (!data.repository?.projectsV2) {
+        return unavailableProjectListResult("Projects", {
+          status: "not_found",
+          message: `GitHub did not return projects for ${input.owner}/${input.repo}.`
+        });
+      }
+
+      return mapProjectListResult("Projects", data.repository.projectsV2.nodes, []);
+    } catch (error: unknown) {
+      const partial = graphQLPartialDataFromError<RepositoryProjectsGraphQLData>(error);
+      if (partial?.data.repository?.projectsV2) {
+        return mapProjectListResult("Projects", partial.data.repository.projectsV2.nodes, partial.errors);
+      }
+
+      return {
+        items: [],
+        availability: mapProjectGraphQLError(error, this.mapError)
       };
-    }>(
+    }
+  }
+
+  private async fetchRepositoryProjectsData(input: ProjectsInput): Promise<RepositoryProjectsGraphQLData> {
+    const limit = input.limit ?? 20;
+    return this.client.graphql<RepositoryProjectsGraphQLData>(
       `
       query RepositoryProjects($owner: String!, $repo: String!, $limit: Int!) {
         repository(owner: $owner, name: $repo) {
@@ -230,12 +203,89 @@ export class OctokitProjectDomain {
     `,
       { owner: input.owner, repo: input.repo, limit }
     );
+  }
 
-    return data.repository.projectsV2.nodes.map(mapProjectV2);
+  private async fetchOrganizationProjectsData(
+    input: OrganizationProjectsInput
+  ): Promise<OrganizationProjectsGraphQLData> {
+    const limit = input.limit ?? 20;
+    return this.client.graphql<OrganizationProjectsGraphQLData>(
+      `
+        query OrganizationProjects($org: String!, $limit: Int!) {
+          organization(login: $org) {
+            projectsV2(first: $limit, orderBy: { field: UPDATED_AT, direction: DESC }) {
+              nodes {
+                id
+                number
+                title
+                shortDescription
+                readme
+                public
+                closed
+                closedAt
+                createdAt
+                updatedAt
+                viewerCanUpdate
+                url
+                owner {
+                  __typename
+                  ... on Organization { login url }
+                  ... on User { login url }
+                  ... on Repository { nameWithOwner url }
+                }
+                items(first: 1) { totalCount }
+                fields(first: 12) {
+                  totalCount
+                  nodes {
+                    ... on ProjectV2FieldCommon {
+                      id
+                      name
+                      dataType
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      `,
+      { org: input.org, limit }
+    );
   }
 }
 
-function mapProjectV2(project: GitHubProjectV2Node): ProjectSummary {
+function mapProjectListResult(
+  feature: string,
+  projects: Array<GitHubProjectV2Node | null>,
+  errors: GitHubGraphQLErrorPayload[]
+): ProjectListResult {
+  const items = projects.flatMap((project, index) =>
+    project ? [mapProjectV2(project, projectSectionAvailability(index, errors))] : []
+  );
+
+  return {
+    items,
+    availability: projectListAvailability(feature, errors)
+  };
+}
+
+function unavailableProjectListResult(
+  feature: string,
+  availability: GitHubReadAvailability
+): ProjectListResult {
+  return {
+    items: [],
+    availability: {
+      ...availability,
+      message: availability.message ?? `${feature} unavailable.`
+    }
+  };
+}
+
+function mapProjectV2(
+  project: GitHubProjectV2Node,
+  sectionAvailability: ProjectSectionAvailability = availableProjectSectionAvailability()
+): ProjectSummary {
   return {
     id: project.id,
     number: project.number ?? null,
@@ -258,8 +308,231 @@ function mapProjectV2(project: GitHubProjectV2Node): ProjectSummary {
       .filter((field): field is NonNullable<typeof field> => Boolean(field))
       .map(mapProjectV2Field),
     viewerCanUpdate: project.viewerCanUpdate ?? null,
-    htmlUrl: project.url
+    htmlUrl: project.url,
+    sectionAvailability
   };
+}
+
+function availableProjectSectionAvailability(): ProjectSectionAvailability {
+  return {
+    readme: availableAvailability(),
+    items: availableAvailability(),
+    fields: availableAvailability()
+  };
+}
+
+function availableAvailability(): GitHubReadAvailability {
+  return { status: "available", message: null };
+}
+
+function projectListAvailability(
+  feature: string,
+  errors: GitHubGraphQLErrorPayload[]
+): GitHubReadAvailability {
+  if (errors.length === 0) {
+    return availableAvailability();
+  }
+
+  return {
+    status: "partial_data",
+    message: `${feature} returned partial data from GitHub; showing projects and sections that were available.`
+  };
+}
+
+function projectSectionAvailability(
+  projectIndex: number,
+  errors: GitHubGraphQLErrorPayload[]
+): ProjectSectionAvailability {
+  return {
+    readme: mapProjectSectionAvailability(
+      "Project README",
+      errors.filter((error) => projectErrorMatchesSection(error, projectIndex, "readme"))
+    ),
+    items: mapProjectSectionAvailability(
+      "Project items",
+      errors.filter((error) => projectErrorMatchesSection(error, projectIndex, "items"))
+    ),
+    fields: mapProjectSectionAvailability(
+      "Project fields",
+      errors.filter((error) => projectErrorMatchesSection(error, projectIndex, "fields"))
+    )
+  };
+}
+
+function mapProjectSectionAvailability(
+  sectionLabel: string,
+  errors: GitHubGraphQLErrorPayload[]
+): GitHubReadAvailability {
+  if (errors.length === 0) {
+    return availableAvailability();
+  }
+
+  const error = errors[0];
+  const status = classifyProjectGraphQLError(error);
+  const message = error.message
+    ? `${sectionLabel} unavailable: ${error.message}`
+    : `${sectionLabel} unavailable.`;
+
+  return { status, message };
+}
+
+function mapProjectGraphQLError(
+  error: unknown,
+  mapError: (error: unknown) => GitHubReadAvailability
+): GitHubReadAvailability {
+  const errors = graphQLErrorsFrom(error);
+  if (errors.length === 0) {
+    return mapError(error);
+  }
+
+  const errorStatus = classifyProjectGraphQLError(errors[0]);
+  return {
+    status: errorStatus === "partial_data" ? "graphql_error" : errorStatus,
+    message:
+      errors
+        .map((graphqlError) => graphqlError.message)
+        .filter(Boolean)
+        .join(" ") || null
+  };
+}
+
+function classifyProjectGraphQLError(error: GitHubGraphQLErrorPayload): GitHubReadAvailability["status"] {
+  const normalizedMessage = (error.message ?? "").toLowerCase();
+  const normalizedType = (error.type ?? error.extensions?.code ?? "").toLowerCase();
+
+  if (normalizedMessage.includes("rate limit") || normalizedMessage.includes("secondary rate")) {
+    return "rate_limited";
+  }
+
+  if (
+    normalizedType.includes("forbidden") ||
+    normalizedType.includes("unauthorized") ||
+    normalizedMessage.includes("permission") ||
+    normalizedMessage.includes("resource not accessible") ||
+    normalizedMessage.includes("forbidden")
+  ) {
+    return "permission_denied";
+  }
+
+  if (
+    normalizedMessage.includes("not enabled") ||
+    normalizedMessage.includes("disabled") ||
+    normalizedMessage.includes("projects are disabled")
+  ) {
+    return "feature_disabled";
+  }
+
+  if (
+    normalizedType.includes("not_found") ||
+    normalizedMessage.includes("could not resolve to a node") ||
+    normalizedMessage.includes("node was not found") ||
+    normalizedMessage.includes("not found")
+  ) {
+    return "not_found";
+  }
+
+  if (
+    normalizedMessage.includes("cannot query field") ||
+    normalizedMessage.includes("doesn't exist on type") ||
+    normalizedMessage.includes("does not exist on type")
+  ) {
+    return "missing_field";
+  }
+
+  if (normalizedMessage.includes("unsupported") || normalizedMessage.includes("fragment cannot be spread")) {
+    return "unsupported_field";
+  }
+
+  return "partial_data";
+}
+
+function projectErrorMatchesSection(
+  error: GitHubGraphQLErrorPayload,
+  projectIndex: number,
+  section: "readme" | "items" | "fields"
+): boolean {
+  const path = error.path ?? [];
+  return projectIndexFromPath(path) === projectIndex && path.some((part) => part === section);
+}
+
+function projectIndexFromPath(path: Array<string | number>): number | null {
+  const projectsIndex = path.findIndex((part) => part === "projectsV2");
+  if (projectsIndex === -1) {
+    return null;
+  }
+
+  for (let index = projectsIndex + 1; index < path.length - 1; index += 1) {
+    const projectIndex = path[index + 1];
+    if (path[index] === "nodes" && typeof projectIndex === "number") {
+      return projectIndex;
+    }
+  }
+
+  return null;
+}
+
+function graphQLPartialDataFromError<T>(
+  error: unknown
+): { data: T; errors: GitHubGraphQLErrorPayload[] } | null {
+  const data = graphQLDataFromError<T>(error);
+  const errors = graphQLErrorsFrom(error);
+
+  if (!data || errors.length === 0) {
+    return null;
+  }
+
+  return { data, errors };
+}
+
+function graphQLDataFromError<T>(error: unknown): T | null {
+  const record = recordFromUnknown(error);
+  const responseRecord = recordFromUnknown(record?.response);
+  const responseDataRecord = recordFromUnknown(responseRecord?.data);
+  const directData = record?.data;
+  const nestedResponseData = responseDataRecord?.data;
+  const responseData = responseDataRecord && !("errors" in responseDataRecord) ? responseDataRecord : null;
+  const data = directData ?? nestedResponseData ?? responseData;
+
+  return data && typeof data === "object" ? (data as T) : null;
+}
+
+function graphQLErrorsFrom(error: unknown): GitHubGraphQLErrorPayload[] {
+  const record = recordFromUnknown(error);
+  const responseRecord = recordFromUnknown(record?.response);
+  const responseDataRecord = recordFromUnknown(responseRecord?.data);
+  const errors = record?.errors ?? responseDataRecord?.errors;
+  const fallbackMessage = error instanceof Error ? error.message : "GitHub GraphQL request failed.";
+
+  return Array.isArray(errors)
+    ? errors.map((graphqlError) => mapGitHubGraphQLErrorPayload(graphqlError, fallbackMessage))
+    : [];
+}
+
+function mapGitHubGraphQLErrorPayload(error: unknown, fallbackMessage: string): GitHubGraphQLErrorPayload {
+  const record = recordFromUnknown(error);
+  const extensions = recordFromUnknown(record?.extensions);
+  const path = Array.isArray(record?.path)
+    ? record.path.filter(
+        (part): part is string | number => typeof part === "string" || typeof part === "number"
+      )
+    : null;
+
+  return {
+    message: typeof record?.message === "string" ? record.message : fallbackMessage,
+    type: typeof record?.type === "string" ? record.type : null,
+    path,
+    extensions: extensions
+      ? {
+          code: typeof extensions.code === "string" ? extensions.code : null
+        }
+      : null
+  };
+}
+
+function recordFromUnknown(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
 function mapProjectV2Item(item: GitHubProjectV2ItemNode) {
@@ -490,6 +763,31 @@ function isGitHubProjectV2OrganizationOwner(
 
 function isGitHubProjectV2UserOwner(owner: GitHubProjectV2OwnerNode): owner is GitHubProjectV2UserOwnerNode {
   return owner.__typename === "User";
+}
+
+interface RepositoryProjectsGraphQLData {
+  repository: {
+    projectsV2: {
+      nodes: Array<GitHubProjectV2Node | null>;
+    };
+  } | null;
+}
+
+interface OrganizationProjectsGraphQLData {
+  organization: {
+    projectsV2: {
+      nodes: Array<GitHubProjectV2Node | null>;
+    };
+  } | null;
+}
+
+interface GitHubGraphQLErrorPayload {
+  message: string;
+  type: string | null;
+  path: Array<string | number> | null;
+  extensions: {
+    code: string | null;
+  } | null;
 }
 
 interface GitHubProjectV2Node {

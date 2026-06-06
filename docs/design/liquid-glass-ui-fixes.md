@@ -192,3 +192,27 @@ if (!/Mac/i.test(navigator.platform)) {
   both the glass material and the rounded window corners.
 - Use a `no-liquid-glass` body class to scope CSS fallback styles for
   platforms where the native view isn't attached (Windows / Linux).
+
+## 2026-06-05 foundation follow-up
+
+The native options now live in `src/main/theme/liquidGlassOptions.ts` instead
+of being embedded in `src/main/index.ts`.
+
+- `tintColor` remains `#FFFFFF00` and is tested as `#RRGGBBAA` input.
+- `opaque` remains `true` deliberately. This keeps Control as an app surface
+  instead of a full-window lens until focused/unfocused screenshots prove that
+  `opaque: false` improves the shell without wallpaper bleed or state tinting.
+- `unstable_setScrim(0)` and `unstable_setSubdued(0)` remain neutral defaults.
+- The renderer theme resolver now emits shared surface aliases:
+  `--color-surface-primary`, `--color-surface-secondary`, and
+  `--color-surface-hover`, so shared primitives do not depend on route-local
+  colors.
+
+Required manual verification for any future native option change:
+
+- full app light solid
+- full app dark solid
+- full app dark glass shell
+- full app dark reduced glass
+- focused and unfocused macOS window states
+- neutral, blue, and yellow wallpaper/backdrop checks

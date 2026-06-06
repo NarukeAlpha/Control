@@ -1,6 +1,6 @@
 import { useQuery, type QueryClient } from "@tanstack/react-query";
 
-import type { WorkflowRunListResult } from "@shared/github";
+import type { WorkflowDefinitionListResult, WorkflowRunListResult } from "@shared/github";
 import type { ControlApi } from "@shared/ipc";
 
 import { useControlApi } from "@renderer/hooks/useControlApi";
@@ -10,7 +10,10 @@ export interface ActionsTabQueryInput {
   owner: string;
   repo: string;
   limit: number;
+  workflowRef?: string | null;
+  workflowDefinitionLimit: number;
   enabled: boolean;
+  workflowsEnabled: boolean;
   githubReady: boolean;
 }
 
@@ -19,6 +22,8 @@ export interface ActionsTabPrefetchInput {
   owner: string;
   repo: string;
   limit: number;
+  workflowRef?: string | null;
+  workflowDefinitionLimit: number;
   githubReady: boolean;
 }
 
@@ -55,7 +60,16 @@ export function workflowRunDetailQueryKey(
   return ["action-detail", owner, repo, runId ?? "none"] as const;
 }
 
-export function useActionsTabQueries({ owner, repo, limit, enabled, githubReady }: ActionsTabQueryInput) {
+export function useActionsTabQueries({
+  owner,
+  repo,
+  limit,
+  workflowRef,
+  workflowDefinitionLimit,
+  enabled,
+  workflowsEnabled,
+  githubReady
+}: ActionsTabQueryInput) {
   const api = useControlApi();
 
   const actions = useQuery<WorkflowRunListResult>({
@@ -64,19 +78,46 @@ export function useActionsTabQueries({ owner, repo, limit, enabled, githubReady 
     enabled,
     staleTime: 60_000
   });
+  const workflows = useQuery<WorkflowDefinitionListResult>({
+    queryKey: workflowDefinitionsQueryKey(owner, repo, workflowRef, workflowDefinitionLimit),
+    queryFn: () =>
+      api.github.listWorkflowsWithStatus({
+        owner,
+        repo,
+        ref: workflowRef?.trim() || null,
+        limit: workflowDefinitionLimit,
+        cacheOnly: !githubReady
+      }),
+    enabled: workflowsEnabled,
+    staleTime: 120_000
+  });
 
-  return { actions };
+  return { actions, workflows };
 }
 
 export async function prefetchActionsTabData(
   queryClient: QueryClient,
-  { api, owner, repo, limit, githubReady }: ActionsTabPrefetchInput
+  { api, owner, repo, limit, workflowRef, workflowDefinitionLimit, githubReady }: ActionsTabPrefetchInput
 ): Promise<void> {
-  await queryClient.prefetchQuery({
-    queryKey: actionsTabQueryKey(owner, repo, limit),
-    queryFn: () => api.github.listActionsWithStatus({ owner, repo, limit, cacheOnly: !githubReady }),
-    staleTime: 60_000
-  });
+  await Promise.all([
+    queryClient.prefetchQuery({
+      queryKey: actionsTabQueryKey(owner, repo, limit),
+      queryFn: () => api.github.listActionsWithStatus({ owner, repo, limit, cacheOnly: !githubReady }),
+      staleTime: 60_000
+    }),
+    queryClient.prefetchQuery({
+      queryKey: workflowDefinitionsQueryKey(owner, repo, workflowRef, workflowDefinitionLimit),
+      queryFn: () =>
+        api.github.listWorkflowsWithStatus({
+          owner,
+          repo,
+          ref: workflowRef?.trim() || null,
+          limit: workflowDefinitionLimit,
+          cacheOnly: !githubReady
+        }),
+      staleTime: 120_000
+    })
+  ]);
 }
 
 export async function refreshActionsTabData(

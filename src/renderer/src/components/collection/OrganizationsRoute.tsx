@@ -33,9 +33,12 @@ import {
 } from "./organizationUi";
 import {
   maxProfileRepositoryLimit,
+  projectSectionAvailabilityMessage,
   readAvailabilityMessage,
+  readAvailabilityStatusLabel,
   repositoryCollectionMetadataParts
 } from "../repository/repositoryUi";
+import { collectionRowClassName } from "./collectionUi";
 import { useOrganizationRouteDerivedState } from "./useOrganizationRouteDerivedState";
 import type { OrganizationsRouteState } from "./useOrganizationsRouteState";
 
@@ -92,7 +95,7 @@ function OrganizationsRouteHeader({
     void onRefresh();
   }
 
-  function openFallback(): void {
+  function openOrganizationsOnGitHub(): void {
     onOpenExternal("https://github.com/organizations");
   }
 
@@ -108,8 +111,8 @@ function OrganizationsRouteHeader({
         >
           <RefreshCw size={16} /> {refreshInFlight ? "Refreshing organizations" : "Refresh organizations"}
         </button>
-        <button type="button" onClick={openFallback}>
-          <RefreshCw size={16} /> GitHub fallback
+        <button type="button" title="Open organizations on GitHub" onClick={openOrganizationsOnGitHub}>
+          <ExternalLink size={16} /> Open on GitHub
         </button>
       </div>
     </header>
@@ -199,7 +202,11 @@ function OrganizationRow({
   }
 
   return (
-    <div className="issue-row organization-row">
+    <div
+      className={collectionRowClassName("organization-row", {
+        selected: organization.login === selectedOrganizationLogin
+      })}
+    >
       <button
         className={`organization-row-main ${
           organization.login === selectedOrganizationLogin ? "selected-action" : ""
@@ -339,6 +346,10 @@ function OrganizationProjectDetailPanel({
   project: ProjectSummary;
   onOpenExternal(url: string): void;
 }): JSX.Element {
+  const readmeAvailabilityMessage = projectSectionAvailabilityMessage(project, "readme", "Project README");
+  const itemsAvailabilityMessage = projectSectionAvailabilityMessage(project, "items", "Project items");
+  const fieldsAvailabilityMessage = projectSectionAvailabilityMessage(project, "fields", "Project fields");
+
   function openProject(): void {
     if (project.htmlUrl) {
       onOpenExternal(project.htmlUrl);
@@ -398,6 +409,7 @@ function OrganizationProjectDetailPanel({
           <span>{project.viewerCanUpdate ? "Viewer can update" : "Viewer read-only"}</span>
         )}
       </div>
+      {itemsAvailabilityMessage && <div className="error-state">{itemsAvailabilityMessage}</div>}
       <div className="muted-row">
         {textParts([
           project.createdAt ? `Created ${formatRelativeDate(project.createdAt)}` : null,
@@ -406,6 +418,7 @@ function OrganizationProjectDetailPanel({
         ])}
       </div>
       {project.shortDescription && <p className="project-description">{project.shortDescription}</p>}
+      {readmeAvailabilityMessage && <div className="error-state">{readmeAvailabilityMessage}</div>}
       {project.readme ? (
         <div className="project-readme-panel">
           <MarkdownBody
@@ -415,29 +428,30 @@ function OrganizationProjectDetailPanel({
           />
         </div>
       ) : (
-        <div className="empty-state">No project README returned.</div>
+        !readmeAvailabilityMessage && <div className="empty-state">No project README returned.</div>
       )}
+      {fieldsAvailabilityMessage && <div className="error-state">{fieldsAvailabilityMessage}</div>}
       <div className="project-field-list" aria-label="Organization project fields">
-        {project.fields.length > 0 ? (
-          project.fields.map((field) => (
-            <span className="state-chip" key={field.id}>
-              {field.name}
-              {field.dataType ? ` · ${field.dataType.toLowerCase().replaceAll("_", " ")}` : ""}
-            </span>
-          ))
-        ) : (
-          <span className="action-disabled-note">No project fields returned.</span>
-        )}
+        {project.fields.length > 0
+          ? project.fields.map((field) => (
+              <span className="state-chip" key={field.id}>
+                {field.name}
+                {field.dataType ? ` · ${field.dataType.toLowerCase().replaceAll("_", " ")}` : ""}
+              </span>
+            ))
+          : !fieldsAvailabilityMessage && (
+              <span className="action-disabled-note">No project fields returned.</span>
+            )}
       </div>
       <div className="thread-actions">
         {project.htmlUrl && (
           <button type="button" onClick={openProject}>
-            <ExternalLink size={16} /> Project GitHub fallback
+            <ExternalLink size={16} /> Open project on GitHub
           </button>
         )}
         {project.ownerHtmlUrl && (
           <button type="button" onClick={openOwner}>
-            <ExternalLink size={16} /> Owner GitHub fallback
+            <ExternalLink size={16} /> Open owner on GitHub
           </button>
         )}
       </div>
@@ -664,7 +678,7 @@ function OrganizationMemberRow({
   }
 
   return (
-    <div className={`issue-row organization-member-row ${selected ? "selected-action" : ""}`}>
+    <div className={collectionRowClassName("organization-member-row", { selected })}>
       <button
         className="organization-member-row-main"
         type="button"
@@ -767,7 +781,7 @@ function OrganizationRepositoryRow({
   repository,
   pinned,
   repositoryPinDisabledReason,
-  fallbackLabel,
+  externalLinkTitle,
   onOpenRepository,
   onToggleRepositoryPin,
   onOpenExternal
@@ -775,7 +789,7 @@ function OrganizationRepositoryRow({
   repository: OrganizationCollectionRepositorySummary;
   pinned: boolean;
   repositoryPinDisabledReason: string | null;
-  fallbackLabel: string;
+  externalLinkTitle: string;
   onOpenRepository(nameWithOwner: string): void;
   onToggleRepositoryPin(nameWithOwner: string): void;
   onOpenExternal(url: string): void;
@@ -791,12 +805,12 @@ function OrganizationRepositoryRow({
     onToggleRepositoryPin(repository.nameWithOwner);
   }
 
-  function openFallback(): void {
+  function openRepositoryOnGitHub(): void {
     onOpenExternal(repository.htmlUrl);
   }
 
   return (
-    <div className="issue-row repository-row repository-row-with-actions">
+    <div className={collectionRowClassName("repository-row", { withActions: true })}>
       <button className="repository-row-main" type="button" onClick={openRepository}>
         <span className="repo-avatar">{repository.name.slice(0, 1).toUpperCase()}</span>
         <div>
@@ -826,9 +840,9 @@ function OrganizationRepositoryRow({
         <button
           className="pin-row-button"
           type="button"
-          aria-label={`Open GitHub fallback for ${repository.name}`}
-          title={fallbackLabel}
-          onClick={openFallback}
+          aria-label={`Open ${repository.name} on GitHub`}
+          title={externalLinkTitle}
+          onClick={openRepositoryOnGitHub}
         >
           <ExternalLink size={15} />
         </button>
@@ -898,7 +912,7 @@ function OrganizationRepositoriesSection({
           repository={repository}
           pinned={pinnedRepositoryNameSet.has(repository.nameWithOwner.toLowerCase())}
           repositoryPinDisabledReason={repositoryPinDisabledReason}
-          fallbackLabel={`Open GitHub fallback for ${repository.nameWithOwner}`}
+          externalLinkTitle={`Open ${repository.nameWithOwner} on GitHub`}
           onOpenRepository={onOpenRepository}
           onToggleRepositoryPin={onToggleRepositoryPin}
           onOpenExternal={onOpenExternal}
@@ -931,19 +945,22 @@ function OrganizationProjectRow({
     .slice(0, 4)
     .map((field) => field.name)
     .join(", ");
+  const readmeStatus = readAvailabilityStatusLabel(project.sectionAvailability?.readme ?? null);
+  const itemsStatus = readAvailabilityStatusLabel(project.sectionAvailability?.items ?? null);
+  const fieldsStatus = readAvailabilityStatusLabel(project.sectionAvailability?.fields ?? null);
 
   function selectProject(): void {
     onSelectOrganizationProject(project);
   }
 
-  function openFallback(): void {
+  function openProjectOnGitHub(): void {
     if (project.htmlUrl) {
       onOpenExternal(project.htmlUrl);
     }
   }
 
   return (
-    <div className={`issue-row organization-project-row ${selected ? "selected-action" : ""}`}>
+    <div className={collectionRowClassName("organization-project-row", { selected })}>
       <button
         className="organization-project-row-main"
         type="button"
@@ -977,18 +994,17 @@ function OrganizationProjectRow({
         <span className={`state-chip ${project.closed ? "" : "success"}`}>
           {project.closed ? "closed" : "open"}
         </span>
+        {readmeStatus && <span className="state-chip attention">README {readmeStatus}</span>}
+        {itemsStatus && <span className="state-chip attention">items {itemsStatus}</span>}
+        {fieldsStatus && <span className="state-chip attention">fields {fieldsStatus}</span>}
       </button>
       <button
         className="pin-row-button"
         type="button"
-        aria-label={`Open GitHub fallback for ${project.title}`}
+        aria-label={`Open ${project.title} on GitHub`}
         disabled={!project.htmlUrl}
-        title={
-          project.htmlUrl
-            ? `Open GitHub fallback for ${project.title}`
-            : "Organization project URL unavailable."
-        }
-        onClick={openFallback}
+        title={project.htmlUrl ? `Open ${project.title} on GitHub` : "Organization project URL unavailable."}
+        onClick={openProjectOnGitHub}
       >
         <ExternalLink size={15} />
       </button>
@@ -1087,7 +1103,7 @@ function OrganizationTeamRow({
   }
 
   return (
-    <div className={`issue-row organization-team-row ${selected ? "selected-action" : ""}`}>
+    <div className={collectionRowClassName("organization-team-row", { selected })}>
       <button className="organization-row-main" type="button" onClick={selectTeam}>
         <div>
           <strong>{team.name}</strong>
@@ -1307,7 +1323,7 @@ function TeamRepositoriesSection({
           repository={repository}
           pinned={pinnedRepositoryNameSet.has(repository.nameWithOwner.toLowerCase())}
           repositoryPinDisabledReason={repositoryPinDisabledReason}
-          fallbackLabel={`Open GitHub fallback for ${repository.name}`}
+          externalLinkTitle={`Open ${repository.name} on GitHub`}
           onOpenRepository={onOpenRepository}
           onToggleRepositoryPin={onToggleRepositoryPin}
           onOpenExternal={onOpenExternal}

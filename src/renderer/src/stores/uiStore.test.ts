@@ -58,7 +58,30 @@ describe("useUiStore route selection derivation", () => {
     { kind: "mailbox" },
     { kind: "repositories" },
     { kind: "organizations" },
-    { kind: "repository", nameWithOwner: "apple/swift", tab: "issues", issueNumber: 1200 },
+    {
+      kind: "repository",
+      nameWithOwner: "apple/swift",
+      tab: "issues",
+      issueNumber: 1200,
+      issueState: "closed",
+      issueFilter: "label:compiler"
+    },
+    {
+      kind: "repository",
+      nameWithOwner: "apple/swift",
+      tab: "pulls",
+      pullNumber: 42,
+      pullState: "closed",
+      pullFilter: "author:swift-ci"
+    },
+    {
+      kind: "repository",
+      nameWithOwner: "apple/swift",
+      tab: "actions",
+      workflowId: ".github/workflows/ci.yml",
+      workflowRunId: 9000,
+      workflowFilter: "attention"
+    },
     {
       kind: "codeBrowser",
       nameWithOwner: "apple/swift",

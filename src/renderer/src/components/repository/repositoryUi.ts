@@ -4,6 +4,7 @@ import type {
   GitHubReadAvailability,
   IssueSummary,
   LanguageStat,
+  ProjectSectionAvailability,
   ProjectSummary,
   PullRequestSummary,
   ReleaseSummary,
@@ -116,9 +117,17 @@ export function readAvailabilityMessage(
             ? `The current GitHub token cannot access ${feature.toLowerCase()}.`
             : availability.status === "rate_limited"
               ? `GitHub rate-limited the ${feature.toLowerCase()} request.`
-              : availability.status === "graphql_error"
-                ? `GitHub returned a GraphQL error for ${feature.toLowerCase()}.`
-                : `${feature} could not be loaded.`;
+              : availability.status === "not_found"
+                ? `${feature} was not found.`
+                : availability.status === "missing_field"
+                  ? `GitHub did not return a required field for ${feature.toLowerCase()}.`
+                  : availability.status === "unsupported_field"
+                    ? `GitHub returned an unsupported field for ${feature.toLowerCase()}.`
+                    : availability.status === "partial_data"
+                      ? `${feature} is partially available.`
+                      : availability.status === "graphql_error"
+                        ? `GitHub returned a GraphQL error for ${feature.toLowerCase()}.`
+                        : `${feature} could not be loaded.`;
 
   return availability.message ? `${reason} ${availability.message}` : reason;
 }
@@ -143,11 +152,31 @@ export function readAvailabilityStatusLabel(availability: GitHubReadAvailability
   if (availability.status === "rate_limited") {
     return "rate limited";
   }
+  if (availability.status === "not_found") {
+    return "not found";
+  }
+  if (availability.status === "missing_field") {
+    return "missing field";
+  }
+  if (availability.status === "unsupported_field") {
+    return "unsupported";
+  }
+  if (availability.status === "partial_data") {
+    return "partial";
+  }
   if (availability.status === "graphql_error") {
     return "GraphQL error";
   }
 
   return "unavailable";
+}
+
+export function projectSectionAvailabilityMessage(
+  project: ProjectSummary,
+  section: keyof ProjectSectionAvailability,
+  feature: string
+): string | null {
+  return readAvailabilityMessage(feature, project.sectionAvailability?.[section] ?? null);
 }
 
 export function repositoryMutationDisabledReason(repository: RepositoryDetail): string | null {

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { GitHubReadAvailability, RepositoryDetail } from "@shared/github";
@@ -27,7 +27,7 @@ const repository: RepositoryDetail = {
   }
 };
 
-function installControlApi() {
+function installControlApi(githubOverrides: Partial<ControlApi["github"]> = {}) {
   const api = {
     github: {
       listProjectsWithStatus: vi.fn().mockResolvedValue({
@@ -41,7 +41,8 @@ function installControlApi() {
       listPullRequestsWithStatus: vi.fn().mockResolvedValue({
         items: [],
         availability: available
-      })
+      }),
+      ...githubOverrides
     }
   } as unknown as ControlApi;
   (window as unknown as { control?: ControlApi }).control = api;
@@ -98,6 +99,67 @@ describe("ProjectsTab", () => {
       itemId: "PVTI_1",
       fieldId: "PF_1",
       value: { singleSelectOptionId: "PFO_3" }
+    });
+  });
+
+  it("renders project section availability and loads open item options explicitly", async () => {
+    const listIssuesWithStatus = vi.fn<ControlApi["github"]["listIssuesWithStatus"]>().mockResolvedValue({
+      items: [],
+      availability: available
+    });
+    const listPullRequestsWithStatus = vi
+      .fn<ControlApi["github"]["listPullRequestsWithStatus"]>()
+      .mockResolvedValue({
+        items: [],
+        availability: available
+      });
+    installControlApi({
+      listProjectsWithStatus: vi.fn().mockResolvedValue({
+        items: [
+          {
+            ...mockProjects[0],
+            readme: null,
+            items: [],
+            fields: [],
+            sectionAvailability: {
+              readme: { status: "permission_denied", message: "Project README permission denied." },
+              items: { status: "partial_data", message: "Project items returned partial data." },
+              fields: { status: "missing_field", message: "Project fields were not returned." }
+            }
+          }
+        ],
+        availability: {
+          status: "partial_data",
+          message: "Projects returned partial data from GitHub."
+        } satisfies GitHubReadAvailability
+      }),
+      listIssuesWithStatus,
+      listPullRequestsWithStatus
+    });
+    renderProjects();
+
+    expect(await screen.findByRole("heading", { name: "Compiler quality" })).toBeInTheDocument();
+    expect(screen.getByText(/Project README permission denied/)).toBeInTheDocument();
+    expect(screen.getByText(/Project items returned partial data/)).toBeInTheDocument();
+    expect(screen.getByText(/Project fields were not returned/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Load open issue and pull request options" }));
+
+    await waitFor(() => {
+      expect(listIssuesWithStatus).toHaveBeenCalledWith({
+        owner: "NarukeAlpha",
+        repo: "control",
+        state: "open",
+        limit: 100,
+        cacheOnly: false
+      });
+      expect(listPullRequestsWithStatus).toHaveBeenCalledWith({
+        owner: "NarukeAlpha",
+        repo: "control",
+        state: "open",
+        limit: 100,
+        cacheOnly: false
+      });
     });
   });
 });

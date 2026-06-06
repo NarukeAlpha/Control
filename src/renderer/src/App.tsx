@@ -906,6 +906,9 @@ function AppLocalRepositoryRoute({ state }: { state: AppShellState }): JSX.Eleme
       pinBusy={state.repositoryPinBusy}
       onTogglePin={state.toggleAreaRepositoryPin}
       onOpenGitHub={state.openRepositoryInApp}
+      onOpenIssue={state.openIssueSummaryInApp}
+      onOpenPullRequest={state.openPullRequestSummaryInApp}
+      onOpenWorkflowRun={state.navigationActions.selectWorkflowRunInApp}
       onOpenExternal={state.openExternal}
       onConfirm={state.dialogs.requestConfirmation}
       githubReady={state.githubReady}

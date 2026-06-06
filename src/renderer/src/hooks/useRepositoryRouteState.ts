@@ -6,9 +6,17 @@ import { useActionsTabQueries } from "../components/repository/actions/ActionsTa
 import { useCodeTabQueries } from "../components/repository/code/CodeTab.queries";
 import { useContributorsTabQueries } from "../components/repository/contributors/ContributorsTab.queries";
 import { useDiscussionsTabQueries } from "../components/repository/discussions/DiscussionsTab.queries";
-import { useIssuesTabQueries } from "../components/repository/issues/IssuesTab.queries";
+import {
+  defaultIssueStateFilter,
+  normalizeIssueStateFilter,
+  useIssuesTabQueries
+} from "../components/repository/issues/IssuesTab.queries";
 import { useProjectsTabQueries } from "../components/repository/projects/ProjectsTab.queries";
-import { usePullRequestsTabQueries } from "../components/repository/pull-requests/PullRequestsTab.queries";
+import {
+  defaultPullRequestStateFilter,
+  normalizePullRequestStateFilter,
+  usePullRequestsTabQueries
+} from "../components/repository/pull-requests/PullRequestsTab.queries";
 import { useReleasesTabQueries } from "../components/repository/releases/ReleasesTab.queries";
 import { visibleRepositoryTabs } from "../components/repository/repositoryTabVisibility";
 import { readAvailabilityMessage } from "../components/repository/repositoryUi";
@@ -53,6 +61,12 @@ export function useRepositoryRouteState({
   const isLocalRepositoryRoute = route.kind === "localRepository";
   const isRepositoryContext = isRepositoryRoute || isCodeBrowserRoute;
   const activeRepositoryTab = isRepositoryRoute ? route.tab : "code";
+  const issueState = isRepositoryRoute
+    ? normalizeIssueStateFilter(route.issueState)
+    : defaultIssueStateFilter;
+  const pullState = isRepositoryRoute
+    ? normalizePullRequestStateFilter(route.pullState)
+    : defaultPullRequestStateFilter;
   const activeLocalRepositoryTab = isLocalRepositoryRoute ? route.tab : "overview";
   const activeLocalRepositoryPath = isLocalRepositoryRoute ? (route.path ?? ".") : ".";
   const effectiveRepository = isRepositoryContext ? route.nameWithOwner : (selectedRepository ?? "");
@@ -154,6 +168,7 @@ export function useRepositoryRouteState({
   useIssuesTabQueries({
     owner,
     repo,
+    issueState,
     issueListLimit: limits.issueListLimit,
     issuesEnabled: activeTabQueryEnabled("issues") || agentsTabQueryEnabled,
     resourcesEnabled: false,
@@ -163,6 +178,7 @@ export function useRepositoryRouteState({
   usePullRequestsTabQueries({
     owner,
     repo,
+    pullState,
     pullRequestListLimit: limits.pullRequestListLimit,
     pullsEnabled: activeTabQueryEnabled("pulls") || agentsTabQueryEnabled,
     resourcesEnabled: activeTabQueryEnabled("pulls"),
@@ -198,7 +214,10 @@ export function useRepositoryRouteState({
     owner,
     repo,
     limit: limits.actionsLimit,
+    workflowRef: repositorySelectedRef ?? repositoryDetail?.defaultBranch ?? null,
+    workflowDefinitionLimit: limits.workflowDefinitionLimit,
     enabled: activeTabQueryEnabled("actions") || agentsTabQueryEnabled,
+    workflowsEnabled: activeTabQueryEnabled("actions"),
     githubReady
   }).actions;
 
@@ -210,9 +229,13 @@ export function useRepositoryRouteState({
     selectedRef: repositorySelectedRef,
     defaultBranch: repositoryDetail?.defaultBranch ?? null,
     commitHistoryLimit: limits.repositoryCommitHistoryLimit,
+    issueState,
     issueListLimit: limits.issueListLimit,
+    pullState,
     pullRequestListLimit: limits.pullRequestListLimit,
     actionsLimit: limits.actionsLimit,
+    workflowRef: repositorySelectedRef ?? repositoryDetail?.defaultBranch ?? null,
+    workflowDefinitionLimit: limits.workflowDefinitionLimit,
     githubReady
   });
 
@@ -266,7 +289,9 @@ export function useRepositoryRouteState({
     repositoryContributorLimit: limits.repositoryContributorLimit,
     repositoryCommitHistoryLimit: limits.repositoryCommitHistoryLimit,
     fileCommitHistoryLimit: limits.fileCommitHistoryLimit,
+    issueState,
     issueListLimit: limits.issueListLimit,
+    pullState,
     pullRequestListLimit: limits.pullRequestListLimit,
     discussionsLimit: limits.discussionsLimit,
     projectsLimit: limits.projectsLimit,

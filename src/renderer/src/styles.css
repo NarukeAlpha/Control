@@ -17,8 +17,8 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   color-scheme: light;
-  --topbar-height: 52px;
-  --shell-margin: 16px;
+  --topbar-height: 48px;
+  --shell-margin: 12px;
   --radius-shell: 30px;
   --radius-glass-panel: 24px;
   --radius-panel: 18px;
@@ -304,12 +304,12 @@ button:disabled {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 264px minmax(620px, 1fr) 296px;
+  grid-template-columns: 244px minmax(620px, 1fr) 280px;
   grid-template-rows: var(--topbar-height) minmax(0, 1fr);
-  gap: 12px;
+  gap: 10px;
   height: 100vh;
   margin: 0;
-  padding: 12px;
+  padding: 10px;
   overflow: hidden;
   border-radius: var(--radius-shell);
   background: transparent;
@@ -395,8 +395,8 @@ body:not(.no-liquid-glass) .code-toolbar {
   min-width: 0;
   flex-direction: column;
   overflow: hidden;
-  border-radius: 24px;
-  padding: 16px 18px;
+  border-radius: 18px;
+  padding: 12px 14px;
 }
 
 .brand-row {
@@ -426,7 +426,7 @@ body:not(.no-liquid-glass) .code-toolbar {
 
 .nav-list {
   display: grid;
-  gap: 4px;
+  gap: 2px;
   margin-top: 0;
 }
 
@@ -480,11 +480,11 @@ body:not(.no-liquid-glass) .code-toolbar {
   display: grid;
   grid-template-columns: 22px 1fr auto;
   align-items: center;
-  gap: 10px;
-  min-height: 38px;
+  gap: 8px;
+  min-height: 34px;
   border-radius: 10px;
   background: transparent;
-  padding: 0 10px;
+  padding: 0 9px;
   text-align: left;
 }
 
@@ -520,9 +520,9 @@ body:not(.no-liquid-glass) .code-toolbar {
   min-height: 0;
   flex: 1;
   flex-direction: column;
-  margin-top: 28px;
+  margin-top: 20px;
   border-top: 1px solid var(--color-border);
-  padding-top: 16px;
+  padding-top: 12px;
 }
 
 .section-title-row,
@@ -570,8 +570,8 @@ body:not(.no-liquid-glass) .code-toolbar {
   grid-template-columns: 16px minmax(0, 1fr) 24px;
   align-items: center;
   gap: 7px;
-  min-height: 34px;
-  margin-top: 10px;
+  min-height: 30px;
+  margin-top: 8px;
   border: 1px solid var(--color-border);
   border-radius: 11px;
   background: var(--color-surface-control);
@@ -601,7 +601,7 @@ body:not(.no-liquid-glass) .code-toolbar {
   position: relative;
   min-height: 0;
   flex: 1;
-  margin-top: 12px;
+  margin-top: 8px;
   overflow: auto;
   scrollbar-width: none;
 }
@@ -626,13 +626,13 @@ body:not(.no-liquid-glass) .code-toolbar {
   left: 0;
   right: 0;
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) 40px;
+  grid-template-columns: 22px minmax(0, 1fr) minmax(38px, auto);
   align-items: center;
-  gap: 10px;
-  height: 50px;
+  gap: 8px;
+  height: 44px;
   border-radius: 10px;
   background: transparent;
-  padding: 5px 8px;
+  padding: 4px 7px;
   text-align: left;
 }
 
@@ -676,8 +676,33 @@ body:not(.no-liquid-glass) .code-toolbar {
   font-weight: 700;
 }
 
-.repo-source {
+.repo-source-stack {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
   justify-self: end;
+  gap: 5px;
+  color: var(--color-text-muted);
+}
+
+.repo-source-stack svg {
+  flex: 0 0 auto;
+}
+
+.repo-source {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 20px;
+  overflow: hidden;
+  align-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface-control);
+  padding: 1px 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .repo-item.selected {
@@ -699,8 +724,8 @@ body:not(.no-liquid-glass) .code-toolbar {
 
 .repo-avatar,
 .avatar-placeholder {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
 }
 
 .loading-avatar {
@@ -807,11 +832,11 @@ body:not(.no-liquid-glass) .workspace-home {
   z-index: 3;
   display: grid;
   grid-template-columns: minmax(210px, 1fr) minmax(300px, 470px) minmax(250px, 1fr);
-  min-height: 52px;
+  min-height: 48px;
   align-items: center;
-  gap: 16px;
-  border-radius: 18px;
-  padding: 6px 14px 6px 92px;
+  gap: 10px;
+  border-radius: 16px;
+  padding: 5px 12px 5px 86px;
   -webkit-app-region: drag;
 }
 
@@ -828,14 +853,14 @@ body:not(.no-liquid-glass) .workspace-home {
 .titlebar-platform-button,
 .titlebar-action-button {
   display: inline-flex;
-  min-height: 34px;
+  min-height: 31px;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   border: 1px solid var(--color-border);
   border-radius: 13px;
   background: var(--color-surface-control);
   color: var(--color-text);
-  padding: 0 12px;
+  padding: 0 10px;
   box-shadow: 0 10px 22px rgba(15, 23, 42, 0.08);
 }
 
@@ -1118,29 +1143,29 @@ body:not(.no-liquid-glass) .workspace-home {
 
 .home-dashboard {
   display: grid;
-  gap: 14px;
+  gap: 10px;
 }
 
 .account-hero {
   display: grid;
-  grid-template-columns: 76px minmax(0, 1fr) auto;
+  grid-template-columns: 60px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 18px;
+  gap: 14px;
   border: 1px solid var(--color-glass-border);
-  border-radius: 20px;
+  border-radius: 16px;
   background: var(--color-surface-row);
-  padding: 18px;
+  padding: 12px 14px;
   box-shadow: 0 22px 52px rgba(15, 23, 42, 0.08);
 }
 
 .account-hero-with-metrics {
-  grid-template-columns: 76px minmax(220px, 0.95fr) minmax(360px, 1.05fr);
+  grid-template-columns: 60px minmax(220px, 0.95fr) minmax(320px, 1.05fr);
 }
 
 .account-hero img,
 .account-hero .avatar-placeholder {
-  width: 72px;
-  height: 72px;
+  width: 58px;
+  height: 58px;
 }
 
 .account-hero-copy {
@@ -1154,11 +1179,11 @@ body:not(.no-liquid-glass) .workspace-home {
   min-width: 0;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .account-hero h1 {
-  font-size: 28px;
+  font-size: 24px;
 }
 
 .account-hero p,
@@ -1171,16 +1196,16 @@ body:not(.no-liquid-glass) .workspace-home {
 .table-action-row button {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   border: 1px solid var(--color-border);
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--color-surface-control);
   color: var(--color-text);
-  padding: 9px 12px;
+  padding: 7px 10px;
 }
 
 .account-hero-profile-action {
-  min-height: 34px;
+  min-height: 30px;
   font-size: 13px;
   white-space: nowrap;
 }
@@ -1199,12 +1224,12 @@ body:not(.no-liquid-glass) .workspace-home {
   min-width: 0;
   gap: 2px;
   border-left: 1px solid var(--color-border);
-  padding: 4px 0 4px 14px;
+  padding: 2px 0 2px 12px;
 }
 
 .account-hero-metric strong {
   color: var(--color-heading);
-  font-size: 24px;
+  font-size: 21px;
   line-height: 1;
 }
 
@@ -1269,19 +1294,20 @@ body:not(.no-liquid-glass) .workspace-home {
 
 .home-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.75fr);
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.36fr);
+  align-items: start;
+  gap: 10px;
 }
 
 .home-panel {
   display: grid;
   align-content: start;
-  gap: 12px;
+  gap: 10px;
   min-width: 0;
   border: 1px solid var(--color-border);
-  border-radius: 18px;
+  border-radius: 16px;
   background: var(--color-surface-row);
-  padding: 14px;
+  padding: 12px;
 }
 
 .home-panel > header,
@@ -1289,40 +1315,38 @@ body:not(.no-liquid-glass) .workspace-home {
 .home-panel > .home-repo-grid,
 .home-panel > .shortcut-list,
 .home-panel > .local-recent-list,
-.home-panel > .home-activity-overview,
 .home-panel > .home-activity-timeline,
 .home-panel > .table-panel {
   min-width: 0;
 }
 
+.home-panel header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
 .home-panel header h2 {
-  font-size: 18px;
+  font-size: 16px;
 }
 
-.home-activity-panel {
-  grid-column: 1 / -1;
-}
-
-.home-activity-overview {
-  display: grid;
-  grid-template-columns: max-content minmax(178px, 1fr);
-  align-items: start;
-  gap: 12px;
-  border-bottom: 1px solid var(--color-border);
-  padding-bottom: 14px;
+.home-panel header span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .home-contribution-graph-panel,
-.home-activity-repository-summary,
 .home-activity-timeline {
   display: grid;
   min-width: 0;
   align-content: start;
-  gap: 10px;
-}
-
-.home-activity-repository-summary {
-  gap: 6px;
+  gap: 8px;
 }
 
 .home-contribution-heading,
@@ -1331,12 +1355,11 @@ body:not(.no-liquid-glass) .workspace-home {
   min-width: 0;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
 }
 
 .home-contribution-heading strong,
-.home-activity-timeline-heading h3,
-.home-activity-repository-summary h3 {
+.home-activity-timeline-heading h3 {
   color: var(--color-heading);
   font-size: 14px;
   margin: 0;
@@ -1353,10 +1376,6 @@ body:not(.no-liquid-glass) .workspace-home {
   overflow-x: auto;
   width: max-content;
   max-width: 100%;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: var(--color-surface-control);
-  padding: 12px;
 }
 
 .home-contribution-calendar {
@@ -1386,11 +1405,11 @@ body:not(.no-liquid-glass) .workspace-home {
 .home-contribution-weekdays {
   display: grid;
   grid-row: 2;
-  grid-template-rows: repeat(7, 10px);
+  grid-template-rows: repeat(7, 12px);
   gap: 3px;
   color: var(--color-text-muted);
   font-size: 10px;
-  line-height: 10px;
+  line-height: 12px;
   text-align: right;
 }
 
@@ -1399,15 +1418,15 @@ body:not(.no-liquid-glass) .workspace-home {
   grid-column: 2;
   grid-row: 2;
   grid-auto-flow: column;
-  grid-template-rows: repeat(7, 10px);
+  grid-template-rows: repeat(7, 12px);
   justify-content: start;
   gap: 3px;
   overflow: hidden;
 }
 
 .home-contribution-cell {
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   border-radius: 2px;
   background: var(--color-data-muted);
   box-shadow: inset 0 0 0 1px var(--color-border);
@@ -1438,81 +1457,13 @@ body:not(.no-liquid-glass) .workspace-home {
   font-size: 11px;
 }
 
-.home-activity-repository-bars {
-  display: grid;
-  gap: 5px;
-  min-width: 0;
-}
-
-.home-activity-repository-bar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 28px;
-  align-items: center;
-  gap: 1px 8px;
-  min-width: 0;
-}
-
-.home-activity-repository-bar > div {
-  display: grid;
-  min-width: 0;
-  gap: 0;
-}
-
-.home-activity-repository-bar strong,
-.home-activity-repository-bar small {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.home-activity-repository-bar strong {
-  font-size: 13px;
-  line-height: 15px;
-}
-
-.home-activity-repository-bar small {
-  color: var(--color-text-muted);
-  font-size: 10px;
-  line-height: 12px;
-}
-
-.home-activity-bar-track {
-  display: block;
-  grid-column: 1 / -1;
-  height: 3px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: var(--color-data-muted);
-}
-
-.home-activity-bar-track span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--color-data-line);
-}
-
-.home-activity-repository-bar em {
-  color: var(--color-text-muted);
-  font-size: 11px;
-  font-style: normal;
-  line-height: 15px;
-  text-align: right;
-}
-
 @media (max-width: 1100px) {
-  .home-activity-overview {
+  .home-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 
   .home-contribution-graph-panel {
     width: auto;
-  }
-
-  .home-activity-repository-bars {
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 10px 16px;
   }
 }
 
@@ -1523,30 +1474,30 @@ body:not(.no-liquid-glass) .workspace-home {
 
 .home-activity-timeline::before {
   position: absolute;
-  top: 41px;
-  bottom: 10px;
-  left: 13px;
+  top: 36px;
+  bottom: 8px;
+  left: 11px;
   width: 1px;
   background: var(--color-border);
   content: "";
 }
 
 .home-activity-timeline-heading {
-  margin-bottom: 10px;
+  margin-bottom: 6px;
 }
 
 .home-activity-timeline-row {
   position: relative;
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
   border: 0;
-  border-radius: 10px;
+  border-radius: 8px;
   background: transparent;
   color: var(--color-text);
-  padding: 9px 8px 9px 0;
+  padding: 6px 7px 6px 0;
   text-align: left;
 }
 
@@ -1558,8 +1509,8 @@ body:not(.no-liquid-glass) .workspace-home {
 .home-activity-timeline-icon {
   z-index: 1;
   display: grid;
-  width: 27px;
-  height: 27px;
+  width: 23px;
+  height: 23px;
   place-items: center;
   border: 1px solid var(--color-border);
   border-radius: 50%;
@@ -1589,7 +1540,7 @@ body:not(.no-liquid-glass) .workspace-home {
 .home-activity-timeline-copy {
   display: grid;
   min-width: 0;
-  gap: 3px;
+  gap: 1px;
 }
 
 .home-activity-timeline-copy strong,
@@ -1744,7 +1695,7 @@ button.local-recent-item:focus-visible {
 
 .home-repo-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   align-content: start;
   gap: 10px;
 }
@@ -1753,7 +1704,7 @@ button.local-recent-item:focus-visible {
   display: grid;
   width: 100%;
   min-width: 0;
-  min-height: 118px;
+  min-height: 104px;
   align-content: start;
   justify-items: start;
   text-align: left;
@@ -1805,36 +1756,36 @@ button.local-recent-item:focus-visible {
 
 .repository-content-scroll {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 296px;
+  grid-template-columns: minmax(0, 1fr) 280px;
   align-items: start;
-  gap: 12px;
+  gap: 10px;
 }
 
 body:not(.no-liquid-glass) .repository-content-scroll {
-  padding-top: calc(var(--topbar-height) + 12px);
-  scroll-padding-top: calc(var(--topbar-height) + 12px);
+  padding-top: calc(var(--topbar-height) + 8px);
+  scroll-padding-top: calc(var(--topbar-height) + 8px);
 }
 
 body:not(.no-liquid-glass) .home-content-scroll {
-  padding-top: calc(var(--topbar-height) + 12px);
-  scroll-padding-top: calc(var(--topbar-height) + 12px);
+  padding-top: calc(var(--topbar-height) + 8px);
+  scroll-padding-top: calc(var(--topbar-height) + 8px);
 }
 
 .repo-page {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 296px;
+  grid-template-columns: minmax(0, 1fr) 280px;
   grid-column: 1 / -1;
   align-items: start;
-  gap: 12px;
+  gap: 10px;
 }
 
-.repo-page-focused-issue {
+.repo-page-focused-detail {
   grid-template-columns: minmax(0, 1fr);
   padding-top: 58px;
 }
 
-.repo-page-focused-issue .repo-hero,
-.repo-page-focused-issue .repo-tabs {
+.repo-page-focused-detail .repo-hero,
+.repo-page-focused-detail .repo-tabs {
   display: none;
 }
 
@@ -1861,6 +1812,15 @@ body:not(.no-liquid-glass) .home-content-scroll {
   gap: 20px;
   align-items: start;
   padding: 10px 8px 6px;
+}
+
+.repository-chrome {
+  grid-template-columns: 66px minmax(0, 1fr);
+}
+
+.repository-chrome-chips {
+  justify-content: flex-start;
+  justify-self: start;
 }
 
 .repo-icon {
@@ -2119,7 +2079,7 @@ p {
 .local-repository-page {
   display: grid;
   gap: 14px;
-  padding: 22px;
+  padding: 10px 8px 22px;
 }
 
 .local-repository-header {
@@ -2177,6 +2137,20 @@ p {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+}
+
+.local-context-banner {
+  flex-wrap: wrap;
+}
+
+.local-connected-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.local-connected-list {
+  display: grid;
+  gap: 8px;
 }
 
 .definition-list {
@@ -2364,7 +2338,7 @@ p {
 .code-viewer {
   overflow: hidden;
   border: 1px solid var(--color-border);
-  border-radius: 18px;
+  border-radius: 14px;
   background: rgba(255, 255, 255, 0.74);
 }
 
@@ -2372,13 +2346,13 @@ p {
 .file-row,
 .issue-row {
   display: grid;
-  min-height: 44px;
+  min-height: 40px;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   border-bottom: 1px solid rgba(85, 105, 135, 0.11);
   color: #25364d;
   font-size: 14px;
-  padding: 0 14px;
+  padding: 0 12px;
 }
 
 .commit-row {
@@ -2553,16 +2527,61 @@ p {
   font-family: var(--font-code-family);
 }
 
+.wiki-tab-surface {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.wiki-workspace {
+  display: grid;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  align-items: stretch;
+  gap: 14px;
+}
+
+.wiki-browser,
+.wiki-empty-browser {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid rgba(73, 94, 126, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.48);
+}
+
 .wiki-browser {
   display: grid;
   grid-template-columns: minmax(180px, 260px) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto auto;
   gap: 14px;
+  max-height: min(720px, calc(100vh - 260px));
+  padding: 12px;
 }
 
 .wiki-page-list {
   display: grid;
+  min-width: 0;
+  min-height: 0;
+  max-height: 100%;
+  grid-column: 1;
+  grid-row: 1;
   align-content: start;
   gap: 8px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.wiki-browser > .table-action-row,
+.wiki-browser > .muted-row {
+  grid-column: 1;
+}
+
+.wiki-empty-browser {
+  display: grid;
+  min-height: 340px;
+  place-items: center;
+  padding: 16px;
 }
 
 .wiki-page-list button {
@@ -2591,7 +2610,13 @@ p {
 }
 
 .wiki-page-preview {
+  display: grid;
   min-width: 0;
+  min-height: 0;
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
   border: 1px solid rgba(73, 94, 126, 0.12);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.58);
@@ -2607,7 +2632,112 @@ p {
 }
 
 .wiki-page-preview h3 {
+  min-width: 0;
+  overflow: hidden;
   margin: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wiki-page-preview .markdown-body-lite {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.wiki-side-panel {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: minmax(0, auto) auto minmax(22px, auto);
+  align-content: start;
+  gap: 14px;
+}
+
+.wiki-editor-form {
+  max-height: min(640px, calc(100vh - 260px));
+  overflow: auto;
+  border: 1px solid rgba(73, 94, 126, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.62);
+  padding: 14px;
+}
+
+.wiki-editor-form textarea {
+  min-height: 180px;
+  max-height: min(46vh, 420px);
+  overflow: auto;
+  resize: vertical;
+}
+
+.wiki-external-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.wiki-external-action {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 10px;
+  align-items: center;
+  border: 1px solid rgba(73, 94, 126, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.58);
+  color: #334963;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.wiki-external-action strong,
+.wiki-external-action small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wiki-external-action small {
+  grid-column: 2;
+  color: #60748c;
+}
+
+.wiki-copy-status {
+  min-height: 22px;
+}
+
+@media (max-width: 980px) {
+  .wiki-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .wiki-browser,
+  .wiki-empty-browser,
+  .wiki-editor-form {
+    max-height: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .wiki-browser {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto auto;
+  }
+
+  .wiki-page-list,
+  .wiki-browser > .table-action-row,
+  .wiki-browser > .muted-row,
+  .wiki-page-preview {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .wiki-page-list {
+    max-height: 260px;
+  }
+
+  .wiki-page-preview {
+    max-height: min(560px, calc(100vh - 220px));
+  }
 }
 
 .code-viewer pre {
@@ -2937,6 +3067,10 @@ p {
   gap: 10px;
 }
 
+.issue-filter-bar {
+  margin: 10px 12px;
+}
+
 .surface-filter {
   display: inline-flex;
   flex: 1 1 260px;
@@ -2962,7 +3096,7 @@ p {
 
 .issue-row {
   grid-template-columns: 22px minmax(0, 1fr) auto auto auto;
-  min-height: 58px;
+  min-height: 52px;
   width: 100%;
   background: transparent;
   text-align: left;
@@ -3055,13 +3189,30 @@ p {
   min-height: 520px;
 }
 
-.github-split.issue-detail-route {
+.github-split.issue-detail-route,
+.github-split.detail-route {
   grid-template-columns: minmax(0, 1fr);
 }
 
 .thread-list {
   overflow: auto;
   border-right: 1px solid rgba(85, 105, 135, 0.11);
+}
+
+.workflow-list-stack {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  overflow: auto;
+  border-right: 1px solid rgba(85, 105, 135, 0.11);
+  padding: 12px;
+}
+
+.workflow-list-stack > .thread-list {
+  display: grid;
+  gap: 8px;
+  overflow: visible;
+  border-right: 0;
 }
 
 .thread-detail {
@@ -3076,8 +3227,23 @@ p {
   background: rgba(247, 250, 255, 0.5);
 }
 
-.issue-detail-page {
+.issue-detail-page,
+.detail-page {
   min-height: min(720px, calc(100vh - 232px));
+}
+
+.issue-detail-layout {
+  align-items: start;
+}
+
+.issue-timeline-column {
+  align-content: start;
+}
+
+.ui-rail-section .issue-metadata-controls {
+  border: 0;
+  background: transparent;
+  padding: 0;
 }
 
 .issue-summary-tile {
@@ -3129,7 +3295,8 @@ p {
   padding: 14px 16px;
 }
 
-.issue-detail-toolbar {
+.issue-detail-toolbar,
+.detail-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -3138,6 +3305,7 @@ p {
 }
 
 .issue-detail-toolbar button,
+.detail-toolbar button,
 .thread-actions button {
   display: inline-flex;
   min-height: 36px;
@@ -3278,8 +3446,11 @@ p {
 }
 
 .markdown-body-lite {
+  max-width: 100%;
+  min-width: 0;
   color: #25364d;
   line-height: 1.58;
+  overflow-wrap: anywhere;
   padding: 13px 14px;
 }
 
@@ -3355,6 +3526,7 @@ p {
 .markdown-image {
   display: block;
   max-width: 100%;
+  height: auto;
   max-height: 320px;
   border: 1px solid var(--color-border);
   border-radius: 8px;
@@ -3363,6 +3535,7 @@ p {
 }
 
 .markdown-code-block {
+  max-width: 100%;
   overflow: auto;
   border: 1px solid rgba(73, 94, 126, 0.12);
   border-radius: 8px;
@@ -3394,7 +3567,10 @@ p {
 }
 
 .markdown-table {
+  display: block;
   width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
   border-collapse: collapse;
   font-size: 13px;
 }
@@ -3717,6 +3893,7 @@ p {
   padding: 8px 10px 8px 14px;
 }
 
+.collection-row,
 .repository-row,
 .organization-row,
 .mailbox-work-row,
@@ -3726,12 +3903,18 @@ p {
   min-width: 0;
 }
 
+.collection-row:hover,
 .repository-row:hover,
 .organization-row:hover,
 .mailbox-work-row:hover,
 .notification-row:hover {
   border-color: rgba(37, 99, 235, 0.22);
   background: rgba(255, 255, 255, 0.9);
+}
+
+.collection-row.selected-action {
+  border-color: rgba(37, 99, 235, 0.32);
+  background: rgba(9, 105, 218, 0.08);
 }
 
 .repository-row-main strong,
@@ -4287,6 +4470,370 @@ p {
   justify-content: flex-start;
   border-bottom: 0;
   padding: 0;
+}
+
+.ui-surface {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  color: var(--color-text);
+}
+
+.ui-surface--shell,
+.ui-surface--panel {
+  background: var(--color-surface-glass);
+  box-shadow: var(--shadow-panel);
+}
+
+.ui-surface--row {
+  border-color: var(--color-border);
+  background: var(--color-surface-row);
+}
+
+.ui-surface--elevated {
+  background: var(--color-surface-elevated);
+  box-shadow: var(--shadow-popover);
+}
+
+.ui-surface--solid {
+  background: var(--color-surface-solid);
+}
+
+.ui-surface--danger {
+  border-color: rgba(180, 35, 24, 0.36);
+  background: var(--color-danger-bg);
+}
+
+.ui-surface--warning {
+  border-color: rgba(154, 91, 0, 0.36);
+  background: var(--color-warning-bg);
+}
+
+.ui-surface--success {
+  border-color: rgba(26, 127, 55, 0.36);
+  background: var(--color-success-bg);
+}
+
+.ui-surface--padding-none {
+  padding: 0;
+}
+
+.ui-surface--padding-compact {
+  padding: 10px;
+}
+
+.ui-surface--padding-comfortable {
+  padding: 16px;
+}
+
+.ui-surface.is-selected {
+  border-color: var(--color-accent);
+  background: var(--color-surface-selected);
+}
+
+.ui-filter-bar,
+.ui-filter-bar-controls,
+.ui-filter-bar-actions,
+.ui-state-segmented-control,
+.ui-repository-hero-actions,
+.ui-repository-hero-chips,
+.ui-repository-tabs,
+.ui-composer-header,
+.ui-composer-footer,
+.ui-form-section-header,
+.ui-rail-section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ui-filter-bar {
+  flex-wrap: wrap;
+  justify-content: space-between;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  background: var(--color-surface-glass);
+  padding: 10px;
+}
+
+.ui-filter-bar-label {
+  color: var(--color-heading);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ui-filter-bar-controls {
+  min-width: min(320px, 100%);
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.ui-filter-bar-actions {
+  justify-content: flex-end;
+}
+
+.ui-state-segmented-control {
+  width: fit-content;
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-control);
+  padding: 2px;
+}
+
+.ui-state-segmented-control button,
+.ui-repository-tabs button {
+  min-height: 32px;
+  border: 0;
+  border-radius: calc(var(--radius-control) - 3px);
+  background: transparent;
+  color: var(--color-text-muted);
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ui-state-segmented-control button[aria-pressed="true"],
+.ui-repository-tabs button[aria-current="page"] {
+  background: var(--color-surface-selected);
+  color: var(--color-heading);
+}
+
+.ui-state-segmented-control button:disabled,
+.ui-repository-tabs button:disabled {
+  color: var(--color-disabled-text);
+  cursor: not-allowed;
+}
+
+.ui-icon-button,
+.ui-external-link-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-control);
+  color: var(--color-text);
+  font-weight: 700;
+}
+
+.ui-icon-button {
+  width: 34px;
+  padding: 0;
+}
+
+.ui-external-link-button {
+  padding: 0 10px;
+}
+
+.ui-icon-button:hover:not(:disabled),
+.ui-external-link-button:hover:not(:disabled),
+.ui-state-segmented-control button:hover:not(:disabled),
+.ui-repository-tabs button:hover:not(:disabled) {
+  background: var(--color-surface-control-hover);
+}
+
+.ui-icon-button:disabled,
+.ui-external-link-button:disabled {
+  color: var(--color-disabled-text);
+  cursor: not-allowed;
+}
+
+.ui-state-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 22px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface-control);
+  color: var(--color-text);
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ui-state-chip--accent {
+  border-color: var(--color-accent-muted);
+  background: var(--color-accent-muted);
+  color: var(--color-accent-strong);
+}
+
+.ui-state-chip--success,
+.ui-tone--success {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.ui-state-chip--warning,
+.ui-tone--warning {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+.ui-state-chip--danger,
+.ui-tone--danger {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+.ui-state-chip--muted,
+.ui-tone--muted {
+  background: var(--color-surface-control);
+  color: var(--color-text-muted);
+}
+
+.ui-detail-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  gap: 16px;
+  min-width: 0;
+}
+
+.ui-detail-layout-main,
+.ui-detail-rail,
+.ui-repository-chrome,
+.ui-repository-tab-surface,
+.ui-timeline,
+.ui-form-section-body,
+.ui-composer-body {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+}
+
+.ui-detail-rail {
+  align-self: start;
+}
+
+.ui-rail-section,
+.ui-composer,
+.ui-form-section,
+.ui-timeline-event-card {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  background: var(--color-surface-row);
+  padding: 14px;
+}
+
+.ui-rail-section-header,
+.ui-composer-header,
+.ui-form-section-header {
+  justify-content: space-between;
+}
+
+.ui-rail-section h3,
+.ui-composer h3,
+.ui-form-section h3 {
+  margin: 0;
+  color: var(--color-heading);
+  font-size: 15px;
+}
+
+.ui-form-section p,
+.ui-empty-state p,
+.ui-repository-hero p {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.ui-timeline {
+  position: relative;
+}
+
+.ui-timeline-event-card {
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: start;
+}
+
+.ui-timeline-event-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface-control);
+}
+
+.ui-timeline-event-body {
+  min-width: 0;
+}
+
+.ui-availability-banner,
+.ui-empty-state {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-row);
+  color: var(--color-text-muted);
+  padding: 12px;
+}
+
+.ui-empty-state {
+  justify-items: start;
+}
+
+.ui-empty-state strong {
+  color: var(--color-heading);
+}
+
+.ui-repository-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-glass-panel);
+  background: var(--color-surface-glass);
+  padding: 18px;
+  box-shadow: var(--shadow-panel);
+}
+
+.ui-repository-hero-main {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.ui-repository-hero-eyebrow {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.ui-repository-hero h1 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 28px;
+}
+
+.ui-repository-hero-actions,
+.ui-repository-hero-chips,
+.ui-repository-tabs {
+  flex-wrap: wrap;
+}
+
+.ui-repository-tabs {
+  border-bottom: 1px solid var(--color-border);
+  padding: 0 2px 8px;
+}
+
+.ui-repository-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .collection-view {
@@ -4904,6 +5451,42 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
   gap: 14px;
 }
 
+.settings-admin-group {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.settings-admin-group-header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+  padding: 4px 2px 0;
+}
+
+.settings-admin-group-header > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.settings-admin-group-header h3 {
+  font-size: 16px;
+}
+
+.settings-admin-group-header small {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.settings-admin-group-body {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
 .repository-settings-form {
   border: 1px solid var(--color-border);
   border-radius: 18px;
@@ -4933,6 +5516,28 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 
 .settings-status-actions small {
   color: #64748b;
+  font-size: 12px;
+}
+
+.settings-danger-zone {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 12px;
+}
+
+.settings-danger-zone header {
+  display: grid;
+  gap: 2px;
+}
+
+.settings-danger-zone h4 {
+  color: var(--color-danger);
+  font-size: 14px;
+}
+
+.settings-danger-zone header small {
+  color: var(--color-text-muted);
   font-size: 12px;
 }
 
@@ -5266,6 +5871,68 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 .fork-network-row small {
   color: var(--color-text-muted);
   font-size: 12px;
+}
+
+.workflow-catalog {
+  display: grid;
+  gap: 8px;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 12px;
+}
+
+.workflow-catalog header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.workflow-catalog-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-surface-row) 78%, transparent);
+  color: inherit;
+  padding: 10px;
+  text-align: left;
+}
+
+.workflow-catalog > button.workflow-catalog-row {
+  width: 100%;
+}
+
+.workflow-catalog-row > button:first-child {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  text-align: left;
+}
+
+.workflow-catalog-row:is(:hover, .active) {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface-selected);
+}
+
+.workflow-catalog-row strong,
+.workflow-catalog-row small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow-catalog-row small {
+  color: var(--color-text-muted);
 }
 
 .workflow-detail-grid {
@@ -6532,6 +7199,19 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 }
 
 @media (max-width: 820px) {
+  .ui-detail-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ui-repository-hero {
+    flex-direction: column;
+  }
+
+  .ui-repository-hero-actions,
+  .ui-filter-bar-actions {
+    justify-content: flex-start;
+  }
+
   .settings-modal-backdrop {
     padding: 10px;
   }
@@ -6674,7 +7354,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 }
 
 .app-shell[data-color-scheme="dark"]
-  :is(.count-pill, .visibility-pill, .state-chip, .topic-wrap span, .label-stack span) {
+  :is(.count-pill, .visibility-pill, .state-chip, .repo-source, .topic-wrap span, .label-stack span) {
   border-color: var(--color-border);
   background: var(--color-surface-row);
   color: var(--color-text);
@@ -6695,7 +7375,8 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
   box-shadow: none;
 }
 
-.app-shell[data-color-scheme="dark"] :is(.area-item.selected, .local-repo-item.selected, .nav-item.active) {
+.app-shell[data-color-scheme="dark"]
+  :is(.area-item.selected, .local-repo-item.selected, .repo-item.selected, .nav-item.active) {
   background: var(--color-surface-selected);
   box-shadow: inset 0 0 0 1px var(--color-accent);
 }
@@ -6706,7 +7387,34 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
     .account-hero,
     .local-file-preview,
     .local-file-list,
+    .local-context-banner,
+    .local-connected-panel,
     .table-panel,
+    .file-table,
+    .readme-panel,
+    .code-viewer,
+    .ref-picker,
+    .code-browser-header,
+    .code-markdown-preview,
+    .binary-file-fallback,
+    .wiki-browser,
+    .wiki-empty-browser,
+    .wiki-page-preview,
+    .wiki-editor-form,
+    .wiki-external-action,
+    .settings-surface-header,
+    .settings-summary-grid > div,
+    .settings-list-grid section,
+    .repository-settings-form,
+    .repository-admin-section,
+    .settings-access-grid section,
+    .repository-tab-visibility-section,
+    .settings-network-section,
+    .project-readme-panel,
+    .pr-inspection article,
+    .workflow-summary,
+    .diff-summary,
+    .shortcut-item,
     .github-surface,
     .collection-view,
     .repository-content-scroll,
@@ -6716,6 +7424,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
     .issue-summary-tile,
     .issue-summary-body,
     .issue-detail-toolbar button,
+    .detail-toolbar button,
     .thread-actions button,
     .timeline-card,
     .timeline-card-header,
@@ -6744,7 +7453,12 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
     .workflow-artifact-row,
     .local-file-row,
     .code-row,
-    .file-row
+    .file-row,
+    .commit-row,
+    .repository-admin-row,
+    .access-list button,
+    .fork-network-row,
+    .wiki-page-list button
   ) {
   border-color: var(--color-border);
   background: var(--color-surface-row);
@@ -6763,6 +7477,15 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
     .compose-form input,
     .compose-form select,
     .compose-form textarea,
+    .repository-settings-form input,
+    .repository-settings-form select,
+    .repository-settings-form textarea,
+    .repository-admin-form input,
+    .repository-admin-form select,
+    .repository-admin-form textarea,
+    .timeline-edit-form textarea,
+    .comment-composer textarea,
+    .issue-metadata-controls input,
     .dark-action
   ) {
   border-color: var(--color-border);
@@ -6779,9 +7502,67 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
     .workflow-action-availability,
     .finder-meta,
     .workflow-check-output,
-    .workflow-step-list div
+    .workflow-step-list div,
+    .repo-title-block p,
+    .repo-title-line h1 span,
+    .fork-meta,
+    .readme-content p,
+    .binary-file-fallback,
+    .shortcut-item small,
+    .wiki-external-action small,
+    .settings-status-actions small,
+    .repository-settings-form label,
+    .repository-admin-form label,
+    .project-description,
+    .workflow-failure-item span,
+    .workflow-step-list div,
+    .rail-panel p,
+    .about-list,
+    .contributor-detail-copy p,
+    .repository-row-main small,
+    .organization-row-main small,
+    .mailbox-work-row-main small,
+    .notification-row-main small
   ) {
   color: var(--color-text-muted);
+}
+
+.app-shell[data-color-scheme="dark"]
+  :is(
+    .repo-title-line h1,
+    .repo-tabs button.active,
+    .readme-content h2,
+    .readme-panel header,
+    .code-browser-header h1,
+    .code-viewer-toolbar span,
+    .binary-file-fallback strong,
+    .issue-summary-header h2,
+    .thread-header h2,
+    .compose-form h2,
+    .timeline-card-header strong,
+    .discussion-detail-section h3,
+    .pr-inspection h3,
+    .pr-inspection-list button,
+    .pr-file-row,
+    .workflow-detail-grid h3,
+    .workflow-check-output strong,
+    .repository-settings-form label,
+    .repository-admin-form label,
+    .settings-summary-grid strong,
+    .settings-list-grid strong,
+    .repository-admin-row strong,
+    .access-list strong,
+    .fork-network-row strong,
+    .wiki-page-list button,
+    .wiki-page-preview h3,
+    .wiki-external-action strong,
+    .shortcut-item strong,
+    .repository-row-main strong,
+    .organization-row-main strong,
+    .mailbox-work-row-main strong,
+    .notification-row-main strong
+  ) {
+  color: var(--color-heading);
 }
 
 .app-shell[data-color-scheme="dark"] :is(.settings-error, .rail-error, .markdown-unsafe, .deletions) {
@@ -6803,6 +7584,168 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
   border-color: var(--color-border);
   background: var(--color-code-background);
   color: var(--color-code-text);
+}
+
+.app-shell[data-color-scheme="dark"] .repo-tabs {
+  border-color: var(--color-border);
+}
+
+.app-shell[data-color-scheme="dark"] .repo-tabs button {
+  border-color: var(--color-border);
+  background: var(--color-surface-control);
+  color: var(--color-text-muted);
+  box-shadow: inset 0 1px 0 var(--color-surface-highlight);
+}
+
+.app-shell[data-color-scheme="dark"] .repo-tabs button:hover {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface-control-hover);
+  color: var(--color-text);
+}
+
+.app-shell[data-color-scheme="dark"] .repo-tabs button.active {
+  border-color: var(--color-accent);
+  background: var(--color-surface-selected);
+  color: var(--color-heading);
+  box-shadow: inset 0 0 0 1px var(--color-accent);
+}
+
+.app-shell[data-color-scheme="dark"] .repo-tabs button span {
+  color: var(--color-text-muted);
+}
+
+.app-shell[data-color-scheme="dark"] .repo-icon {
+  border-color: var(--color-border);
+  background: var(--color-surface-control);
+  color: var(--color-heading);
+}
+
+.app-shell[data-color-scheme="dark"] .fork-banner {
+  border-color: var(--color-border);
+  background: var(--color-surface-control);
+  color: var(--color-text-muted);
+}
+
+.app-shell[data-color-scheme="dark"]
+  :is(
+    .repo-action-row button,
+    .secondary-button,
+    .code-toolbar button,
+    .collection-view button,
+    .ui-filter-bar-actions button,
+    .issue-row button,
+    .settings-inline-actions button,
+    .settings-panel footer button,
+    .readme-panel header button,
+    .code-viewer-actions button,
+    .thread-actions button,
+    .timeline-actions button,
+    .comment-composer button,
+    .table-action-row button,
+    .workflow-card-actions button,
+    .issue-metadata-controls button,
+    .pr-file-row button,
+    .pin-row-button,
+    .local-file-list button,
+    .workflow-detail-grid section button,
+    .workflow-failure-item button,
+    .workflow-job-card button,
+    .workflow-artifact-row button,
+    .workflow-annotation-row button,
+    .repository-admin-row button,
+    .repository-admin-actions button,
+    .fork-network-row button,
+    .settings-surface-header button
+  ) {
+  border-color: var(--color-border);
+  background: var(--color-surface-control);
+  color: var(--color-text);
+  box-shadow: inset 0 1px 0 var(--color-surface-highlight);
+}
+
+.app-shell[data-color-scheme="dark"]
+  :is(
+    .repo-action-row button:hover:not(:disabled),
+    .secondary-button:hover:not(:disabled),
+    .code-toolbar button:hover:not(:disabled),
+    .collection-view button:hover:not(:disabled),
+    .ui-filter-bar-actions button:hover:not(:disabled),
+    .settings-inline-actions button:hover:not(:disabled),
+    .settings-panel footer button:hover:not(:disabled),
+    .readme-panel header button:hover:not(:disabled),
+    .code-viewer-actions button:hover:not(:disabled),
+    .thread-actions button:hover:not(:disabled),
+    .timeline-actions button:hover:not(:disabled),
+    .comment-composer button:hover:not(:disabled),
+    .table-action-row button:hover:not(:disabled),
+    .workflow-card-actions button:hover:not(:disabled),
+    .issue-metadata-controls button:hover:not(:disabled),
+    .pr-file-row button:hover:not(:disabled),
+    .pin-row-button:hover:not(:disabled),
+    .local-file-list button:hover:not(:disabled),
+    .workflow-detail-grid section button:hover:not(:disabled),
+    .workflow-failure-item button:hover:not(:disabled),
+    .workflow-job-card button:hover:not(:disabled),
+    .workflow-artifact-row button:hover:not(:disabled),
+    .workflow-annotation-row button:hover:not(:disabled),
+    .repository-admin-row button:hover:not(:disabled),
+    .repository-admin-actions button:hover:not(:disabled),
+    .fork-network-row button:hover:not(:disabled),
+    .settings-surface-header button:hover:not(:disabled)
+  ) {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface-control-hover);
+}
+
+.app-shell[data-color-scheme="dark"]
+  :is(
+    .root-markdown-tabs,
+    .readme-panel header,
+    .timeline-card-header,
+    .wiki-page-preview header,
+    .table-action-row,
+    .thread-list,
+    .workflow-list-stack
+  ) {
+  border-color: var(--color-border);
+}
+
+.app-shell[data-color-scheme="dark"]
+  :is(.root-markdown-tabs button, .timeline-card-header, .markdown-table th) {
+  background: var(--color-surface-control);
+  color: var(--color-text);
+}
+
+.app-shell[data-color-scheme="dark"] .root-markdown-tabs button.active {
+  border-color: var(--color-accent);
+  background: var(--color-surface-selected);
+  color: var(--color-accent-strong);
+}
+
+.app-shell[data-color-scheme="dark"] .markdown-body-lite :where(h3, h4, h5, h6) {
+  color: var(--color-heading);
+}
+
+.app-shell[data-color-scheme="dark"] .markdown-link {
+  color: var(--color-accent-strong);
+}
+
+.app-shell[data-color-scheme="dark"] .markdown-reference {
+  background: var(--color-accent-muted);
+  color: var(--color-accent-strong);
+}
+
+.app-shell[data-color-scheme="dark"] :is(.code-viewer pre, .code-markdown-preview) {
+  background: var(--color-code-background);
+  color: var(--color-code-text);
+}
+
+.app-shell[data-color-scheme="dark"] :is(.code-source-line-number, .code-highlight-status) {
+  color: var(--color-text-muted);
+}
+
+.app-shell[data-color-scheme="dark"] :is(.release-row:hover, .contributor-row:hover) {
+  background: var(--color-surface-row-hover);
 }
 
 @media (max-width: 1180px) {

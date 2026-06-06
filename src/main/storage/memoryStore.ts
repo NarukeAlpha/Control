@@ -17,6 +17,7 @@ import type {
   RepositoryListResult,
   RepositorySummary
 } from "@shared/github";
+import type { CacheValidationState, CacheValidatorSnapshot } from "@shared/cache";
 import type { LocalRecentItem, LocalRecentListInput, RepositoryPinRecord } from "@shared/local";
 
 import type { AreaGatewayRecord } from "./areaGatewayStore";
@@ -133,6 +134,10 @@ export class MemoryLocalStore implements LocalStore {
     return {
       payload: record.payload as T,
       etag: record.etag,
+      lastModified: record.lastModified ?? null,
+      validator: record.validator ?? null,
+      validatedAt: record.validatedAt ?? null,
+      validationState: record.validationState ?? null,
       expiresAt: record.expiresAt,
       updatedAt: record.updatedAt,
       isExpired: cacheExpiresAtIsExpired(record.expiresAt)
@@ -521,6 +526,10 @@ export class MemoryLocalStore implements LocalStore {
     cacheKey: string;
     result: RepositoryListResult;
     etag: string | null;
+    lastModified?: string | null;
+    validator?: CacheValidatorSnapshot | null;
+    validatedAt?: string | null;
+    validationState?: CacheValidationState | null;
     expiresAt: string | null;
   }): void {
     for (const repository of input.repositories) {
@@ -531,6 +540,10 @@ export class MemoryLocalStore implements LocalStore {
       cacheKey: input.cacheKey,
       payload: input.result,
       etag: input.etag,
+      lastModified: input.lastModified ?? null,
+      validator: input.validator ?? null,
+      validatedAt: input.validatedAt ?? null,
+      validationState: input.validationState ?? null,
       expiresAt: input.expiresAt
     });
   }

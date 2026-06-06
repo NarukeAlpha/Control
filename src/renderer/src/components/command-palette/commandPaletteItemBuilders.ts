@@ -782,7 +782,7 @@ export function appendNotificationCommandPaletteItems(
         notification.unread ? "unread" : "read",
         notification.participating ? "participating" : "not participating",
         opensInApp ? "in app" : "external",
-        opensInApp ? "in-app" : "fallback",
+        opensInApp ? "in-app" : "github",
         opensInApp ? "control" : "github"
       ],
       run: () => input.onOpenNotification(notification)
@@ -1772,10 +1772,10 @@ export function appendCurrentRepositoryCommandPaletteItems(
     {
       id: "command-current-open-github",
       title: `Open ${input.effectiveRepository} on GitHub`,
-      subtitle: "Use the external GitHub fallback",
+      subtitle: "Open the repository on GitHub",
       group: "External",
       icon: ExternalLink,
-      keywords: ["github.com", "external", "external fallback", "open in browser", input.effectiveRepository],
+      keywords: ["github.com", "external", "external github", "open in browser", input.effectiveRepository],
       run: () => input.onOpenExternalGitHub(input.effectiveRepository)
     }
   );

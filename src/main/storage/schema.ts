@@ -23,6 +23,10 @@ export function bootstrapSqliteSchema(db: StorageDatabase): void {
         cache_key TEXT NOT NULL,
         payload TEXT NOT NULL,
         etag TEXT,
+        last_modified TEXT,
+        validator_json TEXT,
+        validated_at TEXT,
+        validation_state TEXT,
         expires_at TEXT,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (provider, cache_key)
@@ -165,5 +169,18 @@ export function bootstrapSqliteSchema(db: StorageDatabase): void {
         readme_synced_at TEXT
       );
     `);
+    ensureCacheEntryColumn(db, "last_modified", "TEXT");
+    ensureCacheEntryColumn(db, "validator_json", "TEXT");
+    ensureCacheEntryColumn(db, "validated_at", "TEXT");
+    ensureCacheEntryColumn(db, "validation_state", "TEXT");
   });
+}
+
+function ensureCacheEntryColumn(db: StorageDatabase, columnName: string, columnType: string): void {
+  const columns = db.all<{ name: string }>("PRAGMA table_info(cache_entries)");
+  if (columns.some((column) => column.name === columnName)) {
+    return;
+  }
+
+  db.run(`ALTER TABLE cache_entries ADD COLUMN ${columnName} ${columnType}`);
 }

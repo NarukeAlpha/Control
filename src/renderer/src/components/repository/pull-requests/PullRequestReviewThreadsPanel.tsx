@@ -177,7 +177,7 @@ export function PullRequestReviewThreadsPanel({
                     }
                   }}
                 >
-                  GitHub fallback
+                  Open on GitHub
                 </button>
               </div>
               {diffPreview && (

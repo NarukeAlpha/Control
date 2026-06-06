@@ -1,4 +1,14 @@
 import type {
+  AreaFileContent,
+  AreaFileEntry,
+  AreaRepositoryDetail,
+  AreaRepositorySummary,
+  AreaSummary,
+  AreaSyncStatus,
+  AreaWorkspaceSummary,
+  GitHubRemoteConnection
+} from "@shared/areas";
+import type {
   AccountContributionListResult,
   AccountProfileResult,
   AccountRepositoryListResult,
@@ -112,6 +122,222 @@ import { mockAvailable, mockGitHubNotLoaded } from "./shared";
 import { mockRepositoryWiki } from "./wiki";
 
 const mockSettingsStorageKey = "control:mock-settings";
+const mockAreaTimestamp = "2026-06-05T12:00:00.000Z";
+const mockGitHubAreaId = "github:mock";
+const mockLocalAreaId = "local:control";
+const mockLocalRepositoryId = "local:control:swift";
+
+const mockGitHubArea: AreaSummary = {
+  id: mockGitHubAreaId,
+  kind: "github",
+  label: "GitHub",
+  subtitle: "ashleyrico",
+  rootPath: null,
+  accountLogin: mockViewer.login,
+  gateway: null,
+  health: { status: "ready", message: null, checkedAt: mockAreaTimestamp },
+  repositoryCount: mockRepositories.length,
+  selected: true,
+  createdAt: mockAreaTimestamp,
+  updatedAt: mockAreaTimestamp
+};
+
+const mockLocalArea: AreaSummary = {
+  id: mockLocalAreaId,
+  kind: "local",
+  label: "Local Projects",
+  subtitle: "/Users/ashleyrico/Projects",
+  rootPath: "/Users/ashleyrico/Projects",
+  accountLogin: null,
+  gateway: null,
+  health: { status: "ready", message: null, checkedAt: mockAreaTimestamp },
+  repositoryCount: 1,
+  selected: false,
+  createdAt: mockAreaTimestamp,
+  updatedAt: mockAreaTimestamp
+};
+
+const mockLocalGitHubConnection: GitHubRemoteConnection = {
+  owner: "apple",
+  repo: "swift",
+  nameWithOwner: mockRepository.nameWithOwner,
+  remoteName: "origin",
+  remoteUrl: "git@github.com:apple/swift.git",
+  url: mockRepository.htmlUrl,
+  matchedGitHubAreaId: mockGitHubAreaId,
+  status: "connected",
+  lastCheckedAt: mockAreaTimestamp,
+  lastError: null
+};
+
+const mockLocalRepositorySummary: AreaRepositorySummary = {
+  id: mockLocalRepositoryId,
+  areaId: mockLocalAreaId,
+  kind: "git",
+  name: "swift",
+  owner: "apple",
+  displayName: "apple/swift",
+  path: "/Users/ashleyrico/Projects/swift",
+  defaultBranch: "main",
+  currentBranch: "feature/sendable-diagnostics",
+  isDirty: true,
+  isPrivate: false,
+  description: "The Swift Programming Language",
+  connection: mockLocalGitHubConnection,
+  capabilities: {
+    supportsBranches: true,
+    supportsBookmarks: false,
+    supportsWorkspaces: false,
+    supportsOperationLog: true,
+    supportsSparse: false,
+    isGitBacked: true,
+    isColocated: true,
+    supportsGitHubEnrichment: true
+  },
+  health: { status: "ready", message: null, checkedAt: mockAreaTimestamp },
+  updatedAt: mockAreaTimestamp,
+  scannedAt: mockAreaTimestamp
+};
+
+const mockLocalContents: AreaFileEntry[] = mockContents.map((entry) => ({
+  name: entry.name,
+  path: entry.path,
+  type: entry.type === "dir" ? "dir" : "file",
+  size: entry.size,
+  updatedAt: entry.lastCommitDate
+}));
+
+const mockLocalReadme: AreaFileContent = {
+  path: "README.md",
+  kind: "text",
+  text: "# Welcome to Swift\n\nSwift is a powerful and intuitive programming language for iOS, macOS, watchOS, tvOS, and beyond.",
+  encoding: "utf-8",
+  size: 122,
+  message: null
+};
+
+const mockLocalWorkspaces: AreaWorkspaceSummary[] = [
+  {
+    id: "workspace:swift:diagnostics",
+    areaId: mockLocalAreaId,
+    repositoryId: mockLocalRepositoryId,
+    name: "Diagnostics spike",
+    rootPath: "/Users/ashleyrico/Projects/swift-worktrees/diagnostics",
+    workingCopyChangeId: null,
+    workingCopyCommitId: null,
+    isStale: false,
+    sparseSummary: null,
+    health: { status: "ready", message: null, checkedAt: mockAreaTimestamp },
+    updatedAt: mockAreaTimestamp,
+    scannedAt: mockAreaTimestamp
+  }
+];
+
+const mockLocalRepositoryDetail: AreaRepositoryDetail = {
+  ...mockLocalRepositorySummary,
+  remotes: [
+    {
+      name: "origin",
+      fetchUrl: "git@github.com:apple/swift.git",
+      pushUrl: "git@github.com:apple/swift.git",
+      github: mockLocalGitHubConnection
+    }
+  ],
+  branches: [
+    {
+      name: "feature/sendable-diagnostics",
+      current: true,
+      upstream: "origin/feature/sendable-diagnostics",
+      commit: "7f3a2c0"
+    },
+    { name: "main", current: false, upstream: "origin/main", commit: "4a7d1ef" }
+  ],
+  bookmarks: [],
+  tags: mockTags.map((tag) => ({ name: tag.name, target: tag.commitSha })),
+  status: {
+    clean: false,
+    dirtyCount: 3,
+    untrackedCount: 1,
+    conflictedCount: 0,
+    ahead: 2,
+    behind: 0,
+    entries: [
+      { path: "Sources/Compiler/TypeCheck.cpp", indexStatus: "M", workingTreeStatus: "M" },
+      { path: "test/Concurrency/sendable.swift", indexStatus: "A", workingTreeStatus: null },
+      { path: "docs/diagnostics.md", indexStatus: null, workingTreeStatus: "?" }
+    ]
+  },
+  recentCommits: listMockCommits({ limit: 3 }).map((commit) => ({
+    id: commit.sha,
+    shortId: commit.sha.slice(0, 7),
+    changeId: null,
+    summary: commit.headline,
+    authorName: commit.authorName,
+    authorEmail: null,
+    authoredAt: commit.authoredDate
+  })),
+  recentOperations: [
+    {
+      id: "operation:fetch-origin",
+      shortId: "op-241",
+      description: "Fetched origin/main",
+      user: mockViewer.login,
+      time: "2026-06-05T10:42:00.000Z"
+    },
+    {
+      id: "operation:branch-checkout",
+      shortId: "op-240",
+      description: "Checked out feature/sendable-diagnostics",
+      user: mockViewer.login,
+      time: "2026-06-05T09:18:00.000Z"
+    }
+  ],
+  readme: mockLocalReadme,
+  workspaces: mockLocalWorkspaces
+};
+
+const mockLocalSyncStatus: AreaSyncStatus = {
+  areaId: mockLocalAreaId,
+  repositoryId: mockLocalRepositoryId,
+  provider: "git",
+  remotes: [
+    {
+      name: "origin",
+      fetchUrl: "git@github.com:apple/swift.git",
+      pushUrl: "git@github.com:apple/swift.git",
+      status: "ahead",
+      ahead: 2,
+      behind: 0,
+      lastFetchedAt: "2026-06-05T10:42:00.000Z",
+      message: null
+    }
+  ],
+  defaultRemote: "origin",
+  currentBranch: "feature/sendable-diagnostics",
+  currentBookmark: null,
+  hasUncommittedChanges: true,
+  capabilities: {
+    canFetch: true,
+    canPush: true,
+    canPull: true,
+    canCreateBranch: true,
+    canCreateBookmark: false,
+    canCommit: true,
+    canUndo: false
+  },
+  updatedAt: mockAreaTimestamp
+};
+
+function mockAreas(selectedAreaId: string | null = null): AreaSummary[] {
+  return [mockGitHubArea, mockLocalArea].map((area) => ({
+    ...area,
+    selected: selectedAreaId ? area.id === selectedAreaId : area.selected
+  }));
+}
+
+function localRepositoryMatches(input: { areaId: string; repositoryId: string }): boolean {
+  return input.areaId === mockLocalAreaId && input.repositoryId === mockLocalRepositoryId;
+}
 
 function readMockAppState(): AppState {
   return {
@@ -272,9 +498,9 @@ export const mockControlApi: ControlApi = {
   onGitHubRepositoriesUpdated: () => () => undefined,
   onGitHubAuthUpdated: () => () => undefined,
   areas: {
-    listAreas: async () => [],
-    getArea: async () => null,
-    selectArea: async () => [],
+    listAreas: async () => mockAreas(),
+    getArea: async (areaId) => mockAreas().find((area) => area.id === areaId) ?? null,
+    selectArea: async (areaId) => mockAreas(areaId),
     createLocalArea: async (input) => ({
       id: "local:mock",
       kind: "local",
@@ -328,10 +554,42 @@ export const mockControlApi: ControlApi = {
     }),
     removeArea: async () => [],
     refreshArea: async () => null,
-    searchAreas: async () => ({ areas: [], repositories: [], workspaces: [] }),
-    listRepositories: async () => [],
-    getRepository: async () => null,
-    listContents: async () => [],
+    searchAreas: async (input) => {
+      const query = input.query.trim().toLowerCase();
+      if (!query) {
+        return { areas: [], repositories: [], workspaces: [] };
+      }
+
+      const areas = mockAreas().filter((area) =>
+        [area.label, area.subtitle ?? ""].some((value) => value.toLowerCase().includes(query))
+      );
+      const repositories = [mockLocalRepositorySummary].filter((repository) =>
+        [repository.name, repository.path ?? "", repository.currentBranch ?? ""].some((value) =>
+          value.toLowerCase().includes(query)
+        )
+      );
+      const workspaces = mockLocalWorkspaces.filter((workspace) =>
+        [workspace.name, workspace.rootPath].some((value) => value.toLowerCase().includes(query))
+      );
+
+      return {
+        areas: areas.slice(0, input.limit ?? areas.length),
+        repositories: repositories.slice(0, input.limit ?? repositories.length),
+        workspaces: workspaces.slice(0, input.limit ?? workspaces.length)
+      };
+    },
+    listRepositories: async (input) => (input.areaId === mockLocalAreaId ? [mockLocalRepositorySummary] : []),
+    getRepository: async (input) => (localRepositoryMatches(input) ? mockLocalRepositoryDetail : null),
+    listContents: async (input) => {
+      if (!localRepositoryMatches(input)) {
+        return [];
+      }
+      const path = input.path?.trim() && input.path !== "." ? input.path : null;
+      if (!path) {
+        return mockLocalContents;
+      }
+      return [];
+    },
     searchFilePaths: async (input) => ({
       areaId: input.areaId,
       repositoryId: input.repositoryId,
@@ -348,41 +606,84 @@ export const mockControlApi: ControlApi = {
     }),
     getFileContent: async (input) => ({
       path: input.path,
-      kind: "unavailable",
-      text: null,
-      encoding: null,
-      size: null,
-      message: "Mock local file content is unavailable."
+      kind: "text",
+      text:
+        input.path === "README.md"
+          ? mockLocalReadme.text
+          : `Mock file content for ${input.path}.\n\nThis browser fixture keeps local repository previews deterministic.`,
+      encoding: "utf-8",
+      size: input.path === "README.md" ? mockLocalReadme.size : 96,
+      message: null
     }),
-    listBranches: async () => [],
-    listRemotes: async () => [],
-    getStatus: async () => ({
-      clean: null,
-      dirtyCount: 0,
-      untrackedCount: 0,
-      conflictedCount: 0,
-      ahead: null,
-      behind: null,
-      entries: []
+    listBranches: async (input) => (localRepositoryMatches(input) ? mockLocalRepositoryDetail.branches : []),
+    listRemotes: async (input) => (localRepositoryMatches(input) ? mockLocalRepositoryDetail.remotes : []),
+    getStatus: async (input) =>
+      localRepositoryMatches(input)
+        ? mockLocalRepositoryDetail.status
+        : {
+            clean: null,
+            dirtyCount: 0,
+            untrackedCount: 0,
+            conflictedCount: 0,
+            ahead: null,
+            behind: null,
+            entries: []
+          },
+    listActivity: async (input) =>
+      localRepositoryMatches(input)
+        ? [
+            ...mockLocalRepositoryDetail.recentOperations.map((operation) => ({
+              id: operation.id,
+              kind: "operation" as const,
+              title: operation.description,
+              subtitle: operation.shortId,
+              occurredAt: operation.time
+            })),
+            ...mockLocalRepositoryDetail.recentCommits.map((commit) => ({
+              id: commit.id,
+              kind: "commit" as const,
+              title: commit.summary,
+              subtitle: commit.shortId,
+              occurredAt: commit.authoredAt
+            }))
+          ]
+        : [],
+    listWorkspaces: async (input) =>
+      input.areaId === mockLocalAreaId &&
+      (!input.repositoryId || input.repositoryId === mockLocalRepositoryId)
+        ? mockLocalWorkspaces
+        : [],
+    getWorkspace: async (input) => {
+      if (input.areaId !== mockLocalAreaId) {
+        return null;
+      }
+
+      const workspace =
+        mockLocalWorkspaces.find((item) => item.id === input.workspaceId) ?? mockLocalWorkspaces[0];
+      return workspace
+        ? {
+            ...workspace,
+            fileTree: mockLocalContents,
+            readme: mockLocalReadme,
+            status: mockLocalRepositoryDetail.status
+          }
+        : null;
+    },
+    getGitHubRepository: async (input) => ({
+      detail: localRepositoryMatches(input) ? mockRepositoryDetail({ owner: "apple", repo: "swift" }) : null,
+      availability: localRepositoryMatches(input) ? mockAvailable : mockGitHubNotLoaded
     }),
-    listActivity: async () => [],
-    listWorkspaces: async () => [],
-    getWorkspace: async () => null,
-    getGitHubRepository: async () => ({
-      detail: null,
-      availability: mockGitHubNotLoaded
+    listGitHubIssues: async (input) => ({
+      items: localRepositoryMatches(input) ? listMockIssues(input) : [],
+      availability: localRepositoryMatches(input) ? mockAvailable : mockGitHubNotLoaded
     }),
-    listGitHubIssues: async () => ({
-      items: [],
-      availability: mockGitHubNotLoaded
+    listGitHubPullRequests: async (input) => ({
+      items: localRepositoryMatches(input) ? listMockPullRequests(input) : [],
+      availability: localRepositoryMatches(input) ? mockAvailable : mockGitHubNotLoaded
     }),
-    listGitHubPullRequests: async () => ({
-      items: [],
-      availability: mockGitHubNotLoaded
-    }),
-    listGitHubActions: async () => ({
-      items: [],
-      availability: mockGitHubNotLoaded
+    listGitHubActions: async (input) => ({
+      items: localRepositoryMatches(input) ? listMockWorkflowRuns(input) : [],
+      availability: localRepositoryMatches(input) ? mockAvailable : mockGitHubNotLoaded
     }),
     listGitHubReleases: async () => ({
       items: [],
@@ -392,26 +693,29 @@ export const mockControlApi: ControlApi = {
       items: [],
       availability: mockGitHubNotLoaded
     }),
-    getSyncStatus: async (input) => ({
-      areaId: input.areaId,
-      repositoryId: input.repositoryId,
-      provider: "git",
-      remotes: [],
-      defaultRemote: null,
-      currentBranch: null,
-      currentBookmark: null,
-      hasUncommittedChanges: null,
-      capabilities: {
-        canFetch: false,
-        canPush: false,
-        canPull: false,
-        canCreateBranch: false,
-        canCreateBookmark: false,
-        canCommit: false,
-        canUndo: false
-      },
-      updatedAt: null
-    }),
+    getSyncStatus: async (input) =>
+      localRepositoryMatches(input)
+        ? mockLocalSyncStatus
+        : {
+            areaId: input.areaId,
+            repositoryId: input.repositoryId,
+            provider: "git",
+            remotes: [],
+            defaultRemote: null,
+            currentBranch: null,
+            currentBookmark: null,
+            hasUncommittedChanges: null,
+            capabilities: {
+              canFetch: false,
+              canPush: false,
+              canPull: false,
+              canCreateBranch: false,
+              canCreateBookmark: false,
+              canCommit: false,
+              canUndo: false
+            },
+            updatedAt: null
+          },
     prepareGatewayOperation: async (input) => ({
       id: "operation:mock",
       areaId: input.areaId,

@@ -145,11 +145,11 @@ afterEach(() => {
 });
 
 describe("AgentsTab", () => {
-  it("routes agent issue controls through Control and GitHub fallback URLs", async () => {
+  it("routes agent issue controls through Control and GitHub URLs", async () => {
     installControlApi();
     const props = renderAgents();
 
-    expect(screen.getByRole("heading", { name: "Agent workflows open in Control" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Agents" })).toBeInTheDocument();
     expect(await screen.findByText("#42 Prepare async agent handoff")).toBeInTheDocument();
 
     const issueTile = screen.getByText("Agent issues").closest("article");
@@ -161,7 +161,7 @@ describe("AgentsTab", () => {
 
     fireEvent.click(issueSurface.getByRole("button", { name: "Open issue #42 in Control" }));
     fireEvent.click(issueSurface.getByRole("button", { name: "Open in Control" }));
-    fireEvent.click(issueSurface.getByRole("button", { name: "GitHub fallback" }));
+    fireEvent.click(issueSurface.getByRole("button", { name: "Open on GitHub" }));
 
     expect(props.onSelectIssue).toHaveBeenCalledWith(expect.objectContaining({ id: 42, number: 42 }));
     expect(props.onOpenFilteredSurface).toHaveBeenCalledWith("issues", "label:agent");
@@ -194,5 +194,24 @@ describe("AgentsTab", () => {
 
     fireEvent.click(pullSurface.getByRole("button", { name: "Open pull request #9 in Control" }));
     expect(props.onSelectPullRequest).toHaveBeenCalledWith(expect.objectContaining({ id: 9, number: 9 }));
+  });
+
+  it("keeps unavailable data section-local", async () => {
+    const api = installControlApi();
+    vi.mocked(api.github.listActionsWithStatus).mockResolvedValue({
+      items: [],
+      availability: { status: "permission_denied", message: "Actions scope unavailable." }
+    });
+    renderAgents();
+
+    const actionsTile = await screen.findByText("Automation runs");
+    const actionsSurface = within(actionsTile.closest("article") as HTMLElement);
+
+    expect(await actionsSurface.findByText("unavailable")).toBeInTheDocument();
+    expect(
+      actionsSurface.getByText(/Automation runs unavailable: The current GitHub token cannot access/)
+    ).toBeInTheDocument();
+    expect(await screen.findByText("#42 Prepare async agent handoff")).toBeInTheDocument();
+    expect(await screen.findByText("#9 Fix repository workflow cache")).toBeInTheDocument();
   });
 });

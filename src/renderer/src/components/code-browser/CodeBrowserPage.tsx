@@ -119,7 +119,7 @@ function CodeBrowserLoadError({
           <RefreshCw size={16} /> Retry
         </button>
         <button type="button" onClick={openFallback}>
-          <ExternalLink size={16} /> GitHub fallback
+          <ExternalLink size={16} /> Open on GitHub
         </button>
       </div>
     </div>
@@ -271,7 +271,7 @@ function CodeBrowserHeader({
           onSelectRef={onSelectRef}
         />
         <button type="button" onClick={openFallback}>
-          <ExternalLink size={16} /> GitHub fallback
+          <ExternalLink size={16} /> Open on GitHub
         </button>
       </div>
     </header>

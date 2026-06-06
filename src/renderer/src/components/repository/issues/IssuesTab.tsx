@@ -5,6 +5,7 @@ import type {
   GitHubAction,
   GitHubMutationFields,
   IssueDetail,
+  IssueStateFilter,
   IssueSummary,
   RepositoryDetail,
   TimelineCommentSummary
@@ -24,6 +25,13 @@ import {
   repositoryMutationDisabledReason
 } from "@renderer/components/repository/repositoryUi";
 import { TimelineThread } from "@renderer/components/shared/TimelineThread";
+import {
+  DetailLayout,
+  FilterBar,
+  RailSection,
+  StateSegmentedControl,
+  Timeline
+} from "@renderer/components/ui";
 
 import { formatRelativeDate } from "@renderer/utils/format";
 import { IssueActionFooter } from "./IssueActionFooter";
@@ -34,6 +42,11 @@ import { IssueMetadataControls } from "./IssueMetadataControls";
 import { useIssuesTabQueries } from "./IssuesTab.queries";
 
 const maxIssueListLimit = 100;
+const issueStateFilterOptions: Array<{ value: IssueStateFilter; label: string }> = [
+  { value: "open", label: "Open" },
+  { value: "closed", label: "Closed" },
+  { value: "all", label: "All" }
+];
 type IssueCloseReason = "completed" | "not_planned";
 type IssueStateAction = "closeIssue" | "reopenIssue";
 
@@ -311,7 +324,7 @@ function IssueSummaryTile({
           Open issue
         </button>
         <button type="button" onClick={handleOpenExternal}>
-          <ExternalLink size={16} /> GitHub fallback
+          <ExternalLink size={16} /> Open on GitHub
         </button>
       </div>
     </article>
@@ -387,8 +400,8 @@ function IssueListRow({
       <button
         className="pin-row-button"
         type="button"
-        aria-label={`Open issue ${issue.number} GitHub fallback`}
-        title={`GitHub fallback for issue #${issue.number}`}
+        aria-label={`Open issue ${issue.number} on GitHub`}
+        title={`Open issue #${issue.number} on GitHub`}
         onClick={handleOpenExternal}
       >
         <ExternalLink size={15} />
@@ -527,6 +540,7 @@ interface IssuesTabProps {
   repository: RepositoryDetail;
   githubReady: boolean;
   issueListLimit: number;
+  issueState: IssueStateFilter;
   focusedIssueNumber: number | null;
   initialFilter: string;
   initialCreating: boolean;
@@ -535,8 +549,9 @@ interface IssuesTabProps {
   mutationSucceeded: boolean;
   mutationError: Error | null;
   onOpenExternal(url: string): void;
-  onSelectIssue(issue: IssueSummary): void;
   onOpenIssueList(): void;
+  onOpenIssueDetail(issue: IssueSummary, issueState: IssueStateFilter, filter: string): void;
+  onIssueStateChange(issueState: IssueStateFilter, filter: string): void;
   onExpandIssues(): void;
   onMutate(action: GitHubAction, dangerous: boolean, payload?: GitHubMutationFields): void;
 }
@@ -545,6 +560,7 @@ function useIssuesTabModel({
   repository,
   githubReady,
   issueListLimit,
+  issueState,
   focusedIssueNumber,
   initialFilter,
   initialCreating,
@@ -553,8 +569,9 @@ function useIssuesTabModel({
   mutationSucceeded,
   mutationError,
   onOpenExternal,
-  onSelectIssue,
   onOpenIssueList,
+  onOpenIssueDetail,
+  onIssueStateChange,
   onExpandIssues,
   onMutate
 }: IssuesTabProps) {
@@ -600,6 +617,7 @@ function useIssuesTabModel({
   } = useIssuesTabQueries({
     owner: repository.owner,
     repo: repository.name,
+    issueState,
     issueListLimit,
     issuesEnabled: true,
     resourcesEnabled: true,
@@ -813,6 +831,14 @@ function useIssuesTabModel({
     updateUiState({ filter: event.target.value });
   }
 
+  function changeIssueState(value: IssueStateFilter): void {
+    onIssueStateChange(value, filter);
+  }
+
+  function openIssueDetail(issue: IssueSummary): void {
+    onOpenIssueDetail(issue, issueState, filter);
+  }
+
   function startCreatingIssue(): void {
     dispatchUiState({ type: "startCreating" });
   }
@@ -942,6 +968,8 @@ function useIssuesTabModel({
   return {
     surfaceRef,
     issueDetailRoute,
+    issueState,
+    changeIssueState,
     filter,
     handleFilterChange,
     createIssueDisabledReason,
@@ -1003,7 +1031,7 @@ function useIssuesTabModel({
     issueDetail,
     issueDetailAvailabilityMessage,
     issueMarkdownUrlContext,
-    onSelectIssue,
+    openIssueDetail,
     onOpenIssueList,
     selectedMilestone,
     selectedAssignees,
@@ -1159,7 +1187,7 @@ function IssueSummaryPane({
   issueDetail,
   issueDetailAvailabilityMessage,
   issueMarkdownUrlContext,
-  onSelectIssue,
+  openIssueDetail,
   onOpenExternal
 }: IssueRouteProps): JSX.Element {
   return (
@@ -1170,7 +1198,7 @@ function IssueSummaryPane({
       loading={issueDetail.isLoading || issueDetail.isFetching}
       availabilityMessage={issueDetail.error?.message ?? issueDetailAvailabilityMessage}
       markdownUrlContext={issueMarkdownUrlContext}
-      onOpenIssue={onSelectIssue}
+      onOpenIssue={openIssueDetail}
       onOpenExternal={onOpenExternal}
     />
   );
@@ -1203,7 +1231,7 @@ function IssueDetailHeader({
           <ArrowLeft size={16} /> Back to issues
         </button>
         <button type="button" onClick={handleOpenExternal}>
-          <ExternalLink size={16} /> GitHub fallback
+          <ExternalLink size={16} /> Open on GitHub
         </button>
       </div>
       <header className="thread-header">
@@ -1313,6 +1341,53 @@ function IssueDetailRouteView({
   runIssueStateAction,
   setCloseReason
 }: IssueRouteProps): JSX.Element {
+  const rail = (
+    <>
+      <RailSection title="Fields">
+        <IssueMetadataControls
+          selectedLabels={selectedLabels}
+          selectedAssignees={selectedAssignees}
+          visibleLabels={visibleLabels}
+          visibleAssignableUsers={visibleAssignableUsers}
+          labelEntry={labelEntry}
+          assigneeEntry={assigneeEntry}
+          disabledReason={issueActionDisabledReason}
+          labelSubmitDisabledReason={issueLabelSubmitDisabledReason}
+          assigneeSubmitDisabledReason={issueAssigneeSubmitDisabledReason}
+          labelsLoading={labelsLoading}
+          labelsError={labelsError}
+          labelsAvailabilityMessage={labelsAvailabilityMessage}
+          assignableUsersLoading={assignableUsersLoading}
+          assignableUsersError={assignableUsersError}
+          assignableUsersAvailabilityMessage={assignableUsersAvailabilityMessage}
+          hiddenLabelCount={hiddenIssueLabelCount}
+          hiddenAssignableUserCount={hiddenIssueAssignableUserCount}
+          onRemoveLabel={removeIssueLabel}
+          onRemoveAssignee={removeIssueAssignee}
+          onLabelEntryChange={setLabelEntry}
+          onAssigneeEntryChange={setAssigneeEntry}
+          onAddLabelSuggestion={addIssueLabelSuggestion}
+          onAddAssigneeSuggestion={addIssueAssigneeSuggestion}
+          onShowAllLabels={handleShowAllIssueLabels}
+          onShowAllAssignableUsers={handleShowAllIssueAssignableUsers}
+          onSubmitLabels={submitIssueLabels}
+          onSubmitAssignees={submitIssueAssignees}
+        />
+      </RailSection>
+      <RailSection title="Actions">
+        <IssueActionFooter
+          issueAction={issueAction}
+          issueActionLabel={issueActionLabel}
+          closeReason={closeReason}
+          disabledReason={issueActionDisabledReason}
+          onStartEditing={startEditingIssue}
+          onRunIssueAction={runIssueStateAction}
+          onCloseReasonChange={setCloseReason}
+        />
+      </RailSection>
+    </>
+  );
+
   return (
     <>
       <IssueDetailHeader
@@ -1325,91 +1400,57 @@ function IssueDetailRouteView({
       />
       {issueDetail.error && <div className="error-state">{issueDetail.error.message}</div>}
       {issueDetailAvailabilityMessage && <div className="error-state">{issueDetailAvailabilityMessage}</div>}
-      {editingIssue ? (
-        <IssueEditForm
-          title={editTitle}
-          body={editBody}
-          milestoneNumber={editMilestoneNumber}
-          disabledReason={issueActionDisabledReason}
-          submitDisabledReason={editIssueSubmitDisabledReason}
-          mutationActive={editIssueMutationActive}
-          mutationPending={mutationPending}
-          mutationSucceeded={mutationSucceeded}
-          mutationError={mutationError}
-          milestones={visibleMilestones}
-          milestonesLoading={milestonesLoading}
-          milestonesError={milestonesError}
-          milestonesAvailabilityMessage={milestonesAvailabilityMessage}
-          hiddenMilestoneCount={hiddenIssueMilestoneCount}
-          onTitleChange={setEditTitle}
-          onBodyChange={setEditBody}
-          onMilestoneNumberChange={setEditMilestoneNumber}
-          onShowAllMilestones={handleShowAllIssueMilestones}
-          onSubmit={submitEditIssue}
-          onCancel={cancelEditIssue}
-        />
-      ) : (
-        <IssueDiscussionThread
-          repository={repository}
-          selectedIssue={selectedIssue}
-          detail={detail}
-          loading={issueDetail.isLoading || issueDetail.isFetching}
-          markdownUrlContext={issueMarkdownUrlContext}
-          issueActionPendingReason={issueActionPendingReason}
-          liveIssueDisabledReason={liveIssueDisabledReason}
-          onOpenExternal={onOpenExternal}
-          onEditComment={editComment}
-          onDeleteComment={deleteComment}
-        />
-      )}
-      <IssueMetadataControls
-        selectedLabels={selectedLabels}
-        selectedAssignees={selectedAssignees}
-        visibleLabels={visibleLabels}
-        visibleAssignableUsers={visibleAssignableUsers}
-        labelEntry={labelEntry}
-        assigneeEntry={assigneeEntry}
-        disabledReason={issueActionDisabledReason}
-        labelSubmitDisabledReason={issueLabelSubmitDisabledReason}
-        assigneeSubmitDisabledReason={issueAssigneeSubmitDisabledReason}
-        labelsLoading={labelsLoading}
-        labelsError={labelsError}
-        labelsAvailabilityMessage={labelsAvailabilityMessage}
-        assignableUsersLoading={assignableUsersLoading}
-        assignableUsersError={assignableUsersError}
-        assignableUsersAvailabilityMessage={assignableUsersAvailabilityMessage}
-        hiddenLabelCount={hiddenIssueLabelCount}
-        hiddenAssignableUserCount={hiddenIssueAssignableUserCount}
-        onRemoveLabel={removeIssueLabel}
-        onRemoveAssignee={removeIssueAssignee}
-        onLabelEntryChange={setLabelEntry}
-        onAssigneeEntryChange={setAssigneeEntry}
-        onAddLabelSuggestion={addIssueLabelSuggestion}
-        onAddAssigneeSuggestion={addIssueAssigneeSuggestion}
-        onShowAllLabels={handleShowAllIssueLabels}
-        onShowAllAssignableUsers={handleShowAllIssueAssignableUsers}
-        onSubmitLabels={submitIssueLabels}
-        onSubmitAssignees={submitIssueAssignees}
-      />
-      <IssueCommentComposer
-        commentBody={commentBody}
-        disabledReason={issueCommentDisabledReason}
-        mutationActive={issueCommentMutationActive}
-        mutationPending={mutationPending}
-        mutationSucceeded={mutationSucceeded}
-        mutationError={mutationError}
-        onCommentBodyChange={setCommentBody}
-        onSubmit={submitIssueComment}
-      />
-      <IssueActionFooter
-        issueAction={issueAction}
-        issueActionLabel={issueActionLabel}
-        closeReason={closeReason}
-        disabledReason={issueActionDisabledReason}
-        onStartEditing={startEditingIssue}
-        onRunIssueAction={runIssueStateAction}
-        onCloseReasonChange={setCloseReason}
-      />
+      <DetailLayout className="issue-detail-layout" rail={rail}>
+        <Timeline className="issue-timeline-column">
+          {editingIssue ? (
+            <IssueEditForm
+              title={editTitle}
+              body={editBody}
+              milestoneNumber={editMilestoneNumber}
+              disabledReason={issueActionDisabledReason}
+              submitDisabledReason={editIssueSubmitDisabledReason}
+              mutationActive={editIssueMutationActive}
+              mutationPending={mutationPending}
+              mutationSucceeded={mutationSucceeded}
+              mutationError={mutationError}
+              milestones={visibleMilestones}
+              milestonesLoading={milestonesLoading}
+              milestonesError={milestonesError}
+              milestonesAvailabilityMessage={milestonesAvailabilityMessage}
+              hiddenMilestoneCount={hiddenIssueMilestoneCount}
+              onTitleChange={setEditTitle}
+              onBodyChange={setEditBody}
+              onMilestoneNumberChange={setEditMilestoneNumber}
+              onShowAllMilestones={handleShowAllIssueMilestones}
+              onSubmit={submitEditIssue}
+              onCancel={cancelEditIssue}
+            />
+          ) : (
+            <IssueDiscussionThread
+              repository={repository}
+              selectedIssue={selectedIssue}
+              detail={detail}
+              loading={issueDetail.isLoading || issueDetail.isFetching}
+              markdownUrlContext={issueMarkdownUrlContext}
+              issueActionPendingReason={issueActionPendingReason}
+              liveIssueDisabledReason={liveIssueDisabledReason}
+              onOpenExternal={onOpenExternal}
+              onEditComment={editComment}
+              onDeleteComment={deleteComment}
+            />
+          )}
+          <IssueCommentComposer
+            commentBody={commentBody}
+            disabledReason={issueCommentDisabledReason}
+            mutationActive={issueCommentMutationActive}
+            mutationPending={mutationPending}
+            mutationSucceeded={mutationSucceeded}
+            mutationError={mutationError}
+            onCommentBodyChange={setCommentBody}
+            onSubmit={submitIssueComment}
+          />
+        </Timeline>
+      </DetailLayout>
     </>
   );
 }
@@ -1438,6 +1479,8 @@ function IssuesTabContent(model: IssuesTabModel): JSX.Element {
   const {
     surfaceRef,
     issueDetailRoute,
+    issueState,
+    changeIssueState,
     filter,
     handleFilterChange,
     createIssueDisabledReason,
@@ -1453,11 +1496,31 @@ function IssuesTabContent(model: IssuesTabModel): JSX.Element {
     onOpenExternal,
     onExpandIssues
   } = model;
+  const issueCountLabel = `${filteredIssues.length} ${filteredIssues.length === 1 ? "issue" : "issues"}`;
 
   return (
     <section className="table-panel github-surface" ref={surfaceRef}>
       {!issueDetailRoute && (
-        <div className="table-action-row surface-filter-row">
+        <FilterBar
+          className="surface-filter-row issue-filter-bar"
+          label={issueCountLabel}
+          actions={
+            <button
+              type="button"
+              disabled={Boolean(createIssueDisabledReason)}
+              title={createIssueDisabledReason ?? undefined}
+              onClick={startCreatingIssue}
+            >
+              <Plus size={16} /> New issue
+            </button>
+          }
+        >
+          <StateSegmentedControl
+            label="Issue state"
+            value={issueState}
+            options={issueStateFilterOptions}
+            onChange={changeIssueState}
+          />
           <label className="surface-filter">
             <Search size={15} />
             <input
@@ -1467,15 +1530,7 @@ function IssuesTabContent(model: IssuesTabModel): JSX.Element {
               placeholder="Filter issues"
             />
           </label>
-          <button
-            type="button"
-            disabled={Boolean(createIssueDisabledReason)}
-            title={createIssueDisabledReason ?? undefined}
-            onClick={startCreatingIssue}
-          >
-            <Plus size={16} /> New issue
-          </button>
-        </div>
+        </FilterBar>
       )}
       <div className={`github-split${issueDetailRoute ? " issue-detail-route" : ""}`}>
         {!issueDetailRoute && (

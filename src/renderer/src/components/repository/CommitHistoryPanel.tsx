@@ -67,7 +67,7 @@ export function CommitHistoryPanel({
             }
           }}
         >
-          <ExternalLink size={14} /> Open GitHub fallback
+          <ExternalLink size={14} /> Open on GitHub
         </button>
       </header>
       {loading && commits.length === 0 && <div className="loading-state">Loading commits…</div>}
@@ -101,7 +101,7 @@ export function CommitHistoryPanel({
                     title={commit.htmlUrl ? undefined : "Commit URL unavailable."}
                     onClick={() => commit.htmlUrl && onOpenExternal(commit.htmlUrl)}
                   >
-                    GitHub fallback
+                    Open on GitHub
                   </button>
                 </div>
               </div>

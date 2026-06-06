@@ -64,6 +64,13 @@ export function resolveControlThemeStyleVars(
   const accent = palette.accent;
   const texture = palette.texture;
   const dataColors = darkMode ? darkActivityDataColors : lightActivityDataColors;
+  const surfaceGlass = colorMix(texture, darkMode ? 58 : 46, "transparent");
+  const surfaceGlassStrong = colorMix(texture, darkMode ? 76 : 70, background);
+  const surfaceElevated = colorMix(texture, darkMode ? 86 : 82, background);
+  const surfaceRow = colorMix(texture, darkMode ? 66 : 60, background);
+  const surfaceRowHover = colorMix(texture, darkMode ? 78 : 74, background);
+  const surfaceControl = colorMix(texture, darkMode ? 72 : 66, background);
+  const surfaceControlHover = colorMix(texture, darkMode ? 84 : 80, background);
 
   return {
     "--font-ui-family": uiFontStacks[custom.uiFont],
@@ -77,13 +84,16 @@ export function resolveControlThemeStyleVars(
     "--color-texture": texture,
     "--color-texture-muted": colorMix(texture, darkMode ? 30 : 28, "transparent"),
     "--color-surface-solid": background,
-    "--color-surface-glass": colorMix(texture, darkMode ? 58 : 46, "transparent"),
-    "--color-surface-glass-strong": colorMix(texture, darkMode ? 76 : 70, background),
-    "--color-surface-elevated": colorMix(texture, darkMode ? 86 : 82, background),
-    "--color-surface-row": colorMix(texture, darkMode ? 66 : 60, background),
-    "--color-surface-row-hover": colorMix(texture, darkMode ? 78 : 74, background),
-    "--color-surface-control": colorMix(texture, darkMode ? 72 : 66, background),
-    "--color-surface-control-hover": colorMix(texture, darkMode ? 84 : 80, background),
+    "--color-surface-glass": surfaceGlass,
+    "--color-surface-glass-strong": surfaceGlassStrong,
+    "--color-surface-primary": surfaceGlass,
+    "--color-surface-secondary": surfaceRow,
+    "--color-surface-hover": surfaceRowHover,
+    "--color-surface-elevated": surfaceElevated,
+    "--color-surface-row": surfaceRow,
+    "--color-surface-row-hover": surfaceRowHover,
+    "--color-surface-control": surfaceControl,
+    "--color-surface-control-hover": surfaceControlHover,
     "--color-surface-highlight": colorMix(text, darkMode ? 14 : 12, "transparent"),
     "--color-border": colorMix(text, darkMode ? 22 : 14, "transparent"),
     "--color-border-strong": colorMix(text, darkMode ? 34 : 28, "transparent"),

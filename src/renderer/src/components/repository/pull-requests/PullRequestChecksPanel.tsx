@@ -86,7 +86,7 @@ export function PullRequestChecksPanel({
                   }
                 }}
               >
-                GitHub fallback
+                Open on GitHub
               </button>
             </div>
           );

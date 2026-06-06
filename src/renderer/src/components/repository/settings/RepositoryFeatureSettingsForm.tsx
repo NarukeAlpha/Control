@@ -245,7 +245,7 @@ function repositorySettingsMutationPayload(
   return payload;
 }
 
-function RepositorySettingsOverview({
+export function RepositorySettingsOverview({
   administration
 }: {
   administration: RepositoryDetail["administration"];
@@ -455,7 +455,13 @@ function RepositoryStatusActions({
   const archiveActionLabel = administration.isArchived ? "Unarchive repository" : "Archive repository";
 
   return (
-    <>
+    <section className="settings-danger-zone">
+      <header>
+        <div>
+          <h4>Danger zone</h4>
+          <small>Destructive repository status actions that require confirmation.</small>
+        </div>
+      </header>
       <div className="settings-status-actions">
         <button
           className="dark-action"
@@ -473,7 +479,7 @@ function RepositoryStatusActions({
         </small>
       </div>
       {statusDisabledReason && <small className="action-disabled-note">{statusDisabledReason}</small>}
-    </>
+    </section>
   );
 }
 
@@ -701,8 +707,6 @@ export function RepositoryFeatureSettingsForm({
 
   return (
     <>
-      <RepositorySettingsOverview administration={administration} />
-
       <form className="compose-form repository-settings-form" onSubmit={saveRepositorySettings}>
         <RepositoryTextSettingsFields
           state={state}

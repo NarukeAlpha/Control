@@ -759,11 +759,11 @@ describe("Control renderer routing", () => {
       }),
       expect.anything()
     );
-    expect(await screen.findByText("JJ")).toBeInTheDocument();
+    expect((await screen.findAllByText("JJ")).length).toBeGreaterThan(0);
     expect(screen.getByText("Git-backed")).toBeInTheDocument();
     expect(screen.getByText("Colocated")).toBeInTheDocument();
     expect(screen.getByText("GitHub connected")).toBeInTheDocument();
-    expect(screen.getByText("review-stack")).toBeInTheDocument();
+    expect(screen.getAllByText("review-stack").length).toBeGreaterThan(0);
     expect(screen.getByText("Stale")).toBeInTheDocument();
 
     const tabs = document.querySelector(".repo-tabs") as HTMLElement;
@@ -885,7 +885,7 @@ describe("Control renderer routing", () => {
     expect(within(tabs).getByRole("button", { name: /^Operations$/ })).toBeDisabled();
   });
 
-  it("opens connected local repositories in GitHub Area and external GitHub fallback", async () => {
+  it("opens connected local repositories in GitHub Area and external GitHub link", async () => {
     const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
 
     useUiStore.setState({
@@ -981,10 +981,13 @@ describe("Control renderer routing", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "Control App" })).toBeInTheDocument();
+    expect(screen.getByText("Repository root")).toBeInTheDocument();
     const tabs = document.querySelector(".repo-tabs") as HTMLElement;
 
     await userEvent.click(within(tabs).getByRole("button", { name: /^Issues$/ }));
-    expect(await screen.findByText("#1199 Compiler crash in async closure")).toBeInTheDocument();
+    expect(
+      (await screen.findAllByRole("button", { name: /Compiler crash in async closure/i })).length
+    ).toBeGreaterThan(0);
     await waitFor(() =>
       expect(listGitHubIssues).toHaveBeenCalledWith({
         areaId: localArea.id,
@@ -997,7 +1000,9 @@ describe("Control renderer routing", () => {
     );
 
     await userEvent.click(within(tabs).getByRole("button", { name: /^Pull requests$/ }));
-    expect(await screen.findByText("#519 Update concurrency runtime tests")).toBeInTheDocument();
+    expect(
+      (await screen.findAllByRole("button", { name: /Update concurrency runtime tests/i })).length
+    ).toBeGreaterThan(0);
     await waitFor(() =>
       expect(listGitHubPullRequests).toHaveBeenCalledWith({
         areaId: localArea.id,
@@ -1010,7 +1015,7 @@ describe("Control renderer routing", () => {
     );
 
     await userEvent.click(within(tabs).getByRole("button", { name: /^Actions$/ }));
-    expect((await screen.findAllByText("Swift CI completed")).length).toBeGreaterThan(0);
+    const workflowRunRow = (await screen.findAllByRole("button", { name: /Validate compiler changes/i }))[0];
     await waitFor(() =>
       expect(listGitHubActions).toHaveBeenCalledWith({
         areaId: localArea.id,
@@ -1023,6 +1028,16 @@ describe("Control renderer routing", () => {
     expect(githubListIssues).not.toHaveBeenCalled();
     expect(githubListPullRequests).not.toHaveBeenCalled();
     expect(githubListActions).not.toHaveBeenCalled();
+
+    await userEvent.click(workflowRunRow);
+    await waitFor(() =>
+      expect(useUiStore.getState().route).toEqual({
+        kind: "repository",
+        nameWithOwner: "NarukeAlpha/control",
+        tab: "actions",
+        workflowRunId: mockActions[0].id
+      })
+    );
   });
 
   it("uses cache-only reads for connected local repository GitHub tabs before authentication", async () => {
@@ -1069,7 +1084,9 @@ describe("Control renderer routing", () => {
       }
     });
 
-    expect(await screen.findByText("#1199 Compiler crash in async closure")).toBeInTheDocument();
+    expect(
+      (await screen.findAllByRole("button", { name: /Compiler crash in async closure/i })).length
+    ).toBeGreaterThan(0);
     await waitFor(() =>
       expect(listGitHubIssues).toHaveBeenCalledWith({
         areaId: localArea.id,
@@ -1321,8 +1338,11 @@ describe("Control renderer routing", () => {
     });
     renderControl({ ...makeApi(), recordRecentItem });
 
-    const issueMeta = await screen.findByText(/#1199 opened by swift-ci/i);
-    await userEvent.click(issueMeta.closest("button") as HTMLButtonElement);
+    const issueMeta = (await screen.findAllByText(/#1199 opened by swift-ci/i)).find((element) =>
+      element.closest(".thread-list-row-main")
+    );
+    expect(issueMeta).toBeTruthy();
+    await userEvent.click(issueMeta?.closest("button") as HTMLButtonElement);
     const issueSummary = await screen.findByRole("article", { name: "Issue 1199 summary" });
     await userEvent.click(within(issueSummary).getByRole("button", { name: "Open issue" }));
 
@@ -1342,6 +1362,9 @@ describe("Control renderer routing", () => {
     await userEvent.click(
       (await screen.findAllByRole("button", { name: /Update concurrency runtime tests/i }))[0]
     );
+    await waitFor(() =>
+      expect(screen.getByRole("region", { name: "Pull request 519 detail" })).toHaveFocus()
+    );
 
     await waitFor(() =>
       expect(recordRecentItem).toHaveBeenCalledWith(
@@ -1355,6 +1378,7 @@ describe("Control renderer routing", () => {
       )
     );
 
+    await userEvent.click(screen.getByRole("button", { name: "Back to pull requests" }));
     await userEvent.click(screen.getByRole("button", { name: /^Actions/i }));
     const runMeta = (await screen.findAllByText(/push on main/i))[0];
     await userEvent.click(runMeta.closest("button") as HTMLButtonElement);
@@ -1709,7 +1733,7 @@ describe("Control renderer routing", () => {
     expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument();
   });
 
-  it("opens repository tab and external fallback commands from the command palette", async () => {
+  it("opens repository tab and external GitHub commands from the command palette", async () => {
     const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
 
     useUiStore.setState({
@@ -1777,7 +1801,7 @@ describe("Control renderer routing", () => {
 
     await openCommandPalette();
     palette = await screen.findByRole("dialog", { name: "Command palette" });
-    await userEvent.type(within(palette).getByLabelText("Command palette search"), "external fallback");
+    await userEvent.type(within(palette).getByLabelText("Command palette search"), "external github");
     await userEvent.click(within(palette).getByRole("option", { name: /Open apple\/swift on GitHub/i }));
 
     expect(openExternal).toHaveBeenCalledWith("https://github.com/apple/swift");
@@ -1882,7 +1906,7 @@ describe("Control renderer routing", () => {
     expect(listRepositories).toHaveBeenCalledWith({ limit: 80, cacheOnly: true });
   });
 
-  it("renders repository settings in-app with GitHub as a fallback", async () => {
+  it("renders repository settings in-app with GitHub links", async () => {
     const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
     const updateSettings = vi.fn<ControlApi["updateSettings"]>(async (settings) => ({
       ...mockAppState.settings,
@@ -1902,7 +1926,11 @@ describe("Control renderer routing", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Repository settings" }));
 
     expect(await screen.findByRole("heading", { name: "Repository settings" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Tab visibility" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Status summary" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Control display" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Repository tab preferences" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "GitHub features" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Danger zone" })).toBeInTheDocument();
     expect(screen.getByText(/default branch main/i)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Features" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Merge policy" })).toBeInTheDocument();
@@ -1921,12 +1949,12 @@ describe("Control renderer routing", () => {
       })
     );
 
-    await userEvent.click(screen.getAllByRole("button", { name: /Open GitHub fallback/i })[0]);
+    await userEvent.click(screen.getByRole("button", { name: "Open settings on GitHub" }));
 
     expect(openExternal).toHaveBeenCalledWith("https://github.com/apple/swift/settings");
   });
 
-  it("renders wiki availability in-app with explicit GitHub fallback", async () => {
+  it("renders wiki availability in-app with explicit Open on GitHub", async () => {
     const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
     useUiStore.setState({
       ...defaultUiState,
@@ -1937,16 +1965,16 @@ describe("Control renderer routing", () => {
 
     expect(await screen.findByRole("heading", { name: "Repository wiki" })).toBeInTheDocument();
     expect(screen.getByText("Wiki is available for this repository.")).toBeInTheDocument();
-    expect(screen.getByText("GitHub wiki fallback")).toBeInTheDocument();
+    expect(screen.getByText("Open wiki on GitHub")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: /GitHub wiki fallback/i }));
+    await userEvent.click(screen.getByRole("button", { name: /Open wiki on GitHub/i }));
     await userEvent.click(screen.getByRole("button", { name: /New wiki page on GitHub/i }));
 
     expect(openExternal).toHaveBeenCalledWith("https://github.com/apple/swift/wiki");
     expect(openExternal).toHaveBeenCalledWith("https://github.com/apple/swift/wiki/_new");
   });
 
-  it("labels the Agents tab as an in-app workflow collection with GitHub fallbacks", async () => {
+  it("labels the Agents tab as an in-app triage collection with Open on GitHubs", async () => {
     const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
     useUiStore.setState({
       ...defaultUiState,
@@ -1959,19 +1987,17 @@ describe("Control renderer routing", () => {
       openExternal
     });
 
-    expect(
-      await screen.findByRole("heading", { name: "Agent workflows open in Control" })
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Agents" })).toBeInTheDocument();
     expect(screen.getByText("in-app first")).toBeInTheDocument();
     expect(
-      screen.getByText(/routes common agent triage paths to the existing Issues, Actions, and Pull requests/i)
+      screen.getByText(/routes agent triage through Issues, Actions, and Pull requests today/i)
     ).toBeInTheDocument();
 
     const agentIssuesTile = screen.getByText("Agent issues").closest("article");
     expect(agentIssuesTile).not.toBeNull();
 
     await userEvent.click(
-      within(agentIssuesTile as HTMLElement).getByRole("button", { name: /GitHub fallback/i })
+      within(agentIssuesTile as HTMLElement).getByRole("button", { name: /Open on GitHub/i })
     );
 
     expect(openExternal).toHaveBeenCalledWith(
@@ -2440,7 +2466,7 @@ describe("Control renderer routing", () => {
     expect(openExternal).not.toHaveBeenCalled();
   });
 
-  it("opens discussion and release notifications in-app with external fallback unused", async () => {
+  it("opens discussion and release notifications in-app with external github unused", async () => {
     const notifications = [
       {
         ...mockNotifications[0],
@@ -2968,7 +2994,7 @@ describe("Control renderer routing", () => {
       expect.objectContaining({
         owner: "apple",
         repo: "swift",
-        issueNumber: mockIssues[0].number,
+        issueNumber: mockIssues[1].number,
         cacheOnly: false
       })
     );
@@ -2993,10 +3019,11 @@ describe("Control renderer routing", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /^Pull requests/ }));
     expect(await screen.findByText(/This pull request updates/)).toBeInTheDocument();
+    const firstOpenPullRequest = mockPullRequests[1];
     expect(getPullRequestOverviewWithStatus).toHaveBeenCalledWith({
       owner: "apple",
       repo: "swift",
-      pullNumber: mockPullRequests[0].number,
+      pullNumber: firstOpenPullRequest.number,
       cacheOnly: false
     });
     await userEvent.click(await screen.findByRole("button", { name: "New pull request" }));
@@ -3106,10 +3133,12 @@ describe("Control renderer routing", () => {
     );
 
     await userEvent.click(screen.getByRole("button", { name: /^Pull requests/ }));
+    await userEvent.click(screen.getByRole("button", { name: "All" }));
     await userEvent.click(await screen.findByRole("button", { name: /#516 by slightbug/i }));
     expect(await screen.findByText("Merge unavailable: Pull request is already merged.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Merge pull request" })).toBeDisabled();
 
+    await userEvent.click(screen.getByRole("button", { name: "Back to pull requests" }));
     await userEvent.click(
       (await screen.findAllByRole("button", { name: /Update concurrency runtime tests/i }))[0]
     );
@@ -3254,16 +3283,17 @@ describe("Control renderer routing", () => {
     expect(screen.getByText(/All tests passed/)).toBeInTheDocument();
     expect(await screen.findByText("Add repository management controls")).toBeInTheDocument();
     expect((await screen.findAllByText("src/renderer/src/App.tsx")).length).toBeGreaterThan(0);
+    const firstOpenPullRequest = mockPullRequests[1];
     expect(getPullRequestOverviewWithStatus).toHaveBeenCalledWith({
       owner: "apple",
       repo: "swift",
-      pullNumber: mockPullRequests[0].number,
+      pullNumber: firstOpenPullRequest.number,
       cacheOnly: false
     });
     expect(listPullRequestFilesWithStatus).toHaveBeenCalledWith({
       owner: "apple",
       repo: "swift",
-      pullNumber: mockPullRequests[0].number,
+      pullNumber: firstOpenPullRequest.number,
       cacheOnly: false
     });
     expect(getPullRequestDetailWithStatus).not.toHaveBeenCalled();
@@ -3281,9 +3311,9 @@ describe("Control renderer routing", () => {
     const appFileName = within(changedFilesPanel as HTMLElement).getByText("src/renderer/src/App.tsx");
     const appFileRow = appFileName.closest(".pr-file-row");
     expect(appFileRow).not.toBeNull();
-    await userEvent.click(within(appFileRow as HTMLElement).getByRole("button", { name: "GitHub fallback" }));
+    await userEvent.click(within(appFileRow as HTMLElement).getByRole("button", { name: "Open on GitHub" }));
 
-    expect(openExternal).toHaveBeenCalledWith(`${mockPullRequests[0].htmlUrl}/files#diff-app`);
+    expect(openExternal).toHaveBeenCalledWith(`${firstOpenPullRequest.htmlUrl}/files#diff-app`);
   });
 
   it("renders split pull request subresource availability without hiding the overview", async () => {
@@ -3306,10 +3336,11 @@ describe("Control renderer routing", () => {
     expect(
       await screen.findByText("GitHub rate-limited the pull request checks request. Try again later.")
     ).toBeInTheDocument();
+    const firstOpenPullRequest = mockPullRequests[1];
     expect(listPullRequestChecksWithStatus).toHaveBeenCalledWith({
       owner: "apple",
       repo: "swift",
-      pullNumber: mockPullRequests[0].number,
+      pullNumber: firstOpenPullRequest.number,
       cacheOnly: false
     });
   });
@@ -3338,6 +3369,8 @@ describe("Control renderer routing", () => {
     renderControl(makeApi({ listPullRequests, getPullRequestOverviewWithStatus }));
 
     expect(await screen.findByRole("heading", { name: focusedPull.title })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Back to pull requests" })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Filter pull requests" })).not.toBeInTheDocument();
     expect(screen.getByText(`${focusedPull.changedFiles} files changed`)).toBeInTheDocument();
     expect(screen.queryByText("4096 files changed")).not.toBeInTheDocument();
     expect(getPullRequestOverviewWithStatus).toHaveBeenCalledWith({
@@ -3346,6 +3379,10 @@ describe("Control renderer routing", () => {
       pullNumber: focusedPull.number,
       cacheOnly: false
     });
+
+    await userEvent.click(screen.getByRole("button", { name: "Back to pull requests" }));
+    expect(await screen.findByRole("textbox", { name: "Filter pull requests" })).toBeInTheDocument();
+    expect(await screen.findByText("4096 files changed")).toBeInTheDocument();
   });
 
   it("edits an issue title and body through the provider mutation path", async () => {
@@ -3842,7 +3879,7 @@ describe("Control renderer routing", () => {
     );
   });
 
-  it("renders repository discussions in-app with filtering and external fallback", async () => {
+  it("renders repository discussions in-app with filtering and external github", async () => {
     const listDiscussionsWithStatus = vi.fn<GitHubTestApi["listDiscussionsWithStatus"]>(async () => ({
       items: mockDiscussions,
       availability: { status: "available", message: null }
@@ -3875,7 +3912,7 @@ describe("Control renderer routing", () => {
       .closest(".thread-detail");
     expect(selectedDiscussionPanel).not.toBeNull();
     await userEvent.click(
-      within(selectedDiscussionPanel as HTMLElement).getByRole("button", { name: "GitHub fallback" })
+      within(selectedDiscussionPanel as HTMLElement).getByRole("button", { name: "Open on GitHub" })
     );
 
     expect(openExternal).toHaveBeenCalledWith(mockDiscussions[1].htmlUrl);
@@ -3923,7 +3960,7 @@ describe("Control renderer routing", () => {
       expect.objectContaining({ owner: "apple", repo: "swift", limit: 20, cacheOnly: false })
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "Project GitHub fallback" }));
+    await userEvent.click(screen.getByRole("button", { name: "Open project on GitHub" }));
     expect(openExternal).toHaveBeenCalledWith(mockProjects[0].htmlUrl);
 
     const palette = await openCommandPalette();
@@ -4046,14 +4083,39 @@ describe("Control renderer routing", () => {
     const codeScanningSection = screen.getByRole("region", { name: "Code scanning alerts" });
     const secretScanningSection = screen.getByRole("region", { name: "Secret scanning alerts" });
 
-    await userEvent.click(within(dependabotSection).getByRole("button", { name: "GitHub fallback" }));
+    await userEvent.click(
+      within(dependabotSection).getByRole("button", { name: "Open Dependabot alert on GitHub" })
+    );
     expect(openExternal).toHaveBeenCalledWith(mockDependabotAlerts[0].htmlUrl);
-    await userEvent.click(within(codeScanningSection).getByRole("button", { name: "GitHub fallback" }));
+    await userEvent.click(
+      within(codeScanningSection).getByRole("button", { name: "Open code scanning alert on GitHub" })
+    );
     expect(openExternal).toHaveBeenCalledWith(mockCodeScanningAlerts[0].htmlUrl);
-    await userEvent.click(within(secretScanningSection).getByRole("button", { name: "GitHub fallback" }));
+    await userEvent.click(
+      within(secretScanningSection).getByRole("button", { name: "Open secret scanning alert on GitHub" })
+    );
     expect(openExternal).toHaveBeenCalledWith(mockSecretScanningAlerts[0].htmlUrl);
 
-    await userEvent.click(screen.getByRole("button", { name: "Branch rules fallback" }));
+    await userEvent.click(within(dependabotSection).getByRole("button", { name: "Dismissed" }));
+    await waitFor(() =>
+      expect(listDependabotAlerts).toHaveBeenLastCalledWith(
+        expect.objectContaining({ owner: "apple", repo: "swift", state: "dismissed", limit: 20 })
+      )
+    );
+    await userEvent.click(within(codeScanningSection).getByRole("button", { name: "Fixed" }));
+    await waitFor(() =>
+      expect(listCodeScanningAlerts).toHaveBeenLastCalledWith(
+        expect.objectContaining({ owner: "apple", repo: "swift", state: "fixed", limit: 20 })
+      )
+    );
+    await userEvent.click(within(secretScanningSection).getByRole("button", { name: "Resolved" }));
+    await waitFor(() =>
+      expect(listSecretScanningAlerts).toHaveBeenLastCalledWith(
+        expect.objectContaining({ owner: "apple", repo: "swift", state: "resolved", limit: 20 })
+      )
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Open branch rules on GitHub" }));
 
     expect(openExternal).toHaveBeenCalledWith("https://github.com/apple/swift/settings/branches");
   });
@@ -4079,6 +4141,34 @@ describe("Control renderer routing", () => {
       )
     ).toBeInTheDocument();
     expect(screen.queryByText("No open Dependabot alerts.")).not.toBeInTheDocument();
+  });
+
+  it("reports focused security items missing from the loaded filtered list", async () => {
+    const listDependabotAlerts = vi.fn<GitHubTestApi["listDependabotAlerts"]>(async () => ({
+      items: [],
+      availability: { status: "available", message: null }
+    }));
+
+    useUiStore.setState({
+      ...defaultUiState,
+      route: {
+        kind: "repository",
+        nameWithOwner: "apple/swift",
+        tab: "securityQuality",
+        securityItemKind: "dependabot",
+        securityItemId: "99"
+      }
+    });
+    renderControl({
+      ...makeApi({ listDependabotAlerts }),
+      getAppState: async () => appStateWithRepositoryTabPreferences({ securityQuality: "show" })
+    });
+
+    expect(
+      await screen.findByText(
+        "Dependabot alert 99 is not loaded in the current security list, state filter, or result limit."
+      )
+    ).toBeInTheDocument();
   });
 
   it("renders code scanning feature-disabled states without confusing them with empty alerts", async () => {

@@ -18,7 +18,7 @@ import { useMailboxNotifications } from "../../hooks/useMailboxNotifications";
 import { formatRelativeDate } from "../../utils/format";
 import type { ConfirmAction } from "../dialogs/confirmation";
 import { readAvailabilityMessage } from "../repository/repositoryUi";
-import { matchesCollectionFilter } from "./collectionUi";
+import { collectionRowClassName, matchesCollectionFilter } from "./collectionUi";
 import {
   maxMailboxListLimit,
   notificationInAppTarget,
@@ -146,7 +146,7 @@ function MailboxNotificationRow({
   }
 
   return (
-    <div className={`issue-row notification-row ${notification.unread ? "unread-row" : ""}`}>
+    <div className={collectionRowClassName("notification-row", { unread: notification.unread })}>
       <button
         className="notification-row-main"
         type="button"
@@ -265,7 +265,7 @@ function MailboxWorkRow({
   }
 
   return (
-    <div className="issue-row mailbox-work-row">
+    <div className={collectionRowClassName("mailbox-work-row")}>
       <button className="mailbox-work-row-main" type="button" onClick={handleOpenWorkItem}>
         {row.kind === "pull" ? <GitPullRequest size={17} /> : <CircleDot size={17} />}
         <div>
@@ -350,8 +350,8 @@ function MailboxHeader({
         >
           <CheckCircle2 size={16} /> {markVisibleNotificationsPending ? "Marking…" : "Mark visible read"}
         </button>
-        <button type="button" title="Open GitHub notifications" onClick={onOpenGitHubNotifications}>
-          <ExternalLink size={16} /> Open GitHub
+        <button type="button" title="Open notifications on GitHub" onClick={onOpenGitHubNotifications}>
+          <ExternalLink size={16} /> Open notifications on GitHub
         </button>
       </div>
     </header>

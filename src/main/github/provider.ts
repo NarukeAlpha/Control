@@ -565,29 +565,8 @@ export class GitHubProviderManager implements GitHubProvider {
   }
 
   async listRepositories(input: RepoListInput): Promise<RepositorySummary[]> {
-    const limit = input.limit ?? 50;
-    const cached = this.store.listGitHubRepositoriesWithMetadata(limit);
-
-    if (input.cacheOnly) {
-      logControlLoading("repository list cache-only", { count: cached.items.length });
-      return cached.items;
-    }
-
-    if (input.forceRefresh) {
-      return this.refreshRepositories(input);
-    }
-
-    if (cached.items.length > 0) {
-      if (repositoryCacheIsFresh(cached, cacheTtlMs.accountRepositories)) {
-        logControlLoading("repository list cache hit", { count: cached.items.length });
-      } else {
-        logControlLoading("repository list stale hit", { count: cached.items.length });
-        this.refreshInBackground(() => this.refreshRepositories(input));
-      }
-      return cached.items;
-    }
-
-    return this.refreshRepositories(input);
+    const result = await this.listRepositoriesWithStatus(input);
+    return result.items;
   }
 
   async listRepositoriesWithStatus(input: RepoListInput = {}): Promise<RepositoryListResult> {
@@ -2052,32 +2031,6 @@ export class GitHubProviderManager implements GitHubProvider {
       this.store.clearCacheByPrefix("github", prefix);
       this.requestDedupe.invalidatePrefix(prefix);
     }
-  }
-
-  private async refreshRepositories(input: RepoListInput): Promise<RepositorySummary[]> {
-    const key = `refresh-repositories:${input.limit ?? 50}`;
-    return this.dedupe(key, async () => {
-      try {
-        logControlLoading("repository list live refresh start", { limit: input.limit ?? 50 });
-        const previous = this.store.listGitHubRepositories(input.limit ?? 50);
-        const repositories = await (await this.provider()).listRepositories(input);
-        repositories.forEach((repository) => this.store.upsertGitHubRepositorySummary(repository));
-        const changed = !areMateriallyEqual(previous, repositories);
-        if (changed) {
-          this.onRepositoryDataUpdated(null);
-        }
-        logControlLoading(
-          changed ? "repository list live refresh changed" : "repository list live refresh unchanged",
-          {
-            count: repositories.length
-          }
-        );
-        return repositories;
-      } catch (error) {
-        console.warn("Control could not refresh GitHub repositories.", error);
-        return [];
-      }
-    });
   }
 
   private async refreshRepositoriesWithStatusLive(input: RepoListInput): Promise<RepositoryListResult> {

@@ -3194,6 +3194,14 @@ p {
   grid-template-columns: minmax(0, 1fr);
 }
 
+.github-split.pull-request-list-route {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.github-split.pull-request-list-route .thread-list {
+  border-right: 0;
+}
+
 .thread-list {
   overflow: auto;
   border-right: 1px solid rgba(85, 105, 135, 0.11);
@@ -3236,7 +3244,16 @@ p {
   align-items: start;
 }
 
+.pr-detail-layout {
+  align-items: start;
+}
+
 .issue-timeline-column {
+  align-content: start;
+}
+
+.pr-detail-timeline,
+.pr-detail-secondary {
   align-content: start;
 }
 
@@ -3244,6 +3261,24 @@ p {
   border: 0;
   background: transparent;
   padding: 0;
+}
+
+.ui-rail-section .diff-summary,
+.ui-rail-section .workflow-summary {
+  display: grid;
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.ui-rail-section .thread-actions,
+.ui-rail-section .comment-composer {
+  justify-items: stretch;
+}
+
+.ui-rail-section .thread-actions button,
+.ui-rail-section .comment-composer button {
+  width: 100%;
 }
 
 .issue-summary-tile {
@@ -3723,6 +3758,14 @@ p {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+.pr-timeline-inspection {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.pr-secondary-inspection {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .pr-inspection article {

@@ -3018,14 +3018,18 @@ describe("Control renderer routing", () => {
     );
 
     await userEvent.click(screen.getByRole("button", { name: /^Pull requests/ }));
-    expect(await screen.findByText(/This pull request updates/)).toBeInTheDocument();
     const firstOpenPullRequest = mockPullRequests[1];
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: /Update concurrency runtime tests/i }))[0]
+    );
+    expect(await screen.findByText(/This pull request updates/)).toBeInTheDocument();
     expect(getPullRequestOverviewWithStatus).toHaveBeenCalledWith({
       owner: "apple",
       repo: "swift",
       pullNumber: firstOpenPullRequest.number,
       cacheOnly: false
     });
+    await userEvent.click(screen.getByRole("button", { name: "Back to pull requests" }));
     await userEvent.click(await screen.findByRole("button", { name: "New pull request" }));
     await userEvent.type(screen.getByPlaceholderText("Pull request title"), "Feature branch");
     await userEvent.type(screen.getByPlaceholderText("compare branch"), "feature/demo");
@@ -3142,7 +3146,6 @@ describe("Control renderer routing", () => {
     await userEvent.click(
       (await screen.findAllByRole("button", { name: /Update concurrency runtime tests/i }))[0]
     );
-    await userEvent.click(screen.getByRole("button", { name: "Load discussion" }));
     await screen.findByText("CI is running. Review the changed files and merge status before landing.");
     await userEvent.type(screen.getByPlaceholderText("GitHub usernames"), "octocat, applebot");
     await userEvent.type(screen.getByPlaceholderText("team slugs"), "compiler");
@@ -3263,17 +3266,17 @@ describe("Control renderer routing", () => {
       openExternal
     });
 
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: /Update concurrency runtime tests/i }))[0]
+    );
     expect(
       await screen.findByText(
         "This pull request updates the repository surface and keeps the change small enough to review in Control."
       )
     ).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Load reviews" }));
     await userEvent.click(screen.getByRole("button", { name: "Load linked issues" }));
-    await userEvent.click(screen.getByRole("button", { name: "Load timeline events" }));
     await userEvent.click(screen.getByRole("button", { name: "Load review threads" }));
     await userEvent.click(screen.getByRole("button", { name: "Load checks" }));
-    await userEvent.click(screen.getByRole("button", { name: "Load commits" }));
     await userEvent.click(screen.getByRole("button", { name: "Load changed files" }));
 
     expect(await screen.findByText("APPROVED by reviewer")).toBeInTheDocument();
@@ -3330,6 +3333,9 @@ describe("Control renderer routing", () => {
     });
     renderControl(makeApi({ listPullRequestChecksWithStatus }));
 
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: /Update concurrency runtime tests/i }))[0]
+    );
     expect(await screen.findByText(/This pull request updates/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Load checks" }));
 
@@ -3382,7 +3388,7 @@ describe("Control renderer routing", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Back to pull requests" }));
     expect(await screen.findByRole("textbox", { name: "Filter pull requests" })).toBeInTheDocument();
-    expect(await screen.findByText("4096 files changed")).toBeInTheDocument();
+    expect(await screen.findByText(/4096 files/)).toBeInTheDocument();
   });
 
   it("edits an issue title and body through the provider mutation path", async () => {

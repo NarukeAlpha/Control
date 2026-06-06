@@ -124,7 +124,7 @@ afterEach(() => {
 });
 
 describe("PullRequestsTab", () => {
-  it("loads only overview on selection and fetches files after the files section is requested", async () => {
+  it("loads routed timeline sections and fetches files after the files section is requested", async () => {
     const api = installControlApi();
     renderPullRequestsTab();
 
@@ -138,24 +138,24 @@ describe("PullRequestsTab", () => {
     });
     await waitFor(() => expect(api.getPullRequestOverviewWithStatus).toHaveBeenCalledTimes(1));
 
-    expect(api.listPullRequestCommentsWithStatus).not.toHaveBeenCalled();
+    await waitFor(() => expect(api.listPullRequestCommentsWithStatus).toHaveBeenCalledTimes(1));
+    expect(api.listPullRequestCommitsWithStatus).toHaveBeenCalledTimes(1);
+    expect(api.listPullRequestReviewsWithStatus).toHaveBeenCalledTimes(1);
+    expect(api.listPullRequestTimelineWithStatus).toHaveBeenCalledTimes(1);
     expect(api.listPullRequestFilesWithStatus).not.toHaveBeenCalled();
-    expect(api.listPullRequestCommitsWithStatus).not.toHaveBeenCalled();
-    expect(api.listPullRequestReviewsWithStatus).not.toHaveBeenCalled();
     expect(api.listPullRequestChecksWithStatus).not.toHaveBeenCalled();
     expect(api.listPullRequestReviewThreadsWithStatus).not.toHaveBeenCalled();
-    expect(api.listPullRequestTimelineWithStatus).not.toHaveBeenCalled();
     expect(api.listPullRequestLinkedIssuesWithStatus).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Load changed files" }));
 
     await waitFor(() => expect(api.listPullRequestFilesWithStatus).toHaveBeenCalledTimes(1));
-    expect(api.listPullRequestCommentsWithStatus).not.toHaveBeenCalled();
-    expect(api.listPullRequestCommitsWithStatus).not.toHaveBeenCalled();
-    expect(api.listPullRequestReviewsWithStatus).not.toHaveBeenCalled();
+    expect(api.listPullRequestCommentsWithStatus).toHaveBeenCalledTimes(1);
+    expect(api.listPullRequestCommitsWithStatus).toHaveBeenCalledTimes(1);
+    expect(api.listPullRequestReviewsWithStatus).toHaveBeenCalledTimes(1);
     expect(api.listPullRequestChecksWithStatus).not.toHaveBeenCalled();
     expect(api.listPullRequestReviewThreadsWithStatus).not.toHaveBeenCalled();
-    expect(api.listPullRequestTimelineWithStatus).not.toHaveBeenCalled();
+    expect(api.listPullRequestTimelineWithStatus).toHaveBeenCalledTimes(1);
     expect(api.listPullRequestLinkedIssuesWithStatus).not.toHaveBeenCalled();
   });
 });

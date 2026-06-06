@@ -381,7 +381,7 @@ function useSidebarRepositoryModel({
   const virtualizer = useVirtualizer({
     count: sidebarRepositories.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 54,
+    estimateSize: () => 48,
     overscan: 8
   });
 

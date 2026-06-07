@@ -47,7 +47,7 @@ export function PullRequestDetailHeader({
   reviewDecisionAvailabilityMessage: string | null;
 }): JSX.Element {
   return (
-    <header className="thread-header">
+    <header className="thread-header pr-detail-header">
       <h2>{selectedPull.title}</h2>
       <small>
         #{selectedPull.number} by {selectedPull.authorLogin ?? "unknown"} · {selectedPull.headRefName} -&gt;{" "}

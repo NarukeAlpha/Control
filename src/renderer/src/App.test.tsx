@@ -3274,18 +3274,21 @@ describe("Control renderer routing", () => {
         "This pull request updates the repository surface and keeps the change small enough to review in Control."
       )
     ).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Load linked issues" }));
-    await userEvent.click(screen.getByRole("button", { name: "Load review threads" }));
-    await userEvent.click(screen.getByRole("button", { name: "Load checks" }));
-    await userEvent.click(screen.getByRole("button", { name: "Load changed files" }));
-
     expect(await screen.findByText("APPROVED by reviewer")).toBeInTheDocument();
     expect(await screen.findByText("connected apple/swift #1200 Crash on build")).toBeInTheDocument();
+    expect(await screen.findByText("Add repository management controls")).toBeInTheDocument();
+    const timelineActivity = screen.getByLabelText("Pull request timeline activity");
+    expect(
+      within(timelineActivity).getByText("connected apple/swift #1200 Crash on build")
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Load linked issues" }));
+    await userEvent.click(screen.getByRole("tab", { name: /Files changed/ }));
     expect(await screen.findByText(/Can this be a typed helper/)).toBeInTheDocument();
+    expect((await screen.findAllByText("src/renderer/src/App.tsx")).length).toBeGreaterThan(0);
+    await userEvent.click(screen.getByRole("tab", { name: /Checks/ }));
     expect(await screen.findByText("macOS build")).toBeInTheDocument();
     expect(screen.getByText(/All tests passed/)).toBeInTheDocument();
-    expect(await screen.findByText("Add repository management controls")).toBeInTheDocument();
-    expect((await screen.findAllByText("src/renderer/src/App.tsx")).length).toBeGreaterThan(0);
     const firstOpenPullRequest = mockPullRequests[1];
     expect(getPullRequestOverviewWithStatus).toHaveBeenCalledWith({
       owner: "apple",
@@ -3301,15 +3304,9 @@ describe("Control renderer routing", () => {
     });
     expect(getPullRequestDetailWithStatus).not.toHaveBeenCalled();
 
+    await userEvent.click(screen.getByRole("tab", { name: /Files changed/ }));
     const changedFilesPanel = screen.getByRole("heading", { name: "Changed files" }).closest("article");
     expect(changedFilesPanel).not.toBeNull();
-    const timelinePanel = screen.getByRole("heading", { name: "Timeline events" }).closest("article");
-    expect(timelinePanel).not.toBeNull();
-    expect(
-      within(timelinePanel as HTMLElement).getByRole("button", {
-        name: /connected apple\/swift #1200 Crash on build/
-      })
-    ).toBeInTheDocument();
 
     const appFileName = within(changedFilesPanel as HTMLElement).getByText("src/renderer/src/App.tsx");
     const appFileRow = appFileName.closest(".pr-file-row");
@@ -3337,7 +3334,7 @@ describe("Control renderer routing", () => {
       (await screen.findAllByRole("button", { name: /Update concurrency runtime tests/i }))[0]
     );
     expect(await screen.findByText(/This pull request updates/)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Load checks" }));
+    await userEvent.click(screen.getByRole("tab", { name: /Checks/ }));
 
     expect(
       await screen.findByText("GitHub rate-limited the pull request checks request. Try again later.")
@@ -3388,7 +3385,10 @@ describe("Control renderer routing", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Back to pull requests" }));
     expect(await screen.findByRole("textbox", { name: "Filter pull requests" })).toBeInTheDocument();
-    expect(await screen.findByText(/4096 files/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(`#${largeFirstPull.number} by ${largeFirstPull.authorLogin}`)
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/4096 files/)).not.toBeInTheDocument();
   });
 
   it("edits an issue title and body through the provider mutation path", async () => {

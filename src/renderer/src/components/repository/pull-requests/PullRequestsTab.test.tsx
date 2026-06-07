@@ -124,7 +124,7 @@ afterEach(() => {
 });
 
 describe("PullRequestsTab", () => {
-  it("loads routed timeline sections and fetches files after the files section is requested", async () => {
+  it("loads routed timeline sections and fetches files after the files tab is selected", async () => {
     const api = installControlApi();
     renderPullRequestsTab();
 
@@ -147,14 +147,14 @@ describe("PullRequestsTab", () => {
     expect(api.listPullRequestReviewThreadsWithStatus).not.toHaveBeenCalled();
     expect(api.listPullRequestLinkedIssuesWithStatus).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "Load changed files" }));
+    fireEvent.click(screen.getByRole("tab", { name: /Files changed/ }));
 
     await waitFor(() => expect(api.listPullRequestFilesWithStatus).toHaveBeenCalledTimes(1));
     expect(api.listPullRequestCommentsWithStatus).toHaveBeenCalledTimes(1);
     expect(api.listPullRequestCommitsWithStatus).toHaveBeenCalledTimes(1);
     expect(api.listPullRequestReviewsWithStatus).toHaveBeenCalledTimes(1);
     expect(api.listPullRequestChecksWithStatus).not.toHaveBeenCalled();
-    expect(api.listPullRequestReviewThreadsWithStatus).not.toHaveBeenCalled();
+    expect(api.listPullRequestReviewThreadsWithStatus).toHaveBeenCalledTimes(1);
     expect(api.listPullRequestTimelineWithStatus).toHaveBeenCalledTimes(1);
     expect(api.listPullRequestLinkedIssuesWithStatus).not.toHaveBeenCalled();
   });

@@ -1784,7 +1784,6 @@ function WorkflowRunActionsSection({
   selectedFailedJobsRerunDisabledReason,
   selectedCancelDisabledReason,
   onOpenCommit,
-  onOpenExternal,
   onRerun,
   onRerunFailedJobs,
   onCancel
@@ -1794,7 +1793,6 @@ function WorkflowRunActionsSection({
   selectedFailedJobsRerunDisabledReason: string | null;
   selectedCancelDisabledReason: string | null;
   onOpenCommit(): void;
-  onOpenExternal(url: string): void;
   onRerun(): void;
   onRerunFailedJobs(): void;
   onCancel(): void;
@@ -1808,9 +1806,6 @@ function WorkflowRunActionsSection({
         onClick={onOpenCommit}
       >
         Open commit in Control
-      </button>
-      <button type="button" onClick={() => onOpenExternal(selectedRun.htmlUrl)}>
-        <ExternalLink size={16} /> Open on GitHub
       </button>
       <button
         type="button"
@@ -1836,17 +1831,6 @@ function WorkflowRunActionsSection({
       >
         Cancel run
       </button>
-      {selectedRerunDisabledReason && (
-        <small className="action-disabled-note">Rerun unavailable: {selectedRerunDisabledReason}</small>
-      )}
-      {selectedFailedJobsRerunDisabledReason && (
-        <small className="action-disabled-note">
-          Failed-job rerun unavailable: {selectedFailedJobsRerunDisabledReason}
-        </small>
-      )}
-      {selectedCancelDisabledReason && (
-        <small className="action-disabled-note">Cancel unavailable: {selectedCancelDisabledReason}</small>
-      )}
     </div>
   );
 }
@@ -2784,7 +2768,6 @@ export function ActionsTab(props: ActionsTabProps): JSX.Element {
               selectedFailedJobsRerunDisabledReason={selectedFailedJobsRerunDisabledReason}
               selectedCancelDisabledReason={selectedCancelDisabledReason}
               onOpenCommit={openSelectedRunCommit}
-              onOpenExternal={onOpenExternal}
               onRerun={rerunSelectedWorkflow}
               onRerunFailedJobs={rerunSelectedFailedJobs}
               onCancel={cancelSelectedWorkflow}

@@ -3680,9 +3680,10 @@ describe("Control renderer routing", () => {
     await userEvent.click(screen.getByRole("button", { name: "Deploy preview" }));
     await userEvent.click((await screen.findAllByRole("button", { name: /Release validation/i }))[0]);
 
+    expect(await screen.findByRole("heading", { name: /Release validation/ })).toBeInTheDocument();
     expect(
-      await screen.findByText("Cancel unavailable: Completed workflow runs cannot be canceled.")
-    ).toBeInTheDocument();
+      screen.queryByText("Cancel unavailable: Completed workflow runs cannot be canceled.")
+    ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Cancel run" })).toBeDisabled();
   });
 
@@ -3728,11 +3729,10 @@ describe("Control renderer routing", () => {
     await userEvent.click(screen.getByRole("button", { name: mockActions[0].name }));
     await userEvent.click((await screen.findAllByRole("button", { name: /^Publish docs preview/ }))[0]);
 
+    expect(await screen.findByRole("heading", { name: /Publish docs preview/ })).toBeInTheDocument();
     expect(
-      await screen.findByText(
-        "Failed-job rerun unavailable: Only failed workflow runs can rerun failed jobs."
-      )
-    ).toBeInTheDocument();
+      screen.queryByText("Failed-job rerun unavailable: Only failed workflow runs can rerun failed jobs.")
+    ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Rerun failed jobs" })).toBeDisabled();
   });
 

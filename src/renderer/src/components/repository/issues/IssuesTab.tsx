@@ -260,9 +260,9 @@ function IssueListRow({
     <div className="issue-row thread-list-action-row">
       <button className="thread-list-row-main" type="button" onClick={handleOpenIssue}>
         <CircleDot className={issueStateIconClassName(issue)} size={17} />
-        <div>
+        <div className="issue-row-copy">
           <strong>{issue.title}</strong>
-          <small>
+          <small className="issue-row-meta">
             #{issue.number} opened by {issue.authorLogin ?? "unknown"} · {issue.comments} comments
           </small>
         </div>
@@ -1057,12 +1057,8 @@ function IssueCreatePane({
 function IssueDetailHeader({
   selectedIssue,
   selectedMilestone,
-  selectedAssignees,
-  selectedLabels
-}: Pick<
-  IssueRouteProps,
-  "selectedIssue" | "selectedMilestone" | "selectedAssignees" | "selectedLabels"
->): JSX.Element {
+  selectedAssignees
+}: Pick<IssueRouteProps, "selectedIssue" | "selectedMilestone" | "selectedAssignees">): JSX.Element {
   return (
     <header className="thread-header">
       <h2>{selectedIssue.title}</h2>
@@ -1083,13 +1079,6 @@ function IssueDetailHeader({
         <div className="label-stack label-row">
           {selectedAssignees.map((assignee) => (
             <span key={assignee.id}>Assigned @{assignee.login}</span>
-          ))}
-        </div>
-      )}
-      {selectedLabels.length > 0 && (
-        <div className="label-stack label-row">
-          {selectedLabels.map((label) => (
-            <IssueLabelChip key={label.id} label={label} />
           ))}
         </div>
       )}
@@ -1222,7 +1211,6 @@ function IssueDetailRouteView({
         selectedIssue={selectedIssue}
         selectedMilestone={selectedMilestone}
         selectedAssignees={selectedAssignees}
-        selectedLabels={selectedLabels}
       />
       {issueDetail.error && <div className="error-state">{issueDetail.error.message}</div>}
       {issueDetailAvailabilityMessage && <div className="error-state">{issueDetailAvailabilityMessage}</div>}
@@ -1342,6 +1330,7 @@ function IssuesTabContent(model: IssuesTabModel): JSX.Element {
             label={issueCountLabel}
             actions={
               <button
+                className="dark-action issue-create-button"
                 type="button"
                 disabled={Boolean(createIssueDisabledReason)}
                 title={createIssueDisabledReason ?? undefined}

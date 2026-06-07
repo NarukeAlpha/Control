@@ -1949,7 +1949,7 @@ p {
   display: flex;
   grid-column: 1 / -1;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
   justify-content: flex-end;
 }
 
@@ -2006,11 +2006,21 @@ p {
 }
 
 .repo-action-row button {
+  gap: 5px;
+  min-height: 32px;
   border-color: rgba(108, 128, 156, 0.2);
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.58);
+  padding: 0 10px;
+  font-size: 12px;
   box-shadow:
     0 10px 22px rgba(15, 23, 42, 0.06),
     inset 0 1px 0 rgba(255, 255, 255, 0.74);
+}
+
+.repo-action-row button svg {
+  width: 14px;
+  height: 14px;
 }
 
 .repo-action-row button:hover:not(:disabled) {
@@ -2438,22 +2448,13 @@ p {
 
 .code-browser-header {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 16px;
   border: 1px solid var(--color-border);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.72);
   padding: 14px;
-}
-
-.code-browser-header h1 {
-  overflow: hidden;
-  margin-bottom: 6px;
-  color: #08111f;
-  font-size: 20px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .code-browser-header-actions {
@@ -2478,20 +2479,74 @@ p {
 .path-crumbs {
   display: flex;
   min-width: 0;
-  flex-wrap: wrap;
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 4px;
+  justify-self: start;
+  gap: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface-control);
+  padding: 3px;
+  box-shadow: inset 0 1px 0 var(--color-surface-highlight);
+  scrollbar-width: none;
 }
 
-.path-crumbs button {
-  color: #37516f;
-  font-size: 13px;
+.path-crumbs::-webkit-scrollbar {
+  display: none;
 }
 
-.path-crumbs button + button::before {
+.path-crumb-segment {
+  display: inline-flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: min(190px, 34vw);
+  min-height: 30px;
+  align-items: center;
+  gap: 6px;
+  border-radius: 8px;
+  background: transparent;
   color: var(--color-text-muted);
-  content: "/";
-  margin-right: 4px;
+  padding: 0 8px;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.path-crumb-segment svg {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+}
+
+.path-crumb-segment span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.path-crumb-segment:hover:not(.current) {
+  background: var(--color-surface-row-hover);
+  color: var(--color-text);
+}
+
+.path-crumb-segment.current {
+  max-width: min(240px, 42vw);
+  background: var(--color-surface-row-hover);
+  color: var(--color-heading);
+  font-weight: 750;
+}
+
+.path-crumb-segment.current svg {
+  color: var(--color-heading);
+}
+
+.path-crumb-separator {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+  opacity: 0.65;
 }
 
 .code-browser-list {
@@ -7572,7 +7627,6 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
     .repo-title-line h1,
     .repo-tabs button.active,
     .readme-panel header,
-    .code-browser-header h1,
     .code-viewer-toolbar span,
     .binary-file-fallback strong,
     .issue-summary-header h2,

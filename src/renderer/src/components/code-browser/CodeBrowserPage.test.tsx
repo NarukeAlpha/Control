@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { RepoFileContent } from "@shared/github";
@@ -10,6 +10,28 @@ import { CodeBrowserPage } from "./CodeBrowserPage";
 const repository = mockRepositoryDetail({ owner: "apple", repo: "swift" });
 
 describe("CodeBrowserPage file states", () => {
+  it("keeps source headers focused on in-app navigation and file actions", () => {
+    const { container } = renderCodeBrowser(mockFileContent({ path: "src/main.ts", ref: "main" }));
+    const sourceHeader = container.querySelector(".code-browser-header");
+    const sourceCrumbs = container.querySelectorAll(".path-crumb-segment");
+
+    expect(sourceHeader).not.toBeNull();
+    expect(
+      within(sourceHeader as HTMLElement).queryByRole("heading", { name: "src/main.ts" })
+    ).not.toBeInTheDocument();
+    expect(
+      within(sourceHeader as HTMLElement).queryByRole("button", { name: "Repository" })
+    ).not.toBeInTheDocument();
+    expect(
+      within(sourceHeader as HTMLElement).queryByRole("button", { name: /Open on GitHub/i })
+    ).not.toBeInTheDocument();
+    expect(sourceCrumbs).toHaveLength(3);
+    expect(sourceCrumbs[2]).toHaveAttribute("aria-current", "page");
+    expect(sourceCrumbs[2]).not.toHaveAttribute("disabled");
+    expect(sourceCrumbs[2]?.tagName).toBe("SPAN");
+    expect(screen.getByRole("button", { name: /Open raw/i })).toBeInTheDocument();
+  });
+
   it("renders provider image state through the raw download URL", () => {
     renderCodeBrowser({
       ...mockFileContent({ path: "assets/logo.png", ref: "main" }),
@@ -91,7 +113,6 @@ function codeBrowserElement(fileContent: RepoFileContent) {
         line: null
       }}
       tags={[]}
-      onBackToRepository={vi.fn()}
       onExpandCommits={vi.fn()}
       onOpenCodeBrowser={vi.fn()}
       onOpenCommit={vi.fn()}

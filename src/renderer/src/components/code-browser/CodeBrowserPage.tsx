@@ -1,7 +1,7 @@
 import {
   CheckCircle2,
   ChevronDown,
-  Code2,
+  ChevronRight,
   Copy,
   Download,
   ExternalLink,
@@ -11,7 +11,7 @@ import {
   Lock,
   RefreshCw
 } from "lucide-react";
-import { useRef, useState, type ChangeEvent, type JSX, type RefObject } from "react";
+import { Fragment, useRef, useState, type ChangeEvent, type JSX, type RefObject } from "react";
 
 import type {
   BranchSummary,
@@ -39,8 +39,7 @@ import {
   isPreviewableImagePath,
   normalizeCodeLineNumber,
   parentDirectory,
-  pathSegments,
-  repositoryPathForEntryType
+  pathSegments
 } from "./codeBrowserUi";
 import type { AppRoute } from "../../stores/uiStore";
 import { formatRelativeDate } from "../../utils/format";
@@ -70,7 +69,6 @@ interface CodeBrowserPageProps {
   commitsAvailability: GitHubReadAvailability | null;
   error: Error | null;
   onRefresh(): Promise<unknown> | void;
-  onBackToRepository(): void;
   onOpenCodeBrowser(
     path: string,
     entryType: CodeBrowserEntryType,
@@ -141,9 +139,25 @@ function CodeBrowserPathSegment({
     onOpenCodeBrowser(segment.path, entryType);
   }
 
+  const SegmentIcon = isLast && entryType === "file" ? FileIcon : Folder;
+
+  if (isLast) {
+    return (
+      <span
+        className="path-crumb-segment current"
+        aria-current="page"
+        title={`Current ${entryType}: ${segment.label}`}
+      >
+        <SegmentIcon size={14} />
+        <span>{segment.label}</span>
+      </span>
+    );
+  }
+
   return (
-    <button type="button" disabled={isLast} onClick={openSegment}>
-      {segment.label}
+    <button className="path-crumb-segment" type="button" title={`Open ${segment.path}`} onClick={openSegment}>
+      <SegmentIcon size={14} />
+      <span>{segment.label}</span>
     </button>
   );
 }
@@ -207,60 +221,65 @@ function CodeBrowserRefPicker({
 function CodeBrowserHeader({
   repository,
   route,
-  browserPath,
-  browserUrl,
   currentRef,
   branches,
   tags,
   refsLoading,
   hasCurrentRefOption,
-  onBackToRepository,
   onOpenCodeBrowser,
-  onSelectRef,
-  onOpenExternal
+  onSelectRef
 }: {
   repository: RepositoryDetail;
   route: Extract<AppRoute, { kind: "codeBrowser" }>;
-  browserPath: string;
-  browserUrl: string;
   currentRef: string;
   branches: BranchSummary[];
   tags: TagSummary[];
   refsLoading: boolean;
   hasCurrentRefOption: boolean;
-  onBackToRepository(): void;
   onOpenCodeBrowser(path: string, entryType: "file" | "dir", ref?: string | null, line?: number | null): void;
   onSelectRef(ref: string): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   const segments = pathSegments(route.path);
 
-  function openFallback(): void {
-    onOpenExternal(browserUrl);
+  function openRepositoryRoot(): void {
+    onOpenCodeBrowser("", "dir", currentRef, null);
   }
 
   return (
     <header className="code-browser-header">
-      <button type="button" onClick={onBackToRepository}>
-        <Code2 size={16} /> Repository
-      </button>
-      <div>
-        <h1>{browserPath}</h1>
-        <nav className="path-crumbs" aria-label="File path">
-          <button type="button" onClick={onBackToRepository}>
-            {repository.name}
+      <nav className="path-crumbs" aria-label="File path">
+        {segments.length === 0 ? (
+          <span
+            className="path-crumb-segment current"
+            aria-current="page"
+            title={`Current directory: ${repository.name}`}
+          >
+            <Folder size={14} />
+            <span>{repository.name}</span>
+          </span>
+        ) : (
+          <button
+            className="path-crumb-segment"
+            type="button"
+            title={`Open ${repository.name} repository root`}
+            onClick={openRepositoryRoot}
+          >
+            <Folder size={14} />
+            <span>{repository.name}</span>
           </button>
-          {segments.map((segment, index) => (
+        )}
+        {segments.map((segment, index) => (
+          <Fragment key={segment.path}>
+            <ChevronRight className="path-crumb-separator" size={14} aria-hidden="true" />
             <CodeBrowserPathSegment
-              key={segment.path}
               segment={segment}
               isLast={index === segments.length - 1}
               entryType={index === segments.length - 1 ? route.entryType : "dir"}
               onOpenCodeBrowser={onOpenCodeBrowser}
             />
-          ))}
-        </nav>
-      </div>
+          </Fragment>
+        ))}
+      </nav>
       <div className="code-browser-header-actions">
         <CodeBrowserRefPicker
           currentRef={currentRef}
@@ -270,9 +289,6 @@ function CodeBrowserHeader({
           hasCurrentRefOption={hasCurrentRefOption}
           onSelectRef={onSelectRef}
         />
-        <button type="button" onClick={openFallback}>
-          <ExternalLink size={16} /> Open on GitHub
-        </button>
       </div>
     </header>
   );
@@ -864,7 +880,6 @@ export function CodeBrowserPage({
   commitsAvailability,
   error,
   onRefresh,
-  onBackToRepository,
   onOpenCodeBrowser,
   onOpenCommit,
   onSelectRef,
@@ -901,10 +916,6 @@ export function CodeBrowserPage({
   const highlightedLine = isFile ? normalizeCodeLineNumber(route.line) : null;
   const hasCurrentRefOption =
     branches.some((branch) => branch.name === currentRef) || tags.some((tag) => tag.name === currentRef);
-  const browserPath = route.path || repository.name;
-  const browserUrl = `${repositoryPathForEntryType(repository, route.path, route.entryType, currentRef)}${
-    highlightedLine ? `#L${highlightedLine}` : ""
-  }`;
   const fileStatusKey = `${route.nameWithOwner}:${route.ref ?? ""}:${route.path}:${highlightedLine ?? ""}`;
   const visibleCopyStatus = copyStatus?.key === fileStatusKey ? copyStatus.label : null;
   const filePath = fileContent?.path ?? route.path;
@@ -942,17 +953,13 @@ export function CodeBrowserPage({
       <CodeBrowserHeader
         repository={repository}
         route={route}
-        browserPath={browserPath}
-        browserUrl={browserUrl}
         currentRef={currentRef}
         branches={branches}
         tags={tags}
         refsLoading={refsLoading}
         hasCurrentRefOption={hasCurrentRefOption}
-        onBackToRepository={onBackToRepository}
         onOpenCodeBrowser={onOpenCodeBrowser}
         onSelectRef={onSelectRef}
-        onOpenExternal={onOpenExternal}
       />
 
       {!githubReady && <CodeBrowserCachedModeBanner />}

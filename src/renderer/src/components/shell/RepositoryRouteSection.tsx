@@ -533,18 +533,6 @@ function CodeBrowserRoutePage({
     return Promise.all([refreshRepositoryDetailNow(), refreshCodeBrowserNow()]);
   };
 
-  const backToRepository: CodeBrowserPageProps["onBackToRepository"] = () => {
-    if (codeBrowserRef) {
-      navigation.selectRepositoryRefInApp(
-        effectiveRepository,
-        codeBrowserRef,
-        navigation.repositoryRefKindForName(codeBrowserRef)
-      );
-      return;
-    }
-    navigation.openRepositoryInApp(effectiveRepository, "code");
-  };
-
   const openCodeBrowser: CodeBrowserPageProps["onOpenCodeBrowser"] = (path, entryType, refOverride, line) => {
     navigation.openCodeBrowserInApp(
       effectiveRepository,
@@ -599,7 +587,6 @@ function CodeBrowserRoutePage({
       commitsAvailability={fileCommitsAvailability}
       error={repository.error ?? codeBrowserContents.error ?? fileContent.error ?? fileCommits.error}
       onRefresh={refreshCodeBrowser}
-      onBackToRepository={backToRepository}
       onOpenCodeBrowser={openCodeBrowser}
       onOpenCommit={openCommit}
       onSelectRef={selectRef}

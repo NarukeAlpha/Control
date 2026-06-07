@@ -1,4 +1,19 @@
-import { ChevronDown, Download, ExternalLink, Search, Workflow } from "lucide-react";
+import {
+  ArrowLeft,
+  CalendarDays,
+  CheckCircle2,
+  ChevronDown,
+  CircleDot,
+  Clock3,
+  Download,
+  ExternalLink,
+  GitBranch,
+  Home,
+  ListFilter,
+  Search,
+  Workflow,
+  XCircle
+} from "lucide-react";
 import { useState, type FormEvent, type JSX } from "react";
 import { useQuery } from "@tanstack/react-query";
 
@@ -16,6 +31,7 @@ import type {
   WorkflowRunDetail,
   WorkflowRunDetailResult,
   WorkflowRunJobSummary,
+  WorkflowRunStepSummary,
   WorkflowRunSummary
 } from "@shared/github";
 
@@ -35,6 +51,174 @@ import { useActionsTabQueries, workflowRunDetailQueryKey } from "./ActionsTab.qu
 
 const maxActionsLimit = 100;
 const maxWorkflowDefinitionLimit = 100;
+const workflowRunStatusSuccessStates = new Set(["success", "completed"]);
+const workflowRunStatusAttentionStates = new Set([
+  "failure",
+  "cancelled",
+  "timed_out",
+  "startup_failure",
+  "action_required"
+]);
+
+function workflowStateText(value: string | null | undefined): string {
+  return value?.replace(/_/g, " ") ?? "queued";
+}
+
+function workflowStateClass(value: string | null | undefined): string {
+  if (value && workflowRunStatusSuccessStates.has(value)) {
+    return "success";
+  }
+  if (value && workflowRunStatusAttentionStates.has(value)) {
+    return "attention";
+  }
+  return "";
+}
+
+function WorkflowStateIcon({ state }: { state: string | null | undefined }): JSX.Element {
+  if (state && workflowRunStatusSuccessStates.has(state)) {
+    return <CheckCircle2 className="workflow-state-icon success" size={18} />;
+  }
+  if (state && workflowRunStatusAttentionStates.has(state)) {
+    return <XCircle className="workflow-state-icon attention" size={18} />;
+  }
+  return <CircleDot className="workflow-state-icon" size={18} />;
+}
+
+function workflowRunState(run: Pick<WorkflowRunSummary, "conclusion" | "status">): string | null {
+  return run.conclusion ?? run.status ?? "queued";
+}
+
+function workflowEventLabel(value: string | null | undefined): string {
+  if (!value) {
+    return "Unknown event";
+  }
+  return value
+    .split("_")
+    .map((part) => (part ? `${part[0]?.toUpperCase()}${part.slice(1)}` : part))
+    .join(" ");
+}
+
+function formatWorkflowDuration(start: string | null | undefined, end: string | null | undefined): string {
+  if (!start || !end) {
+    return "Duration unavailable";
+  }
+  const startTime = Date.parse(start);
+  const endTime = Date.parse(end);
+  if (Number.isNaN(startTime) || Number.isNaN(endTime) || endTime < startTime) {
+    return "Duration unavailable";
+  }
+  const totalSeconds = Math.max(1, Math.round((endTime - startTime) / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const parts = [
+    hours > 0 ? `${hours}h` : null,
+    minutes > 0 ? `${minutes}m` : null,
+    seconds > 0 || (hours === 0 && minutes === 0) ? `${seconds}s` : null
+  ].filter((part): part is string => Boolean(part));
+  return parts.join(" ");
+}
+
+const workflowLogTimestampPattern = /^(\d{4}-\d{2}-\d{2}T\S+Z)\s?(.*)$/;
+
+function workflowLogLineTimestamp(line: string): number | null {
+  const match = workflowLogTimestampPattern.exec(line);
+  if (!match) {
+    return null;
+  }
+  const timestamp = Date.parse(match[1]);
+  return Number.isNaN(timestamp) ? null : timestamp;
+}
+
+function workflowStepTimestamp(value: string | null): number | null {
+  if (!value) {
+    return null;
+  }
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? null : timestamp;
+}
+
+function workflowLogSearchText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function workflowStepLogText(
+  logText: string,
+  selectedStep: WorkflowRunStepSummary,
+  steps: WorkflowRunStepSummary[]
+): { text: string; matched: boolean } {
+  const lines = logText.split(/\r?\n/);
+  const stepStart = workflowStepTimestamp(selectedStep.startedAt);
+  const nextStepStart =
+    steps
+      .filter((step) => step.number > selectedStep.number)
+      .map((step) => workflowStepTimestamp(step.startedAt))
+      .filter((timestamp): timestamp is number => timestamp !== null)
+      .sort((left, right) => left - right)[0] ?? null;
+
+  if (stepStart !== null) {
+    const stepEnd =
+      workflowStepTimestamp(selectedStep.completedAt) ?? nextStepStart ?? Number.POSITIVE_INFINITY;
+    const selectedLines = lines.filter((line) => {
+      const timestamp = workflowLogLineTimestamp(line);
+      return timestamp !== null && timestamp >= stepStart - 1000 && timestamp <= stepEnd + 1000;
+    });
+
+    if (selectedLines.length > 0) {
+      return { text: selectedLines.join("\n"), matched: true };
+    }
+  }
+
+  const stepName = workflowLogSearchText(selectedStep.name);
+  if (!stepName) {
+    return { text: "", matched: false };
+  }
+
+  const startIndex = lines.findIndex((line) => workflowLogSearchText(line).includes(stepName));
+  if (startIndex === -1) {
+    return { text: "", matched: false };
+  }
+
+  const laterStepNames = steps
+    .filter((step) => step.number > selectedStep.number)
+    .map((step) => workflowLogSearchText(step.name))
+    .filter(Boolean);
+  const endIndex = lines.findIndex((line, index) => {
+    if (index <= startIndex) {
+      return false;
+    }
+    const lineText = workflowLogSearchText(line);
+    return laterStepNames.some((name) => lineText.includes(name));
+  });
+
+  return {
+    text: lines.slice(startIndex, endIndex === -1 ? undefined : endIndex).join("\n"),
+    matched: true
+  };
+}
+
+function workflowLogDisplay(
+  logText: string,
+  selectedStep: WorkflowRunStepSummary | null,
+  steps: WorkflowRunStepSummary[]
+): { text: string; message: string | null } {
+  if (!selectedStep) {
+    return { text: logText, message: null };
+  }
+
+  const stepLog = workflowStepLogText(logText, selectedStep, steps);
+  if (stepLog.matched && stepLog.text.trim()) {
+    return { text: stepLog.text, message: null };
+  }
+
+  return {
+    text: logText,
+    message: `Control could not isolate ${selectedStep.name} in the loaded log text, so the full loaded job log is shown.`
+  };
+}
 
 function workflowIdentity(workflow: WorkflowDefinitionSummary): string {
   return workflow.path || String(workflow.id);
@@ -387,9 +571,9 @@ function WorkflowCatalogPane({
   const selectedAllRuns = selectedWorkflowId === null;
 
   return (
-    <section className="workflow-catalog" aria-label="Workflow catalog">
-      <header>
-        <strong>Workflows</strong>
+    <section className="workflow-catalog actions-sidebar" aria-label="Workflow catalog">
+      <header className="actions-sidebar-header">
+        <strong>Actions</strong>
         <span className="state-chip">{workflows.length} definitions</span>
       </header>
       {workflowsLoading && workflows.length === 0 && <div className="loading-state">Loading workflows…</div>}
@@ -405,7 +589,7 @@ function WorkflowCatalogPane({
         onClick={() => onSelectWorkflow(null)}
       >
         <div>
-          <strong>All runs</strong>
+          <strong>All workflows</strong>
           <small>Repository workflow activity across every workflow.</small>
         </div>
         <span className="state-chip">{actions.length} runs</span>
@@ -482,7 +666,6 @@ function WorkflowRunList({
   canExpandActions,
   actionsLimitHit,
   onSelectRun,
-  onOpenExternal,
   onExpandActions
 }: {
   repository: RepositoryDetail;
@@ -497,14 +680,23 @@ function WorkflowRunList({
   canExpandActions: boolean;
   actionsLimitHit: boolean;
   onSelectRun(run: WorkflowRunSummary): void;
-  onOpenExternal(url: string): void;
   onExpandActions(): void;
 }): JSX.Element {
   return (
-    <div className="thread-list">
+    <div className="actions-run-table">
       {loading && actions.length === 0 && <div className="loading-state">Loading workflow runs…</div>}
       {error && <div className="error-state">Workflow runs unavailable: {error.message}</div>}
       {actionsAvailabilityMessage && <div className="error-state">{actionsAvailabilityMessage}</div>}
+      <header className="actions-run-table-header">
+        <strong>{filteredActions.length} workflow runs</strong>
+        <div className="actions-run-table-columns" aria-hidden="true">
+          <span>Workflow</span>
+          <span>Event</span>
+          <span>Status</span>
+          <span>Branch</span>
+          <span>Actor</span>
+        </div>
+      </header>
       {canExpandActions && (
         <div className="table-action-row">
           <button type="button" onClick={onExpandActions}>
@@ -520,55 +712,47 @@ function WorkflowRunList({
           run.headRepositoryNameWithOwner && run.headRepositoryNameWithOwner !== repository.nameWithOwner
             ? run.headRepositoryNameWithOwner
             : null;
+        const state = workflowRunState(run);
+        const runDuration = formatWorkflowDuration(run.runStartedAt ?? run.createdAt, run.updatedAt);
         const workflowRunMetadata = [
           run.name,
           run.runNumber ? `#${run.runNumber}` : null,
-          `${run.event} on ${run.branch ?? "unknown"}`,
+          run.commitSha ? run.commitSha.slice(0, 7) : null,
           sourceRepositoryNameWithOwner ? `Source ${sourceRepositoryNameWithOwner}` : null,
-          run.actorLogin ? `by ${run.actorLogin}` : null,
           run.triggeringActorLogin && run.triggeringActorLogin !== run.actorLogin
             ? `triggered by ${run.triggeringActorLogin}`
             : null,
-          run.runAttempt ? `attempt ${run.runAttempt}` : null,
-          run.runStartedAt
-            ? `started ${formatRelativeDate(run.runStartedAt)}`
-            : formatRelativeDate(run.updatedAt)
+          run.runAttempt && run.runAttempt > 1 ? `attempt ${run.runAttempt}` : null
         ].filter(Boolean);
 
         return (
-          <div
-            className={`issue-row thread-list-action-row ${
-              selectedRunId === run.id && !dispatching ? "active" : ""
-            }`}
+          <article
+            className={`actions-run-row ${selectedRunId === run.id && !dispatching ? "active" : ""}`}
             key={run.id}
           >
-            <button className="thread-list-row-main" type="button" onClick={() => onSelectRun(run)}>
-              <Workflow size={17} />
+            <button className="actions-run-row-main" type="button" onClick={() => onSelectRun(run)}>
+              <WorkflowStateIcon state={state} />
               <div className="workflow-run-copy">
                 <strong>{run.displayTitle ?? run.name}</strong>
                 <small>{workflowRunMetadata.join(" · ")}</small>
               </div>
-              <div className="thread-list-row-badges">
-                <span className={`state-chip ${run.conclusion === "success" ? "success" : ""}`}>
-                  {run.conclusion ?? run.status ?? "queued"}
-                </span>
-                {run.actionAvailability?.canRerun === true && <span className="state-chip">rerun</span>}
-                {run.actionAvailability?.canRerunFailedJobs === true && (
-                  <span className="state-chip">rerun failed</span>
-                )}
-                {run.actionAvailability?.canCancel === true && <span className="state-chip">cancel</span>}
-              </div>
+              <span className="actions-run-event">{workflowEventLabel(run.event)}</span>
+              <span className={`state-chip ${workflowStateClass(state)}`}>{workflowStateText(state)}</span>
+              <span className="actions-run-branch">
+                <GitBranch size={14} />
+                {run.branch ?? "unknown"}
+              </span>
+              <span className="actions-run-actor">{run.actorLogin ?? "Unknown"}</span>
+              <span className="actions-run-time">
+                <CalendarDays size={14} />
+                {run.runStartedAt ? formatRelativeDate(run.runStartedAt) : formatRelativeDate(run.updatedAt)}
+              </span>
+              <span className="actions-run-duration">
+                <Clock3 size={14} />
+                {runDuration}
+              </span>
             </button>
-            <button
-              className="pin-row-button"
-              type="button"
-              aria-label={`Open workflow run ${run.displayTitle ?? run.name} on GitHub`}
-              title="Open workflow run on GitHub"
-              onClick={() => onOpenExternal(run.htmlUrl)}
-            >
-              <ExternalLink size={15} />
-            </button>
-          </div>
+          </article>
         );
       })}
       {!loading && !actionsAvailabilityMessage && filteredActions.length === 0 && (
@@ -817,44 +1001,6 @@ function WorkflowDispatchForm({
   );
 }
 
-function WorkflowRunHeaderSummary({
-  selectedRun,
-  sourceRepositoryNameWithOwner,
-  detail
-}: {
-  selectedRun: WorkflowRunSummary | WorkflowRunDetail;
-  sourceRepositoryNameWithOwner: string | null;
-  detail: WorkflowRunDetail | null;
-}): JSX.Element {
-  return (
-    <>
-      <header className="thread-header">
-        <h2>{selectedRun.displayTitle ?? selectedRun.name}</h2>
-        <small>
-          {selectedRun.name} · {selectedRun.event} · {selectedRun.branch ?? "unknown branch"} ·{" "}
-          {selectedRun.actorLogin ? `started by ${selectedRun.actorLogin} · ` : ""}
-          {selectedRun.runStartedAt
-            ? `started ${formatRelativeDate(selectedRun.runStartedAt)}`
-            : formatRelativeDate(selectedRun.updatedAt)}
-        </small>
-      </header>
-      <div className="workflow-summary">
-        <span className={`state-chip ${selectedRun.conclusion === "success" ? "success" : ""}`}>
-          {selectedRun.conclusion ?? selectedRun.status ?? "queued"}
-        </span>
-        {selectedRun.runNumber !== null && <span>Run #{selectedRun.runNumber}</span>}
-        {selectedRun.runAttempt !== null && <span>Attempt {selectedRun.runAttempt}</span>}
-        {sourceRepositoryNameWithOwner && <span>Source {sourceRepositoryNameWithOwner}</span>}
-        <span>{selectedRun.commitSha?.slice(0, 7) ?? "No commit"}</span>
-        {selectedRun.triggeringActorLogin && <span>Triggered by {selectedRun.triggeringActorLogin}</span>}
-        {detail && <span>{detail.jobs.length} jobs</span>}
-        {detail && <span>{detail.checkRuns.length} checks</span>}
-        {detail && <span>{detail.artifacts.length} artifacts</span>}
-      </div>
-    </>
-  );
-}
-
 function WorkflowRunMutationStatus({
   active,
   pending,
@@ -1011,6 +1157,7 @@ function WorkflowJobCard({
   jobRerunDisabledReason,
   onRerunJob,
   onSelectJobLogs,
+  onSelectJobStep,
   onOpenExternal,
   onToggleJobSteps
 }: {
@@ -1021,6 +1168,7 @@ function WorkflowJobCard({
   jobRerunDisabledReason: string | null;
   onRerunJob(jobId: number): void;
   onSelectJobLogs(runId: number, jobId: number): void;
+  onSelectJobStep(runId: number, jobId: number, stepNumber: number): void;
   onOpenExternal(url: string): void;
   onToggleJobSteps(jobId: number): void;
 }): JSX.Element {
@@ -1075,10 +1223,14 @@ function WorkflowJobCard({
       </div>
       <div className="workflow-step-list">
         {visibleSteps.map((step) => (
-          <div key={`${job.id}-${step.number}`}>
+          <button
+            key={`${job.id}-${step.number}`}
+            type="button"
+            onClick={() => onSelectJobStep(selectedRunId, job.id, step.number)}
+          >
             <span>{step.name}</span>
             <strong>{step.conclusion ?? step.status ?? "pending"}</strong>
-          </div>
+          </button>
         ))}
         {job.steps.length > workflowListLimit && (
           <button type="button" onClick={() => onToggleJobSteps(job.id)}>
@@ -1102,6 +1254,7 @@ function WorkflowJobsSection({
   liveWorkflowDisabledReason,
   onRerunJob,
   onSelectJobLogs,
+  onSelectJobStep,
   onOpenExternal,
   onToggleJobSteps
 }: {
@@ -1116,6 +1269,7 @@ function WorkflowJobsSection({
   liveWorkflowDisabledReason: string | null;
   onRerunJob(jobId: number): void;
   onSelectJobLogs(runId: number, jobId: number): void;
+  onSelectJobStep(runId: number, jobId: number, stepNumber: number): void;
   onOpenExternal(url: string): void;
   onToggleJobSteps(jobId: number): void;
 }): JSX.Element {
@@ -1139,6 +1293,7 @@ function WorkflowJobsSection({
           }
           onRerunJob={onRerunJob}
           onSelectJobLogs={onSelectJobLogs}
+          onSelectJobStep={onSelectJobStep}
           onOpenExternal={onOpenExternal}
           onToggleJobSteps={onToggleJobSteps}
         />
@@ -1151,7 +1306,9 @@ function WorkflowJobsSection({
 }
 
 function WorkflowJobLogPreviewSection({
+  heading = "Job log preview",
   selectedLogJob,
+  selectedLogStep,
   jobLogs,
   jobLogsAvailabilityMessage,
   jobLogPreviewCharacters,
@@ -1160,7 +1317,9 @@ function WorkflowJobLogPreviewSection({
   onLoadLargePreview,
   onOpenExternal
 }: {
+  heading?: string;
   selectedLogJob: WorkflowRunJobSummary | null;
+  selectedLogStep: WorkflowRunStepSummary | null;
   jobLogs: {
     isLoading: boolean;
     error: Error | null;
@@ -1173,33 +1332,39 @@ function WorkflowJobLogPreviewSection({
   onLoadLargePreview(key: string): void;
   onOpenExternal(url: string): void;
 }): JSX.Element {
+  const displayedLog = jobLogs.data?.text
+    ? workflowLogDisplay(jobLogs.data.text, selectedLogStep, selectedLogJob?.steps ?? [])
+    : null;
+  const logLabel = selectedLogStep ? `Step: ${selectedLogStep.name}` : selectedLogJob?.name;
+  const logState = selectedLogStep
+    ? (selectedLogStep.conclusion ?? selectedLogStep.status ?? "pending")
+    : (selectedLogJob?.conclusion ?? selectedLogJob?.status ?? "queued");
+  const truncationMessage = selectedLogStep
+    ? "Showing matching lines from the loaded log text. Load more in Control if this step looks incomplete."
+    : `Showing the first ${jobLogPreviewCharacters.toLocaleString()} characters. Download the complete log for the full output.`;
+
   return (
-    <section>
-      <h3>Job log preview</h3>
+    <section className="workflow-log-section">
+      <h3>{heading}</h3>
       {!selectedLogJob && <div className="empty-state">Select View logs on a job.</div>}
       {selectedLogJob && (
         <article className="workflow-job-card">
           <header>
-            <strong>{selectedLogJob.name}</strong>
-            <span className={`state-chip ${selectedLogJob.conclusion === "success" ? "success" : ""}`}>
-              {selectedLogJob.conclusion ?? selectedLogJob.status ?? "queued"}
+            <strong>{logLabel}</strong>
+            <span className={`state-chip ${workflowStateClass(logState)}`}>
+              {workflowStateText(logState)}
             </span>
           </header>
           {jobLogs.isLoading && <div className="loading-state">Loading job logs…</div>}
           {jobLogs.error && <div className="error-state">Job logs unavailable: {jobLogs.error.message}</div>}
           {jobLogsAvailabilityMessage && <div className="error-state">{jobLogsAvailabilityMessage}</div>}
-          {jobLogs.data?.text && (
+          {displayedLog?.message && <small className="action-disabled-note">{displayedLog.message}</small>}
+          {displayedLog?.text && (
             <pre className="workflow-log-preview">
-              <code>{jobLogs.data.text}</code>
+              <code>{displayedLog.text}</code>
             </pre>
           )}
-          {jobLogs.data?.truncated && (
-            <small className="action-disabled-note">
-              {jobLogPreviewCharacters >= largeJobLogPreviewCharacters
-                ? "Showing the first 50,000 characters. Download the full log for the complete output."
-                : "Log preview truncated by Control."}
-            </small>
-          )}
+          {jobLogs.data?.truncated && <small className="action-disabled-note">{truncationMessage}</small>}
           {jobLogs.data?.availability.status === "available" && !jobLogs.data.text && (
             <div className="empty-state">GitHub returned an empty log.</div>
           )}
@@ -1215,7 +1380,7 @@ function WorkflowJobLogPreviewSection({
                     }
                   }}
                 >
-                  Load larger preview
+                  Load more in Control
                 </button>
               )}
               <button
@@ -1232,7 +1397,7 @@ function WorkflowJobLogPreviewSection({
                   }
                 }}
               >
-                <ExternalLink size={15} /> Download full log
+                <ExternalLink size={15} /> Download complete log
               </button>
             </div>
           )}
@@ -1686,6 +1851,189 @@ function WorkflowRunActionsSection({
   );
 }
 
+function WorkflowRunDetailSidebar({
+  detail,
+  selectedLogJob,
+  onOpenRunSummary,
+  onSelectJobLogs
+}: {
+  detail: WorkflowRunDetail;
+  selectedLogJob: WorkflowRunJobSummary | null;
+  onOpenRunSummary(): void;
+  onSelectJobLogs(runId: number, jobId: number): void;
+}): JSX.Element {
+  return (
+    <aside className="actions-detail-sidebar" aria-label="Workflow run navigation">
+      <button
+        type="button"
+        className={`actions-detail-nav-item ${selectedLogJob ? "" : "active"}`}
+        onClick={onOpenRunSummary}
+      >
+        <Home size={16} />
+        <span>Summary</span>
+      </button>
+      <div className="actions-detail-sidebar-section">
+        <header>
+          <span>All jobs</span>
+          <ListFilter size={15} />
+        </header>
+        {detail.jobs.map((job) => {
+          const state = job.conclusion ?? job.status ?? "queued";
+          const disabledReason =
+            job.status === "queued" ? "Logs become available after the job starts." : null;
+
+          return (
+            <button
+              key={job.id}
+              type="button"
+              className={`actions-detail-nav-item actions-job-nav-item ${
+                selectedLogJob?.id === job.id ? "active" : ""
+              }`}
+              disabled={Boolean(disabledReason)}
+              title={disabledReason ?? undefined}
+              onClick={() => onSelectJobLogs(detail.id, job.id)}
+            >
+              <WorkflowStateIcon state={state} />
+              <span>{job.name}</span>
+            </button>
+          );
+        })}
+        {detail.jobs.length === 0 && <small>No jobs returned for this run.</small>}
+      </div>
+      <div className="actions-detail-sidebar-section">
+        <header>
+          <span>Run details</span>
+        </header>
+        <div className="actions-detail-nav-item muted">
+          <Clock3 size={16} />
+          <span>Usage</span>
+        </div>
+        <div className="actions-detail-nav-item muted">
+          <Workflow size={16} />
+          <span>Workflow file</span>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function WorkflowRunSummaryCard({
+  selectedRun,
+  detail
+}: {
+  selectedRun: WorkflowRunSummary | WorkflowRunDetail;
+  detail: WorkflowRunDetail;
+}): JSX.Element {
+  const runDuration = formatWorkflowDuration(
+    selectedRun.runStartedAt ?? selectedRun.createdAt,
+    detail.updatedAt
+  );
+  const state = workflowRunState(selectedRun);
+
+  return (
+    <section className="actions-run-summary-card">
+      <div>
+        <small>Triggered via {workflowEventLabel(selectedRun.event).toLowerCase()}</small>
+        <strong>
+          {selectedRun.actorLogin ?? "Unknown actor"} {selectedRun.event === "push" ? "pushed" : "triggered"}
+        </strong>
+        <span>
+          {selectedRun.commitSha ? selectedRun.commitSha.slice(0, 7) : "No commit"}
+          {selectedRun.branch ? ` ${selectedRun.branch}` : ""}
+        </span>
+      </div>
+      <div>
+        <small>Status</small>
+        <strong className={workflowStateClass(state)}>{workflowStateText(state)}</strong>
+      </div>
+      <div>
+        <small>Total duration</small>
+        <strong>{runDuration}</strong>
+      </div>
+      <div>
+        <small>Artifacts</small>
+        <strong>{detail.artifacts.length > 0 ? detail.artifacts.length : "-"}</strong>
+      </div>
+    </section>
+  );
+}
+
+function WorkflowRunExecutionGraph({
+  detail,
+  onSelectJobLogs
+}: {
+  detail: WorkflowRunDetail;
+  onSelectJobLogs(runId: number, jobId: number): void;
+}): JSX.Element {
+  return (
+    <section className="actions-workflow-graph">
+      <header>
+        <div>
+          <h3>{detail.name || "Workflow"}</h3>
+          <small>on: {detail.event}</small>
+        </div>
+      </header>
+      <div className="actions-job-node-grid">
+        {detail.jobs.map((job) => {
+          const state = job.conclusion ?? job.status ?? "queued";
+          const jobDuration = formatWorkflowDuration(job.startedAt, job.completedAt);
+          const disabledReason =
+            job.status === "queued" ? "Logs become available after the job starts." : null;
+
+          return (
+            <button
+              key={job.id}
+              type="button"
+              className="actions-job-node"
+              disabled={Boolean(disabledReason)}
+              title={disabledReason ?? undefined}
+              onClick={() => onSelectJobLogs(detail.id, job.id)}
+            >
+              <WorkflowStateIcon state={state} />
+              <strong>{job.name}</strong>
+              <span>{jobDuration}</span>
+            </button>
+          );
+        })}
+      </div>
+      {detail.jobs.length === 0 && <div className="empty-state">No jobs returned for this run.</div>}
+    </section>
+  );
+}
+
+function WorkflowJobStepList({
+  job,
+  selectedStepNumber,
+  onSelectStep
+}: {
+  job: WorkflowRunJobSummary;
+  selectedStepNumber: number | null;
+  onSelectStep(jobId: number, stepNumber: number): void;
+}): JSX.Element {
+  return (
+    <section className="actions-log-steps">
+      <h3>Steps</h3>
+      {job.steps.map((step) => {
+        const state = step.conclusion ?? step.status ?? "pending";
+        return (
+          <button
+            key={`${job.id}-${step.number}`}
+            type="button"
+            className={`actions-log-step-row ${selectedStepNumber === step.number ? "active" : ""}`}
+            aria-pressed={selectedStepNumber === step.number}
+            onClick={() => onSelectStep(job.id, step.number)}
+          >
+            <WorkflowStateIcon state={state} />
+            <span>{step.name}</span>
+            <strong>{formatWorkflowDuration(step.startedAt, step.completedAt)}</strong>
+          </button>
+        );
+      })}
+      {job.steps.length === 0 && <div className="empty-state">No steps returned for this job.</div>}
+    </section>
+  );
+}
+
 type ActionsTabProps = {
   repository: RepositoryDetail;
   githubReady: boolean;
@@ -1787,6 +2135,11 @@ function useActionsTabModel({
     runId: number;
     jobId: number;
   } | null>(null);
+  const [selectedLogStepSelection, setSelectedLogStepSelection] = useState<{
+    runId: number;
+    jobId: number;
+    stepNumber: number;
+  } | null>(null);
   const [jobLogPreviewSizeSelection, setJobLogPreviewSizeSelection] = useState<{
     key: string;
     maxCharacters: number;
@@ -1850,7 +2203,7 @@ function useActionsTabModel({
     );
   });
   const requestedRunId = selectedRunId ?? focusedWorkflowRunId;
-  const effectiveSelectedRunId = requestedRunId ?? filteredActions[0]?.id ?? null;
+  const effectiveSelectedRunId = requestedRunId ?? null;
   const selectedRunFromList =
     effectiveSelectedRunId !== null
       ? (actions.find((run) => run.id === effectiveSelectedRunId) ?? null)
@@ -1905,8 +2258,16 @@ function useActionsTabModel({
     selectedLogJobSelection && selectedRun && selectedLogJobSelection.runId === selectedRun.id
       ? (detail?.jobs.find((job) => job.id === selectedLogJobSelection.jobId) ?? null)
       : null;
+  const selectedLogStep =
+    selectedLogStepSelection &&
+    selectedRun &&
+    selectedLogJob &&
+    selectedLogStepSelection.runId === selectedRun.id &&
+    selectedLogStepSelection.jobId === selectedLogJob.id
+      ? (selectedLogJob.steps.find((step) => step.number === selectedLogStepSelection.stepNumber) ?? null)
+      : null;
   const defaultJobLogPreviewCharacters = 12_000;
-  const largeJobLogPreviewCharacters = 50_000;
+  const largeJobLogPreviewCharacters = 250_000;
   const selectedLogJobKey =
     selectedRun && selectedLogJob
       ? `${repository.nameWithOwner}#${selectedRun.id}#${selectedLogJob.id}`
@@ -2017,6 +2378,8 @@ function useActionsTabModel({
 
   function startWorkflowDispatch(): void {
     setSubmittedWorkflowAction(null);
+    setSelectedLogJobSelection(null);
+    setSelectedLogStepSelection(null);
     if (!workflowId && selectedWorkflowForRuns) {
       setWorkflowId(workflowIdentity(selectedWorkflowForRuns));
     }
@@ -2026,6 +2389,8 @@ function useActionsTabModel({
   function selectWorkflow(workflowId: string | null): void {
     setDispatching(false);
     setSelectedRunId(null);
+    setSelectedLogJobSelection(null);
+    setSelectedLogStepSelection(null);
     setSelectedWorkflowId(workflowId);
     onSelectWorkflow(workflowId, filter);
   }
@@ -2033,7 +2398,17 @@ function useActionsTabModel({
   function selectWorkflowRun(run: WorkflowRunSummary): void {
     setDispatching(false);
     setSelectedRunId(run.id);
+    setSelectedLogJobSelection(null);
+    setSelectedLogStepSelection(null);
     onOpenWorkflowRunDetail(run, selectedWorkflowId, filter);
+  }
+
+  function openWorkflowRunList(): void {
+    setDispatching(false);
+    setSelectedRunId(null);
+    setSelectedLogJobSelection(null);
+    setSelectedLogStepSelection(null);
+    onSelectWorkflow(selectedWorkflowId, filter);
   }
 
   function changeWorkflowId(value: string): void {
@@ -2072,6 +2447,7 @@ function useActionsTabModel({
     }
     if (item.jobId !== undefined) {
       setSelectedLogJobSelection({ runId: selectedRun.id, jobId: item.jobId });
+      setSelectedLogStepSelection(null);
       return;
     }
     if (item.path) {
@@ -2087,6 +2463,19 @@ function useActionsTabModel({
 
   function selectJobLogs(runId: number, jobId: number): void {
     setSelectedLogJobSelection({ runId, jobId });
+    setSelectedLogStepSelection(null);
+  }
+
+  function selectJobStep(runId: number, jobId: number, stepNumber: number): void {
+    const key = `${repository.nameWithOwner}#${runId}#${jobId}`;
+    setSelectedLogJobSelection({ runId, jobId });
+    setSelectedLogStepSelection({ runId, jobId, stepNumber });
+    setJobLogPreviewSizeSelection({ key, maxCharacters: largeJobLogPreviewCharacters });
+  }
+
+  function openRunSummary(): void {
+    setSelectedLogJobSelection(null);
+    setSelectedLogStepSelection(null);
   }
 
   function rerunWorkflowJob(jobId: number): void {
@@ -2203,6 +2592,7 @@ function useActionsTabModel({
     selectedWorkflowId,
     selectWorkflow,
     selectWorkflowRun,
+    openWorkflowRunList,
     onOpenExternal,
     onExpandActions,
     workflowItems,
@@ -2247,8 +2637,11 @@ function useActionsTabModel({
     liveWorkflowDisabledReason,
     rerunWorkflowJob,
     selectJobLogs,
+    openRunSummary,
     toggleWorkflowJobSteps,
+    selectJobStep,
     selectedLogJob,
+    selectedLogStep,
     jobLogs,
     jobLogsAvailabilityMessage,
     jobLogPreviewCharacters,
@@ -2293,6 +2686,7 @@ export function ActionsTab(props: ActionsTabProps): JSX.Element {
     selectedWorkflowId,
     selectWorkflow,
     selectWorkflowRun,
+    openWorkflowRunList,
     onOpenExternal,
     onExpandActions,
     workflowItems,
@@ -2337,8 +2731,11 @@ export function ActionsTab(props: ActionsTabProps): JSX.Element {
     liveWorkflowDisabledReason,
     rerunWorkflowJob,
     selectJobLogs,
+    openRunSummary,
     toggleWorkflowJobSteps,
+    selectJobStep,
     selectedLogJob,
+    selectedLogStep,
     jobLogs,
     jobLogsAvailabilityMessage,
     jobLogPreviewCharacters,
@@ -2361,93 +2758,52 @@ export function ActionsTab(props: ActionsTabProps): JSX.Element {
     rerunSelectedFailedJobs,
     cancelSelectedWorkflow
   } = useActionsTabModel(props);
+  const activeWorkflowForList =
+    workflowItems.find((workflow) => workflowMatchesIdentity(workflow, selectedWorkflowId)) ?? null;
+  const actionsHeading = activeWorkflowForList?.name ?? "All workflows";
+  const selectedRunState = selectedRun ? workflowRunState(selectedRun) : null;
 
   return (
-    <section className="table-panel github-surface">
-      <WorkflowRunFilterBar
-        filter={filter}
-        runWorkflowDisabledReason={workflowActionPendingReason ?? repositoryDispatchDisabledReason}
-        onFilterChange={setFilter}
-        onStartDispatch={startWorkflowDispatch}
-      />
-      <div className="github-split">
-        <div className="thread-list workflow-list-stack">
-          <WorkflowCatalogPane
-            workflows={workflowItems}
-            actions={actions}
-            selectedWorkflowId={selectedWorkflowId}
-            workflowsLoading={workflows.isLoading}
-            workflowsFetching={workflows.isFetching}
-            workflowsError={workflows.error instanceof Error ? workflows.error : null}
-            workflowDefinitionsAvailabilityMessage={workflowDefinitionsAvailabilityMessage}
-            workflowDefinitionsLimitHit={workflowDefinitionsLimitHit}
-            canExpandWorkflowDefinitions={canExpandWorkflowDefinitions}
-            workflowDefinitionLimit={workflowDefinitionLimit}
-            onSelectWorkflow={selectWorkflow}
-            onOpenExternal={onOpenExternal}
-            onExpandWorkflowDefinitions={onExpandWorkflowDefinitions}
-          />
-          <WorkflowRunList
-            repository={repository}
-            actions={actions}
-            filteredActions={filteredActions}
-            selectedRunId={selectedRun?.id ?? null}
-            dispatching={dispatching}
-            loading={loading}
-            error={error instanceof Error ? error : null}
-            actionsAvailabilityMessage={actionsAvailabilityMessage}
-            filter={filter}
-            canExpandActions={canExpandActions}
-            actionsLimitHit={actionsLimitHit}
-            onSelectRun={selectWorkflowRun}
-            onOpenExternal={onOpenExternal}
-            onExpandActions={onExpandActions}
-          />
-        </div>
-
-        <div className="thread-detail">
-          {dispatching ? (
-            <WorkflowDispatchForm
-              repository={repository}
-              workflowItems={workflowItems}
-              workflowsLoading={workflows.isLoading}
-              workflowsFetching={workflows.isFetching}
-              workflowsError={workflows.error instanceof Error ? workflows.error : null}
-              workflowDefinitionsAvailabilityMessage={workflowDefinitionsAvailabilityMessage}
-              workflowDefinitionsEmpty={workflowDefinitionsEmpty}
-              workflowDefinitionsLimitHit={workflowDefinitionsLimitHit}
-              canExpandWorkflowDefinitions={canExpandWorkflowDefinitions}
-              effectiveWorkflowId={effectiveWorkflowId}
-              selectedWorkflow={selectedWorkflow}
-              workflowInputValues={workflowInputValues}
-              workflowId={workflowId}
-              workflowRef={workflowRef}
-              workflowRefOptions={workflowRefOptions}
-              refsError={refsError}
-              refsAvailabilityMessage={refsAvailabilityMessage}
-              dispatchConfigurationDisabled={dispatchConfigurationDisabled}
-              repositoryDispatchDisabledReason={repositoryDispatchDisabledReason}
-              dispatchDisabledReason={dispatchDisabledReason}
-              manualWorkflowInputMetadataUnavailable={manualWorkflowInputMetadataUnavailable}
-              dispatchMutationActive={dispatchMutationActive}
-              mutationPending={mutationPending}
-              mutationSucceeded={mutationSucceeded}
-              mutationError={mutationError}
-              workflowDefinitionLimit={workflowDefinitionLimit}
-              onWorkflowIdChange={changeWorkflowId}
-              onRefChange={setWorkflowRef}
-              onWorkflowInputChange={updateWorkflowInput}
-              onSubmitDispatch={submitDispatchWorkflow}
-              onCancelDispatch={cancelWorkflowDispatch}
-              onExpandWorkflowDefinitions={onExpandWorkflowDefinitions}
+    <section className="actions-page github-surface">
+      {selectedRun && !dispatching ? (
+        <>
+          <header className="actions-run-titlebar">
+            <div>
+              <button type="button" className="actions-back-button" onClick={openWorkflowRunList}>
+                <ArrowLeft size={16} /> {selectedRun.name}
+              </button>
+              <h2>
+                {selectedRunState && <WorkflowStateIcon state={selectedRunState} />}
+                <span>{selectedRun.displayTitle ?? selectedRun.name}</span>
+                {selectedRun.runNumber !== null && <small>#{selectedRun.runNumber}</small>}
+              </h2>
+            </div>
+            <WorkflowRunActionsSection
+              selectedRun={selectedRun}
+              selectedRerunDisabledReason={selectedRerunDisabledReason}
+              selectedFailedJobsRerunDisabledReason={selectedFailedJobsRerunDisabledReason}
+              selectedCancelDisabledReason={selectedCancelDisabledReason}
+              onOpenCommit={openSelectedRunCommit}
+              onOpenExternal={onOpenExternal}
+              onRerun={rerunSelectedWorkflow}
+              onRerunFailedJobs={rerunSelectedFailedJobs}
+              onCancel={cancelSelectedWorkflow}
             />
-          ) : selectedRun ? (
-            <>
-              <WorkflowRunHeaderSummary
-                selectedRun={selectedRun}
-                sourceRepositoryNameWithOwner={selectedRunSourceRepositoryNameWithOwner}
+          </header>
+          <div className="actions-run-detail-layout">
+            {detail ? (
+              <WorkflowRunDetailSidebar
                 detail={detail}
+                selectedLogJob={selectedLogJob}
+                onOpenRunSummary={openRunSummary}
+                onSelectJobLogs={selectJobLogs}
               />
+            ) : (
+              <aside className="actions-detail-sidebar" aria-label="Workflow run navigation">
+                <div className="loading-state">Loading run navigation…</div>
+              </aside>
+            )}
+            <main className="thread-detail actions-run-detail-main">
               {runDetail.isLoading && <div className="loading-state">Loading run detail…</div>}
               {runDetail.error && (
                 <div className="error-state">Run detail unavailable: {runDetail.error.message}</div>
@@ -2462,13 +2818,61 @@ export function ActionsTab(props: ActionsTabProps): JSX.Element {
                 error={mutationError}
                 action={submittedWorkflowAction}
               />
-              {detail && (
-                <div className="workflow-detail-grid">
+              {detail && selectedLogJob ? (
+                <div className="actions-log-view">
+                  <header className="actions-log-header">
+                    <button type="button" className="actions-back-button" onClick={openRunSummary}>
+                      <ArrowLeft size={16} /> Summary
+                    </button>
+                    <div>
+                      <h3>{selectedLogJob.name}</h3>
+                      <small>
+                        {workflowStateText(selectedLogJob.conclusion ?? selectedLogJob.status)} ·{" "}
+                        {formatWorkflowDuration(selectedLogJob.startedAt, selectedLogJob.completedAt)}
+                      </small>
+                    </div>
+                  </header>
+                  <WorkflowJobStepList
+                    job={selectedLogJob}
+                    selectedStepNumber={selectedLogStep?.number ?? null}
+                    onSelectStep={(jobId, stepNumber) => selectJobStep(selectedRun.id, jobId, stepNumber)}
+                  />
+                  <WorkflowJobLogPreviewSection
+                    heading="Logs"
+                    selectedLogJob={selectedLogJob}
+                    selectedLogStep={selectedLogStep}
+                    jobLogs={{
+                      isLoading: jobLogs.isLoading,
+                      error: jobLogs.error instanceof Error ? jobLogs.error : null,
+                      data: jobLogs.data
+                    }}
+                    jobLogsAvailabilityMessage={jobLogsAvailabilityMessage}
+                    jobLogPreviewCharacters={jobLogPreviewCharacters}
+                    largeJobLogPreviewCharacters={largeJobLogPreviewCharacters}
+                    selectedLogJobKey={selectedLogJobKey}
+                    onLoadLargePreview={loadLargeJobLogPreview}
+                    onOpenExternal={onOpenExternal}
+                  />
+                </div>
+              ) : detail ? (
+                <div className="actions-run-summary-view">
+                  <WorkflowRunSummaryCard selectedRun={selectedRun} detail={detail} />
+                  <div className="workflow-summary">
+                    <span>{detail.jobs.length} jobs</span>
+                    <span>{detail.checkRuns.length} checks</span>
+                    <span>{detail.artifacts.length} artifacts</span>
+                    {selectedRun.runAttempt !== null && <span>Attempt {selectedRun.runAttempt}</span>}
+                    {selectedRun.commitSha && <span>{selectedRun.commitSha.slice(0, 7)}</span>}
+                    {selectedRunSourceRepositoryNameWithOwner && (
+                      <span>Source {selectedRunSourceRepositoryNameWithOwner}</span>
+                    )}
+                  </div>
                   <WorkflowFailureSummarySection
                     failureSummary={failureSummary}
                     onOpenInControl={openFailureInControl}
                     onOpenExternal={onOpenExternal}
                   />
+                  <WorkflowRunExecutionGraph detail={detail} onSelectJobLogs={selectJobLogs} />
                   <WorkflowActionAvailabilitySection
                     selectedRun={selectedRun}
                     onOpenExternal={onOpenExternal}
@@ -2485,22 +2889,9 @@ export function ActionsTab(props: ActionsTabProps): JSX.Element {
                     liveWorkflowDisabledReason={liveWorkflowDisabledReason}
                     onRerunJob={rerunWorkflowJob}
                     onSelectJobLogs={selectJobLogs}
+                    onSelectJobStep={selectJobStep}
                     onOpenExternal={onOpenExternal}
                     onToggleJobSteps={toggleWorkflowJobSteps}
-                  />
-                  <WorkflowJobLogPreviewSection
-                    selectedLogJob={selectedLogJob}
-                    jobLogs={{
-                      isLoading: jobLogs.isLoading,
-                      error: jobLogs.error instanceof Error ? jobLogs.error : null,
-                      data: jobLogs.data
-                    }}
-                    jobLogsAvailabilityMessage={jobLogsAvailabilityMessage}
-                    jobLogPreviewCharacters={jobLogPreviewCharacters}
-                    largeJobLogPreviewCharacters={largeJobLogPreviewCharacters}
-                    selectedLogJobKey={selectedLogJobKey}
-                    onLoadLargePreview={loadLargeJobLogPreview}
-                    onOpenExternal={onOpenExternal}
                   />
                   <WorkflowArtifactsSection
                     detail={detail}
@@ -2523,24 +2914,102 @@ export function ActionsTab(props: ActionsTabProps): JSX.Element {
                     onToggleAnnotations={toggleWorkflowCheckAnnotations}
                   />
                 </div>
-              )}
-              <WorkflowRunActionsSection
-                selectedRun={selectedRun}
-                selectedRerunDisabledReason={selectedRerunDisabledReason}
-                selectedFailedJobsRerunDisabledReason={selectedFailedJobsRerunDisabledReason}
-                selectedCancelDisabledReason={selectedCancelDisabledReason}
-                onOpenCommit={openSelectedRunCommit}
-                onOpenExternal={onOpenExternal}
-                onRerun={rerunSelectedWorkflow}
-                onRerunFailedJobs={rerunSelectedFailedJobs}
-                onCancel={cancelSelectedWorkflow}
+              ) : null}
+            </main>
+          </div>
+        </>
+      ) : (
+        <div className="actions-landing-layout">
+          <WorkflowCatalogPane
+            workflows={workflowItems}
+            actions={actions}
+            selectedWorkflowId={selectedWorkflowId}
+            workflowsLoading={workflows.isLoading}
+            workflowsFetching={workflows.isFetching}
+            workflowsError={workflows.error instanceof Error ? workflows.error : null}
+            workflowDefinitionsAvailabilityMessage={workflowDefinitionsAvailabilityMessage}
+            workflowDefinitionsLimitHit={workflowDefinitionsLimitHit}
+            canExpandWorkflowDefinitions={canExpandWorkflowDefinitions}
+            workflowDefinitionLimit={workflowDefinitionLimit}
+            onSelectWorkflow={selectWorkflow}
+            onOpenExternal={onOpenExternal}
+            onExpandWorkflowDefinitions={onExpandWorkflowDefinitions}
+          />
+          <main className="actions-landing-main">
+            <WorkflowRunFilterBar
+              filter={filter}
+              runWorkflowDisabledReason={workflowActionPendingReason ?? repositoryDispatchDisabledReason}
+              onFilterChange={setFilter}
+              onStartDispatch={startWorkflowDispatch}
+            />
+            {dispatching ? (
+              <WorkflowDispatchForm
+                repository={repository}
+                workflowItems={workflowItems}
+                workflowsLoading={workflows.isLoading}
+                workflowsFetching={workflows.isFetching}
+                workflowsError={workflows.error instanceof Error ? workflows.error : null}
+                workflowDefinitionsAvailabilityMessage={workflowDefinitionsAvailabilityMessage}
+                workflowDefinitionsEmpty={workflowDefinitionsEmpty}
+                workflowDefinitionsLimitHit={workflowDefinitionsLimitHit}
+                canExpandWorkflowDefinitions={canExpandWorkflowDefinitions}
+                effectiveWorkflowId={effectiveWorkflowId}
+                selectedWorkflow={selectedWorkflow}
+                workflowInputValues={workflowInputValues}
+                workflowId={workflowId}
+                workflowRef={workflowRef}
+                workflowRefOptions={workflowRefOptions}
+                refsError={refsError}
+                refsAvailabilityMessage={refsAvailabilityMessage}
+                dispatchConfigurationDisabled={dispatchConfigurationDisabled}
+                repositoryDispatchDisabledReason={repositoryDispatchDisabledReason}
+                dispatchDisabledReason={dispatchDisabledReason}
+                manualWorkflowInputMetadataUnavailable={manualWorkflowInputMetadataUnavailable}
+                dispatchMutationActive={dispatchMutationActive}
+                mutationPending={mutationPending}
+                mutationSucceeded={mutationSucceeded}
+                mutationError={mutationError}
+                workflowDefinitionLimit={workflowDefinitionLimit}
+                onWorkflowIdChange={changeWorkflowId}
+                onRefChange={setWorkflowRef}
+                onWorkflowInputChange={updateWorkflowInput}
+                onSubmitDispatch={submitDispatchWorkflow}
+                onCancelDispatch={cancelWorkflowDispatch}
+                onExpandWorkflowDefinitions={onExpandWorkflowDefinitions}
               />
-            </>
-          ) : (
-            <div className="empty-state">No workflow runs found.</div>
-          )}
+            ) : (
+              <>
+                <header className="actions-list-heading">
+                  <div>
+                    <h2>{actionsHeading}</h2>
+                    <small>
+                      {activeWorkflowForList
+                        ? `Showing runs for ${activeWorkflowForList.path}.`
+                        : "Showing runs from all workflows."}
+                    </small>
+                  </div>
+                  <span className="state-chip">{filteredActions.length} runs</span>
+                </header>
+                <WorkflowRunList
+                  repository={repository}
+                  actions={actions}
+                  filteredActions={filteredActions}
+                  selectedRunId={selectedRun?.id ?? null}
+                  dispatching={dispatching}
+                  loading={loading}
+                  error={error instanceof Error ? error : null}
+                  actionsAvailabilityMessage={actionsAvailabilityMessage}
+                  filter={filter}
+                  canExpandActions={canExpandActions}
+                  actionsLimitHit={actionsLimitHit}
+                  onSelectRun={selectWorkflowRun}
+                  onExpandActions={onExpandActions}
+                />
+              </>
+            )}
+          </main>
         </div>
-      </div>
+      )}
     </section>
   );
 }

@@ -1789,6 +1789,15 @@ body:not(.no-liquid-glass) .home-content-scroll {
   display: none;
 }
 
+.repo-page-actions {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.repo-page-actions > .actions-page,
+.repo-page-focused-detail > .actions-page {
+  grid-column: 1 / -1;
+}
+
 .code-browser-page {
   grid-column: 1;
 }
@@ -3054,6 +3063,109 @@ p {
   min-height: min(620px, calc(100vh - 244px));
 }
 
+.actions-page {
+  display: grid;
+  min-height: min(760px, calc(100vh - 206px));
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface-glass);
+}
+
+.actions-landing-layout,
+.actions-run-detail-layout {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  min-height: 0;
+}
+
+.actions-landing-main {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  min-height: 0;
+  background: color-mix(in srgb, var(--color-surface-glass) 78%, transparent);
+}
+
+.actions-list-heading {
+  display: flex;
+  min-width: 0;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--color-border);
+  padding: 18px 24px;
+}
+
+.actions-list-heading h2 {
+  margin: 0 0 4px;
+  color: var(--color-heading);
+  font-size: 20px;
+}
+
+.actions-list-heading small {
+  color: var(--color-text-muted);
+}
+
+.actions-run-titlebar {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--color-border);
+  padding: 16px 22px;
+}
+
+.actions-run-titlebar > div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+.actions-back-button {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 28px;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  padding: 0;
+}
+
+.actions-back-button:hover {
+  color: var(--color-text);
+}
+
+.actions-run-titlebar h2 {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--color-heading);
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.actions-run-titlebar h2 span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.actions-run-titlebar h2 small {
+  color: var(--color-text-muted);
+  font-size: 20px;
+}
+
+.actions-run-titlebar .thread-actions {
+  justify-content: flex-end;
+}
+
 .table-action-row {
   display: flex;
   justify-content: flex-end;
@@ -3213,6 +3325,139 @@ p {
   gap: 8px;
   overflow: visible;
   border-right: 0;
+}
+
+.actions-sidebar,
+.actions-detail-sidebar {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+  border-right: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-surface-row) 58%, transparent);
+  padding: 18px 14px;
+}
+
+.actions-sidebar-header {
+  padding: 0 6px 8px;
+}
+
+.actions-sidebar-header strong {
+  color: var(--color-heading);
+  font-size: 20px;
+}
+
+.actions-run-table {
+  display: grid;
+  min-width: 0;
+  overflow: auto;
+}
+
+.actions-run-table-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-surface-control) 62%, transparent);
+  padding: 12px 16px;
+}
+
+.actions-run-table-header strong {
+  color: var(--color-heading);
+}
+
+.actions-run-table-columns {
+  display: grid;
+  grid-template-columns:
+    minmax(300px, 1fr) minmax(88px, 0.3fr) minmax(82px, 0.25fr) minmax(112px, 0.34fr)
+    minmax(88px, 0.28fr);
+  gap: 12px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  padding-left: 30px;
+}
+
+.actions-run-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  align-items: center;
+  border-bottom: 1px solid var(--color-border);
+  padding: 0 16px;
+}
+
+.actions-run-row.active,
+.actions-run-row:hover {
+  background: var(--color-surface-row-hover);
+}
+
+.actions-run-row-main {
+  display: grid !important;
+  grid-template-columns:
+    20px minmax(300px, 1fr) minmax(88px, 0.3fr) minmax(82px, 0.25fr) minmax(112px, 0.34fr)
+    minmax(88px, 0.28fr) minmax(86px, 0.25fr) minmax(74px, 0.22fr);
+  min-width: 0;
+  width: 100%;
+  min-height: 64px;
+  align-items: center;
+  gap: 10px;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: inherit;
+  padding: 0 !important;
+  text-align: left;
+}
+
+.actions-run-row .workflow-run-copy strong,
+.actions-run-row .workflow-run-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actions-run-event,
+.actions-run-actor,
+.actions-run-time,
+.actions-run-duration,
+.actions-run-branch {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actions-run-time,
+.actions-run-duration,
+.actions-run-branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.actions-run-branch {
+  width: fit-content;
+  max-width: 100%;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  color: var(--color-accent);
+  padding: 3px 7px;
+}
+
+.workflow-state-icon {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+}
+
+.workflow-state-icon.success {
+  color: var(--color-success);
+}
+
+.workflow-state-icon.attention {
+  color: var(--color-danger);
 }
 
 .thread-detail {
@@ -5231,6 +5476,63 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
     grid-template-columns: 1fr;
   }
 
+  .actions-landing-layout,
+  .actions-run-detail-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .actions-sidebar,
+  .actions-detail-sidebar {
+    border-right: 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .actions-run-table-columns {
+    display: none;
+  }
+
+  .actions-run-row-main {
+    grid-template-columns: 22px minmax(0, 1fr);
+    grid-template-areas:
+      "state title"
+      ". event"
+      ". branch"
+      ". meta";
+    min-height: 112px;
+    row-gap: 6px;
+  }
+
+  .actions-run-row-main > .workflow-state-icon {
+    grid-area: state;
+  }
+
+  .actions-run-row-main > .workflow-run-copy {
+    grid-area: title;
+  }
+
+  .actions-run-event {
+    grid-area: event;
+  }
+
+  .actions-run-branch {
+    grid-area: branch;
+  }
+
+  .actions-run-actor,
+  .actions-run-time,
+  .actions-run-duration {
+    grid-area: meta;
+  }
+
+  .actions-run-actor,
+  .actions-run-duration {
+    display: none;
+  }
+
+  .actions-run-summary-card {
+    grid-template-columns: 1fr 1fr;
+  }
+
   .github-split {
     grid-template-columns: 1fr;
   }
@@ -5935,6 +6237,221 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
   color: var(--color-text-muted);
 }
 
+.actions-detail-sidebar {
+  gap: 14px;
+}
+
+.actions-detail-sidebar-section {
+  display: grid;
+  gap: 6px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 12px;
+}
+
+.actions-detail-sidebar-section header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.actions-detail-sidebar-section small {
+  color: var(--color-text-muted);
+}
+
+.actions-detail-nav-item {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text);
+  padding: 0 8px;
+  text-align: left;
+}
+
+.actions-detail-nav-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actions-detail-nav-item:hover,
+.actions-detail-nav-item.active {
+  border-color: var(--color-border);
+  background: var(--color-surface-selected);
+}
+
+.actions-detail-nav-item.muted {
+  color: var(--color-text-muted);
+}
+
+.actions-job-nav-item:disabled {
+  cursor: default;
+  opacity: 0.64;
+}
+
+.actions-run-detail-main {
+  min-height: min(680px, calc(100vh - 238px));
+  overflow: auto;
+}
+
+.actions-run-summary-view,
+.actions-log-view {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.actions-run-summary-card {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.2fr) repeat(3, minmax(120px, 0.6fr));
+  gap: 18px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface-row);
+  padding: 18px 20px;
+}
+
+.actions-run-summary-card > div {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+.actions-run-summary-card small,
+.actions-run-summary-card span {
+  overflow: hidden;
+  color: var(--color-text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actions-run-summary-card strong {
+  overflow: hidden;
+  color: var(--color-heading);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actions-run-summary-card strong.success {
+  color: var(--color-success);
+}
+
+.actions-run-summary-card strong.attention {
+  color: var(--color-danger);
+}
+
+.actions-workflow-graph {
+  display: grid;
+  min-height: 220px;
+  align-content: start;
+  gap: 28px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-surface-row) 76%, transparent);
+  padding: 22px 20px;
+}
+
+.actions-workflow-graph h3,
+.actions-log-header h3,
+.actions-log-steps h3,
+.workflow-log-section h3 {
+  margin: 0;
+  color: var(--color-heading);
+  font-size: 16px;
+}
+
+.actions-workflow-graph small,
+.actions-log-header small {
+  color: var(--color-text-muted);
+}
+
+.actions-job-node-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 260px));
+  gap: 12px;
+}
+
+.actions-job-node {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface-control);
+  color: var(--color-text);
+  padding: 0 12px;
+  text-align: left;
+}
+
+.actions-job-node strong,
+.actions-job-node span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actions-job-node span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.actions-log-header {
+  display: grid;
+  gap: 8px;
+}
+
+.actions-log-steps,
+.workflow-log-section {
+  display: grid;
+  gap: 8px;
+}
+
+.actions-log-step-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface-row);
+  color: var(--color-text);
+  padding: 0 10px;
+  text-align: left;
+}
+
+.actions-log-step-row:hover,
+.actions-log-step-row.active {
+  border-color: rgba(37, 99, 235, 0.42);
+  background: var(--color-surface-selected);
+}
+
+.actions-log-step-row span,
+.actions-log-step-row strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actions-log-step-row strong {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.actions-log-view .workflow-log-preview {
+  max-height: min(520px, calc(100vh - 430px));
+}
+
 .workflow-detail-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
@@ -6129,14 +6646,25 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
   gap: 6px;
 }
 
-.workflow-step-list div {
+.workflow-step-list button {
   display: flex;
   min-width: 0;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  min-height: 28px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
   color: #334963;
   font-size: 13px;
+  padding: 0 8px;
+  text-align: left;
+}
+
+.workflow-step-list button:hover {
+  border-color: var(--color-border);
+  background: var(--color-surface-row-hover);
 }
 
 .workflow-step-list span {
@@ -7502,7 +8030,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
     .workflow-action-availability,
     .finder-meta,
     .workflow-check-output,
-    .workflow-step-list div,
+    .workflow-step-list button,
     .repo-title-block p,
     .repo-title-line h1 span,
     .fork-meta,
@@ -7515,7 +8043,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
     .repository-admin-form label,
     .project-description,
     .workflow-failure-item span,
-    .workflow-step-list div,
+    .workflow-step-list button,
     .rail-panel p,
     .about-list,
     .contributor-detail-copy p,

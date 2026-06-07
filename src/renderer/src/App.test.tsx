@@ -1380,8 +1380,7 @@ describe("Control renderer routing", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Back to pull requests" }));
     await userEvent.click(screen.getByRole("button", { name: /^Actions/i }));
-    const runMeta = (await screen.findAllByText(/push on main/i))[0];
-    await userEvent.click(runMeta.closest("button") as HTMLButtonElement);
+    await userEvent.click(await screen.findByRole("button", { name: /Publish docs preview.*#4201/i }));
 
     await waitFor(() =>
       expect(recordRecentItem).toHaveBeenCalledWith(
@@ -3660,7 +3659,8 @@ describe("Control renderer routing", () => {
     });
     renderControl(makeApi({ mutate, listActions }));
 
-    expect(await screen.findByRole("heading", { name: "Deploy preview" })).toBeInTheDocument();
+    await userEvent.click((await screen.findAllByRole("button", { name: /Deploy preview/i }))[0]);
+    expect(await screen.findByRole("heading", { name: /Deploy preview/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Rerun" })).toBeDisabled();
     await userEvent.click(screen.getByRole("button", { name: "Cancel run" }));
     await acceptRepositoryMutationConfirmation("Cancel workflow");
@@ -3677,6 +3677,7 @@ describe("Control renderer routing", () => {
       )
     );
 
+    await userEvent.click(screen.getByRole("button", { name: "Deploy preview" }));
     await userEvent.click((await screen.findAllByRole("button", { name: /Release validation/i }))[0]);
 
     expect(
@@ -3697,8 +3698,17 @@ describe("Control renderer routing", () => {
     });
     renderControl(makeApi({ mutate }));
 
+    await userEvent.click(
+      (
+        await screen.findAllByRole("button", {
+          name: new RegExp(mockActions[0].displayTitle ?? mockActions[0].name)
+        })
+      )[0]
+    );
     expect(
-      await screen.findByRole("heading", { name: mockActions[0].displayTitle ?? mockActions[0].name })
+      await screen.findByRole("heading", {
+        name: new RegExp(mockActions[0].displayTitle ?? mockActions[0].name)
+      })
     ).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Rerun failed jobs" }));
     await acceptRepositoryMutationConfirmation("Rerun failed workflow jobs");
@@ -3715,6 +3725,7 @@ describe("Control renderer routing", () => {
       )
     );
 
+    await userEvent.click(screen.getByRole("button", { name: mockActions[0].name }));
     await userEvent.click((await screen.findAllByRole("button", { name: /^Publish docs preview/ }))[0]);
 
     expect(
@@ -3748,8 +3759,17 @@ describe("Control renderer routing", () => {
     });
     renderControl({ ...makeApi({ getWorkflowRunDetailWithStatus, mutate }), openExternal });
 
+    await userEvent.click(
+      (
+        await screen.findAllByRole("button", {
+          name: new RegExp(mockActions[0].displayTitle ?? mockActions[0].name)
+        })
+      )[0]
+    );
     expect(
-      await screen.findByRole("heading", { name: mockActions[0].displayTitle ?? mockActions[0].name })
+      await screen.findByRole("heading", {
+        name: new RegExp(mockActions[0].displayTitle ?? mockActions[0].name)
+      })
     ).toBeInTheDocument();
     await waitFor(() =>
       expect(getWorkflowRunDetailWithStatus).toHaveBeenCalledWith({
@@ -3770,6 +3790,14 @@ describe("Control renderer routing", () => {
     expect(screen.getAllByText("Swift build failed").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Compiler test failed").length).toBeGreaterThan(0);
     expect(screen.getByText("Temporary download ready")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "View logs" }));
+    expect(await screen.findByText(/Sources\/Compiler\/main\.swift:42/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Build compiler/ }));
+    expect(await screen.findByText("Step: Build compiler")).toBeInTheDocument();
+    expect(screen.getByText(/error: Expected diagnostics did not match/)).toBeInTheDocument();
+    expect(screen.queryByText(/Checkout repository/)).not.toBeInTheDocument();
+    await userEvent.click(screen.getAllByRole("button", { name: /Summary/ })[0]);
 
     await userEvent.click(screen.getByRole("button", { name: "Download logs" }));
 
@@ -3813,7 +3841,7 @@ describe("Control renderer routing", () => {
     });
     renderControl(makeApi({ listActionsWithStatus, getWorkflowRunDetailWithStatus }));
 
-    expect(await screen.findByRole("heading", { name: "Direct workflow run" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /Direct workflow run/ })).toBeInTheDocument();
     expect(getWorkflowRunDetailWithStatus).toHaveBeenCalledWith({
       owner: "apple",
       repo: "swift",

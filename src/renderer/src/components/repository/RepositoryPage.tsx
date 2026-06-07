@@ -523,9 +523,22 @@ function buildRepositoryPageModel(input: {
 }
 
 function repositoryPageClassName(routeModel: RepositoryRouteModel): string {
-  return routeModel.focusedIssueNumber !== null || routeModel.focusedPullNumber !== null
-    ? "repo-page repo-page-focused-detail"
-    : "repo-page";
+  if (
+    routeModel.focusedIssueNumber !== null ||
+    routeModel.focusedPullNumber !== null ||
+    routeModel.focusedWorkflowRunId !== null
+  ) {
+    return "repo-page repo-page-focused-detail";
+  }
+  return routeModel.tab === "actions" ? "repo-page repo-page-actions" : "repo-page";
+}
+
+function repositoryPageShowsRightRail(routeModel: RepositoryRouteModel): boolean {
+  return (
+    routeModel.focusedIssueNumber === null &&
+    routeModel.focusedPullNumber === null &&
+    routeModel.tab !== "actions"
+  );
 }
 
 function uniqueRepositoryActionDisabledNotes(notes: readonly (string | null)[]): string {
@@ -674,7 +687,7 @@ export function RepositoryPage(props: RepositoryPageProps): JSX.Element {
         onSelectRef={props.onSelectRef}
         onSelectSettingsCollaborator={props.onSelectSettingsCollaborator}
       />
-      {routeModel.focusedIssueNumber === null && routeModel.focusedPullNumber === null && props.rightRail}
+      {repositoryPageShowsRightRail(routeModel) && props.rightRail}
     </article>
   );
 }
@@ -773,7 +786,6 @@ function RepositoryHero({
         onRefresh={onRefresh}
         onTogglePin={onTogglePin}
         onMutate={onMutate}
-        onOpenExternal={onOpenExternal}
       />
       <RepositoryHeroActionDisabledNote
         notes={[
@@ -923,8 +935,7 @@ function RepositoryHeroActions({
   pinned,
   onRefresh,
   onTogglePin,
-  onMutate,
-  onOpenExternal
+  onMutate
 }: {
   repository: RepositoryDetail;
   counts: RepositoryCounts;
@@ -939,7 +950,6 @@ function RepositoryHeroActions({
   onRefresh(): Promise<void> | void;
   onTogglePin(): void;
   onMutate(action: GitHubAction, dangerous: boolean, payload?: GitHubMutationFields): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   function refreshRepositoryData(): void {
     void onRefresh();
@@ -955,10 +965,6 @@ function RepositoryHeroActions({
 
   function toggleStarMutation(): void {
     onMutate(starAction, false);
-  }
-
-  function openRepositoryOnGitHub(): void {
-    onOpenExternal(repository.htmlUrl);
   }
 
   return (
@@ -1004,9 +1010,6 @@ function RepositoryHeroActions({
       >
         <Star size={17} /> {viewerState.isStarred ? "Starred" : "Star"}{" "}
         <span>{formatCompactNumber(counts.stars)}</span>
-      </button>
-      <button type="button" onClick={openRepositoryOnGitHub} title="Open on GitHub">
-        <ExternalLink size={16} /> GitHub
       </button>
     </div>
   );

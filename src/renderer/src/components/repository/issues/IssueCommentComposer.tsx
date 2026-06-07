@@ -59,12 +59,12 @@ export function IssueCommentComposer({
         placeholder="Leave a comment"
       />
       <button
-        className="dark-action"
+        className="dark-action comment-submit-button"
         type="submit"
         disabled={Boolean(submitDisabledReason)}
         title={submitDisabledReason ?? undefined}
       >
-        Comment
+        Add comment
       </button>
       {disabledReason && (
         <small className="action-disabled-note">Comment unavailable: {disabledReason}</small>

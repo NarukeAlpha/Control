@@ -811,6 +811,8 @@ body:not(.no-liquid-glass) .code-toolbar {
 
 .workspace-repository {
   grid-column: 2 / 4;
+  border-radius: 18px;
+  background: var(--color-surface-row);
 }
 
 body:not(.no-liquid-glass) .workspace-repository {
@@ -1759,6 +1761,7 @@ button.local-recent-item:focus-visible {
   grid-template-columns: minmax(0, 1fr) 280px;
   align-items: start;
   gap: 10px;
+  background: var(--color-surface-row);
 }
 
 body:not(.no-liquid-glass) .repository-content-scroll {
@@ -1782,6 +1785,10 @@ body:not(.no-liquid-glass) .home-content-scroll {
 .repo-page-focused-detail {
   grid-template-columns: minmax(0, 1fr);
   padding-top: 58px;
+}
+
+.repo-page-issues {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .repo-page-focused-detail .repo-hero,
@@ -3054,6 +3061,63 @@ p {
   min-height: min(620px, calc(100vh - 244px));
 }
 
+.issues-route-shell {
+  display: grid;
+  min-height: 0;
+  gap: 10px;
+}
+
+.issues-route-shell.issue-detail-route {
+  align-content: start;
+}
+
+.issues-surface {
+  min-height: min(620px, calc(100vh - 244px));
+}
+
+.issue-detail-surface {
+  min-height: min(720px, calc(100vh - 232px));
+}
+
+.issues-content {
+  display: grid;
+  min-height: 520px;
+}
+
+.issues-content.issue-detail-route {
+  min-height: min(720px, calc(100vh - 232px));
+}
+
+.issue-detail-route-top {
+  position: relative;
+  display: flex;
+  z-index: 1;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.repo-page-issues.repo-page-focused-detail .issue-detail-route-top {
+  transform: translateY(-42px);
+}
+
+.issue-detail-back-button {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface-control);
+  color: var(--color-text);
+  padding: 0 12px;
+}
+
+.issue-detail-back-button:hover:not(:disabled) {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface-control-hover);
+}
+
 .table-action-row {
   display: flex;
   justify-content: flex-end;
@@ -3069,6 +3133,19 @@ p {
 
 .issue-filter-bar {
   margin: 10px 12px;
+}
+
+.issue-create-button {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border-radius: 11px;
+  padding: 0 14px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .surface-filter {
@@ -3115,6 +3192,11 @@ p {
   grid-template-columns: minmax(0, 1fr);
 }
 
+.issues-list-content .thread-list-action-row {
+  grid-template-columns: minmax(0, 1fr);
+  padding-right: 12px;
+}
+
 .thread-list-row-main {
   display: grid !important;
   grid-template-columns: 22px minmax(0, 1fr);
@@ -3125,19 +3207,41 @@ p {
   min-width: 0;
   min-height: 58px;
   align-items: center;
-  column-gap: 10px;
-  row-gap: 5px;
+  column-gap: 12px;
+  row-gap: 6px;
   overflow: hidden;
   justify-content: stretch !important;
   border: 0 !important;
   background: transparent !important;
   box-shadow: none !important;
-  padding: 8px 0 !important;
+  padding: 10px 0 !important;
   text-align: left;
+}
+
+.issue-row .thread-list-row-main {
+  column-gap: 12px;
+  row-gap: 6px;
 }
 
 .thread-list-row-main > svg {
   grid-area: icon;
+}
+
+.thread-list-row-main > .issue-state-icon {
+  color: var(--issue-state-color);
+  stroke-width: 2.4;
+}
+
+.issue-state-icon.open {
+  --issue-state-color: #1f883d;
+}
+
+.issue-state-icon.completed {
+  --issue-state-color: #8250df;
+}
+
+.issue-state-icon.not-planned {
+  --issue-state-color: #6e7781;
 }
 
 .thread-list-row-main > div:first-of-type {
@@ -3158,6 +3262,27 @@ p {
   line-height: 1.25;
 }
 
+.issue-row-copy {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 3px 8px;
+}
+
+.issue-row-copy strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.issue-row-meta {
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+}
+
 .thread-list-row-badges {
   display: flex;
   grid-area: badges;
@@ -3166,7 +3291,7 @@ p {
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-start;
-  gap: 5px;
+  gap: 6px;
 }
 
 .thread-list-row-badges .label-stack {
@@ -3223,6 +3348,10 @@ p {
   border-right: 1px solid rgba(85, 105, 135, 0.11);
 }
 
+.issues-list-content {
+  border-right: 0;
+}
+
 .workflow-list-stack {
   display: grid;
   align-content: start;
@@ -3245,10 +3374,6 @@ p {
   gap: 16px;
   min-width: 0;
   padding: 22px;
-}
-
-.issue-summary-pane {
-  background: rgba(247, 250, 255, 0.5);
 }
 
 .issue-detail-page,
@@ -3527,7 +3652,6 @@ p {
   gap: 10px;
 }
 
-.issue-detail-toolbar button,
 .detail-toolbar button,
 .thread-actions button {
   display: inline-flex;
@@ -3850,6 +3974,27 @@ p {
   resize: vertical;
 }
 
+.comment-submit-button {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 0 14px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.comment-submit-button:disabled {
+  border-color: var(--color-border) !important;
+  background: var(--color-disabled-surface) !important;
+  color: var(--color-disabled-text) !important;
+  opacity: 1;
+  box-shadow: inset 0 1px 0 var(--color-surface-highlight);
+}
+
 .label-row {
   justify-content: flex-start;
   margin-top: 10px;
@@ -3908,6 +4053,19 @@ p {
   color: #334963;
   padding: 0 12px;
   white-space: nowrap;
+}
+
+.issue-metadata-controls .metadata-picker-options button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.issue-label-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
 }
 
 .thread-actions,
@@ -5595,10 +5753,6 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
   .thread-list {
     border-right: 0;
     border-bottom: 1px solid rgba(85, 105, 135, 0.11);
-  }
-
-  .issue-summary-body {
-    max-height: none;
   }
 }
 
@@ -7693,7 +7847,8 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 .settings-panel button:focus-visible,
 .settings-panel input:focus-visible,
 .settings-panel select:focus-visible,
-.compose-form textarea:focus-visible {
+.compose-form textarea:focus-visible,
+.issue-detail-back-button:focus-visible {
   outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
 }
@@ -7801,9 +7956,6 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
     .repo-hero,
     .cached-mode-banner,
     .thread-detail,
-    .issue-summary-tile,
-    .issue-summary-body,
-    .issue-detail-toolbar button,
     .detail-toolbar button,
     .thread-actions button,
     .timeline-card,
@@ -7916,7 +8068,6 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
     .code-browser-header h1,
     .code-viewer-toolbar span,
     .binary-file-fallback strong,
-    .issue-summary-header h2,
     .thread-header h2,
     .compose-form h2,
     .timeline-card-header strong,
@@ -7957,6 +8108,42 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 .app-shell[data-color-scheme="dark"] :is(.state-chip.attention, .workflow-failure-item) {
   color: var(--color-warning);
   background: var(--color-warning-bg);
+}
+
+.label-stack .issue-label-chip,
+.app-shell[data-color-scheme="dark"] .label-stack .issue-label-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  border-color: color-mix(in srgb, var(--issue-label-color) 55%, transparent);
+  background: color-mix(in srgb, var(--issue-label-color) 16%, var(--color-surface-control));
+  color: var(--color-text);
+  padding: 2px 9px 2px 7px;
+}
+
+.label-stack .issue-label-chip > i {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--issue-label-color);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--issue-label-color) 70%, transparent);
+}
+
+.issue-state-icon.open,
+.app-shell[data-color-scheme="dark"] .issue-state-icon.open {
+  color: #1f883d;
+}
+
+.issue-state-icon.completed,
+.app-shell[data-color-scheme="dark"] .issue-state-icon.completed {
+  color: #8250df;
+}
+
+.issue-state-icon.not-planned,
+.app-shell[data-color-scheme="dark"] .issue-state-icon.not-planned {
+  color: #6e7781;
 }
 
 .app-shell[data-color-scheme="dark"]

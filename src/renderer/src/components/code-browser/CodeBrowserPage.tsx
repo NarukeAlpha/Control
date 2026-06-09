@@ -26,11 +26,10 @@ import type {
 import { MarkdownBody, markdownRepositoryUrlContext, type MarkdownUrlContext } from "../MarkdownBody";
 import { CommitHistoryPanel } from "../repository/CommitHistoryPanel";
 import { repoFileContentRecentCommit, type CommitRecentCommit } from "../repository/commitRecent";
-import { readAvailabilityMessage, repositoryPath } from "../repository/repositoryUi";
+import { readAvailabilityMessage } from "../repository/repositoryUi";
 import { repositoryActivityDate } from "../repository/repositorySearch";
 import { CodeSourceView } from "./CodeSourceView";
 import {
-  encodeRepositoryPath,
   EntryIcon,
   entryBrowseTitle,
   entryLastChangeLabel,
@@ -39,8 +38,7 @@ import {
   isPreviewableImagePath,
   normalizeCodeLineNumber,
   parentDirectory,
-  pathSegments,
-  repositoryPathForEntryType
+  pathSegments
 } from "./codeBrowserUi";
 import type { AppRoute } from "../../stores/uiStore";
 import { formatRelativeDate } from "../../utils/format";
@@ -93,21 +91,13 @@ type CodeBrowserEntryType = "file" | "dir";
 
 function CodeBrowserLoadError({
   message,
-  browserUrl,
-  onRefresh,
-  onOpenExternal
+  onRefresh
 }: {
   message: string | null | undefined;
-  browserUrl: string;
   onRefresh(): Promise<unknown> | void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   function retry(): void {
     void onRefresh();
-  }
-
-  function openFallback(): void {
-    onOpenExternal(browserUrl);
   }
 
   return (
@@ -117,9 +107,6 @@ function CodeBrowserLoadError({
       <div className="table-action-row">
         <button type="button" onClick={retry}>
           <RefreshCw size={16} /> Retry
-        </button>
-        <button type="button" onClick={openFallback}>
-          <ExternalLink size={16} /> Open on GitHub
         </button>
       </div>
     </div>
@@ -208,7 +195,6 @@ function CodeBrowserHeader({
   repository,
   route,
   browserPath,
-  browserUrl,
   currentRef,
   branches,
   tags,
@@ -216,13 +202,11 @@ function CodeBrowserHeader({
   hasCurrentRefOption,
   onBackToRepository,
   onOpenCodeBrowser,
-  onSelectRef,
-  onOpenExternal
+  onSelectRef
 }: {
   repository: RepositoryDetail;
   route: Extract<AppRoute, { kind: "codeBrowser" }>;
   browserPath: string;
-  browserUrl: string;
   currentRef: string;
   branches: BranchSummary[];
   tags: TagSummary[];
@@ -231,13 +215,8 @@ function CodeBrowserHeader({
   onBackToRepository(): void;
   onOpenCodeBrowser(path: string, entryType: "file" | "dir", ref?: string | null, line?: number | null): void;
   onSelectRef(ref: string): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   const segments = pathSegments(route.path);
-
-  function openFallback(): void {
-    onOpenExternal(browserUrl);
-  }
 
   return (
     <header className="code-browser-header">
@@ -270,9 +249,6 @@ function CodeBrowserHeader({
           hasCurrentRefOption={hasCurrentRefOption}
           onSelectRef={onSelectRef}
         />
-        <button type="button" onClick={openFallback}>
-          <ExternalLink size={16} /> Open on GitHub
-        </button>
       </div>
     </header>
   );
@@ -791,7 +767,6 @@ function FileHistorySection({
   commitsLoading,
   commitsError,
   commitsAvailabilityMessage,
-  historyUrl,
   onExpandCommits,
   onOpenCommit,
   onOpenExternal
@@ -805,7 +780,6 @@ function FileHistorySection({
   commitsLoading: boolean;
   commitsError: Error | null;
   commitsAvailabilityMessage: string | null;
-  historyUrl: string | null;
   onExpandCommits(): void;
   onOpenCommit(
     commit: CommitRecentCommit,
@@ -828,7 +802,6 @@ function FileHistorySection({
         loading={commitsLoading}
         error={commitsError}
         availabilityMessage={commitsAvailabilityMessage}
-        externalUrl={historyUrl}
         currentLimit={commitsLimit}
         openCommitLabel="Open file"
         onExpandCommits={onExpandCommits}
@@ -875,19 +848,7 @@ export function CodeBrowserPage({
   const historyPanelRef = useRef<HTMLDivElement | null>(null);
 
   if (!repository && (error || availabilityMessage)) {
-    const routeLine = normalizeCodeLineNumber(route.line);
-    const browserUrl = `https://github.com/${route.nameWithOwner}/${
-      route.entryType === "dir" ? "tree" : "blob"
-    }/${encodeURIComponent(route.ref ?? "HEAD")}/${encodeRepositoryPath(route.path)}${routeLine ? `#L${routeLine}` : ""}`;
-
-    return (
-      <CodeBrowserLoadError
-        message={error?.message ?? availabilityMessage}
-        browserUrl={browserUrl}
-        onRefresh={onRefresh}
-        onOpenExternal={onOpenExternal}
-      />
-    );
+    return <CodeBrowserLoadError message={error?.message ?? availabilityMessage} onRefresh={onRefresh} />;
   }
 
   if (!repository) {
@@ -902,19 +863,9 @@ export function CodeBrowserPage({
   const hasCurrentRefOption =
     branches.some((branch) => branch.name === currentRef) || tags.some((tag) => tag.name === currentRef);
   const browserPath = route.path || repository.name;
-  const browserUrl = `${repositoryPathForEntryType(repository, route.path, route.entryType, currentRef)}${
-    highlightedLine ? `#L${highlightedLine}` : ""
-  }`;
   const fileStatusKey = `${route.nameWithOwner}:${route.ref ?? ""}:${route.path}:${highlightedLine ?? ""}`;
   const visibleCopyStatus = copyStatus?.key === fileStatusKey ? copyStatus.label : null;
   const filePath = fileContent?.path ?? route.path;
-  const historyUrl = filePath
-    ? repositoryPath(
-        repository,
-        `/commits/${encodeURIComponent(currentRef)}/${encodeRepositoryPath(filePath)}`
-      )
-    : null;
-
   const copyFileContent = async (): Promise<void> => {
     const hasFileContent = Boolean(fileContent) && !fileLoading;
     const canCopyRaw = hasFileContent && fileContent?.kind === "text" && fileContent.content !== null;
@@ -943,7 +894,6 @@ export function CodeBrowserPage({
         repository={repository}
         route={route}
         browserPath={browserPath}
-        browserUrl={browserUrl}
         currentRef={currentRef}
         branches={branches}
         tags={tags}
@@ -952,7 +902,6 @@ export function CodeBrowserPage({
         onBackToRepository={onBackToRepository}
         onOpenCodeBrowser={onOpenCodeBrowser}
         onSelectRef={onSelectRef}
-        onOpenExternal={onOpenExternal}
       />
 
       {!githubReady && <CodeBrowserCachedModeBanner />}
@@ -1001,7 +950,6 @@ export function CodeBrowserPage({
           commitsLoading={commitsLoading}
           commitsError={commitsError}
           commitsAvailabilityMessage={commitsAvailabilityMessage}
-          historyUrl={historyUrl}
           onExpandCommits={onExpandCommits}
           onOpenCommit={onOpenCommit}
           onOpenExternal={onOpenExternal}

@@ -1,4 +1,4 @@
-import { ExternalLink, GitFork } from "lucide-react";
+import { GitFork } from "lucide-react";
 import { useState, type JSX, type ReactNode } from "react";
 
 import type {
@@ -15,8 +15,7 @@ import type {
 import {
   githubActionLabel,
   readAvailabilityMessage,
-  repositoryForkMetadataLabel,
-  repositoryPath
+  repositoryForkMetadataLabel
 } from "@renderer/components/repository/repositoryUi";
 
 import type { RepositoryTab } from "@renderer/stores/uiStore";
@@ -351,9 +350,6 @@ export function RepositorySettingsTab({
             {administration.defaultBranch ?? "unknown"}
           </small>
         </div>
-        <button type="button" onClick={() => onOpenExternal(repositoryPath(repository, "/settings"))}>
-          <ExternalLink size={16} /> Open settings on GitHub
-        </button>
       </header>
 
       {administrationAvailabilityMessage && (
@@ -471,7 +467,6 @@ export function RepositorySettingsTab({
           error={repositoryRulesetsError}
           availabilityMessage={repositoryRulesetsAvailabilityMessage}
           disabledReason={rulesetDisabledReason}
-          onOpenExternal={onOpenExternal}
           onMutate={onMutate}
         />
       </RepositorySettingsGroup>
@@ -508,14 +503,6 @@ export function RepositorySettingsTab({
                       <strong>{fork.nameWithOwner}</strong>
                       <small>{repositoryForkMetadataLabel(fork)}</small>
                     </span>
-                  </button>
-                  <button
-                    className="pin-row-button"
-                    type="button"
-                    title={`Open ${fork.nameWithOwner} on GitHub`}
-                    onClick={() => onOpenExternal(fork.htmlUrl)}
-                  >
-                    <ExternalLink size={14} />
                   </button>
                 </div>
               ))}

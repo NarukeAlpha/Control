@@ -42,7 +42,6 @@ export interface AgentsTabProps {
   issueListLimit: number;
   pullRequestListLimit: number;
   actionsLimit: number;
-  onOpenExternal(url: string): void;
   onOpenFilteredSurface(tab: AgentSurfaceTab, filter: string): void;
   onSelectIssue(issue: IssueSummary): void;
   onSelectPullRequest(pullRequest: PullRequestSummary): void;
@@ -55,7 +54,6 @@ export function AgentsTab({
   issueListLimit,
   pullRequestListLimit,
   actionsLimit,
-  onOpenExternal,
   onOpenFilteredSurface,
   onSelectIssue,
   onSelectPullRequest,
@@ -238,9 +236,6 @@ export function AgentsTab({
               <div className="tile-actions">
                 <button type="button" onClick={() => onOpenFilteredSurface(item.tab, item.filter)}>
                   Open in Control
-                </button>
-                <button type="button" onClick={() => onOpenExternal(`${repository.htmlUrl}${item.path}`)}>
-                  Open on GitHub
                 </button>
               </div>
             </article>

@@ -2,7 +2,6 @@ import {
   CheckCircle2,
   CircleDot,
   Code2,
-  ExternalLink,
   File as FileIcon,
   Folder,
   Gauge,
@@ -73,7 +72,6 @@ interface LocalRepositoryPageProps {
   onOpenIssue(issue: IssueSummary): void;
   onOpenPullRequest(pullRequest: PullRequestSummary): void;
   onOpenWorkflowRun(nameWithOwner: string, run: WorkflowRunSummary): void;
-  onOpenExternal(url: string): void;
   onConfirm: ConfirmAction;
   githubReady: boolean;
 }
@@ -106,7 +104,6 @@ function useLocalRepositoryPageModel({
   onOpenIssue,
   onOpenPullRequest,
   onOpenWorkflowRun,
-  onOpenExternal,
   onConfirm,
   githubReady
 }: LocalRepositoryPageProps) {
@@ -333,7 +330,6 @@ function useLocalRepositoryPageModel({
     onOpenIssue,
     onOpenPullRequest,
     onOpenWorkflowRun,
-    onOpenExternal,
     onRunOperation: runGatewayOperation
   };
 }
@@ -391,12 +387,6 @@ function LocalRepositoryHeader({
     }
   }
 
-  function openRepositoryOnGitHub(): void {
-    if (githubConnection) {
-      model.onOpenExternal(githubConnection.url);
-    }
-  }
-
   return (
     <RepositoryChrome
       model={chromeModel}
@@ -429,16 +419,6 @@ function LocalRepositoryHeader({
           {githubConnection?.matchedGitHubAreaId && (
             <button className="secondary-button" type="button" onClick={openMatchedGitHubArea}>
               Open in GitHub Area
-            </button>
-          )}
-          {githubConnection && (
-            <button
-              className="icon-button"
-              type="button"
-              title="Open on GitHub"
-              onClick={openRepositoryOnGitHub}
-            >
-              <ExternalLink size={16} />
             </button>
           )}
         </>
@@ -672,7 +652,6 @@ function LocalRepositoryTabContent({
           loading={model.localIssues.isLoading || model.localIssues.isFetching}
           error={model.localIssues.error}
           onOpenIssue={model.onOpenIssue}
-          onOpenExternal={model.onOpenExternal}
         />
       );
     case "pulls":
@@ -684,7 +663,6 @@ function LocalRepositoryTabContent({
           loading={model.localPulls.isLoading || model.localPulls.isFetching}
           error={model.localPulls.error}
           onOpenPullRequest={model.onOpenPullRequest}
-          onOpenExternal={model.onOpenExternal}
         />
       );
     case "actions":
@@ -696,7 +674,6 @@ function LocalRepositoryTabContent({
           loading={model.localActions.isLoading || model.localActions.isFetching}
           error={model.localActions.error}
           onOpenWorkflowRun={model.onOpenWorkflowRun}
-          onOpenExternal={model.onOpenExternal}
         />
       );
     case "sync":
@@ -803,8 +780,7 @@ function LocalConnectedIssuesPanel({
   githubConnectionReady,
   loading,
   error,
-  onOpenIssue,
-  onOpenExternal
+  onOpenIssue
 }: {
   issues: IssueSummary[];
   availabilityMessage: string | null;
@@ -812,7 +788,6 @@ function LocalConnectedIssuesPanel({
   loading: boolean;
   error: Error | null;
   onOpenIssue(issue: IssueSummary): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   return (
     <section className="glass-panel local-connected-panel">
@@ -826,12 +801,7 @@ function LocalConnectedIssuesPanel({
       ) : issues.length ? (
         <div className="local-connected-list">
           {issues.map((issue) => (
-            <LocalConnectedIssueRow
-              issue={issue}
-              key={issue.id}
-              onOpenExternal={onOpenExternal}
-              onOpenIssue={onOpenIssue}
-            />
+            <LocalConnectedIssueRow issue={issue} key={issue.id} onOpenIssue={onOpenIssue} />
           ))}
         </div>
       ) : (
@@ -845,19 +815,13 @@ function LocalConnectedIssuesPanel({
 
 function LocalConnectedIssueRow({
   issue,
-  onOpenIssue,
-  onOpenExternal
+  onOpenIssue
 }: {
   issue: IssueSummary;
   onOpenIssue(issue: IssueSummary): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   function openIssueInApp(): void {
     onOpenIssue(issue);
-  }
-
-  function openIssueOnGitHub(): void {
-    onOpenExternal(issue.htmlUrl);
   }
 
   return (
@@ -881,17 +845,6 @@ function LocalConnectedIssueRow({
           ))}
         </span>
       </button>
-      <span className="row-action-stack">
-        <button
-          className="pin-row-button"
-          type="button"
-          aria-label={`Open issue ${issue.number} on GitHub`}
-          title={`Open issue #${issue.number} on GitHub`}
-          onClick={openIssueOnGitHub}
-        >
-          <ExternalLink size={15} />
-        </button>
-      </span>
     </div>
   );
 }
@@ -902,8 +855,7 @@ function LocalConnectedPullRequestsPanel({
   githubConnectionReady,
   loading,
   error,
-  onOpenPullRequest,
-  onOpenExternal
+  onOpenPullRequest
 }: {
   pullRequests: PullRequestSummary[];
   availabilityMessage: string | null;
@@ -911,7 +863,6 @@ function LocalConnectedPullRequestsPanel({
   loading: boolean;
   error: Error | null;
   onOpenPullRequest(pullRequest: PullRequestSummary): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   return (
     <section className="glass-panel local-connected-panel">
@@ -928,7 +879,6 @@ function LocalConnectedPullRequestsPanel({
             <LocalConnectedPullRequestRow
               key={pullRequest.id}
               pullRequest={pullRequest}
-              onOpenExternal={onOpenExternal}
               onOpenPullRequest={onOpenPullRequest}
             />
           ))}
@@ -944,19 +894,13 @@ function LocalConnectedPullRequestsPanel({
 
 function LocalConnectedPullRequestRow({
   pullRequest,
-  onOpenPullRequest,
-  onOpenExternal
+  onOpenPullRequest
 }: {
   pullRequest: PullRequestSummary;
   onOpenPullRequest(pullRequest: PullRequestSummary): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   function openPullRequestInApp(): void {
     onOpenPullRequest(pullRequest);
-  }
-
-  function openPullRequestOnGitHub(): void {
-    onOpenExternal(pullRequest.htmlUrl);
   }
 
   return (
@@ -979,17 +923,6 @@ function LocalConnectedPullRequestRow({
           {pullRequest.merged && <span className="state-chip success">merged</span>}
         </span>
       </button>
-      <span className="row-action-stack">
-        <button
-          className="pin-row-button"
-          type="button"
-          aria-label={`Open pull request ${pullRequest.number} on GitHub`}
-          title={`Open pull request #${pullRequest.number} on GitHub`}
-          onClick={openPullRequestOnGitHub}
-        >
-          <ExternalLink size={15} />
-        </button>
-      </span>
     </div>
   );
 }
@@ -1000,8 +933,7 @@ function LocalConnectedActionsPanel({
   nameWithOwner,
   loading,
   error,
-  onOpenWorkflowRun,
-  onOpenExternal
+  onOpenWorkflowRun
 }: {
   runs: WorkflowRunSummary[];
   availabilityMessage: string | null;
@@ -1009,7 +941,6 @@ function LocalConnectedActionsPanel({
   loading: boolean;
   error: Error | null;
   onOpenWorkflowRun(nameWithOwner: string, run: WorkflowRunSummary): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   return (
     <section className="glass-panel local-connected-panel">
@@ -1027,7 +958,6 @@ function LocalConnectedActionsPanel({
               key={run.id}
               nameWithOwner={nameWithOwner}
               run={run}
-              onOpenExternal={onOpenExternal}
               onOpenWorkflowRun={onOpenWorkflowRun}
             />
           ))}
@@ -1042,22 +972,16 @@ function LocalConnectedActionsPanel({
 function LocalConnectedWorkflowRunRow({
   nameWithOwner,
   run,
-  onOpenWorkflowRun,
-  onOpenExternal
+  onOpenWorkflowRun
 }: {
   nameWithOwner: string;
   run: WorkflowRunSummary;
   onOpenWorkflowRun(nameWithOwner: string, run: WorkflowRunSummary): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   const statusLabel = run.conclusion ?? run.status ?? "unknown";
 
   function openWorkflowRunInApp(): void {
     onOpenWorkflowRun(nameWithOwner, run);
-  }
-
-  function openWorkflowRunOnGitHub(): void {
-    onOpenExternal(run.htmlUrl);
   }
 
   return (
@@ -1076,17 +1000,6 @@ function LocalConnectedWorkflowRunRow({
           {run.runNumber !== null && <span className="state-chip">#{run.runNumber}</span>}
         </span>
       </button>
-      <span className="row-action-stack">
-        <button
-          className="pin-row-button"
-          type="button"
-          aria-label={`Open workflow run ${run.id} on GitHub`}
-          title={`Open workflow run ${run.id} on GitHub`}
-          onClick={openWorkflowRunOnGitHub}
-        >
-          <ExternalLink size={15} />
-        </button>
-      </span>
     </div>
   );
 }

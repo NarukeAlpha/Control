@@ -1,4 +1,4 @@
-import { ExternalLink, GitBranch } from "lucide-react";
+import { GitBranch } from "lucide-react";
 import type { JSX } from "react";
 
 import type { RepositoryCommitSummary } from "@shared/github";
@@ -14,7 +14,6 @@ export function CommitHistoryPanel({
   loading,
   error,
   availabilityMessage,
-  externalUrl,
   currentLimit,
   openCommitLabel = "Open in Control",
   onExpandCommits,
@@ -27,7 +26,6 @@ export function CommitHistoryPanel({
   loading: boolean;
   error: Error | null;
   availabilityMessage?: string | null;
-  externalUrl?: string | null;
   currentLimit: number;
   openCommitLabel?: string;
   onExpandCommits(): void;
@@ -57,18 +55,6 @@ export function CommitHistoryPanel({
         <span>{title}</span>
         <small>{subtitle}</small>
         <span className="state-chip">{historyStatus}</span>
-        <button
-          type="button"
-          disabled={!externalUrl}
-          title={externalUrl ? undefined : "GitHub history URL unavailable."}
-          onClick={() => {
-            if (externalUrl) {
-              onOpenExternal(externalUrl);
-            }
-          }}
-        >
-          <ExternalLink size={14} /> Open on GitHub
-        </button>
       </header>
       {loading && commits.length === 0 && <div className="loading-state">Loading commits…</div>}
       {error && <div className="error-state">Commit history unavailable: {error.message}</div>}
@@ -94,14 +80,6 @@ export function CommitHistoryPanel({
                 <div className="commit-history-row-actions">
                   <button type="button" onClick={() => onOpenCommit(commit)}>
                     {openCommitLabel}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!commit.htmlUrl}
-                    title={commit.htmlUrl ? undefined : "Commit URL unavailable."}
-                    onClick={() => commit.htmlUrl && onOpenExternal(commit.htmlUrl)}
-                  >
-                    Open on GitHub
                   </button>
                 </div>
               </div>

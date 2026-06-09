@@ -3499,12 +3499,11 @@ p {
 .actions-run-table-columns {
   display: grid;
   grid-template-columns:
-    minmax(300px, 1fr) minmax(88px, 0.3fr) minmax(82px, 0.25fr) minmax(112px, 0.34fr)
-    minmax(88px, 0.28fr);
-  gap: 12px;
+    20px minmax(300px, 1fr) minmax(88px, 0.3fr) minmax(82px, 0.25fr)
+    minmax(112px, 0.34fr) minmax(86px, 0.25fr) minmax(74px, 0.22fr);
+  gap: 10px;
   color: var(--color-text-muted);
   font-size: 12px;
-  padding-left: 30px;
 }
 
 .actions-run-row {
@@ -3524,8 +3523,8 @@ p {
 .actions-run-row-main {
   display: grid !important;
   grid-template-columns:
-    20px minmax(300px, 1fr) minmax(88px, 0.3fr) minmax(82px, 0.25fr) minmax(112px, 0.34fr)
-    minmax(88px, 0.28fr) minmax(86px, 0.25fr) minmax(74px, 0.22fr);
+    20px minmax(300px, 1fr) minmax(88px, 0.3fr) minmax(82px, 0.25fr)
+    minmax(112px, 0.34fr) minmax(86px, 0.25fr) minmax(74px, 0.22fr);
   min-width: 0;
   width: 100%;
   min-height: 64px;
@@ -3547,7 +3546,6 @@ p {
 }
 
 .actions-run-event,
-.actions-run-actor,
 .actions-run-time,
 .actions-run-duration,
 .actions-run-branch {
@@ -5626,13 +5624,11 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
     grid-area: branch;
   }
 
-  .actions-run-actor,
   .actions-run-time,
   .actions-run-duration {
     grid-area: meta;
   }
 
-  .actions-run-actor,
   .actions-run-duration {
     display: none;
   }

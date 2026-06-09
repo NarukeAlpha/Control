@@ -1,4 +1,3 @@
-import { ExternalLink } from "lucide-react";
 import { useState, type FormEvent, type JSX } from "react";
 
 import type { GitHubAction, GitHubMutationFields, RepositoryRulesetSummary } from "@shared/github";
@@ -49,7 +48,6 @@ export function RepositoryRulesetsSection({
   error,
   availabilityMessage,
   disabledReason,
-  onOpenExternal,
   onMutate
 }: {
   repositoryName: string;
@@ -60,7 +58,6 @@ export function RepositoryRulesetsSection({
   error: Error | null;
   availabilityMessage: string | null;
   disabledReason: string | null;
-  onOpenExternal(url: string): void;
   onMutate(action: GitHubAction, dangerous: boolean, payload?: GitHubMutationFields): void;
 }): JSX.Element {
   const [rulesetName, setRulesetName] = useState("");
@@ -190,18 +187,6 @@ export function RepositoryRulesetsSection({
                     onClick={() => onMutate("deleteRepositoryRuleset", true, { rulesetId: ruleset.id })}
                   >
                     Delete
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!ruleset.htmlUrl}
-                    title={ruleset.htmlUrl ? "Open ruleset on GitHub" : "Ruleset URL unavailable."}
-                    onClick={() => {
-                      if (ruleset.htmlUrl) {
-                        onOpenExternal(ruleset.htmlUrl);
-                      }
-                    }}
-                  >
-                    <ExternalLink size={14} />
                   </button>
                 </div>
               </div>

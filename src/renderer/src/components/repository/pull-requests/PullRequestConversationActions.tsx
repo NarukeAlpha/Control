@@ -1,12 +1,10 @@
-import { ExternalLink } from "lucide-react";
 import type { FormEvent, JSX } from "react";
 
-import type { GitHubAction, PullRequestSummary } from "@shared/github";
+import type { GitHubAction } from "@shared/github";
 
 import { githubActionLabel } from "@renderer/components/repository/repositoryUi";
 
 export function PullRequestConversationActions({
-  selectedPull,
   commentBody,
   reviewBody,
   pullActionLabel,
@@ -25,11 +23,9 @@ export function PullRequestConversationActions({
   onReviewBodyChange,
   onSubmitComment,
   onSubmitReview,
-  onOpenExternal,
   onRunPullAction,
   onMerge
 }: {
-  selectedPull: PullRequestSummary;
   commentBody: string;
   reviewBody: string;
   pullActionLabel: string;
@@ -48,7 +44,6 @@ export function PullRequestConversationActions({
   onReviewBodyChange(value: string): void;
   onSubmitComment(): void;
   onSubmitReview(action: GitHubAction, dangerous: boolean): void;
-  onOpenExternal(url: string): void;
   onRunPullAction(): void;
   onMerge(): void;
 }): JSX.Element {
@@ -152,9 +147,6 @@ export function PullRequestConversationActions({
         )}
       </div>
       <div className="thread-actions">
-        <button type="button" onClick={() => onOpenExternal(selectedPull.htmlUrl)}>
-          <ExternalLink size={16} /> Open on GitHub
-        </button>
         <button
           type="button"
           disabled={Boolean(pullActionDisabledReason)}

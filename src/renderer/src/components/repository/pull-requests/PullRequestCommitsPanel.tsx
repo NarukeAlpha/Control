@@ -15,8 +15,7 @@ export function PullRequestCommitsPanel({
   changedFilesRepositoryNameWithOwner,
   onRequestCommits,
   onToggleCommits,
-  onOpenPullRequestCommit,
-  onOpenExternal
+  onOpenPullRequestCommit
 }: {
   commits: PullRequestCommitSummary[];
   visibleCommits: PullRequestCommitSummary[];
@@ -32,7 +31,6 @@ export function PullRequestCommitsPanel({
     commit: PullRequestCommitSummary,
     targetRepositoryNameWithOwner?: string | null
   ): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   return (
     <article>
@@ -60,18 +58,6 @@ export function PullRequestCommitsPanel({
               onClick={() => onOpenPullRequestCommit(commit, changedFilesRepositoryNameWithOwner)}
             >
               Open tree in Control
-            </button>
-            <button
-              type="button"
-              disabled={!commit.htmlUrl}
-              title={commit.htmlUrl ? undefined : "Commit URL unavailable."}
-              onClick={() => {
-                if (commit.htmlUrl) {
-                  onOpenExternal(commit.htmlUrl);
-                }
-              }}
-            >
-              Open on GitHub
             </button>
           </div>
         ))}

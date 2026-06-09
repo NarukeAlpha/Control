@@ -1,4 +1,4 @@
-import { ExternalLink, GitPullRequest } from "lucide-react";
+import { GitPullRequest } from "lucide-react";
 import type { JSX } from "react";
 
 import type { PullRequestSummary, RepositoryDetail } from "@shared/github";
@@ -24,14 +24,12 @@ function PullRequestListRow({
   repository,
   pull,
   active,
-  onSelect,
-  onOpenExternal
+  onSelect
 }: {
   repository: RepositoryDetail;
   pull: PullRequestSummary;
   active: boolean;
   onSelect(pull: PullRequestSummary): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   const headRepositoryNameWithOwner = pull.headRepositoryNameWithOwner ?? null;
   const baseRepositoryNameWithOwner = pull.baseRepositoryNameWithOwner ?? null;
@@ -71,15 +69,6 @@ function PullRequestListRow({
           {pull.locked && <span className="state-chip attention">locked</span>}
         </div>
       </button>
-      <button
-        className="pin-row-button"
-        type="button"
-        aria-label={`Open pull request ${pull.number} on GitHub`}
-        title={`Open pull request #${pull.number} on GitHub`}
-        onClick={() => onOpenExternal(pull.htmlUrl)}
-      >
-        <ExternalLink size={15} />
-      </button>
     </div>
   );
 }
@@ -94,7 +83,6 @@ export function PullRequestList({
   filter,
   pullRequestListLimit,
   onSelect,
-  onOpenExternal,
   onExpandPullRequests
 }: {
   repository: RepositoryDetail;
@@ -106,7 +94,6 @@ export function PullRequestList({
   filter: string;
   pullRequestListLimit: number;
   onSelect(pull: PullRequestSummary): void;
-  onOpenExternal(url: string): void;
   onExpandPullRequests(): void;
 }): JSX.Element {
   const unfilteredPullRequestListLimitHit = !filter.trim() && pulls.length >= pullRequestListLimit;
@@ -122,7 +109,6 @@ export function PullRequestList({
           pull={pull}
           active={selectedPullNumber === pull.number && !creating}
           onSelect={onSelect}
-          onOpenExternal={onOpenExternal}
         />
       ))}
       {!loading && pulls.length === 0 && (

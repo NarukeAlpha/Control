@@ -116,7 +116,6 @@ export function PullRequestReviewThreadsPanel({
         {visibleReviewThreads.map((thread) => {
           const richThread = thread as RichPullRequestReviewThreadSummary;
           const firstComment = thread.comments[0];
-          const lastComment = thread.comments[thread.comments.length - 1];
           const location = pullRequestReviewThreadLocationParts(richThread);
           const diffHunk = pullRequestReviewThreadDiffHunk(richThread);
           const diffPreview = pullRequestReviewThreadDiffPreview(diffHunk);
@@ -166,18 +165,6 @@ export function PullRequestReviewThreadsPanel({
                   }
                 >
                   Open file in Control
-                </button>
-                <button
-                  type="button"
-                  disabled={!lastComment?.htmlUrl}
-                  title={lastComment?.htmlUrl ? undefined : "Review thread URL unavailable."}
-                  onClick={() => {
-                    if (lastComment?.htmlUrl) {
-                      onOpenExternal(lastComment.htmlUrl);
-                    }
-                  }}
-                >
-                  Open on GitHub
                 </button>
               </div>
               {diffPreview && (

@@ -21,8 +21,7 @@ export function PullRequestChecksPanel({
   checkLimit,
   onRequestChecks,
   onToggleChecks,
-  onOpenWorkflowRun,
-  onOpenExternal
+  onOpenWorkflowRun
 }: {
   checks: PullRequestCheckSummary[];
   visibleChecks: PullRequestCheckSummary[];
@@ -34,7 +33,6 @@ export function PullRequestChecksPanel({
   onRequestChecks(): void;
   onToggleChecks(): void;
   onOpenWorkflowRun(runId: number, url?: string | null): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   return (
     <article>
@@ -75,18 +73,6 @@ export function PullRequestChecksPanel({
                 }}
               >
                 Open run in Control
-              </button>
-              <button
-                type="button"
-                disabled={!checkUrl}
-                title={checkUrl ? undefined : "Check URL unavailable."}
-                onClick={() => {
-                  if (checkUrl) {
-                    onOpenExternal(checkUrl);
-                  }
-                }}
-              >
-                Open on GitHub
               </button>
             </div>
           );

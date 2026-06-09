@@ -14,8 +14,7 @@ import { MarkdownBody, markdownRepositoryUrlContext } from "@renderer/components
 import {
   githubActionLabel,
   readAvailabilityMessage,
-  repositoryMutationDisabledReason,
-  repositoryPath
+  repositoryMutationDisabledReason
 } from "@renderer/components/repository/repositoryUi";
 
 import { useRepositoryRefs } from "@renderer/hooks/useRepositoryRefs";
@@ -108,12 +107,10 @@ function ReleaseMutationStatus({
 
 function ReleasesToolbar({
   disabledReason,
-  onCreateRelease,
-  onOpenReleasesFallback
+  onCreateRelease
 }: {
   disabledReason: string | null;
   onCreateRelease(): void;
-  onOpenReleasesFallback(): void;
 }): JSX.Element {
   return (
     <div className="table-action-row surface-filter-row">
@@ -125,9 +122,6 @@ function ReleasesToolbar({
       >
         <Plus size={16} /> New release
       </button>
-      <button type="button" onClick={onOpenReleasesFallback}>
-        <ExternalLink size={16} /> Open on GitHub
-      </button>
     </div>
   );
 }
@@ -135,12 +129,10 @@ function ReleasesToolbar({
 function ReleaseListRow({
   active,
   release,
-  onOpenExternal,
   onSelectRelease
 }: {
   active: boolean;
   release: ReleaseSummary;
-  onOpenExternal(url: string): void;
   onSelectRelease(release: ReleaseSummary): void;
 }): JSX.Element {
   const releaseTitle = release.name || release.tagName;
@@ -148,10 +140,6 @@ function ReleaseListRow({
 
   function handleSelectRelease(): void {
     onSelectRelease(release);
-  }
-
-  function handleOpenFallback(): void {
-    onOpenExternal(release.htmlUrl);
   }
 
   return (
@@ -173,15 +161,6 @@ function ReleaseListRow({
         {release.isPrerelease && <span className="state-chip">prerelease</span>}
         {hasReleaseNotes && <span className="state-chip">notes</span>}
       </button>
-      <button
-        className="pin-row-button"
-        type="button"
-        aria-label={`Open ${releaseTitle} on GitHub`}
-        title={`Open ${releaseTitle} on GitHub`}
-        onClick={handleOpenFallback}
-      >
-        <ExternalLink size={15} />
-      </button>
     </div>
   );
 }
@@ -196,7 +175,6 @@ function ReleaseList({
   releasesLimitHit,
   selectedRelease,
   onExpandReleases,
-  onOpenExternal,
   onSelectRelease
 }: {
   availabilityMessage: string | null;
@@ -208,7 +186,6 @@ function ReleaseList({
   releasesLimitHit: boolean;
   selectedRelease: ReleaseSummary | null;
   onExpandReleases(): void;
-  onOpenExternal(url: string): void;
   onSelectRelease(release: ReleaseSummary): void;
 }): JSX.Element {
   return (
@@ -231,7 +208,6 @@ function ReleaseList({
           active={selectedRelease?.id === release.id && !creating}
           key={release.id}
           release={release}
-          onOpenExternal={onOpenExternal}
           onSelectRelease={onSelectRelease}
         />
       ))}
@@ -625,10 +601,6 @@ function ReleaseDetail({
     }
   }
 
-  function handleOpenFallback(): void {
-    onOpenExternal(release.htmlUrl);
-  }
-
   function handleBeginEditingRelease(): void {
     onBeginEditingRelease(release);
   }
@@ -699,9 +671,6 @@ function ReleaseDetail({
           onClick={handleOpenTarget}
         >
           Open target in Control
-        </button>
-        <button type="button" onClick={handleOpenFallback}>
-          <ExternalLink size={16} /> Open on GitHub
         </button>
         <button
           type="button"
@@ -944,10 +913,6 @@ export function ReleasesTab({
   const releaseMutationStatusActive =
     submittedReleaseAction !== null && releaseMutationAction === submittedReleaseAction;
 
-  function openReleasesFallback(): void {
-    onOpenExternal(repositoryPath(repository, "/releases"));
-  }
-
   function selectRelease(release: ReleaseSummary): void {
     selectReleaseState(release);
     onSelectRelease(release);
@@ -981,11 +946,7 @@ export function ReleasesTab({
 
   return (
     <section className="table-panel github-surface">
-      <ReleasesToolbar
-        disabledReason={releaseControlDisabledReason}
-        onCreateRelease={beginCreatingRelease}
-        onOpenReleasesFallback={openReleasesFallback}
-      />
+      <ReleasesToolbar disabledReason={releaseControlDisabledReason} onCreateRelease={beginCreatingRelease} />
       <div className="github-split">
         <ReleaseList
           availabilityMessage={availabilityMessage}
@@ -997,7 +958,6 @@ export function ReleasesTab({
           releasesLimitHit={releasesLimitHit}
           selectedRelease={selectedRelease}
           onExpandReleases={onExpandReleases}
-          onOpenExternal={onOpenExternal}
           onSelectRelease={selectRelease}
         />
         <div className="thread-detail">

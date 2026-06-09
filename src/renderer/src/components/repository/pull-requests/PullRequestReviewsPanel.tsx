@@ -16,8 +16,7 @@ export function PullRequestReviewsPanel({
   changedFilesRepositoryNameWithOwner,
   onRequestReviews,
   onToggleReviews,
-  onOpenPullRequestReviewCommit,
-  onOpenExternal
+  onOpenPullRequestReviewCommit
 }: {
   reviews: PullRequestReviewSummary[];
   visibleReviews: PullRequestReviewSummary[];
@@ -34,7 +33,6 @@ export function PullRequestReviewsPanel({
     review: PullRequestReviewSummary,
     targetRepositoryNameWithOwner?: string | null
   ): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   return (
     <article>
@@ -71,18 +69,6 @@ export function PullRequestReviewsPanel({
               }}
             >
               Open commit tree
-            </button>
-            <button
-              type="button"
-              disabled={!review.htmlUrl}
-              title={review.htmlUrl ? undefined : "Review URL unavailable."}
-              onClick={() => {
-                if (review.htmlUrl) {
-                  onOpenExternal(review.htmlUrl);
-                }
-              }}
-            >
-              Open on GitHub
             </button>
           </div>
         ))}

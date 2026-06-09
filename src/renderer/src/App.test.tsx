@@ -285,9 +285,8 @@ describe("Control renderer routing", () => {
     expect(screen.getByText(/compiler · closed · push · 18 members · 12 repositories/i)).toBeInTheDocument();
     expect(screen.getByText("Maintains the Swift compiler and language implementation.")).toBeInTheDocument();
 
-    await userEvent.click(screen.getAllByRole("button", { name: "Open apple on GitHub" })[0]);
-
-    expect(openExternal).toHaveBeenCalledWith("https://github.com/apple");
+    expect(screen.queryByRole("button", { name: "Open apple on GitHub" })).not.toBeInTheDocument();
+    expect(openExternal).not.toHaveBeenCalled();
   });
 
   it("refetches repository rows when the main process reports a SQLite repository update", async () => {
@@ -917,8 +916,8 @@ describe("Control renderer routing", () => {
 
     expect(await screen.findByRole("heading", { name: "Control App" })).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Open on GitHub" }));
-    expect(openExternal).toHaveBeenCalledWith("https://github.com/NarukeAlpha/control");
+    expect(screen.queryByRole("button", { name: "Open on GitHub" })).not.toBeInTheDocument();
+    expect(openExternal).not.toHaveBeenCalled();
 
     await userEvent.click(screen.getByRole("button", { name: "Open in GitHub Area" }));
     await waitFor(() => {
@@ -1946,12 +1945,11 @@ describe("Control renderer routing", () => {
       })
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "Open settings on GitHub" }));
-
-    expect(openExternal).toHaveBeenCalledWith("https://github.com/apple/swift/settings");
+    expect(screen.queryByRole("button", { name: "Open settings on GitHub" })).not.toBeInTheDocument();
+    expect(openExternal).not.toHaveBeenCalled();
   });
 
-  it("renders wiki availability in-app with explicit Open on GitHub", async () => {
+  it("renders wiki availability in-app without GitHub fallback buttons", async () => {
     const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
     useUiStore.setState({
       ...defaultUiState,
@@ -1962,16 +1960,12 @@ describe("Control renderer routing", () => {
 
     expect(await screen.findByRole("heading", { name: "Repository wiki" })).toBeInTheDocument();
     expect(screen.getByText("Wiki is available for this repository.")).toBeInTheDocument();
-    expect(screen.getByText("Open wiki on GitHub")).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("button", { name: /Open wiki on GitHub/i }));
-    await userEvent.click(screen.getByRole("button", { name: /New wiki page on GitHub/i }));
-
-    expect(openExternal).toHaveBeenCalledWith("https://github.com/apple/swift/wiki");
-    expect(openExternal).toHaveBeenCalledWith("https://github.com/apple/swift/wiki/_new");
+    expect(screen.queryByText("Open wiki on GitHub")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /New wiki page on GitHub/i })).not.toBeInTheDocument();
+    expect(openExternal).not.toHaveBeenCalled();
   });
 
-  it("labels the Agents tab as an in-app triage collection with Open on GitHubs", async () => {
+  it("labels the Agents tab as an in-app triage collection", async () => {
     const openExternal = vi.fn<ControlApi["openExternal"]>(async () => undefined);
     useUiStore.setState({
       ...defaultUiState,
@@ -1993,17 +1987,14 @@ describe("Control renderer routing", () => {
     const agentIssuesTile = screen.getByText("Agent issues").closest("article");
     expect(agentIssuesTile).not.toBeNull();
 
-    await userEvent.click(
-      within(agentIssuesTile as HTMLElement).getByRole("button", { name: /Open on GitHub/i })
-    );
-
-    expect(openExternal).toHaveBeenCalledWith(
-      "https://github.com/apple/swift/issues?q=is%3Aissue%20is%3Aopen%20label%3Aagent"
-    );
+    expect(
+      within(agentIssuesTile as HTMLElement).queryByRole("button", { name: /Open on GitHub/i })
+    ).not.toBeInTheDocument();
 
     await userEvent.click(
       within(agentIssuesTile as HTMLElement).getByRole("button", { name: /Open in Control/i })
     );
+    expect(openExternal).not.toHaveBeenCalled();
 
     await waitFor(() => {
       expect(useUiStore.getState().route).toEqual({
@@ -2040,7 +2031,7 @@ describe("Control renderer routing", () => {
     });
 
     expect((await screen.findAllByText("Wiki is disabled for this repository.")).length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: /New wiki page/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "New" })).toBeDisabled();
   });
 
   it("refreshes the active repository surface", async () => {
@@ -3312,9 +3303,9 @@ describe("Control renderer routing", () => {
     const appFileName = within(changedFilesPanel as HTMLElement).getByText("src/renderer/src/App.tsx");
     const appFileRow = appFileName.closest(".pr-file-row");
     expect(appFileRow).not.toBeNull();
-    await userEvent.click(within(appFileRow as HTMLElement).getByRole("button", { name: "Open on GitHub" }));
-
-    expect(openExternal).toHaveBeenCalledWith(`${firstOpenPullRequest.htmlUrl}/files#diff-app`);
+    expect(
+      within(appFileRow as HTMLElement).queryByRole("button", { name: "Open on GitHub" })
+    ).not.toBeInTheDocument();
   });
 
   it("renders split pull request subresource availability without hiding the overview", async () => {
@@ -3738,6 +3729,39 @@ describe("Control renderer routing", () => {
     expect(screen.getByRole("button", { name: "Rerun failed jobs" })).toBeDisabled();
   });
 
+  it("renders workflow runs without an actor column and keeps load more below the runs", async () => {
+    const expandedActions = Array.from({ length: 20 }, (_, index) => ({
+      ...mockActions[index % mockActions.length],
+      id: 9800 + index,
+      runNumber: 5200 + index,
+      displayTitle: `Expanded workflow run ${index + 1}`
+    }));
+    const listActions = vi.fn<GitHubTestApi["listActions"]>(async () => expandedActions);
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "actions" }
+    });
+    renderControl(makeApi({ listActions }));
+
+    expect(await screen.findByText("Expanded workflow run 1")).toBeInTheDocument();
+    expect(screen.queryByText("Actor")).not.toBeInTheDocument();
+    expect(document.querySelector(".actions-run-actor")).not.toBeInTheDocument();
+    expect(document.querySelector(".actions-run-time svg")).not.toBeInTheDocument();
+    expect(
+      Array.from(document.querySelectorAll(".actions-run-table-columns span")).map((cell) => cell.textContent)
+    ).toEqual(["", "Workflow", "Event", "Status", "Branch", "", ""]);
+
+    const table = document.querySelector(".actions-run-table");
+    const runRows = Array.from(document.querySelectorAll(".actions-run-row"));
+    const loadMoreRow = screen.getByRole("button", { name: "Load more runs" }).closest(".table-action-row");
+    expect(table).not.toBeNull();
+    expect(runRows).toHaveLength(20);
+    expect(loadMoreRow).not.toBeNull();
+    expect(Array.from((table as HTMLElement).children).indexOf(loadMoreRow as HTMLElement)).toBeGreaterThan(
+      Array.from((table as HTMLElement).children).indexOf(runRows.at(-1) as HTMLElement)
+    );
+  });
+
   it("renders workflow run jobs, steps, checks, and artifacts in-app", async () => {
     const getWorkflowRunDetailWithStatus = vi.fn<GitHubTestApi["getWorkflowRunDetailWithStatus"]>(
       async (input) => ({
@@ -3941,11 +3965,10 @@ describe("Control renderer routing", () => {
       .getByRole("heading", { name: "Package manager ergonomics" })
       .closest(".thread-detail");
     expect(selectedDiscussionPanel).not.toBeNull();
-    await userEvent.click(
-      within(selectedDiscussionPanel as HTMLElement).getByRole("button", { name: "Open on GitHub" })
-    );
-
-    expect(openExternal).toHaveBeenCalledWith(mockDiscussions[1].htmlUrl);
+    expect(
+      within(selectedDiscussionPanel as HTMLElement).queryByRole("button", { name: "Open on GitHub" })
+    ).not.toBeInTheDocument();
+    expect(openExternal).not.toHaveBeenCalled();
   });
 
   it("renders discussion rate limits without treating them as empty lists", async () => {
@@ -3990,8 +4013,8 @@ describe("Control renderer routing", () => {
       expect.objectContaining({ owner: "apple", repo: "swift", limit: 20, cacheOnly: false })
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "Open project on GitHub" }));
-    expect(openExternal).toHaveBeenCalledWith(mockProjects[0].htmlUrl);
+    expect(screen.queryByRole("button", { name: "Open project on GitHub" })).not.toBeInTheDocument();
+    expect(openExternal).not.toHaveBeenCalled();
 
     const palette = await openCommandPalette();
     await userEvent.type(within(palette).getByLabelText("Command palette search"), "refresh apple");
@@ -4113,18 +4136,15 @@ describe("Control renderer routing", () => {
     const codeScanningSection = screen.getByRole("region", { name: "Code scanning alerts" });
     const secretScanningSection = screen.getByRole("region", { name: "Secret scanning alerts" });
 
-    await userEvent.click(
-      within(dependabotSection).getByRole("button", { name: "Open Dependabot alert on GitHub" })
-    );
-    expect(openExternal).toHaveBeenCalledWith(mockDependabotAlerts[0].htmlUrl);
-    await userEvent.click(
-      within(codeScanningSection).getByRole("button", { name: "Open code scanning alert on GitHub" })
-    );
-    expect(openExternal).toHaveBeenCalledWith(mockCodeScanningAlerts[0].htmlUrl);
-    await userEvent.click(
-      within(secretScanningSection).getByRole("button", { name: "Open secret scanning alert on GitHub" })
-    );
-    expect(openExternal).toHaveBeenCalledWith(mockSecretScanningAlerts[0].htmlUrl);
+    expect(
+      within(dependabotSection).queryByRole("button", { name: "Open Dependabot alert on GitHub" })
+    ).not.toBeInTheDocument();
+    expect(
+      within(codeScanningSection).queryByRole("button", { name: "Open code scanning alert on GitHub" })
+    ).not.toBeInTheDocument();
+    expect(
+      within(secretScanningSection).queryByRole("button", { name: "Open secret scanning alert on GitHub" })
+    ).not.toBeInTheDocument();
 
     await userEvent.click(within(dependabotSection).getByRole("button", { name: "Dismissed" }));
     await waitFor(() =>
@@ -4145,9 +4165,7 @@ describe("Control renderer routing", () => {
       )
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "Open branch rules on GitHub" }));
-
-    expect(openExternal).toHaveBeenCalledWith("https://github.com/apple/swift/settings/branches");
+    expect(screen.queryByRole("button", { name: "Open branch rules on GitHub" })).not.toBeInTheDocument();
   });
 
   it("renders Dependabot permission states without confusing them with empty alerts", async () => {

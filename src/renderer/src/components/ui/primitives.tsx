@@ -175,7 +175,7 @@ export interface ExternalLinkButtonProps extends ButtonHTMLAttributes<HTMLButton
 export function ExternalLinkButton({
   disabledReason,
   className,
-  children = "Open on GitHub",
+  children = "Open externally",
   disabled,
   type = "button",
   ...props

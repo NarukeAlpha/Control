@@ -78,18 +78,6 @@ export function PullRequestFilesPanel({
             </button>
             <button
               type="button"
-              disabled={!file.blobUrl}
-              title={file.blobUrl ? undefined : "GitHub file URL unavailable."}
-              onClick={() => {
-                if (file.blobUrl) {
-                  onOpenExternal(file.blobUrl);
-                }
-              }}
-            >
-              Open on GitHub
-            </button>
-            <button
-              type="button"
               disabled={!file.rawUrl}
               title={file.rawUrl ? undefined : "Raw file URL unavailable."}
               onClick={() => {

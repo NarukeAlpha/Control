@@ -2,7 +2,6 @@ import {
   BookOpen,
   CheckCircle2,
   ChevronDown,
-  ExternalLink,
   File as FileIcon,
   Gauge,
   GitBranch,
@@ -168,7 +167,6 @@ interface SecurityQualityActions {
   openSecurityPath: OpenSecurityPath;
   securityItemActive: SecurityItemActive;
   rulesetMutationDisabledReason(ruleset: RepositoryRulesetSummary): string | null;
-  openBranchRulesFallback(): void;
   applyBaselineBranchProtection(): void;
   deleteBranchProtection(): void;
   createActiveRepositoryRuleset(): void;
@@ -176,9 +174,6 @@ interface SecurityQualityActions {
   reapplyRepositoryRuleset(ruleset: RepositoryRulesetSummary): void;
   deleteRepositoryRuleset(ruleset: RepositoryRulesetSummary): void;
   inspectRepositoryRuleset(ruleset: RepositoryRulesetSummary): void;
-  openRulesetsFallback(): void;
-  openSecurityPolicyFallback(): void;
-  openCommunityFallback(): void;
   openRepositorySecurityPath(path: string): void;
 }
 
@@ -447,10 +442,6 @@ function createSecurityQualityActions({
     return null;
   }
 
-  function openBranchRulesFallback(): void {
-    onOpenExternal(repositoryPath(repository, "/settings/branches"));
-  }
-
   function applyBaselineBranchProtection(): void {
     if (branchProtectionBranch) {
       onMutate("updateBranchProtection", false, baselineBranchProtectionPayload(branchProtectionBranch));
@@ -520,18 +511,6 @@ function createSecurityQualityActions({
     });
   }
 
-  function openRulesetsFallback(): void {
-    onOpenExternal(repositoryPath(repository, "/rules"));
-  }
-
-  function openSecurityPolicyFallback(): void {
-    onOpenExternal(repositoryPath(repository, "/security/policy"));
-  }
-
-  function openCommunityFallback(): void {
-    onOpenExternal(repositoryPath(repository, "/community"));
-  }
-
   function openRepositorySecurityPath(path: string): void {
     onOpenExternal(repositoryPath(repository, path));
   }
@@ -540,7 +519,6 @@ function createSecurityQualityActions({
     openSecurityPath,
     securityItemActive,
     rulesetMutationDisabledReason,
-    openBranchRulesFallback,
     applyBaselineBranchProtection,
     deleteBranchProtection,
     createActiveRepositoryRuleset,
@@ -548,9 +526,6 @@ function createSecurityQualityActions({
     reapplyRepositoryRuleset,
     deleteRepositoryRuleset,
     inspectRepositoryRuleset,
-    openRulesetsFallback,
-    openSecurityPolicyFallback,
-    openCommunityFallback,
     openRepositorySecurityPath
   };
 }
@@ -974,7 +949,6 @@ function BranchProtectionSurface({
   statusUnavailable,
   onApplyBaselineProtection,
   onDeleteProtection,
-  onOpenBranchRulesFallback,
   onSelectBranch
 }: {
   availabilityMessage: string | null;
@@ -998,7 +972,6 @@ function BranchProtectionSurface({
   statusUnavailable: boolean;
   onApplyBaselineProtection(): void;
   onDeleteProtection(): void;
-  onOpenBranchRulesFallback(): void;
   onSelectBranch(ref: string): void;
 }): JSX.Element {
   function handleBranchChange(event: ChangeEvent<HTMLSelectElement>): void {
@@ -1030,9 +1003,6 @@ function BranchProtectionSurface({
           </select>
           <ChevronDown size={14} />
         </label>
-        <button type="button" onClick={onOpenBranchRulesFallback}>
-          <ExternalLink size={16} /> Open branch rules on GitHub
-        </button>
         {branchesNote && <small className="action-disabled-note">{branchesNote}</small>}
       </div>
       <section className="security-protection-summary" aria-label="Branch protection">
@@ -1082,9 +1052,6 @@ function BranchProtectionSurface({
             onClick={onDeleteProtection}
           >
             <X size={15} /> Delete protection
-          </button>
-          <button type="button" onClick={onOpenBranchRulesFallback}>
-            <ExternalLink size={15} /> Open branch protection on GitHub
           </button>
         </div>
         {protection && (
@@ -1157,13 +1124,11 @@ function RepositorySecurityAdvisoryCard({
   advisory,
   active,
   repositoryNameWithOwner,
-  onOpenExternal,
   onSelectSecurityItem
 }: {
   advisory: RepositorySecurityAdvisorySummary;
   active: boolean;
   repositoryNameWithOwner: string;
-  onOpenExternal(url: string): void;
   onSelectSecurityItem: SelectSecurityItem;
 }): JSX.Element {
   function handleInspect(): void {
@@ -1179,12 +1144,6 @@ function RepositorySecurityAdvisoryCard({
       cveId: advisory.cveId,
       updatedAt: advisory.updatedAt
     });
-  }
-
-  function handleOpenFallback(): void {
-    if (advisory.htmlUrl) {
-      onOpenExternal(advisory.htmlUrl);
-    }
   }
 
   return (
@@ -1211,14 +1170,6 @@ function RepositorySecurityAdvisoryCard({
         <button type="button" onClick={handleInspect}>
           <ShieldCheck size={15} /> Inspect
         </button>
-        <button
-          type="button"
-          disabled={!advisory.htmlUrl}
-          title={advisory.htmlUrl ? undefined : "Advisory URL unavailable."}
-          onClick={handleOpenFallback}
-        >
-          <ExternalLink size={15} /> Open security advisory on GitHub
-        </button>
       </div>
     </article>
   );
@@ -1229,7 +1180,6 @@ function DependabotAlertCard({
   active,
   repositoryNameWithOwner,
   defaultSecurityRef,
-  onOpenExternal,
   onOpenSecurityPath,
   onSelectSecurityItem
 }: {
@@ -1237,7 +1187,6 @@ function DependabotAlertCard({
   active: boolean;
   repositoryNameWithOwner: string;
   defaultSecurityRef: string | null;
-  onOpenExternal(url: string): void;
   onOpenSecurityPath: OpenSecurityPath;
   onSelectSecurityItem: SelectSecurityItem;
 }): JSX.Element {
@@ -1260,12 +1209,6 @@ function DependabotAlertCard({
 
   function handleOpenManifest(): void {
     onOpenSecurityPath(alert.manifestPath, defaultSecurityRef);
-  }
-
-  function handleOpenFallback(): void {
-    if (alert.htmlUrl) {
-      onOpenExternal(alert.htmlUrl);
-    }
   }
 
   return (
@@ -1291,14 +1234,6 @@ function DependabotAlertCard({
         >
           Open manifest in Control
         </button>
-        <button
-          type="button"
-          disabled={!alert.htmlUrl}
-          title={alert.htmlUrl ? undefined : "Dependabot alert URL unavailable."}
-          onClick={handleOpenFallback}
-        >
-          <ExternalLink size={15} /> Open Dependabot alert on GitHub
-        </button>
       </div>
       {manifestDisabledReason && <small className="action-disabled-note">{manifestDisabledReason}</small>}
     </article>
@@ -1309,14 +1244,12 @@ function CodeScanningAlertCard({
   alert,
   active,
   repositoryNameWithOwner,
-  onOpenExternal,
   onOpenSecurityPath,
   onSelectSecurityItem
 }: {
   alert: CodeScanningAlertSummary;
   active: boolean;
   repositoryNameWithOwner: string;
-  onOpenExternal(url: string): void;
   onOpenSecurityPath: OpenSecurityPath;
   onSelectSecurityItem: SelectSecurityItem;
 }): JSX.Element {
@@ -1339,12 +1272,6 @@ function CodeScanningAlertCard({
 
   function handleOpenFile(): void {
     onOpenSecurityPath(alert.path, alert.ref, alert.startLine);
-  }
-
-  function handleOpenFallback(): void {
-    if (alert.htmlUrl) {
-      onOpenExternal(alert.htmlUrl);
-    }
   }
 
   return (
@@ -1372,14 +1299,6 @@ function CodeScanningAlertCard({
         >
           Open file in Control
         </button>
-        <button
-          type="button"
-          disabled={!alert.htmlUrl}
-          title={alert.htmlUrl ? undefined : "Code scanning alert URL unavailable."}
-          onClick={handleOpenFallback}
-        >
-          <ExternalLink size={15} /> Open code scanning alert on GitHub
-        </button>
       </div>
       {codePathDisabledReason && <small className="action-disabled-note">{codePathDisabledReason}</small>}
     </article>
@@ -1391,7 +1310,6 @@ function SecretScanningAlertCard({
   active,
   repositoryNameWithOwner,
   defaultSecurityRef,
-  onOpenExternal,
   onOpenSecurityPath,
   onSelectSecurityItem
 }: {
@@ -1399,7 +1317,6 @@ function SecretScanningAlertCard({
   active: boolean;
   repositoryNameWithOwner: string;
   defaultSecurityRef: string | null;
-  onOpenExternal(url: string): void;
   onOpenSecurityPath: OpenSecurityPath;
   onSelectSecurityItem: SelectSecurityItem;
 }): JSX.Element {
@@ -1422,12 +1339,6 @@ function SecretScanningAlertCard({
 
   function handleOpenLocation(): void {
     onOpenSecurityPath(alert.firstLocationPath, defaultSecurityRef, alert.firstLocationStartLine);
-  }
-
-  function handleOpenFallback(): void {
-    if (alert.htmlUrl) {
-      onOpenExternal(alert.htmlUrl);
-    }
   }
 
   return (
@@ -1459,14 +1370,6 @@ function SecretScanningAlertCard({
         >
           Open location in Control
         </button>
-        <button
-          type="button"
-          disabled={!alert.htmlUrl}
-          title={alert.htmlUrl ? undefined : "Secret scanning alert URL unavailable."}
-          onClick={handleOpenFallback}
-        >
-          <ExternalLink size={15} /> Open secret scanning alert on GitHub
-        </button>
       </div>
       {secretLocationDisabledReason && (
         <small className="action-disabled-note">{secretLocationDisabledReason}</small>
@@ -1481,7 +1384,6 @@ function RepositoryRulesetCard({
   getMutationDisabledReason,
   onDeleteRuleset,
   onInspectRuleset,
-  onOpenExternal,
   onReapplyRuleset
 }: {
   active: boolean;
@@ -1489,7 +1391,6 @@ function RepositoryRulesetCard({
   getMutationDisabledReason(ruleset: RepositoryRulesetSummary): string | null;
   onDeleteRuleset(ruleset: RepositoryRulesetSummary): void;
   onInspectRuleset(ruleset: RepositoryRulesetSummary): void;
-  onOpenExternal(url: string): void;
   onReapplyRuleset(ruleset: RepositoryRulesetSummary): void;
 }): JSX.Element {
   const rulesetDisabledReason = getMutationDisabledReason(ruleset);
@@ -1504,12 +1405,6 @@ function RepositoryRulesetCard({
 
   function handleInspectRuleset(): void {
     onInspectRuleset(ruleset);
-  }
-
-  function handleOpenFallback(): void {
-    if (ruleset.htmlUrl) {
-      onOpenExternal(ruleset.htmlUrl);
-    }
   }
 
   return (
@@ -1574,14 +1469,6 @@ function RepositoryRulesetCard({
         <button type="button" onClick={handleInspectRuleset}>
           <ShieldCheck size={15} /> Inspect
         </button>
-        <button
-          type="button"
-          disabled={!ruleset.htmlUrl}
-          title={ruleset.htmlUrl ? undefined : "Ruleset URL unavailable."}
-          onClick={handleOpenFallback}
-        >
-          <ExternalLink size={15} /> Open ruleset on GitHub
-        </button>
       </div>
     </article>
   );
@@ -1602,8 +1489,6 @@ function RepositoryRulesetsSection({
   onDeleteRuleset,
   onExpand,
   onInspectRuleset,
-  onOpenRulesetsFallback,
-  onOpenExternal,
   onReapplyRuleset,
   securityItemActive
 }: {
@@ -1621,8 +1506,6 @@ function RepositoryRulesetsSection({
   onDeleteRuleset(ruleset: RepositoryRulesetSummary): void;
   onExpand(): void;
   onInspectRuleset(ruleset: RepositoryRulesetSummary): void;
-  onOpenRulesetsFallback(): void;
-  onOpenExternal(url: string): void;
   onReapplyRuleset(ruleset: RepositoryRulesetSummary): void;
   securityItemActive: SecurityItemActive;
 }): JSX.Element {
@@ -1661,9 +1544,6 @@ function RepositoryRulesetsSection({
         >
           <ShieldCheck size={15} /> Create evaluate ruleset
         </button>
-        <button type="button" onClick={onOpenRulesetsFallback}>
-          <ExternalLink size={15} /> Open rulesets on GitHub
-        </button>
       </div>
       {!loading && !error && !availabilityMessage && rulesets.length === 0 && (
         <div className="empty-state">No repository rulesets returned.</div>
@@ -1684,7 +1564,6 @@ function RepositoryRulesetsSection({
               key={ruleset.id}
               onDeleteRuleset={onDeleteRuleset}
               onInspectRuleset={onInspectRuleset}
-              onOpenExternal={onOpenExternal}
               onReapplyRuleset={onReapplyRuleset}
               ruleset={ruleset}
             />
@@ -1705,7 +1584,6 @@ function RepositorySecurityAdvisoriesSection({
   statusLabel,
   statusUnavailable,
   onExpand,
-  onOpenExternal,
   onSelectSecurityItem,
   securityItemActive
 }: {
@@ -1718,7 +1596,6 @@ function RepositorySecurityAdvisoriesSection({
   statusLabel: string;
   statusUnavailable: boolean;
   onExpand(): void;
-  onOpenExternal(url: string): void;
   onSelectSecurityItem: SelectSecurityItem;
   securityItemActive: SecurityItemActive;
 }): JSX.Element {
@@ -1763,7 +1640,6 @@ function RepositorySecurityAdvisoriesSection({
               active={securityItemActive("advisory", advisory.ghsaId)}
               advisory={advisory}
               key={advisory.ghsaId}
-              onOpenExternal={onOpenExternal}
               onSelectSecurityItem={onSelectSecurityItem}
               repositoryNameWithOwner={repositoryNameWithOwner}
             />
@@ -1786,9 +1662,7 @@ function SecurityPolicySection({
   statusLabel,
   statusUnavailable,
   visiblePolicyContent,
-  onOpenExternal,
   onOpenSecurityPath,
-  onOpenSecurityPolicyFallback,
   onTogglePolicyPreview
 }: {
   availabilityMessage: string | null;
@@ -1802,20 +1676,12 @@ function SecurityPolicySection({
   statusLabel: string;
   statusUnavailable: boolean;
   visiblePolicyContent: string;
-  onOpenExternal(url: string): void;
   onOpenSecurityPath: OpenSecurityPath;
-  onOpenSecurityPolicyFallback(): void;
   onTogglePolicyPreview(): void;
 }): JSX.Element {
   function handleOpenPolicy(): void {
     if (policy) {
       onOpenSecurityPath(policy.path, policy.ref);
-    }
-  }
-
-  function handleOpenPolicyFallback(): void {
-    if (policy?.htmlUrl) {
-      onOpenExternal(policy.htmlUrl);
     }
   }
 
@@ -1864,45 +1730,24 @@ function SecurityPolicySection({
             <button type="button" onClick={handleOpenPolicy}>
               <FileIcon size={15} /> Open in Control
             </button>
-            <button
-              type="button"
-              disabled={!policy.htmlUrl}
-              title={policy.htmlUrl ? undefined : "Policy URL unavailable."}
-              onClick={handleOpenPolicyFallback}
-            >
-              <ExternalLink size={15} /> Open security policy on GitHub
-            </button>
           </div>
         </article>
       )}
-      <div className="table-action-row">
-        <button type="button" onClick={onOpenSecurityPolicyFallback}>
-          <ExternalLink size={16} /> Open security policy on GitHub
-        </button>
-      </div>
     </section>
   );
 }
 
 function CommunityProfileFileCard({
   file,
-  onOpenExternal,
   onOpenSecurityPath
 }: {
   file: CommunityProfileFileSummary;
-  onOpenExternal(url: string): void;
   onOpenSecurityPath: OpenSecurityPath;
 }): JSX.Element {
   const disabledReason = securityPathDisabledReason(file.path, file.label);
 
   function handleOpenFile(): void {
     onOpenSecurityPath(file.path, null);
-  }
-
-  function handleOpenFallback(): void {
-    if (file.htmlUrl) {
-      onOpenExternal(file.htmlUrl);
-    }
   }
 
   return (
@@ -1921,14 +1766,6 @@ function CommunityProfileFileCard({
         >
           <FileIcon size={15} /> Open in Control
         </button>
-        <button
-          type="button"
-          disabled={!file.htmlUrl}
-          title={file.htmlUrl ? undefined : "File URL unavailable."}
-          onClick={handleOpenFallback}
-        >
-          <ExternalLink size={15} /> Open community file on GitHub
-        </button>
       </div>
     </article>
   );
@@ -1943,8 +1780,6 @@ function CommunityProfileSection({
   profile,
   statusLabel,
   statusUnavailable,
-  onOpenCommunityFallback,
-  onOpenExternal,
   onOpenSecurityPath
 }: {
   availabilityMessage: string | null;
@@ -1955,16 +1790,8 @@ function CommunityProfileSection({
   profile: RepositoryCommunityProfile | null;
   statusLabel: string;
   statusUnavailable: boolean;
-  onOpenCommunityFallback(): void;
-  onOpenExternal(url: string): void;
   onOpenSecurityPath: OpenSecurityPath;
 }): JSX.Element {
-  function handleOpenDocumentation(): void {
-    if (profile?.documentationUrl) {
-      onOpenExternal(profile.documentationUrl);
-    }
-  }
-
   return (
     <section className="security-protection-summary" aria-label="Community profile">
       <header>
@@ -2000,7 +1827,6 @@ function CommunityProfileSection({
                 <CommunityProfileFileCard
                   file={file}
                   key={file.key}
-                  onOpenExternal={onOpenExternal}
                   onOpenSecurityPath={onOpenSecurityPath}
                 />
               ))}
@@ -2017,16 +1843,6 @@ function CommunityProfileSection({
           )}
         </>
       )}
-      <div className="table-action-row">
-        {profile?.documentationUrl && (
-          <button type="button" onClick={handleOpenDocumentation}>
-            <ExternalLink size={16} /> Open community documentation on GitHub
-          </button>
-        )}
-        <button type="button" onClick={onOpenCommunityFallback}>
-          <ExternalLink size={16} /> Open community profile on GitHub
-        </button>
-      </div>
     </section>
   );
 }
@@ -2095,7 +1911,6 @@ function DependabotAlertsSection({
   statusLabel,
   statusUnavailable,
   onExpand,
-  onOpenExternal,
   onOpenSecurityPath,
   onSelectSecurityItem,
   onAlertStateChange,
@@ -2112,7 +1927,6 @@ function DependabotAlertsSection({
   statusLabel: string;
   statusUnavailable: boolean;
   onExpand(): void;
-  onOpenExternal(url: string): void;
   onOpenSecurityPath: OpenSecurityPath;
   onSelectSecurityItem: SelectSecurityItem;
   onAlertStateChange(value: DependabotAlertStateFilter): void;
@@ -2166,7 +1980,6 @@ function DependabotAlertsSection({
               alert={alert}
               defaultSecurityRef={defaultSecurityRef}
               key={alert.number}
-              onOpenExternal={onOpenExternal}
               onOpenSecurityPath={onOpenSecurityPath}
               onSelectSecurityItem={onSelectSecurityItem}
               repositoryNameWithOwner={repositoryNameWithOwner}
@@ -2189,7 +2002,6 @@ function CodeScanningAlertsSection({
   statusLabel,
   statusUnavailable,
   onExpand,
-  onOpenExternal,
   onOpenSecurityPath,
   onSelectSecurityItem,
   onAlertStateChange,
@@ -2205,7 +2017,6 @@ function CodeScanningAlertsSection({
   statusLabel: string;
   statusUnavailable: boolean;
   onExpand(): void;
-  onOpenExternal(url: string): void;
   onOpenSecurityPath: OpenSecurityPath;
   onSelectSecurityItem: SelectSecurityItem;
   onAlertStateChange(value: CodeScanningAlertStateFilter): void;
@@ -2258,7 +2069,6 @@ function CodeScanningAlertsSection({
               active={securityItemActive("codeScanning", alert.number)}
               alert={alert}
               key={alert.number}
-              onOpenExternal={onOpenExternal}
               onOpenSecurityPath={onOpenSecurityPath}
               onSelectSecurityItem={onSelectSecurityItem}
               repositoryNameWithOwner={repositoryNameWithOwner}
@@ -2282,7 +2092,6 @@ function SecretScanningAlertsSection({
   statusLabel,
   statusUnavailable,
   onExpand,
-  onOpenExternal,
   onOpenSecurityPath,
   onSelectSecurityItem,
   onAlertStateChange,
@@ -2299,7 +2108,6 @@ function SecretScanningAlertsSection({
   statusLabel: string;
   statusUnavailable: boolean;
   onExpand(): void;
-  onOpenExternal(url: string): void;
   onOpenSecurityPath: OpenSecurityPath;
   onSelectSecurityItem: SelectSecurityItem;
   onAlertStateChange(value: SecretScanningAlertStateFilter): void;
@@ -2355,7 +2163,6 @@ function SecretScanningAlertsSection({
               alert={alert}
               defaultSecurityRef={defaultSecurityRef}
               key={alert.number}
-              onOpenExternal={onOpenExternal}
               onOpenSecurityPath={onOpenSecurityPath}
               onSelectSecurityItem={onSelectSecurityItem}
               repositoryNameWithOwner={repositoryNameWithOwner}
@@ -2512,12 +2319,8 @@ interface SecurityQualityTabSectionsProps {
   deleteBranchProtection(): void;
   deleteRepositoryRuleset(ruleset: RepositoryRulesetSummary): void;
   inspectRepositoryRuleset(ruleset: RepositoryRulesetSummary): void;
-  openBranchRulesFallback(): void;
-  openCommunityFallback(): void;
   openRepositorySecurityPath(path: string): void;
-  openRulesetsFallback(): void;
   openSecurityPath: OpenSecurityPath;
-  openSecurityPolicyFallback(): void;
   reapplyRepositoryRuleset(ruleset: RepositoryRulesetSummary): void;
   rulesetMutationDisabledReason(ruleset: RepositoryRulesetSummary): string | null;
   securityItemActive: SecurityItemActive;
@@ -2570,7 +2373,6 @@ function SecurityQualityTabSections({
   onExpandSecretScanningAlerts,
   onCodeScanningAlertStateChange,
   onDependabotAlertStateChange,
-  onOpenExternal,
   onSecretScanningAlertStateChange,
   onSelectSecurityItem,
   onSelectSecurityQualityBranch,
@@ -2624,12 +2426,8 @@ function SecurityQualityTabSections({
   deleteBranchProtection,
   deleteRepositoryRuleset,
   inspectRepositoryRuleset,
-  openBranchRulesFallback,
-  openCommunityFallback,
   openRepositorySecurityPath,
-  openRulesetsFallback,
   openSecurityPath,
-  openSecurityPolicyFallback,
   reapplyRepositoryRuleset,
   rulesetMutationDisabledReason,
   securityItemActive,
@@ -2657,7 +2455,6 @@ function SecurityQualityTabSections({
         mutationSucceeded={mutationSucceeded}
         onApplyBaselineProtection={applyBaselineBranchProtection}
         onDeleteProtection={deleteBranchProtection}
-        onOpenBranchRulesFallback={openBranchRulesFallback}
         onSelectBranch={onSelectSecurityQualityBranch}
         protection={protection}
         statusLabel={branchProtectionStatusLabel}
@@ -2675,8 +2472,6 @@ function SecurityQualityTabSections({
         onDeleteRuleset={deleteRepositoryRuleset}
         onExpand={onExpandRepositoryRulesets}
         onInspectRuleset={inspectRepositoryRuleset}
-        onOpenExternal={onOpenExternal}
-        onOpenRulesetsFallback={openRulesetsFallback}
         onReapplyRuleset={reapplyRepositoryRuleset}
         repositoryRulesetsStatusLabel={repositoryRulesetsStatusLabel}
         repositoryRulesetsStatusUnavailable={repositoryRulesetsStatusUnavailable}
@@ -2690,7 +2485,6 @@ function SecurityQualityTabSections({
         limit={repositorySecurityAdvisoriesLimit}
         loading={repositorySecurityAdvisoriesLoading}
         onExpand={onExpandRepositorySecurityAdvisories}
-        onOpenExternal={onOpenExternal}
         onSelectSecurityItem={onSelectSecurityItem}
         repositoryNameWithOwner={repository.nameWithOwner}
         securityItemActive={securityItemActive}
@@ -2703,9 +2497,7 @@ function SecurityQualityTabSections({
         error={repositorySecurityPolicyError}
         hasPolicyResult={repositorySecurityPolicyHasResult}
         loading={repositorySecurityPolicyLoading}
-        onOpenExternal={onOpenExternal}
         onOpenSecurityPath={openSecurityPath}
-        onOpenSecurityPolicyFallback={openSecurityPolicyFallback}
         onTogglePolicyPreview={togglePolicyPreview}
         policy={securityPolicy}
         policyExpanded={securityPolicyExpanded}
@@ -2719,8 +2511,6 @@ function SecurityQualityTabSections({
         error={repositoryCommunityProfileError}
         loading={repositoryCommunityProfileLoading}
         missingFiles={missingCommunityFiles}
-        onOpenCommunityFallback={openCommunityFallback}
-        onOpenExternal={onOpenExternal}
         onOpenSecurityPath={openSecurityPath}
         presentFiles={presentCommunityFiles}
         profile={repositoryCommunityProfile}
@@ -2742,7 +2532,6 @@ function SecurityQualityTabSections({
         loading={dependabotAlertsLoading}
         onAlertStateChange={onDependabotAlertStateChange}
         onExpand={onExpandDependabotAlerts}
-        onOpenExternal={onOpenExternal}
         onOpenSecurityPath={openSecurityPath}
         onSelectSecurityItem={onSelectSecurityItem}
         repositoryNameWithOwner={repository.nameWithOwner}
@@ -2759,7 +2548,6 @@ function SecurityQualityTabSections({
         loading={codeScanningAlertsLoading}
         onAlertStateChange={onCodeScanningAlertStateChange}
         onExpand={onExpandCodeScanningAlerts}
-        onOpenExternal={onOpenExternal}
         onOpenSecurityPath={openSecurityPath}
         onSelectSecurityItem={onSelectSecurityItem}
         repositoryNameWithOwner={repository.nameWithOwner}
@@ -2777,7 +2565,6 @@ function SecurityQualityTabSections({
         loading={secretScanningAlertsLoading}
         onAlertStateChange={onSecretScanningAlertStateChange}
         onExpand={onExpandSecretScanningAlerts}
-        onOpenExternal={onOpenExternal}
         onOpenSecurityPath={openSecurityPath}
         onSelectSecurityItem={onSelectSecurityItem}
         repositoryNameWithOwner={repository.nameWithOwner}
@@ -2938,12 +2725,8 @@ export function SecurityQualityTab({
     deleteBranchProtection,
     deleteRepositoryRuleset,
     inspectRepositoryRuleset,
-    openBranchRulesFallback,
-    openCommunityFallback,
     openRepositorySecurityPath,
-    openRulesetsFallback,
     openSecurityPath,
-    openSecurityPolicyFallback,
     reapplyRepositoryRuleset,
     rulesetMutationDisabledReason,
     securityItemActive
@@ -3020,12 +2803,8 @@ export function SecurityQualityTab({
       onSecretScanningAlertStateChange={setSecretScanningAlertState}
       onSelectSecurityItem={onSelectSecurityItem}
       onSelectSecurityQualityBranch={onSelectSecurityQualityBranch}
-      openBranchRulesFallback={openBranchRulesFallback}
-      openCommunityFallback={openCommunityFallback}
       openRepositorySecurityPath={openRepositorySecurityPath}
-      openRulesetsFallback={openRulesetsFallback}
       openSecurityPath={openSecurityPath}
-      openSecurityPolicyFallback={openSecurityPolicyFallback}
       presentCommunityFiles={presentCommunityFiles}
       protection={protection}
       reapplyRepositoryRuleset={reapplyRepositoryRuleset}

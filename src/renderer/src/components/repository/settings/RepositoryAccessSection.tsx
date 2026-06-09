@@ -1,4 +1,3 @@
-import { ExternalLink } from "lucide-react";
 import { useState, type FormEvent, type JSX, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 
@@ -62,7 +61,6 @@ function TeamAccessCard({
   canExpandTeams,
   limitHit,
   onMutate,
-  onOpenExternal,
   onOpenTeam,
   onExpandRepositoryAccess
 }: {
@@ -75,7 +73,6 @@ function TeamAccessCard({
   canExpandTeams: boolean;
   limitHit: boolean;
   onMutate(action: GitHubAction, dangerous: boolean, payload?: GitHubMutationFields): void;
-  onOpenExternal(url: string): void;
   onOpenTeam(team: TeamSummary): void;
   onExpandRepositoryAccess(): void;
 }): JSX.Element {
@@ -172,20 +169,6 @@ function TeamAccessCard({
                   </small>
                 </span>
               </button>
-              <button
-                className="pin-row-button"
-                type="button"
-                aria-label={`Open ${team.name} on GitHub`}
-                disabled={!team.htmlUrl}
-                title={team.htmlUrl ? `Open ${team.name} on GitHub` : "Team URL unavailable."}
-                onClick={() => {
-                  if (team.htmlUrl) {
-                    onOpenExternal(team.htmlUrl);
-                  }
-                }}
-              >
-                <ExternalLink size={14} />
-              </button>
               <div className="repository-admin-row-actions">
                 <select
                   aria-label={`Permission for ${team.name}`}
@@ -231,7 +214,6 @@ function CollaboratorDetailPanel({
   selectedCollaborator,
   githubReady,
   profileData,
-  profileUrl,
   profileFetching,
   profileError,
   profileAvailabilityMessage,
@@ -249,7 +231,6 @@ function CollaboratorDetailPanel({
   selectedCollaborator: RepositoryCollaboratorSummary;
   githubReady: boolean;
   profileData: AccountProfileResult["profile"] | null;
-  profileUrl: string | null;
   profileFetching: boolean;
   profileError: Error | null;
   profileAvailabilityMessage: string | null;
@@ -280,17 +261,6 @@ function CollaboratorDetailPanel({
           <strong>{profileData?.name ?? `@${selectedCollaborator.login}`}</strong>
           <small>@{profileData?.login ?? selectedCollaborator.login}</small>
         </div>
-        {profileUrl && (
-          <button
-            className="icon-button"
-            type="button"
-            aria-label={`Open @${selectedCollaborator.login} on GitHub`}
-            title={`Open @${selectedCollaborator.login} on GitHub`}
-            onClick={() => onOpenExternal(profileUrl)}
-          >
-            <ExternalLink size={15} />
-          </button>
-        )}
       </div>
 
       {!githubReady && (
@@ -411,7 +381,6 @@ function CollaboratorsAccessCard({
   onSubmitAddCollaborator,
   onUpdateCollaboratorPermission,
   onRemoveCollaborator,
-  onOpenExternal,
   onSelectCollaborator,
   onExpandRepositoryAccess,
   children
@@ -432,7 +401,6 @@ function CollaboratorsAccessCard({
   onSubmitAddCollaborator(event: FormEvent<HTMLFormElement>): void;
   onUpdateCollaboratorPermission(collaborator: RepositoryCollaboratorSummary, permission: string): void;
   onRemoveCollaborator(collaborator: RepositoryCollaboratorSummary): void;
-  onOpenExternal(url: string): void;
   onSelectCollaborator(collaborator: RepositoryCollaboratorSummary): void;
   onExpandRepositoryAccess(): void;
   children?: ReactNode;
@@ -512,24 +480,6 @@ function CollaboratorsAccessCard({
                       {collaborator.siteAdmin ? " · site admin" : ""}
                     </small>
                   </span>
-                </button>
-                <button
-                  className="pin-row-button"
-                  type="button"
-                  aria-label={`Open ${collaborator.login} on GitHub`}
-                  disabled={!collaborator.htmlUrl}
-                  title={
-                    collaborator.htmlUrl
-                      ? `Open ${collaborator.login} on GitHub`
-                      : "Collaborator profile URL unavailable."
-                  }
-                  onClick={() => {
-                    if (collaborator.htmlUrl) {
-                      onOpenExternal(collaborator.htmlUrl);
-                    }
-                  }}
-                >
-                  <ExternalLink size={14} />
                 </button>
                 <div className="repository-admin-row-actions">
                   <select
@@ -668,8 +618,6 @@ export function RepositoryAccessSection({
     "Profile",
     selectedCollaboratorProfile.data?.availability ?? null
   );
-  const selectedCollaboratorProfileUrl =
-    selectedCollaboratorProfileData?.htmlUrl ?? selectedCollaborator?.htmlUrl ?? null;
   const selectedCollaboratorPermissionContext = selectedCollaborator
     ? [
         `Role: ${collaboratorRoleLabel(selectedCollaborator)}`,
@@ -745,7 +693,6 @@ export function RepositoryAccessSection({
         onSubmitAddCollaborator={submitAddCollaborator}
         onUpdateCollaboratorPermission={updateCollaboratorPermission}
         onRemoveCollaborator={removeCollaborator}
-        onOpenExternal={onOpenExternal}
         onSelectCollaborator={onSelectCollaborator}
         onExpandRepositoryAccess={onExpandRepositoryAccess}
       >
@@ -754,7 +701,6 @@ export function RepositoryAccessSection({
             selectedCollaborator={selectedCollaborator}
             githubReady={githubReady}
             profileData={selectedCollaboratorProfileData}
-            profileUrl={selectedCollaboratorProfileUrl}
             profileFetching={selectedCollaboratorProfile.isFetching}
             profileError={
               selectedCollaboratorProfile.error instanceof Error ? selectedCollaboratorProfile.error : null
@@ -789,7 +735,6 @@ export function RepositoryAccessSection({
         canExpandTeams={canExpandAccessTeams}
         limitHit={accessTeamsLimitHit}
         onMutate={onMutate}
-        onOpenExternal={onOpenExternal}
         onOpenTeam={onOpenTeam}
         onExpandRepositoryAccess={onExpandRepositoryAccess}
       />

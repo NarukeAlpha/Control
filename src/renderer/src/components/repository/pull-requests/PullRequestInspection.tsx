@@ -200,7 +200,6 @@ export function PullRequestInspection({
         onRequestReviews={() => onRequestSection("reviews")}
         onToggleReviews={() => toggleExpandedSection("reviews")}
         onOpenPullRequestReviewCommit={onOpenPullRequestReviewCommit}
-        onOpenExternal={onOpenExternal}
       />
       <PullRequestLinkedIssuesPanel
         linkedIssues={linkedIssues}
@@ -210,7 +209,6 @@ export function PullRequestInspection({
         repositoryNameWithOwner={detail?.repositoryNameWithOwner ?? null}
         onRequestLinkedIssues={() => onRequestSection("linked-issues")}
         onOpenIssueReference={onOpenIssueReference}
-        onOpenExternal={onOpenExternal}
       />
       <PullRequestTimelinePanel
         timelineEvents={timelineEvents}
@@ -255,7 +253,6 @@ export function PullRequestInspection({
         onRequestChecks={() => onRequestSection("checks")}
         onToggleChecks={() => toggleExpandedSection("checks")}
         onOpenWorkflowRun={onOpenWorkflowRun}
-        onOpenExternal={onOpenExternal}
       />
       <PullRequestCommitsPanel
         commits={commits}
@@ -269,7 +266,6 @@ export function PullRequestInspection({
         onRequestCommits={() => onRequestSection("commits")}
         onToggleCommits={() => toggleExpandedSection("commits")}
         onOpenPullRequestCommit={onOpenPullRequestCommit}
-        onOpenExternal={onOpenExternal}
       />
       <PullRequestFilesPanel
         files={files}

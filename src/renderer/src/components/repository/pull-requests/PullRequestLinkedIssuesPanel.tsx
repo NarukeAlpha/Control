@@ -11,8 +11,7 @@ export function PullRequestLinkedIssuesPanel({
   loading,
   repositoryNameWithOwner,
   onRequestLinkedIssues,
-  onOpenIssueReference,
-  onOpenExternal
+  onOpenIssueReference
 }: {
   linkedIssues: PullRequestLinkedIssueSummary[];
   linkedIssuesRequested: boolean;
@@ -21,7 +20,6 @@ export function PullRequestLinkedIssuesPanel({
   repositoryNameWithOwner: string | null;
   onRequestLinkedIssues(): void;
   onOpenIssueReference(issue: PullRequestLinkedIssue): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   return (
     <article>
@@ -57,18 +55,6 @@ export function PullRequestLinkedIssuesPanel({
               </div>
               <button type="button" onClick={() => onOpenIssueReference(issue)}>
                 Open issue in Control
-              </button>
-              <button
-                type="button"
-                disabled={!issue.htmlUrl}
-                title={issue.htmlUrl ? undefined : "Issue URL unavailable."}
-                onClick={() => {
-                  if (issue.htmlUrl) {
-                    onOpenExternal(issue.htmlUrl);
-                  }
-                }}
-              >
-                Open on GitHub
               </button>
             </div>
           );

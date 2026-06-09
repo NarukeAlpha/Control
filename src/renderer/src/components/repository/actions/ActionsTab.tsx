@@ -1,6 +1,5 @@
 import {
   ArrowLeft,
-  CalendarDays,
   CheckCircle2,
   ChevronDown,
   CircleDot,
@@ -551,7 +550,6 @@ function WorkflowCatalogPane({
   canExpandWorkflowDefinitions,
   workflowDefinitionLimit,
   onSelectWorkflow,
-  onOpenExternal,
   onExpandWorkflowDefinitions
 }: {
   workflows: WorkflowDefinitionSummary[];
@@ -565,7 +563,6 @@ function WorkflowCatalogPane({
   canExpandWorkflowDefinitions: boolean;
   workflowDefinitionLimit: number;
   onSelectWorkflow(workflowId: string | null): void;
-  onOpenExternal(url: string): void;
   onExpandWorkflowDefinitions(): void;
 }): JSX.Element {
   const selectedAllRuns = selectedWorkflowId === null;
@@ -616,19 +613,6 @@ function WorkflowCatalogPane({
               <span className={`state-chip ${workflow.dispatchable ? "success" : ""}`}>
                 {workflow.dispatchable ? "dispatchable" : workflow.state}
               </span>
-            </button>
-            <button
-              type="button"
-              className="pin-row-button"
-              disabled={!workflow.htmlUrl}
-              title={workflow.htmlUrl ? "Open workflow on GitHub" : "Workflow URL unavailable."}
-              onClick={() => {
-                if (workflow.htmlUrl) {
-                  onOpenExternal(workflow.htmlUrl);
-                }
-              }}
-            >
-              <ExternalLink size={15} />
             </button>
           </article>
         );
@@ -690,23 +674,15 @@ function WorkflowRunList({
       <header className="actions-run-table-header">
         <strong>{filteredActions.length} workflow runs</strong>
         <div className="actions-run-table-columns" aria-hidden="true">
+          <span />
           <span>Workflow</span>
           <span>Event</span>
           <span>Status</span>
           <span>Branch</span>
-          <span>Actor</span>
+          <span />
+          <span />
         </div>
       </header>
-      {canExpandActions && (
-        <div className="table-action-row">
-          <button type="button" onClick={onExpandActions}>
-            <ChevronDown size={16} /> Load more runs
-          </button>
-        </div>
-      )}
-      {!canExpandActions && actionsLimitHit && (
-        <div className="muted-row">Showing the first {actions.length} workflow runs returned by GitHub.</div>
-      )}
       {filteredActions.map((run) => {
         const sourceRepositoryNameWithOwner =
           run.headRepositoryNameWithOwner && run.headRepositoryNameWithOwner !== repository.nameWithOwner
@@ -742,9 +718,7 @@ function WorkflowRunList({
                 <GitBranch size={14} />
                 {run.branch ?? "unknown"}
               </span>
-              <span className="actions-run-actor">{run.actorLogin ?? "Unknown"}</span>
               <span className="actions-run-time">
-                <CalendarDays size={14} />
                 {run.runStartedAt ? formatRelativeDate(run.runStartedAt) : formatRelativeDate(run.updatedAt)}
               </span>
               <span className="actions-run-duration">
@@ -761,6 +735,16 @@ function WorkflowRunList({
             ? "No workflow runs match this filter."
             : "No workflow runs returned for this repository."}
         </div>
+      )}
+      {canExpandActions && (
+        <div className="table-action-row">
+          <button type="button" onClick={onExpandActions}>
+            <ChevronDown size={16} /> Load more runs
+          </button>
+        </div>
+      )}
+      {!canExpandActions && actionsLimitHit && (
+        <div className="muted-row">Showing the first {actions.length} workflow runs returned by GitHub.</div>
       )}
     </div>
   );
@@ -1040,12 +1024,10 @@ function WorkflowRunMutationStatus({
 
 function WorkflowFailureSummaryCard({
   item,
-  onOpenInControl,
-  onOpenExternal
+  onOpenInControl
 }: {
   item: WorkflowFailureSummaryItem;
   onOpenInControl(item: WorkflowFailureSummaryItem): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   const disabledReason =
     item.jobId !== undefined || item.path ? null : "No in-app target returned for this failure signal.";
@@ -1068,18 +1050,6 @@ function WorkflowFailureSummaryCard({
         >
           Open in Control
         </button>
-        <button
-          type="button"
-          disabled={!item.url}
-          title={item.url ? undefined : "Failure signal URL unavailable."}
-          onClick={() => {
-            if (item.url) {
-              onOpenExternal(item.url);
-            }
-          }}
-        >
-          Open on GitHub
-        </button>
       </div>
     </article>
   );
@@ -1087,12 +1057,10 @@ function WorkflowFailureSummaryCard({
 
 function WorkflowFailureSummarySection({
   failureSummary,
-  onOpenInControl,
-  onOpenExternal
+  onOpenInControl
 }: {
   failureSummary: WorkflowFailureSummaryItem[];
   onOpenInControl(item: WorkflowFailureSummaryItem): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element | null {
   if (failureSummary.length === 0) {
     return null;
@@ -1106,12 +1074,7 @@ function WorkflowFailureSummarySection({
       </header>
       <div className="workflow-failure-list">
         {failureSummary.map((item) => (
-          <WorkflowFailureSummaryCard
-            key={item.id}
-            item={item}
-            onOpenInControl={onOpenInControl}
-            onOpenExternal={onOpenExternal}
-          />
+          <WorkflowFailureSummaryCard key={item.id} item={item} onOpenInControl={onOpenInControl} />
         ))}
       </div>
     </section>
@@ -1119,11 +1082,9 @@ function WorkflowFailureSummarySection({
 }
 
 function WorkflowActionAvailabilitySection({
-  selectedRun,
-  onOpenExternal
+  selectedRun
 }: {
   selectedRun: WorkflowRunSummary | WorkflowRunDetail;
-  onOpenExternal(url: string): void;
 }): JSX.Element | null {
   if (!selectedRun.actionAvailability) {
     return null;
@@ -1139,11 +1100,6 @@ function WorkflowActionAvailabilitySection({
           Failed jobs {workflowActionAvailabilityLabel(availability.canRerunFailedJobs)}
         </span>
         <span className="state-chip">Cancel {workflowActionAvailabilityLabel(availability.canCancel)}</span>
-        {availability.previousAttemptUrl && (
-          <button type="button" onClick={() => onOpenExternal(availability.previousAttemptUrl!)}>
-            Previous attempt
-          </button>
-        )}
       </div>
     </section>
   );
@@ -1158,7 +1114,6 @@ function WorkflowJobCard({
   onRerunJob,
   onSelectJobLogs,
   onSelectJobStep,
-  onOpenExternal,
   onToggleJobSteps
 }: {
   job: WorkflowRunJobSummary;
@@ -1169,7 +1124,6 @@ function WorkflowJobCard({
   onRerunJob(jobId: number): void;
   onSelectJobLogs(runId: number, jobId: number): void;
   onSelectJobStep(runId: number, jobId: number, stepNumber: number): void;
-  onOpenExternal(url: string): void;
   onToggleJobSteps(jobId: number): void;
 }): JSX.Element {
   const jobLogsDisabledReason =
@@ -1204,18 +1158,6 @@ function WorkflowJobCard({
           onClick={() => onSelectJobLogs(selectedRunId, job.id)}
         >
           View logs
-        </button>
-        <button
-          type="button"
-          disabled={!job.htmlUrl}
-          title={job.htmlUrl ? undefined : "GitHub job URL unavailable."}
-          onClick={() => {
-            if (job.htmlUrl) {
-              onOpenExternal(job.htmlUrl);
-            }
-          }}
-        >
-          GitHub job
         </button>
         {jobRerunDisabledReason && (
           <small className="action-disabled-note">Job rerun unavailable: {jobRerunDisabledReason}</small>
@@ -1255,7 +1197,6 @@ function WorkflowJobsSection({
   onRerunJob,
   onSelectJobLogs,
   onSelectJobStep,
-  onOpenExternal,
   onToggleJobSteps
 }: {
   repository: RepositoryDetail;
@@ -1270,7 +1211,6 @@ function WorkflowJobsSection({
   onRerunJob(jobId: number): void;
   onSelectJobLogs(runId: number, jobId: number): void;
   onSelectJobStep(runId: number, jobId: number, stepNumber: number): void;
-  onOpenExternal(url: string): void;
   onToggleJobSteps(jobId: number): void;
 }): JSX.Element {
   return (
@@ -1294,7 +1234,6 @@ function WorkflowJobsSection({
           onRerunJob={onRerunJob}
           onSelectJobLogs={onSelectJobLogs}
           onSelectJobStep={onSelectJobStep}
-          onOpenExternal={onOpenExternal}
           onToggleJobSteps={onToggleJobSteps}
         />
       ))}
@@ -1538,12 +1477,10 @@ function WorkflowArtifactsSection({
 
 function WorkflowAnnotationRow({
   annotation,
-  onOpenInControl,
-  onOpenExternal
+  onOpenInControl
 }: {
   annotation: WorkflowRunCheckAnnotationSummary;
   onOpenInControl(annotation: WorkflowRunCheckAnnotationSummary): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   return (
     <div className="workflow-annotation-row">
@@ -1560,18 +1497,6 @@ function WorkflowAnnotationRow({
       <span className="state-chip">{annotation.annotationLevel ?? "annotation"}</span>
       <button type="button" onClick={() => onOpenInControl(annotation)}>
         Open in Control
-      </button>
-      <button
-        type="button"
-        disabled={!annotation.blobHref}
-        title={annotation.blobHref ? undefined : "Annotation file URL unavailable."}
-        onClick={() => {
-          if (annotation.blobHref) {
-            onOpenExternal(annotation.blobHref);
-          }
-        }}
-      >
-        Open on GitHub
       </button>
     </div>
   );
@@ -1653,7 +1578,6 @@ function WorkflowCheckRunCard({
               key={`${checkRun.id}-${annotation.path}-${annotation.startLine ?? "line"}-${annotation.endLine ?? "end"}-${annotation.annotationLevel ?? "level"}-${annotation.message}`}
               annotation={annotation}
               onOpenInControl={onOpenAnnotation}
-              onOpenExternal={onOpenExternal}
             />
           ))}
           {checkRun.annotations.length > workflowListLimit && (
@@ -2853,13 +2777,9 @@ export function ActionsTab(props: ActionsTabProps): JSX.Element {
                   <WorkflowFailureSummarySection
                     failureSummary={failureSummary}
                     onOpenInControl={openFailureInControl}
-                    onOpenExternal={onOpenExternal}
                   />
                   <WorkflowRunExecutionGraph detail={detail} onSelectJobLogs={selectJobLogs} />
-                  <WorkflowActionAvailabilitySection
-                    selectedRun={selectedRun}
-                    onOpenExternal={onOpenExternal}
-                  />
+                  <WorkflowActionAvailabilitySection selectedRun={selectedRun} />
                   <WorkflowJobsSection
                     repository={repository}
                     detail={detail}
@@ -2873,7 +2793,6 @@ export function ActionsTab(props: ActionsTabProps): JSX.Element {
                     onRerunJob={rerunWorkflowJob}
                     onSelectJobLogs={selectJobLogs}
                     onSelectJobStep={selectJobStep}
-                    onOpenExternal={onOpenExternal}
                     onToggleJobSteps={toggleWorkflowJobSteps}
                   />
                   <WorkflowArtifactsSection
@@ -2915,7 +2834,6 @@ export function ActionsTab(props: ActionsTabProps): JSX.Element {
             canExpandWorkflowDefinitions={canExpandWorkflowDefinitions}
             workflowDefinitionLimit={workflowDefinitionLimit}
             onSelectWorkflow={selectWorkflow}
-            onOpenExternal={onOpenExternal}
             onExpandWorkflowDefinitions={onExpandWorkflowDefinitions}
           />
           <main className="actions-landing-main">

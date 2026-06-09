@@ -909,7 +909,6 @@ function AppLocalRepositoryRoute({ state }: { state: AppShellState }): JSX.Eleme
       onOpenIssue={state.openIssueSummaryInApp}
       onOpenPullRequest={state.openPullRequestSummaryInApp}
       onOpenWorkflowRun={state.navigationActions.selectWorkflowRunInApp}
-      onOpenExternal={state.openExternal}
       onConfirm={state.dialogs.requestConfirmation}
       githubReady={state.githubReady}
     />
@@ -965,7 +964,6 @@ function AppCollectionRoutes({ state }: { state: AppShellState }): JSX.Element |
         repositoryPinBusy={state.repositoryPinBusy}
         repositoryPinError={state.repositoryPinError}
         viewerLogin={state.appState.data?.viewer?.login ?? state.accountProfileData?.login ?? null}
-        onOpenExternal={state.openExternal}
         onOpenRepository={state.openRepositoryInApp}
         onOpenLocalRepository={state.openLocalRepositoryInApp}
         onOpenAddRepository={state.dialogs.openAddRepository}
@@ -988,7 +986,6 @@ function AppCollectionRoutes({ state }: { state: AppShellState }): JSX.Element |
         accountWorkLimit={state.accountWorkLimit}
         notificationFilter={state.notificationFilter}
         notificationLimit={state.notificationLimit}
-        onOpenExternal={state.openExternal}
         onOpenIssue={state.openIssueSummaryInApp}
         onOpenPullRequest={state.openPullRequestSummaryInApp}
         onOpenNotification={state.openNotificationInApp}

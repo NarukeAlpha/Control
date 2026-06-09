@@ -1,4 +1,4 @@
-import { ArrowLeft, ExternalLink, Plus, Search } from "lucide-react";
+import { ArrowLeft, Plus, Search } from "lucide-react";
 import { useEffect, useRef, useState, type ChangeEvent, type JSX, type RefObject } from "react";
 
 import type {
@@ -314,7 +314,6 @@ export function PullRequestsTabContent(props: PullRequestsTabContentProps): JSX.
             filter={props.filter}
             pullRequestListLimit={props.pullRequestListLimit}
             onSelect={handleSelectPull}
-            onOpenExternal={props.onOpenExternal}
             onExpandPullRequests={props.onExpandPullRequests}
           />
         )}
@@ -387,11 +386,7 @@ function PullRequestDetailPane({
       tabIndex={-1}
     >
       {pullDetailRoute && (
-        <PullRequestDetailRouteToolbar
-          selectedPull={props.selectedPull}
-          onOpenPullRequestList={props.onOpenPullRequestList}
-          onOpenExternal={props.onOpenExternal}
-        />
+        <PullRequestDetailRouteToolbar onOpenPullRequestList={props.onOpenPullRequestList} />
       )}
       <PullRequestSelectedDetail {...props} selectedPull={props.selectedPull} />
     </div>
@@ -399,25 +394,14 @@ function PullRequestDetailPane({
 }
 
 function PullRequestDetailRouteToolbar({
-  selectedPull,
-  onOpenPullRequestList,
-  onOpenExternal
+  onOpenPullRequestList
 }: {
-  selectedPull: PullRequestSummary;
   onOpenPullRequestList(): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
-  function handleOpenExternal(): void {
-    onOpenExternal(selectedPull.htmlUrl);
-  }
-
   return (
     <div className="detail-toolbar">
       <button type="button" onClick={onOpenPullRequestList}>
         <ArrowLeft size={16} /> Back to pull requests
-      </button>
-      <button type="button" onClick={handleOpenExternal}>
-        <ExternalLink size={16} /> Open on GitHub
       </button>
     </div>
   );
@@ -543,7 +527,6 @@ function PullRequestSelectedDetail(props: PullRequestSelectedDetailProps): JSX.E
         onSubmitReviewerRequest={props.onSubmitReviewerRequest}
       />
       <PullRequestConversationActions
-        selectedPull={props.selectedPull}
         commentBody={props.commentBody}
         reviewBody={props.reviewBody}
         pullActionLabel={props.pullActionLabel}
@@ -562,7 +545,6 @@ function PullRequestSelectedDetail(props: PullRequestSelectedDetailProps): JSX.E
         onReviewBodyChange={props.onReviewBodyChange}
         onSubmitComment={props.onSubmitComment}
         onSubmitReview={props.onSubmitReview}
-        onOpenExternal={props.onOpenExternal}
         onRunPullAction={props.onRunPullAction}
         onMerge={props.onMerge}
       />

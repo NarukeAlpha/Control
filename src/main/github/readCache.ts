@@ -5,17 +5,13 @@ import type {
   RepositorySummary
 } from "@shared/github";
 import type { CacheValidatorSnapshot } from "@shared/cache";
-import type { CacheEntry, CachedRepositoryList, LocalStore } from "../storage";
+import type { CacheEntry, LocalStore } from "../storage";
 import { Effect, Ref } from "effect";
 
 interface RepositoryStatusReadCacheDependencies {
   store: Pick<
     LocalStore,
-    | "clearCacheByPrefix"
-    | "getCacheEntry"
-    | "listGitHubRepositoriesWithMetadata"
-    | "setCache"
-    | "setGitHubRepositoriesWithStatusCache"
+    "clearCacheByPrefix" | "getCacheEntry" | "setCache" | "setGitHubRepositoriesWithStatusCache"
   >;
   ttlMs: number;
   refreshLive(input: RepoListInput): Promise<RepositoryListResult>;
@@ -24,7 +20,6 @@ interface RepositoryStatusReadCacheDependencies {
   log(message: string, metadata?: Record<string, unknown>): void;
 }
 
-const repositoryStatusAvailability = { status: "available", message: null } as const;
 const permanentMissTtlMs = 60_000;
 const repositoryStatusNegativeCachePrefix = "negative:repositories-with-status:";
 type InFlightRequests = Map<string, Promise<unknown>>;
@@ -41,7 +36,6 @@ export class GitHubReadCache {
     const limit = input.limit ?? 50;
     const cacheKey = repositoryStatusCacheKey(limit);
     const negativeCacheKey = repositoryStatusNegativeCacheKey(limit);
-    const cached = dependencies.store.listGitHubRepositoriesWithMetadata(limit);
     const cachedResult = dependencies.store.getCacheEntry<RepositoryListResult>("github", cacheKey);
     const cachedNegativeResult = dependencies.store.getCacheEntry<RepositoryListResult>(
       "github",
@@ -51,7 +45,6 @@ export class GitHubReadCache {
     if (input.cacheOnly) {
       return this.readRepositoryStatusCacheOnly(
         cacheKey,
-        cached,
         cachedResult,
         cachedNegativeResult,
         dependencies.log
@@ -60,20 +53,6 @@ export class GitHubReadCache {
 
     if (input.forceRefresh) {
       return this.refreshRepositoriesWithStatus(input, dependencies);
-    }
-
-    if (cached.items.length > 0) {
-      if (repositoryCacheIsFresh(cached, dependencies.ttlMs)) {
-        dependencies.log("repository list status cache hit", { count: cached.items.length });
-        return { items: cached.items, availability: repositoryStatusAvailability };
-      } else {
-        dependencies.log("repository list status stale hit", { count: cached.items.length });
-        this.refreshInBackground(() => this.refreshRepositoriesWithStatus(input, dependencies));
-        return repositoryStatusStaleRows(
-          cached.items,
-          "Showing cached repository data while Control refreshes it from GitHub."
-        );
-      }
     }
 
     if (cachedResult) {
@@ -112,15 +91,9 @@ export class GitHubReadCache {
     return this.dedupe(identity, async () => {
       const limit = input.limit ?? 50;
       const cacheKey = repositoryStatusCacheKey(limit);
-      const previousCache = dependencies.store.listGitHubRepositoriesWithMetadata(limit);
-      const previous = previousCache.items;
       const cachedResult = dependencies.store.getCacheEntry<RepositoryListResult>("github", cacheKey);
-      const result = await this.refreshLiveWithRepositoryStatusFallback(
-        input,
-        dependencies,
-        previousCache,
-        cachedResult
-      );
+      const previous = cachedResult?.payload.items ?? [];
+      const result = await this.refreshLiveWithRepositoryStatusFallback(input, dependencies, cachedResult);
       if (result.availability.status === "available") {
         const validatedAt = new Date().toISOString();
         dependencies.store.setGitHubRepositoriesWithStatusCache({
@@ -187,15 +160,10 @@ export class GitHubReadCache {
 
   private readRepositoryStatusCacheOnly(
     cacheKey: string,
-    cached: CachedRepositoryList<RepositorySummary>,
     cachedResult: CacheEntry<RepositoryListResult> | null,
     cachedNegativeResult: CacheEntry<RepositoryListResult> | null,
     log: RepositoryStatusReadCacheDependencies["log"]
   ): RepositoryListResult {
-    if (cached.items.length > 0) {
-      log("repository list status cache-only", { count: cached.items.length });
-      return { items: cached.items, availability: repositoryStatusAvailability };
-    }
     if (cachedResult) {
       log("repository list status cache-only result", {
         count: cachedResult.payload.items.length
@@ -217,13 +185,12 @@ export class GitHubReadCache {
   private async refreshLiveWithRepositoryStatusFallback(
     input: RepoListInput,
     dependencies: RepositoryStatusReadCacheDependencies,
-    cached: CachedRepositoryList<RepositorySummary>,
     cachedResult: CacheEntry<RepositoryListResult> | null
   ): Promise<RepositoryListResult> {
     try {
       const result = await dependencies.refreshLive(input);
       if (result.availability.status !== "available") {
-        return staleRepositoryStatusFallback(result, cached, cachedResult, dependencies.log);
+        return staleRepositoryStatusFallback(result, cachedResult, dependencies.log);
       }
       return result;
     } catch (error) {
@@ -236,7 +203,7 @@ export class GitHubReadCache {
               message: error instanceof Error ? error.message : "GitHub repository list is unavailable."
             }
           };
-      return staleRepositoryStatusFallback(liveResult, cached, cachedResult, dependencies.log);
+      return staleRepositoryStatusFallback(liveResult, cachedResult, dependencies.log);
     }
   }
 
@@ -289,13 +256,6 @@ export function repositoryStatusRequestIdentity(input: RepoListInput): string {
   });
 }
 
-function repositoryCacheIsFresh(cache: CachedRepositoryList<unknown>, ttlMs: number): boolean {
-  if (!cache.syncedAt) {
-    return false;
-  }
-  return Date.now() - Date.parse(cache.syncedAt) < ttlMs;
-}
-
 function notLoadedAvailability(cacheKey: string): GitHubReadAvailability {
   return {
     status: "not_loaded",
@@ -309,21 +269,9 @@ function repositoryStatusNegativeCacheKeyFromStatusCacheKey(cacheKey: string): s
 
 function staleRepositoryStatusFallback(
   liveResult: RepositoryListResult,
-  cached: CachedRepositoryList<RepositorySummary>,
   cachedResult: CacheEntry<RepositoryListResult> | null,
   log: RepositoryStatusReadCacheDependencies["log"]
 ): RepositoryListResult {
-  if (cached.items.length > 0) {
-    log("repository list status live refresh failed with stale rows fallback", {
-      count: cached.items.length,
-      status: liveResult.availability.status
-    });
-    return repositoryStatusStaleRows(
-      cached.items,
-      repositoryStatusStaleFallbackMessage(liveResult.availability)
-    );
-  }
-
   if (cachedResult) {
     log("repository list status live refresh failed with stale result fallback", {
       count: cachedResult.payload.items.length,
@@ -336,16 +284,6 @@ function staleRepositoryStatusFallback(
   }
 
   return liveResult;
-}
-
-function repositoryStatusStaleRows(items: RepositorySummary[], message: string): RepositoryListResult {
-  return {
-    items,
-    availability: {
-      status: "stale",
-      message
-    }
-  };
 }
 
 function repositoryStatusStaleResult(result: RepositoryListResult, message: string): RepositoryListResult {

@@ -156,7 +156,7 @@ function makeRepositoryDetail(): RepositoryDetail {
 }
 
 describe("GitHubProviderManager cache-only reads", () => {
-  it("serves cached repository summaries and details without loading a GitHub token", async () => {
+  it("serves direct repository details without advertising opened rows as the directory", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "control-github-provider-"));
     tempDirs.push(tempDir);
     const store = await createLocalStore(tempDir);
@@ -165,9 +165,7 @@ describe("GitHubProviderManager cache-only reads", () => {
 
     const provider = new GitHubProviderManager(store);
 
-    await expect(provider.listRepositories({ limit: 20, cacheOnly: true })).resolves.toEqual([
-      expect.objectContaining({ nameWithOwner: "apple/swift" })
-    ]);
+    await expect(provider.listRepositories({ limit: 20, cacheOnly: true })).resolves.toEqual([]);
     await expect(provider.getRepository("apple", "swift", { cacheOnly: true })).resolves.toEqual(
       expect.objectContaining({ nameWithOwner: "apple/swift", readmeMarkdown: "# Swift" })
     );

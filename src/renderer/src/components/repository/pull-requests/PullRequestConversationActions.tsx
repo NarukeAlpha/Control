@@ -1,7 +1,6 @@
-import { ExternalLink } from "lucide-react";
 import type { FormEvent, JSX } from "react";
 
-import type { GitHubAction, PullRequestSummary } from "@shared/github";
+import type { GitHubAction } from "@shared/github";
 
 import { githubActionLabel } from "@renderer/components/repository/repositoryUi";
 
@@ -155,53 +154,60 @@ export function PullRequestReviewActions({
 }
 
 export function PullRequestMergeActions({
-  selectedPull,
   pullActionLabel,
   pullActionDisabledReason,
   selectedMergeDisabledReason,
-  onOpenExternal,
   onRunPullAction,
   onMerge
 }: {
-  selectedPull: PullRequestSummary;
   pullActionLabel: string;
   pullActionDisabledReason: string | null;
   selectedMergeDisabledReason: string | null;
-  onOpenExternal(url: string): void;
   onRunPullAction(): void;
   onMerge(): void;
 }): JSX.Element {
+  const mergeUnavailable = Boolean(selectedMergeDisabledReason);
+
   return (
-    <div className="thread-actions">
-      <button type="button" onClick={() => onOpenExternal(selectedPull.htmlUrl)}>
-        <ExternalLink size={16} /> Open on GitHub
-      </button>
-      <button
-        type="button"
-        disabled={Boolean(pullActionDisabledReason)}
-        title={pullActionDisabledReason ?? undefined}
-        onClick={onRunPullAction}
-      >
-        {pullActionLabel}
-      </button>
-      <button
-        className="dark-action"
-        type="button"
-        disabled={Boolean(selectedMergeDisabledReason)}
-        title={selectedMergeDisabledReason ?? undefined}
-        onClick={onMerge}
-      >
-        Merge pull request
-      </button>
-      {selectedMergeDisabledReason && (
-        <small className="action-disabled-note">Merge unavailable: {selectedMergeDisabledReason}</small>
-      )}
-    </div>
+    <section
+      className={`pr-timeline-merge-box${mergeUnavailable ? " blocked" : " ready"}`}
+      aria-label="Pull request merge actions"
+    >
+      <div className="pr-timeline-merge-marker" aria-hidden="true" />
+      <div className="pr-timeline-merge-content">
+        <strong>
+          {mergeUnavailable ? "Pull request cannot be merged" : "Pull request is ready to merge"}
+        </strong>
+        <p>
+          {selectedMergeDisabledReason
+            ? `Merge unavailable: ${selectedMergeDisabledReason}`
+            : "All visible requirements are satisfied. Merge this pull request or close it without merging."}
+        </p>
+      </div>
+      <div className="pr-timeline-merge-actions">
+        <button
+          type="button"
+          disabled={Boolean(pullActionDisabledReason)}
+          title={pullActionDisabledReason ?? undefined}
+          onClick={onRunPullAction}
+        >
+          {pullActionLabel}
+        </button>
+        <button
+          className="dark-action"
+          type="button"
+          disabled={mergeUnavailable}
+          title={selectedMergeDisabledReason ?? undefined}
+          onClick={onMerge}
+        >
+          Merge pull request
+        </button>
+      </div>
+    </section>
   );
 }
 
 export function PullRequestConversationActions({
-  selectedPull,
   commentBody,
   reviewBody,
   pullActionLabel,
@@ -220,11 +226,9 @@ export function PullRequestConversationActions({
   onReviewBodyChange,
   onSubmitComment,
   onSubmitReview,
-  onOpenExternal,
   onRunPullAction,
   onMerge
 }: {
-  selectedPull: PullRequestSummary;
   commentBody: string;
   reviewBody: string;
   pullActionLabel: string;
@@ -243,7 +247,6 @@ export function PullRequestConversationActions({
   onReviewBodyChange(value: string): void;
   onSubmitComment(): void;
   onSubmitReview(action: GitHubAction, dangerous: boolean): void;
-  onOpenExternal(url: string): void;
   onRunPullAction(): void;
   onMerge(): void;
 }): JSX.Element {
@@ -272,11 +275,9 @@ export function PullRequestConversationActions({
         onSubmitReview={onSubmitReview}
       />
       <PullRequestMergeActions
-        selectedPull={selectedPull}
         pullActionLabel={pullActionLabel}
         pullActionDisabledReason={pullActionDisabledReason}
         selectedMergeDisabledReason={selectedMergeDisabledReason}
-        onOpenExternal={onOpenExternal}
         onRunPullAction={onRunPullAction}
         onMerge={onMerge}
       />

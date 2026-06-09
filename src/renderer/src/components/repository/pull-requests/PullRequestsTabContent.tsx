@@ -1,9 +1,10 @@
 import {
   ArrowLeft,
+  ChevronDown,
   CheckCircle2,
-  ExternalLink,
   FileText,
   GitCommitHorizontal,
+  GitMerge,
   MessageSquare,
   Plus,
   Search
@@ -46,7 +47,7 @@ import {
   PullRequestMergeActions,
   PullRequestReviewActions
 } from "./PullRequestConversationActions";
-import { PullRequestDetailHeader, PullRequestDetailStatusSummary } from "./PullRequestDetailSummary";
+import { PullRequestDetailHeader } from "./PullRequestDetailSummary";
 import { PullRequestDiscussion } from "./PullRequestDiscussion";
 import { PullRequestList } from "./PullRequestList";
 import { PullRequestMetadataControls } from "./PullRequestMetadataControls";
@@ -426,8 +427,11 @@ function PullRequestDetailPane({
       {pullDetailRoute && (
         <PullRequestDetailRouteToolbar
           selectedPull={props.selectedPull}
+          detail={props.detail}
+          selectedReviewDecision={props.selectedReviewDecision}
+          selectedMergeDisabledReason={props.selectedMergeDisabledReason}
           onOpenPullRequestList={props.onOpenPullRequestList}
-          onOpenExternal={props.onOpenExternal}
+          onMerge={props.onMerge}
         />
       )}
       <PullRequestSelectedDetail {...props} selectedPull={props.selectedPull} />
@@ -435,27 +439,194 @@ function PullRequestDetailPane({
   );
 }
 
-function PullRequestDetailRouteToolbar({
+type PullRequestMergeStatusTone = "ready" | "blocked" | "pending" | "merged" | "closed";
+
+interface PullRequestMergeStatus {
+  label: string;
+  detail: string;
+  tone: PullRequestMergeStatusTone;
+  canMerge: boolean;
+}
+
+const successfulCheckConclusions = new Set(["success", "neutral", "skipped"]);
+
+function pullRequestMergeStatus({
   selectedPull,
-  onOpenPullRequestList,
-  onOpenExternal
+  detail,
+  selectedReviewDecision,
+  selectedMergeDisabledReason
 }: {
   selectedPull: PullRequestSummary;
-  onOpenPullRequestList(): void;
-  onOpenExternal(url: string): void;
-}): JSX.Element {
-  function handleOpenExternal(): void {
-    onOpenExternal(selectedPull.htmlUrl);
+  detail: PullRequestDetail | null;
+  selectedReviewDecision: string | null;
+  selectedMergeDisabledReason: string | null;
+}): PullRequestMergeStatus {
+  if (selectedPull.merged) {
+    return {
+      label: "Merged",
+      detail: selectedMergeDisabledReason ?? "Pull request is already merged.",
+      tone: "merged",
+      canMerge: false
+    };
   }
 
+  if (selectedPull.state !== "open") {
+    return {
+      label: "Closed",
+      detail: selectedMergeDisabledReason ?? "Pull request is not open.",
+      tone: "closed",
+      canMerge: false
+    };
+  }
+
+  const reviewDecision = selectedReviewDecision?.toUpperCase() ?? null;
+  if (reviewDecision === "CHANGES_REQUESTED") {
+    return {
+      label: "Changes requested",
+      detail: "A reviewer requested changes before this pull request can merge.",
+      tone: "blocked",
+      canMerge: false
+    };
+  }
+
+  if (reviewDecision === "REVIEW_REQUIRED") {
+    return {
+      label: "Pending review",
+      detail: "Required review has not been completed yet.",
+      tone: "pending",
+      canMerge: false
+    };
+  }
+
+  const checks = detail?.checks ?? [];
+  const failingCheck = checks.find((check) => {
+    const conclusion = check.conclusion?.toLowerCase();
+    return conclusion ? !successfulCheckConclusions.has(conclusion) : false;
+  });
+  if (failingCheck) {
+    return {
+      label: "Checks failing",
+      detail: `${failingCheck.name} did not pass.`,
+      tone: "blocked",
+      canMerge: false
+    };
+  }
+
+  const pendingCheck = checks.find(
+    (check) => check.status?.toLowerCase() !== "completed" || !check.conclusion
+  );
+  if (pendingCheck) {
+    return {
+      label: "Checks pending",
+      detail: `${pendingCheck.name} has not completed yet.`,
+      tone: "pending",
+      canMerge: false
+    };
+  }
+
+  if (selectedMergeDisabledReason) {
+    return {
+      label: "Merge blocked",
+      detail: selectedMergeDisabledReason,
+      tone: "blocked",
+      canMerge: false
+    };
+  }
+
+  return {
+    label: "Ready to merge",
+    detail: "This pull request can be merged from Control.",
+    tone: "ready",
+    canMerge: true
+  };
+}
+
+function PullRequestDetailRouteToolbar({
+  selectedPull,
+  detail,
+  selectedReviewDecision,
+  selectedMergeDisabledReason,
+  onOpenPullRequestList,
+  onMerge
+}: {
+  selectedPull: PullRequestSummary;
+  detail: PullRequestDetail | null;
+  selectedReviewDecision: string | null;
+  selectedMergeDisabledReason: string | null;
+  onOpenPullRequestList(): void;
+  onMerge(): void;
+}): JSX.Element {
   return (
     <div className="detail-toolbar">
       <button type="button" onClick={onOpenPullRequestList}>
         <ArrowLeft size={16} /> Back to pull requests
       </button>
-      <button type="button" onClick={handleOpenExternal}>
-        <ExternalLink size={16} /> Open on GitHub
+      <PullRequestMergeStatusMenu
+        selectedPull={selectedPull}
+        detail={detail}
+        selectedReviewDecision={selectedReviewDecision}
+        selectedMergeDisabledReason={selectedMergeDisabledReason}
+        onMerge={onMerge}
+      />
+    </div>
+  );
+}
+
+function PullRequestMergeStatusMenu({
+  selectedPull,
+  detail,
+  selectedReviewDecision,
+  selectedMergeDisabledReason,
+  onMerge
+}: {
+  selectedPull: PullRequestSummary;
+  detail: PullRequestDetail | null;
+  selectedReviewDecision: string | null;
+  selectedMergeDisabledReason: string | null;
+  onMerge(): void;
+}): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const status = pullRequestMergeStatus({
+    selectedPull,
+    detail,
+    selectedReviewDecision,
+    selectedMergeDisabledReason
+  });
+
+  function handleToggle(): void {
+    if (status.canMerge) {
+      setOpen((current) => !current);
+    }
+  }
+
+  function handleMerge(): void {
+    setOpen(false);
+    onMerge();
+  }
+
+  return (
+    <div className="pr-merge-status-menu">
+      <button
+        type="button"
+        className={`pr-merge-status-button ${status.tone}`}
+        aria-expanded={status.canMerge ? open : undefined}
+        disabled={!status.canMerge}
+        title={status.detail}
+        onClick={handleToggle}
+      >
+        <GitMerge size={16} />
+        <span>{status.label}</span>
+        {status.canMerge && <ChevronDown size={15} aria-hidden="true" />}
       </button>
+      {open && (
+        <div className="pr-merge-status-popover" role="menu" aria-label="Merge options">
+          <strong>Merge pull request</strong>
+          <p>{status.detail}</p>
+          <button type="button" className="dark-action" role="menuitem" onClick={handleMerge}>
+            Merge pull request
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -548,15 +719,13 @@ function PullRequestDevelopmentRail({
   loading,
   requestedSections,
   onRequestLinkedIssues,
-  onOpenIssueReference,
-  onOpenExternal
+  onOpenIssueReference
 }: {
   detail: PullRequestDetail | null;
   loading: boolean;
   requestedSections: RequestedPullRequestDetailSections;
   onRequestLinkedIssues(): void;
   onOpenIssueReference(issue: PullRequestLinkedIssue): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   const linkedIssues = detail?.linkedIssues ?? [];
   const linkedIssuesRequested = isPullRequestDetailSectionRequested(requestedSections, "linked-issues");
@@ -582,18 +751,6 @@ function PullRequestDevelopmentRail({
               {issue.repositoryNameWithOwner ? `${issue.repositoryNameWithOwner} ` : ""}#{issue.number}
             </strong>
             <span>{issue.title ?? "Untitled issue"}</span>
-          </button>
-          <button
-            type="button"
-            disabled={!issue.htmlUrl}
-            title={issue.htmlUrl ? undefined : "Issue URL unavailable."}
-            onClick={() => {
-              if (issue.htmlUrl) {
-                onOpenExternal(issue.htmlUrl);
-              }
-            }}
-          >
-            GitHub
           </button>
         </div>
       ))}
@@ -655,29 +812,16 @@ function PullRequestSelectedDetail(props: PullRequestSelectedDetailProps): JSX.E
     props.detail?.headRepositoryNameWithOwner ??
     props.detail?.repositoryNameWithOwner ??
     props.repository.nameWithOwner;
+  const mergeStatus = pullRequestMergeStatus({
+    selectedPull: props.selectedPull,
+    detail: props.detail,
+    selectedReviewDecision: props.selectedReviewDecision,
+    selectedMergeDisabledReason: props.selectedMergeDisabledReason
+  });
+  const timelineMergeDisabledReason = mergeStatus.canMerge ? null : mergeStatus.detail;
 
   const rail = (
     <>
-      <RailSection title="Status">
-        <PullRequestDetailStatusSummary
-          selectedPull={props.selectedPull}
-          selectedIsCrossRepository={props.selectedIsCrossRepository}
-          selectedHeadRepository={props.selectedHeadRepository}
-          selectedBaseRepository={props.selectedBaseRepository}
-          selectedMaintainerCanModify={props.selectedMaintainerCanModify}
-          selectedMergeCommitSha={props.selectedMergeCommitSha}
-          selectedMergedAt={props.selectedMergedAt}
-          selectedBranchSignals={props.selectedBranchSignals}
-          selectedBaseProtection={props.selectedBaseProtection}
-          selectedBaseProtectionBranchLabel={props.selectedBaseProtectionBranchLabel}
-          selectedBaseProtectionStatusLabel={props.selectedBaseProtectionStatusLabel}
-          selectedBaseProtectionStatusUnavailable={props.selectedBaseProtectionStatusUnavailable}
-          selectedBaseProtectionLoading={props.selectedBaseProtectionLoading}
-          selectedBaseProtectionError={props.selectedBaseProtectionError}
-          selectedBaseProtectionAvailabilityMessage={props.selectedBaseProtectionAvailabilityMessage}
-          selectedBaseProtectionLoaded={props.selectedBaseProtectionLoaded}
-        />
-      </RailSection>
       <RailSection title="Development">
         <PullRequestDevelopmentRail
           detail={props.detail}
@@ -685,7 +829,6 @@ function PullRequestSelectedDetail(props: PullRequestSelectedDetailProps): JSX.E
           requestedSections={props.requestedPullDetailSections}
           onRequestLinkedIssues={() => props.onRequestPullDetailSection("linked-issues")}
           onOpenIssueReference={props.onOpenIssueReference}
-          onOpenExternal={props.onOpenExternal}
         />
       </RailSection>
       <RailSection title="Metadata">
@@ -762,17 +905,6 @@ function PullRequestSelectedDetail(props: PullRequestSelectedDetailProps): JSX.E
           onSubmitReview={props.onSubmitReview}
         />
       </RailSection>
-      <RailSection title="Actions">
-        <PullRequestMergeActions
-          selectedPull={props.selectedPull}
-          pullActionLabel={props.pullActionLabel}
-          pullActionDisabledReason={props.pullActionDisabledReason}
-          selectedMergeDisabledReason={props.selectedMergeDisabledReason}
-          onOpenExternal={props.onOpenExternal}
-          onRunPullAction={props.onRunPullAction}
-          onMerge={props.onMerge}
-        />
-      </RailSection>
     </>
   );
 
@@ -825,7 +957,13 @@ function PullRequestSelectedDetail(props: PullRequestSelectedDetailProps): JSX.E
               onOpenPullRequestCommit={props.onOpenPullRequestCommit}
               onOpenPullRequestReviewCommit={props.onOpenPullRequestReviewCommit}
               onOpenPullRequestTimelineEventCommit={props.onOpenPullRequestTimelineEventCommit}
-              onOpenExternal={props.onOpenExternal}
+            />
+            <PullRequestMergeActions
+              pullActionLabel={props.pullActionLabel}
+              pullActionDisabledReason={props.pullActionDisabledReason}
+              selectedMergeDisabledReason={timelineMergeDisabledReason}
+              onRunPullAction={props.onRunPullAction}
+              onMerge={props.onMerge}
             />
             <PullRequestCommentComposer
               commentBody={props.commentBody}

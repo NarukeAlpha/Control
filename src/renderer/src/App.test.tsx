@@ -3283,6 +3283,15 @@ describe("Control renderer routing", () => {
     expect(
       within(timelineActivity).getByText("connected apple/swift #1200 Crash on build")
     ).toBeInTheDocument();
+    expect(
+      within(timelineActivity).getByText("marked this pull request as ready for review")
+    ).toBeInTheDocument();
+    expect(within(timelineActivity).queryByText("committed")).not.toBeInTheDocument();
+    expect(within(timelineActivity).queryByText("GitHub · unknown time")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Pending review/ })).toBeDisabled();
+    expect(screen.getByLabelText("Pull request merge actions")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Status" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open on GitHub" })).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Load linked issues" }));
     await userEvent.click(screen.getByRole("tab", { name: /Files changed/ }));
@@ -3376,7 +3385,10 @@ describe("Control renderer routing", () => {
     expect(await screen.findByRole("heading", { name: focusedPull.title })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Back to pull requests" })).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Filter pull requests" })).not.toBeInTheDocument();
-    expect(screen.getByText(`${focusedPull.changedFiles} files changed`)).toBeInTheDocument();
+    expect(
+      screen.getByRole("tab", { name: new RegExp(`Files changed\\s*${focusedPull.changedFiles}`) })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Status" })).not.toBeInTheDocument();
     expect(screen.queryByText("4096 files changed")).not.toBeInTheDocument();
     expect(getPullRequestOverviewWithStatus).toHaveBeenCalledWith({
       owner: "apple",

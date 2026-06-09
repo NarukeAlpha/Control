@@ -1,3 +1,4 @@
+import { Eye } from "lucide-react";
 import type { JSX } from "react";
 
 import type {
@@ -17,7 +18,7 @@ import {
 import type { PullRequestLinkedIssue } from "./PullRequestsTab.types";
 import { pullRequestTimelineEventLabel } from "./PullRequestsTab.utils";
 
-type TimelineActivityKind = "commit" | "review" | "event";
+type TimelineActivityKind = "commit" | "review" | "event" | "ready";
 
 interface PullRequestTimelineActivityProps {
   detail: PullRequestDetail | null;
@@ -41,7 +42,6 @@ interface PullRequestTimelineActivityProps {
     event: PullRequestTimelineEventSummary,
     targetRepositoryNameWithOwner?: string | null
   ): void;
-  onOpenExternal(url: string): void;
 }
 
 interface TimelineActivityRowProps {
@@ -88,6 +88,36 @@ function TimelineActivityRow({
   );
 }
 
+function isCommittedTimelineEvent(event: PullRequestTimelineEventSummary): boolean {
+  return event.event.toLowerCase() === "committed";
+}
+
+function isReadyForReviewTimelineEvent(event: PullRequestTimelineEventSummary): boolean {
+  return event.event.toLowerCase() === "ready_for_review";
+}
+
+function ReadyForReviewTimelineRow({ event }: { event: PullRequestTimelineEventSummary }): JSX.Element {
+  const actorLogin = event.actorLogin ?? "GitHub";
+
+  return (
+    <div className="pr-timeline-activity-row pr-timeline-activity-row-ready">
+      <div className="pr-timeline-activity-marker" aria-hidden="true">
+        <Eye size={14} />
+      </div>
+      <div className="timeline-avatar pr-timeline-activity-avatar">
+        {event.actorAvatarUrl ? <img src={event.actorAvatarUrl} alt="" /> : activityInitial(event.actorLogin)}
+      </div>
+      <div className="pr-timeline-activity-main">
+        <p className="pr-timeline-activity-ready-copy">
+          <strong>{actorLogin}</strong>
+          <span>marked this pull request as ready for review</span>
+          {event.createdAt && <time>{formatRelativeDate(event.createdAt)}</time>}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function PullRequestTimelineActivity({
   detail,
   loading,
@@ -100,14 +130,14 @@ export function PullRequestTimelineActivity({
   onOpenIssueReference,
   onOpenPullRequestCommit,
   onOpenPullRequestReviewCommit,
-  onOpenPullRequestTimelineEventCommit,
-  onOpenExternal
+  onOpenPullRequestTimelineEventCommit
 }: PullRequestTimelineActivityProps): JSX.Element {
   const reviewsRequested = isPullRequestDetailSectionRequested(requestedSections, "reviews");
   const timelineRequested = isPullRequestDetailSectionRequested(requestedSections, "timeline");
   const commitsRequested = isPullRequestDetailSectionRequested(requestedSections, "commits");
   const reviews = detail?.reviews ?? [];
   const timelineEvents = detail?.timelineEvents ?? [];
+  const visibleTimelineEvents = timelineEvents.filter((event) => !isCommittedTimelineEvent(event));
   const commits = detail?.commitsList ?? [];
   const reviewsAvailabilityMessage = readAvailabilityMessage(
     "Pull request reviews",
@@ -141,26 +171,12 @@ export function PullRequestTimelineActivity({
           }`}
           sha={commit.sha}
           actions={
-            <>
-              <button
-                type="button"
-                onClick={() => onOpenPullRequestCommit(commit, changedFilesRepositoryNameWithOwner)}
-              >
-                Open tree
-              </button>
-              <button
-                type="button"
-                disabled={!commit.htmlUrl}
-                title={commit.htmlUrl ? undefined : "Commit URL unavailable."}
-                onClick={() => {
-                  if (commit.htmlUrl) {
-                    onOpenExternal(commit.htmlUrl);
-                  }
-                }}
-              >
-                GitHub
-              </button>
-            </>
+            <button
+              type="button"
+              onClick={() => onOpenPullRequestCommit(commit, changedFilesRepositoryNameWithOwner)}
+            >
+              Open tree
+            </button>
           }
         />
       ))}
@@ -191,32 +207,18 @@ export function PullRequestTimelineActivity({
           body={review.body}
           sha={review.commitSha}
           actions={
-            <>
-              <button
-                type="button"
-                disabled={!review.commitSha}
-                title={review.commitSha ? undefined : "Review commit SHA unavailable."}
-                onClick={() => {
-                  if (review.commitSha) {
-                    onOpenPullRequestReviewCommit(review, changedFilesRepositoryNameWithOwner);
-                  }
-                }}
-              >
-                Open commit
-              </button>
-              <button
-                type="button"
-                disabled={!review.htmlUrl}
-                title={review.htmlUrl ? undefined : "Review URL unavailable."}
-                onClick={() => {
-                  if (review.htmlUrl) {
-                    onOpenExternal(review.htmlUrl);
-                  }
-                }}
-              >
-                GitHub
-              </button>
-            </>
+            <button
+              type="button"
+              disabled={!review.commitSha}
+              title={review.commitSha ? undefined : "Review commit SHA unavailable."}
+              onClick={() => {
+                if (review.commitSha) {
+                  onOpenPullRequestReviewCommit(review, changedFilesRepositoryNameWithOwner);
+                }
+              }}
+            >
+              Open commit
+            </button>
           }
         />
       ))}
@@ -234,9 +236,13 @@ export function PullRequestTimelineActivity({
           Load timeline events
         </button>
       )}
-      {timelineEvents.map((event) => {
+      {visibleTimelineEvents.map((event) => {
         const linkedIssue = event.sourceIssue;
         const canOpenInControl = Boolean(linkedIssue || event.commitSha);
+
+        if (isReadyForReviewTimelineEvent(event)) {
+          return <ReadyForReviewTimelineRow key={`event-${event.id}`} event={event} />;
+        }
 
         return (
           <TimelineActivityRow
@@ -277,7 +283,7 @@ export function PullRequestTimelineActivity({
         timelineRequested &&
         !loading &&
         !timelineAvailabilityMessage &&
-        timelineEvents.length === 0 && (
+        visibleTimelineEvents.length === 0 && (
           <div className="pr-timeline-activity-note">No timeline events returned.</div>
         )}
     </section>

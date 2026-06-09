@@ -1796,6 +1796,14 @@ body:not(.no-liquid-glass) .home-content-scroll {
   display: none;
 }
 
+.repo-page-focused-detail > .table-panel.github-surface,
+.app-shell[data-color-scheme="dark"] .repo-page-focused-detail > .table-panel.github-surface {
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
 .code-browser-page {
   grid-column: 1;
 }
@@ -3546,7 +3554,7 @@ p {
 
 .pr-development-issue {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
   align-items: center;
 }
@@ -3665,6 +3673,78 @@ p {
   color: #334963;
   padding: 0 12px;
   white-space: nowrap;
+}
+
+.pr-merge-status-menu {
+  position: relative;
+  display: inline-flex;
+  justify-self: end;
+}
+
+.detail-toolbar .pr-merge-status-button {
+  font-weight: 800;
+}
+
+.detail-toolbar .pr-merge-status-button:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.app-shell .detail-toolbar .pr-merge-status-button.ready {
+  border-color: rgba(32, 135, 74, 0.32);
+  background: rgba(32, 135, 74, 0.14);
+  color: var(--color-success);
+}
+
+.app-shell .detail-toolbar .pr-merge-status-button.pending {
+  border-color: rgba(169, 127, 34, 0.28);
+  background: rgba(169, 127, 34, 0.14);
+  color: var(--color-warning);
+}
+
+.app-shell .detail-toolbar .pr-merge-status-button.blocked,
+.app-shell .detail-toolbar .pr-merge-status-button.closed {
+  border-color: rgba(189, 58, 58, 0.28);
+  background: rgba(189, 58, 58, 0.12);
+  color: var(--color-danger);
+}
+
+.app-shell .detail-toolbar .pr-merge-status-button.merged {
+  border-color: rgba(119, 80, 202, 0.32);
+  background: rgba(119, 80, 202, 0.14);
+  color: var(--color-accent-strong);
+}
+
+.pr-merge-status-popover {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 8px);
+  right: 0;
+  display: grid;
+  width: min(300px, calc(100vw - 48px));
+  min-width: 260px;
+  gap: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface-row);
+  box-shadow: var(--shadow-popover);
+  padding: 12px;
+}
+
+.pr-merge-status-popover strong {
+  color: var(--color-heading);
+}
+
+.pr-merge-status-popover p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.detail-toolbar .pr-merge-status-popover button {
+  justify-self: stretch;
+  width: 100%;
 }
 
 .thread-header h2,
@@ -4114,14 +4194,14 @@ p {
   position: relative;
   display: grid;
   min-width: 0;
-  padding: 2px 0 2px 18px;
+  padding: 2px 0;
 }
 
 .pr-timeline-activity::before {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 34px;
+  left: 16px;
   width: 2px;
   background: var(--color-border);
   content: "";
@@ -4155,7 +4235,7 @@ p {
   position: absolute;
   z-index: 1;
   top: 25px;
-  left: 29px;
+  left: 11px;
   width: 12px;
   height: 12px;
   border: 2px solid var(--color-border-strong);
@@ -4176,6 +4256,44 @@ p {
   min-width: 0;
   border-bottom: 1px solid var(--color-border);
   padding-bottom: 8px;
+}
+
+.pr-timeline-activity-row-ready .pr-timeline-activity-marker {
+  top: 50%;
+  left: 3px;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  transform: translateY(-50%);
+  place-items: center;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-control);
+  color: var(--color-text-muted);
+}
+
+.pr-timeline-activity-row-ready .pr-timeline-activity-main {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.pr-timeline-activity-ready-copy {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  min-width: 0;
+  margin: 0;
+  color: var(--color-text-muted);
+  line-height: 1.45;
+}
+
+.pr-timeline-activity-ready-copy strong {
+  color: var(--color-heading);
+}
+
+.pr-timeline-activity-ready-copy time {
+  color: var(--color-text-muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .pr-timeline-activity-copy {
@@ -4238,6 +4356,98 @@ p {
 
 .pr-timeline-activity > .error-state {
   margin: 8px 0 8px 48px;
+}
+
+.pr-timeline-merge-box {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+  margin: 8px 0 12px 48px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface-row);
+  padding: 14px;
+}
+
+.pr-timeline-merge-marker {
+  position: absolute;
+  z-index: 2;
+  top: 18px;
+  left: -50px;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 10px;
+  color: #ffffff;
+}
+
+.pr-timeline-merge-marker::before {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  content: "";
+}
+
+.pr-timeline-merge-box.ready {
+  border-color: rgba(32, 135, 74, 0.32);
+}
+
+.pr-timeline-merge-box.ready .pr-timeline-merge-marker {
+  background: var(--color-success);
+}
+
+.pr-timeline-merge-box.blocked {
+  border-color: rgba(189, 58, 58, 0.28);
+}
+
+.pr-timeline-merge-box.blocked .pr-timeline-merge-marker {
+  background: var(--color-danger);
+}
+
+.pr-timeline-merge-content {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.pr-timeline-merge-content strong {
+  color: var(--color-heading);
+  font-size: 15px;
+}
+
+.pr-timeline-merge-content p {
+  margin: 0;
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}
+
+.pr-timeline-merge-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.pr-timeline-merge-actions button {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface-control);
+  color: var(--color-text);
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.pr-timeline-merge-actions button:hover:not(:disabled) {
+  background: var(--color-surface-control-hover);
 }
 
 .pr-inspection article {
@@ -7729,6 +7939,14 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
   }
 
   .pr-timeline-activity-actions {
+    justify-content: flex-start;
+  }
+
+  .pr-timeline-merge-box {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pr-timeline-merge-actions {
     justify-content: flex-start;
   }
 

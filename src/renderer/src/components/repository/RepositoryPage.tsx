@@ -523,20 +523,29 @@ function buildRepositoryPageModel(input: {
 }
 
 function repositoryPageClassName(routeModel: RepositoryRouteModel): string {
+  const classNames = ["repo-page"];
+  if (routeModel.tab === "issues") {
+    classNames.push("repo-page-issues");
+  }
+  if (routeModel.tab === "actions") {
+    classNames.push("repo-page-actions");
+  }
   if (
     routeModel.focusedIssueNumber !== null ||
     routeModel.focusedPullNumber !== null ||
     routeModel.focusedWorkflowRunId !== null
   ) {
-    return "repo-page repo-page-focused-detail";
+    classNames.push("repo-page-focused-detail");
   }
-  return routeModel.tab === "actions" ? "repo-page repo-page-actions" : "repo-page";
+  return classNames.join(" ");
 }
 
 function repositoryPageShowsRightRail(routeModel: RepositoryRouteModel): boolean {
   return (
     routeModel.focusedIssueNumber === null &&
     routeModel.focusedPullNumber === null &&
+    routeModel.focusedWorkflowRunId === null &&
+    routeModel.tab !== "issues" &&
     routeModel.tab !== "actions"
   );
 }

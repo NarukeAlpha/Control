@@ -1343,8 +1343,6 @@ describe("Control renderer routing", () => {
     );
     expect(issueMeta).toBeTruthy();
     await userEvent.click(issueMeta?.closest("button") as HTMLButtonElement);
-    const issueSummary = await screen.findByRole("article", { name: "Issue 1199 summary" });
-    await userEvent.click(within(issueSummary).getByRole("button", { name: "Open issue" }));
 
     await waitFor(() =>
       expect(recordRecentItem).toHaveBeenCalledWith(
@@ -2988,6 +2986,11 @@ describe("Control renderer routing", () => {
     });
     renderControl(makeApi({ mutate, getIssueDetailWithStatus, getPullRequestOverviewWithStatus }));
 
+    const issueMeta = (await screen.findAllByText(/#1199 opened by swift-ci/i)).find((element) =>
+      element.closest(".thread-list-row-main")
+    );
+    expect(issueMeta).toBeTruthy();
+    await userEvent.click(issueMeta?.closest("button") as HTMLButtonElement);
     expect(await screen.findByText(/This issue reproduces/)).toBeInTheDocument();
     expect(getIssueDetailWithStatus).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -2998,6 +3001,7 @@ describe("Control renderer routing", () => {
       })
     );
 
+    await userEvent.click(screen.getByRole("button", { name: "Back to issues" }));
     await userEvent.click(await screen.findByRole("button", { name: "New issue" }));
     await userEvent.type(screen.getByPlaceholderText("Issue title"), "Bug report");
     await userEvent.type(screen.getByPlaceholderText("Describe the problem"), "Steps to reproduce");
@@ -3113,8 +3117,6 @@ describe("Control renderer routing", () => {
     await userEvent.click(
       (await screen.findAllByRole("button", { name: /Compiler crash in async closure/i }))[0]
     );
-    const issueSummary = await screen.findByRole("article", { name: "Issue 1199 summary" });
-    await userEvent.click(within(issueSummary).getByRole("button", { name: "Open issue" }));
     await userEvent.click(await screen.findByRole("button", { name: "Close issue" }));
     await acceptRepositoryMutationConfirmation("Close issue");
 

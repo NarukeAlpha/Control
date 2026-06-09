@@ -55,6 +55,7 @@ function CurrentLabelButton({
       onClick={handleRemoveLabel}
     >
       <X size={13} />
+      <span className="issue-label-dot" style={{ backgroundColor: `#${label.color}` }} />
       {label.name}
     </button>
   );
@@ -107,7 +108,7 @@ function LabelSuggestionButton({
       title={disabledReason ?? label.description ?? `Add ${label.name}`}
       onClick={handleAddLabel}
     >
-      <span style={{ backgroundColor: `#${label.color}` }} />
+      <span className="issue-label-dot" style={{ backgroundColor: `#${label.color}` }} />
       {label.name}
     </button>
   );

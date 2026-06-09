@@ -523,9 +523,14 @@ function buildRepositoryPageModel(input: {
 }
 
 function repositoryPageClassName(routeModel: RepositoryRouteModel): string {
-  return routeModel.focusedIssueNumber !== null || routeModel.focusedPullNumber !== null
-    ? "repo-page repo-page-focused-detail"
-    : "repo-page";
+  const classNames = ["repo-page"];
+  if (routeModel.tab === "issues") {
+    classNames.push("repo-page-issues");
+  }
+  if (routeModel.focusedIssueNumber !== null || routeModel.focusedPullNumber !== null) {
+    classNames.push("repo-page-focused-detail");
+  }
+  return classNames.join(" ");
 }
 
 function uniqueRepositoryActionDisabledNotes(notes: readonly (string | null)[]): string {
@@ -602,6 +607,10 @@ export function RepositoryPage(props: RepositoryPageProps): JSX.Element {
     pinBusy: props.pinBusy,
     mutationPending: props.mutation.pending
   });
+  const showRightRail =
+    routeModel.tab !== "issues" &&
+    routeModel.focusedIssueNumber === null &&
+    routeModel.focusedPullNumber === null;
 
   return (
     <article className={repositoryPageClassName(routeModel)}>
@@ -673,7 +682,7 @@ export function RepositoryPage(props: RepositoryPageProps): JSX.Element {
         onSelectRef={props.onSelectRef}
         onSelectSettingsCollaborator={props.onSelectSettingsCollaborator}
       />
-      {routeModel.focusedIssueNumber === null && routeModel.focusedPullNumber === null && props.rightRail}
+      {showRightRail && props.rightRail}
     </article>
   );
 }

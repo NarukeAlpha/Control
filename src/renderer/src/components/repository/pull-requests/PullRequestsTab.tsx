@@ -227,9 +227,9 @@ function usePullRequestsTabModel({
   );
   const requestedPullNumber = selectedPullNumber ?? focusedPullNumber;
   const selectedPullFromList =
-    (requestedPullNumber !== null
-      ? filteredPulls.find((pull) => pull.number === requestedPullNumber)
-      : null) ?? (requestedPullNumber === null ? (filteredPulls[0] ?? null) : null);
+    requestedPullNumber !== null
+      ? (filteredPulls.find((pull) => pull.number === requestedPullNumber) ?? null)
+      : null;
   const selectedPullNumberForDetail = selectedPullFromList?.number ?? requestedPullNumber;
   const selectedPullDetailKey =
     selectedPullNumberForDetail !== null

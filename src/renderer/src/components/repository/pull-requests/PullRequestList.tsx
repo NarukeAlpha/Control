@@ -1,9 +1,7 @@
-import { ExternalLink, GitPullRequest } from "lucide-react";
+import { GitPullRequest } from "lucide-react";
 import type { JSX } from "react";
 
-import type { PullRequestSummary, RepositoryDetail } from "@shared/github";
-
-import { formatRelativeDate } from "@renderer/utils/format";
+import type { PullRequestSummary } from "@shared/github";
 
 const maxPullRequestListLimit = 100;
 
@@ -21,39 +19,27 @@ function pullRequestReviewDecisionLabel(pull: PullRequestSummary): string | null
 }
 
 function PullRequestListRow({
-  repository,
   pull,
   active,
-  onSelect,
-  onOpenExternal
+  onSelect
 }: {
-  repository: RepositoryDetail;
   pull: PullRequestSummary;
   active: boolean;
   onSelect(pull: PullRequestSummary): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   const headRepositoryNameWithOwner = pull.headRepositoryNameWithOwner ?? null;
-  const baseRepositoryNameWithOwner = pull.baseRepositoryNameWithOwner ?? null;
-  const headRepositoryDiffers =
-    Boolean(headRepositoryNameWithOwner) && headRepositoryNameWithOwner !== repository.nameWithOwner;
-  const baseRepositoryDiffers =
-    Boolean(baseRepositoryNameWithOwner) && baseRepositoryNameWithOwner !== repository.nameWithOwner;
-  const isCrossRepository = pull.isCrossRepository ?? (headRepositoryDiffers || baseRepositoryDiffers);
+  const isCrossRepository = pull.isCrossRepository ?? false;
   const sourceRepositoryLabel = headRepositoryNameWithOwner ?? "external source";
   const reviewDecisionLabel = pullRequestReviewDecisionLabel(pull);
 
   return (
-    <div className={`issue-row thread-list-action-row ${active ? "active" : ""}`}>
+    <div className={`issue-row pull-request-row ${active ? "active" : ""}`}>
       <button className="thread-list-row-main" type="button" onClick={() => onSelect(pull)}>
         <GitPullRequest size={17} />
-        <div>
+        <div className="pull-request-row-copy">
           <strong>{pull.title}</strong>
           <small>
-            #{pull.number} by {pull.authorLogin ?? "unknown"} · {pull.headRefName} -&gt; {pull.baseRefName} ·{" "}
-            {pull.changedFiles} files · {pull.comments} comments · {pull.reviewComments} review comments
-            {isCrossRepository ? ` · source ${sourceRepositoryLabel}` : ""}
-            {pull.mergedAt ? ` · merged ${formatRelativeDate(pull.mergedAt)}` : ""}
+            #{pull.number} by {pull.authorLogin ?? "unknown"}
           </small>
         </div>
         <div className="thread-list-row-badges">
@@ -62,30 +48,22 @@ function PullRequestListRow({
               {headRepositoryNameWithOwner ? `fork: ${headRepositoryNameWithOwner}` : "fork"}
             </span>
           )}
-          <span className={`state-chip ${pull.mergeableState === "clean" ? "success" : ""}`}>
-            {pull.isDraft ? "draft" : (pull.mergeableState ?? pull.state)}
-          </span>
+          {(pull.isDraft || pull.mergeableState) && (
+            <span className={`state-chip ${pull.mergeableState === "clean" ? "success" : ""}`}>
+              {pull.isDraft ? "draft" : pull.mergeableState}
+            </span>
+          )}
           {reviewDecisionLabel && <span className="state-chip">{reviewDecisionLabel}</span>}
           {pull.merged && <span className="state-chip success">merged</span>}
           <span className={`state-chip ${pull.state === "open" ? "success" : ""}`}>{pull.state}</span>
           {pull.locked && <span className="state-chip attention">locked</span>}
         </div>
       </button>
-      <button
-        className="pin-row-button"
-        type="button"
-        aria-label={`Open pull request ${pull.number} on GitHub`}
-        title={`Open pull request #${pull.number} on GitHub`}
-        onClick={() => onOpenExternal(pull.htmlUrl)}
-      >
-        <ExternalLink size={15} />
-      </button>
     </div>
   );
 }
 
 export function PullRequestList({
-  repository,
   pulls,
   selectedPullNumber,
   creating,
@@ -94,10 +72,8 @@ export function PullRequestList({
   filter,
   pullRequestListLimit,
   onSelect,
-  onOpenExternal,
   onExpandPullRequests
 }: {
-  repository: RepositoryDetail;
   pulls: PullRequestSummary[];
   selectedPullNumber: number | null;
   creating: boolean;
@@ -106,7 +82,6 @@ export function PullRequestList({
   filter: string;
   pullRequestListLimit: number;
   onSelect(pull: PullRequestSummary): void;
-  onOpenExternal(url: string): void;
   onExpandPullRequests(): void;
 }): JSX.Element {
   const unfilteredPullRequestListLimitHit = !filter.trim() && pulls.length >= pullRequestListLimit;
@@ -118,11 +93,9 @@ export function PullRequestList({
       {pulls.map((pull) => (
         <PullRequestListRow
           key={pull.id}
-          repository={repository}
           pull={pull}
           active={selectedPullNumber === pull.number && !creating}
           onSelect={onSelect}
-          onOpenExternal={onOpenExternal}
         />
       ))}
       {!loading && pulls.length === 0 && (

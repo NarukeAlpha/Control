@@ -35,11 +35,41 @@ function settingStateLabel(value: boolean | null): string {
   return value ? "Enabled" : "Disabled";
 }
 
-export function PullRequestDetailSummary({
+export function PullRequestDetailHeader({
   selectedPull,
   selectedMerged,
   selectedReviewDecision,
-  reviewDecisionAvailabilityMessage,
+  reviewDecisionAvailabilityMessage
+}: {
+  selectedPull: PullRequestSummary;
+  selectedMerged: boolean | null;
+  selectedReviewDecision: string | null;
+  reviewDecisionAvailabilityMessage: string | null;
+}): JSX.Element {
+  return (
+    <header className="thread-header pr-detail-header">
+      <h2>{selectedPull.title}</h2>
+      <small>
+        #{selectedPull.number} by {selectedPull.authorLogin ?? "unknown"} · {selectedPull.headRefName} -&gt;{" "}
+        {selectedPull.baseRefName}
+      </small>
+      <span className={`state-chip ${selectedPull.state === "open" ? "success" : ""}`}>
+        {selectedPull.state}
+      </span>
+      {selectedMerged && <span className="state-chip success">Merged</span>}
+      <span className={`state-chip ${pullRequestReviewDecisionTone(selectedReviewDecision)}`}>
+        {formatPullRequestReviewDecision(selectedReviewDecision)}
+      </span>
+      {reviewDecisionAvailabilityMessage && (
+        <small className="action-disabled-note">{reviewDecisionAvailabilityMessage}</small>
+      )}
+      {selectedPull.locked && <span className="state-chip attention">Locked</span>}
+    </header>
+  );
+}
+
+export function PullRequestDetailStatusSummary({
+  selectedPull,
   selectedIsCrossRepository,
   selectedHeadRepository,
   selectedBaseRepository,
@@ -57,9 +87,6 @@ export function PullRequestDetailSummary({
   selectedBaseProtectionLoaded
 }: {
   selectedPull: PullRequestSummary;
-  selectedMerged: boolean | null;
-  selectedReviewDecision: string | null;
-  reviewDecisionAvailabilityMessage: string | null;
   selectedIsCrossRepository: boolean | null;
   selectedHeadRepository: string | null;
   selectedBaseRepository: string | null;
@@ -78,24 +105,6 @@ export function PullRequestDetailSummary({
 }): JSX.Element {
   return (
     <>
-      <header className="thread-header">
-        <h2>{selectedPull.title}</h2>
-        <small>
-          #{selectedPull.number} by {selectedPull.authorLogin ?? "unknown"} · {selectedPull.headRefName} -&gt;{" "}
-          {selectedPull.baseRefName}
-        </small>
-        <span className={`state-chip ${selectedPull.state === "open" ? "success" : ""}`}>
-          {selectedPull.state}
-        </span>
-        {selectedMerged && <span className="state-chip success">Merged</span>}
-        <span className={`state-chip ${pullRequestReviewDecisionTone(selectedReviewDecision)}`}>
-          {formatPullRequestReviewDecision(selectedReviewDecision)}
-        </span>
-        {reviewDecisionAvailabilityMessage && (
-          <small className="action-disabled-note">{reviewDecisionAvailabilityMessage}</small>
-        )}
-        {selectedPull.locked && <span className="state-chip attention">Locked</span>}
-      </header>
       <div className="diff-summary">
         <span>{selectedPull.changedFiles} files changed</span>
         <span className="additions">+{formatCompactNumber(selectedPull.additions)}</span>
@@ -156,6 +165,77 @@ export function PullRequestDetailSummary({
           </>
         )}
       </div>
+    </>
+  );
+}
+
+export function PullRequestDetailSummary({
+  selectedPull,
+  selectedMerged,
+  selectedReviewDecision,
+  reviewDecisionAvailabilityMessage,
+  selectedIsCrossRepository,
+  selectedHeadRepository,
+  selectedBaseRepository,
+  selectedMaintainerCanModify,
+  selectedMergeCommitSha,
+  selectedMergedAt,
+  selectedBranchSignals,
+  selectedBaseProtection,
+  selectedBaseProtectionBranchLabel,
+  selectedBaseProtectionStatusLabel,
+  selectedBaseProtectionStatusUnavailable,
+  selectedBaseProtectionLoading,
+  selectedBaseProtectionError,
+  selectedBaseProtectionAvailabilityMessage,
+  selectedBaseProtectionLoaded
+}: {
+  selectedPull: PullRequestSummary;
+  selectedMerged: boolean | null;
+  selectedReviewDecision: string | null;
+  reviewDecisionAvailabilityMessage: string | null;
+  selectedIsCrossRepository: boolean | null;
+  selectedHeadRepository: string | null;
+  selectedBaseRepository: string | null;
+  selectedMaintainerCanModify: boolean | null;
+  selectedMergeCommitSha: string | null;
+  selectedMergedAt: string | null;
+  selectedBranchSignals: string[];
+  selectedBaseProtection: BranchProtectionSummary | null;
+  selectedBaseProtectionBranchLabel: string;
+  selectedBaseProtectionStatusLabel: string;
+  selectedBaseProtectionStatusUnavailable: boolean;
+  selectedBaseProtectionLoading: boolean;
+  selectedBaseProtectionError: Error | null;
+  selectedBaseProtectionAvailabilityMessage: string | null;
+  selectedBaseProtectionLoaded: boolean;
+}): JSX.Element {
+  return (
+    <>
+      <PullRequestDetailHeader
+        selectedPull={selectedPull}
+        selectedMerged={selectedMerged}
+        selectedReviewDecision={selectedReviewDecision}
+        reviewDecisionAvailabilityMessage={reviewDecisionAvailabilityMessage}
+      />
+      <PullRequestDetailStatusSummary
+        selectedPull={selectedPull}
+        selectedIsCrossRepository={selectedIsCrossRepository}
+        selectedHeadRepository={selectedHeadRepository}
+        selectedBaseRepository={selectedBaseRepository}
+        selectedMaintainerCanModify={selectedMaintainerCanModify}
+        selectedMergeCommitSha={selectedMergeCommitSha}
+        selectedMergedAt={selectedMergedAt}
+        selectedBranchSignals={selectedBranchSignals}
+        selectedBaseProtection={selectedBaseProtection}
+        selectedBaseProtectionBranchLabel={selectedBaseProtectionBranchLabel}
+        selectedBaseProtectionStatusLabel={selectedBaseProtectionStatusLabel}
+        selectedBaseProtectionStatusUnavailable={selectedBaseProtectionStatusUnavailable}
+        selectedBaseProtectionLoading={selectedBaseProtectionLoading}
+        selectedBaseProtectionError={selectedBaseProtectionError}
+        selectedBaseProtectionAvailabilityMessage={selectedBaseProtectionAvailabilityMessage}
+        selectedBaseProtectionLoaded={selectedBaseProtectionLoaded}
+      />
     </>
   );
 }

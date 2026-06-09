@@ -618,7 +618,6 @@ export function RepositoryPage(props: RepositoryPageProps): JSX.Element {
         repository={repository}
         pageModel={pageModel}
         pinned={props.pinned}
-        onRefresh={props.onRefresh}
         onTogglePin={props.onTogglePin}
         onMutate={props.mutation.onMutate}
         onOpenExternal={props.onOpenExternal}
@@ -735,7 +734,6 @@ function RepositoryHero({
   repository,
   pageModel,
   pinned,
-  onRefresh,
   onTogglePin,
   onMutate,
   onOpenExternal,
@@ -744,7 +742,6 @@ function RepositoryHero({
   repository: RepositoryDetail;
   pageModel: RepositoryPageModel;
   pinned: boolean;
-  onRefresh(): Promise<void> | void;
   onTogglePin(): void;
   onMutate(action: GitHubAction, dangerous: boolean, payload?: GitHubMutationFields): void;
   onOpenExternal(url: string): void;
@@ -779,7 +776,6 @@ function RepositoryHero({
         starDisabledReason={pageModel.starDisabledReason}
         pinDisabledReason={pageModel.pinDisabledReason}
         pinned={pinned}
-        onRefresh={onRefresh}
         onTogglePin={onTogglePin}
         onMutate={onMutate}
         onOpenExternal={onOpenExternal}
@@ -930,7 +926,6 @@ function RepositoryHeroActions({
   starDisabledReason,
   pinDisabledReason,
   pinned,
-  onRefresh,
   onTogglePin,
   onMutate,
   onOpenExternal
@@ -945,15 +940,10 @@ function RepositoryHeroActions({
   starDisabledReason: string | null;
   pinDisabledReason: string | null;
   pinned: boolean;
-  onRefresh(): Promise<void> | void;
   onTogglePin(): void;
   onMutate(action: GitHubAction, dangerous: boolean, payload?: GitHubMutationFields): void;
   onOpenExternal(url: string): void;
 }): JSX.Element {
-  function refreshRepositoryData(): void {
-    void onRefresh();
-  }
-
   function toggleWatchMutation(): void {
     onMutate(watchAction, false);
   }
@@ -972,9 +962,6 @@ function RepositoryHeroActions({
 
   return (
     <div className="repo-action-row">
-      <button type="button" title="Updated repository data" onClick={refreshRepositoryData}>
-        <RefreshCw size={16} /> Refresh {repository.nameWithOwner}
-      </button>
       <button
         className={pinned ? "selected-action" : ""}
         type="button"

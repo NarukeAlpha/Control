@@ -12,6 +12,43 @@ export interface ResolvedControlTheme {
 
 export type ControlThemeStyleVars = Record<`--${string}`, string>;
 
+const contentPalettes = {
+  light: {
+    documentBackground: "#ffffff",
+    documentSurface: "#f6f8fa",
+    documentText: "#1f2328",
+    documentHeading: "#0f172a",
+    documentMuted: "#57606a",
+    documentBorder: "#d0d7de",
+    documentCodeBackground: "rgba(175, 184, 193, 0.2)",
+    documentLink: "#0969da",
+    documentReferenceBackground: "rgba(9, 105, 218, 0.08)",
+    sourceBackground: "#ffffff",
+    sourceText: "#1f2328",
+    sourceMuted: "#6e7781",
+    sourceGutter: "#6e7781",
+    sourceGutterBackground: "#f6f8fa",
+    sourceHighlight: "#fff8c5"
+  },
+  dark: {
+    documentBackground: "#0d1117",
+    documentSurface: "#161b22",
+    documentText: "#e6edf3",
+    documentHeading: "#f0f6fc",
+    documentMuted: "#8b949e",
+    documentBorder: "#30363d",
+    documentCodeBackground: "rgba(110, 118, 129, 0.4)",
+    documentLink: "#58a6ff",
+    documentReferenceBackground: "rgba(56, 139, 253, 0.14)",
+    sourceBackground: "#0d1117",
+    sourceText: "#e6edf3",
+    sourceMuted: "#8b949e",
+    sourceGutter: "#7d8590",
+    sourceGutterBackground: "#161b22",
+    sourceHighlight: "rgba(187, 128, 9, 0.22)"
+  }
+} as const;
+
 const uiFontStacks: Record<ControlThemeSettings["custom"]["uiFont"], string> = {
   inter:
     'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif',
@@ -58,7 +95,7 @@ export function resolveControlThemeStyleVars(
   const custom = theme.custom ?? DEFAULT_CONTROL_THEME_SETTINGS.custom;
   const palette = resolvedMode === "dark" ? custom.dark : custom.light;
   const darkMode = resolvedMode === "dark";
-  const surfaceShadow = darkMode ? "#000000" : "#D6E4F3";
+  const contentPalette = contentPalettes[resolvedMode];
   const text = palette.foreground;
   const background = palette.background;
   const accent = palette.accent;
@@ -112,8 +149,24 @@ export function resolveControlThemeStyleVars(
     "--color-data-strong": dataColors.strong,
     "--color-data-peak": dataColors.peak,
     "--color-data-line": dataColors.line,
-    "--color-code-background": colorMix(background, darkMode ? 86 : 88, surfaceShadow),
-    "--color-code-text": text,
+    "--color-document-background": contentPalette.documentBackground,
+    "--color-document-surface": contentPalette.documentSurface,
+    "--color-document-text": contentPalette.documentText,
+    "--color-document-heading": contentPalette.documentHeading,
+    "--color-document-muted": contentPalette.documentMuted,
+    "--color-document-border": contentPalette.documentBorder,
+    "--color-document-code-background": contentPalette.documentCodeBackground,
+    "--color-document-link": contentPalette.documentLink,
+    "--color-document-reference-background": contentPalette.documentReferenceBackground,
+    "--color-source-background": contentPalette.sourceBackground,
+    "--color-source-text": contentPalette.sourceText,
+    "--color-source-muted": contentPalette.sourceMuted,
+    "--color-source-gutter": contentPalette.sourceGutter,
+    "--color-source-gutter-background": contentPalette.sourceGutterBackground,
+    "--color-source-highlight": contentPalette.sourceHighlight,
+    "--color-code-border": contentPalette.documentBorder,
+    "--color-code-background": contentPalette.sourceBackground,
+    "--color-code-text": contentPalette.sourceText,
     "--color-overlay": colorMix(background, darkMode ? 62 : 22, "transparent")
   };
 }

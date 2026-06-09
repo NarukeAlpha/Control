@@ -71,6 +71,21 @@
   --color-code-border: var(--color-border);
   --color-code-background: rgba(248, 250, 252, 0.92);
   --color-code-text: #172033;
+  --color-document-background: #ffffff;
+  --color-document-surface: #f6f8fa;
+  --color-document-text: #1f2328;
+  --color-document-heading: #0f172a;
+  --color-document-muted: #57606a;
+  --color-document-border: #d0d7de;
+  --color-document-code-background: rgba(175, 184, 193, 0.2);
+  --color-document-link: #0969da;
+  --color-document-reference-background: rgba(9, 105, 218, 0.08);
+  --color-source-background: #ffffff;
+  --color-source-text: #1f2328;
+  --color-source-muted: #6e7781;
+  --color-source-gutter: #6e7781;
+  --color-source-gutter-background: #f6f8fa;
+  --color-source-highlight: #fff8c5;
   --color-diff-addition: rgba(26, 127, 55, 0.14);
   --color-diff-deletion: rgba(180, 35, 24, 0.14);
   --color-log-background: rgba(7, 15, 28, 0.92);
@@ -226,6 +241,24 @@
 
 .app-shell[data-color-scheme="dark"] {
   color-scheme: dark;
+  --color-document-background: #0d1117;
+  --color-document-surface: #161b22;
+  --color-document-text: #e6edf3;
+  --color-document-heading: #f0f6fc;
+  --color-document-muted: #8b949e;
+  --color-document-border: #30363d;
+  --color-document-code-background: rgba(110, 118, 129, 0.4);
+  --color-document-link: #58a6ff;
+  --color-document-reference-background: rgba(56, 139, 253, 0.14);
+  --color-source-background: #0d1117;
+  --color-source-text: #e6edf3;
+  --color-source-muted: #8b949e;
+  --color-source-gutter: #7d8590;
+  --color-source-gutter-background: #161b22;
+  --color-source-highlight: rgba(187, 128, 9, 0.22);
+  --color-code-border: #30363d;
+  --color-code-background: #0d1117;
+  --color-code-text: #e6edf3;
 }
 
 .app-shell[data-accent="green"] {
@@ -1923,7 +1956,7 @@ p {
   display: flex;
   grid-column: 1 / -1;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
   justify-content: flex-end;
 }
 
@@ -1980,11 +2013,21 @@ p {
 }
 
 .repo-action-row button {
+  gap: 5px;
+  min-height: 32px;
   border-color: rgba(108, 128, 156, 0.2);
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.58);
+  padding: 0 10px;
+  font-size: 12px;
   box-shadow:
     0 10px 22px rgba(15, 23, 42, 0.06),
     inset 0 1px 0 rgba(255, 255, 255, 0.74);
+}
+
+.repo-action-row button svg {
+  width: 14px;
+  height: 14px;
 }
 
 .repo-action-row button:hover:not(:disabled) {
@@ -2412,22 +2455,13 @@ p {
 
 .code-browser-header {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 16px;
   border: 1px solid var(--color-border);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.72);
   padding: 14px;
-}
-
-.code-browser-header h1 {
-  overflow: hidden;
-  margin-bottom: 6px;
-  color: #08111f;
-  font-size: 20px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .code-browser-header-actions {
@@ -2452,20 +2486,74 @@ p {
 .path-crumbs {
   display: flex;
   min-width: 0;
-  flex-wrap: wrap;
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 4px;
+  justify-self: start;
+  gap: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface-control);
+  padding: 3px;
+  box-shadow: inset 0 1px 0 var(--color-surface-highlight);
+  scrollbar-width: none;
 }
 
-.path-crumbs button {
-  color: #37516f;
-  font-size: 13px;
+.path-crumbs::-webkit-scrollbar {
+  display: none;
 }
 
-.path-crumbs button + button::before {
+.path-crumb-segment {
+  display: inline-flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: min(190px, 34vw);
+  min-height: 30px;
+  align-items: center;
+  gap: 6px;
+  border-radius: 8px;
+  background: transparent;
   color: var(--color-text-muted);
-  content: "/";
-  margin-right: 4px;
+  padding: 0 8px;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.path-crumb-segment svg {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+}
+
+.path-crumb-segment span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.path-crumb-segment:hover:not(.current) {
+  background: var(--color-surface-row-hover);
+  color: var(--color-text);
+}
+
+.path-crumb-segment.current {
+  max-width: min(240px, 42vw);
+  background: var(--color-surface-row-hover);
+  color: var(--color-heading);
+  font-weight: 750;
+}
+
+.path-crumb-segment.current svg {
+  color: var(--color-heading);
+}
+
+.path-crumb-separator {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+  opacity: 0.65;
 }
 
 .code-browser-list {
@@ -2751,8 +2839,8 @@ p {
   max-height: calc(100vh - 264px);
   overflow: auto;
   margin: 0;
-  background: rgba(250, 252, 255, 0.9);
-  color: #172033;
+  background: var(--color-source-background);
+  color: var(--color-source-text);
   font-family: var(--font-code-family);
   font-size: 13px;
   line-height: 1.55;
@@ -2770,7 +2858,7 @@ p {
 }
 
 .code-highlight-status {
-  color: #60748c;
+  color: var(--color-source-muted);
   font-size: 12px;
   padding: 0 4px;
 }
@@ -2784,12 +2872,13 @@ p {
 }
 
 .code-source-line.highlighted {
-  background: rgba(255, 202, 102, 0.24);
-  box-shadow: inset 3px 0 0 #d28a1c;
+  background: var(--color-source-highlight);
+  box-shadow: inset 3px 0 0 var(--color-document-link);
 }
 
 .code-source-line-number {
-  color: #8796aa;
+  background: var(--color-source-gutter-background);
+  color: var(--color-source-gutter);
   font-variant-numeric: tabular-nums;
   padding-right: 16px;
   text-align: right;
@@ -2820,7 +2909,8 @@ p {
 .binary-file-fallback {
   display: grid;
   min-height: 280px;
-  background: rgba(250, 252, 255, 0.9);
+  background: var(--color-source-background);
+  color: var(--color-source-text);
   padding: 20px;
 }
 
@@ -2839,6 +2929,8 @@ p {
 
 .code-markdown-preview {
   max-height: calc(100vh - 264px);
+  background: var(--color-document-background);
+  color: var(--color-document-text);
   overflow: auto;
 }
 
@@ -2850,12 +2942,12 @@ p {
 .binary-file-fallback {
   align-content: center;
   gap: 8px;
-  color: #60748c;
+  color: var(--color-source-muted);
   text-align: center;
 }
 
 .binary-file-fallback strong {
-  color: #172033;
+  color: var(--color-source-text);
 }
 
 .file-row svg:first-child,
@@ -3001,8 +3093,10 @@ p {
 
 .readme-content {
   display: grid;
-  align-items: center;
+  align-items: start;
   min-height: 178px;
+  background: var(--color-document-background);
+  color: var(--color-document-text);
   padding: 30px 34px;
 }
 
@@ -3043,13 +3137,13 @@ p {
 
 .readme-content h2 {
   margin-bottom: 12px;
-  color: #050b15;
+  color: var(--color-document-heading);
   font-size: 28px;
 }
 
 .readme-content p {
   max-width: 540px;
-  color: #44576f;
+  color: var(--color-document-text);
   line-height: 1.55;
 }
 
@@ -3522,7 +3616,8 @@ p {
 .markdown-body-lite {
   max-width: 100%;
   min-width: 0;
-  color: #25364d;
+  background: transparent;
+  color: var(--color-document-text);
   line-height: 1.58;
   overflow-wrap: anywhere;
   padding: 13px 14px;
@@ -3537,7 +3632,7 @@ p {
 }
 
 .markdown-body-lite :where(h3, h4, h5, h6) {
-  color: #172033;
+  color: var(--color-document-heading);
   line-height: 1.2;
 }
 
@@ -3568,7 +3663,7 @@ p {
   display: inline;
   border: 0;
   background: transparent;
-  color: #0969da;
+  color: var(--color-document-link);
   cursor: pointer;
   font: inherit;
   padding: 0;
@@ -3578,8 +3673,8 @@ p {
 
 .markdown-reference {
   border-radius: 6px;
-  background: rgba(9, 105, 218, 0.08);
-  color: #0758b8;
+  background: var(--color-document-reference-background);
+  color: var(--color-document-link);
   padding: 1px 4px;
 }
 
@@ -3590,11 +3685,11 @@ p {
 }
 
 .markdown-reference-button:hover {
-  background: rgba(9, 105, 218, 0.16);
+  background: color-mix(in srgb, var(--color-document-link) 18%, transparent);
 }
 
 .markdown-unsafe {
-  color: #8a5b00;
+  color: var(--color-warning);
 }
 
 .markdown-image {
@@ -3602,7 +3697,7 @@ p {
   max-width: 100%;
   height: auto;
   max-height: 320px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-document-border);
   border-radius: 8px;
   margin: 8px 0;
   object-fit: contain;
@@ -3611,23 +3706,24 @@ p {
 .markdown-code-block {
   max-width: 100%;
   overflow: auto;
-  border: 1px solid rgba(73, 94, 126, 0.12);
+  border: 1px solid var(--color-document-border);
   border-radius: 8px;
-  background: rgba(247, 249, 252, 0.86);
+  background: var(--color-document-surface);
+  color: var(--color-document-text);
   padding: 10px 12px;
 }
 
 .markdown-code-block span {
   display: block;
   margin-bottom: 8px;
-  color: #60748c;
+  color: var(--color-document-muted);
   font-size: 12px;
 }
 
 .markdown-body-lite code {
   border-radius: 6px;
-  background: rgba(15, 23, 42, 0.07);
-  color: #172033;
+  background: var(--color-document-code-background);
+  color: var(--color-document-text);
   font-family: var(--font-code-family);
   font-size: 0.92em;
   padding: 1px 4px;
@@ -3650,13 +3746,13 @@ p {
 }
 
 .markdown-table :where(th, td) {
-  border: 1px solid rgba(73, 94, 126, 0.14);
+  border: 1px solid var(--color-document-border);
   padding: 6px 8px;
   text-align: left;
 }
 
 .markdown-table th {
-  background: rgba(255, 255, 255, 0.64);
+  background: var(--color-document-surface);
 }
 
 .timeline-edit-form {
@@ -6176,7 +6272,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
   overflow: auto;
   margin: 0;
   padding: 10px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-code-border);
   border-radius: 8px;
   background: var(--color-code-background);
   color: var(--color-code-text);
@@ -7608,7 +7704,6 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
     .repo-title-block p,
     .repo-title-line h1 span,
     .fork-meta,
-    .readme-content p,
     .binary-file-fallback,
     .shortcut-item small,
     .wiki-external-action small,
@@ -7633,9 +7728,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
   :is(
     .repo-title-line h1,
     .repo-tabs button.active,
-    .readme-content h2,
     .readme-panel header,
-    .code-browser-header h1,
     .code-viewer-toolbar span,
     .binary-file-fallback strong,
     .thread-header h2,
@@ -7718,7 +7811,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 
 .app-shell[data-color-scheme="dark"]
   :is(.markdown-body-lite, .markdown-code-block, .markdown-body-lite code, .markdown-table, .code-preview) {
-  border-color: var(--color-border);
+  border-color: var(--color-code-border);
   background: var(--color-code-background);
   color: var(--color-code-text);
 }
@@ -7847,8 +7940,7 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
   border-color: var(--color-border);
 }
 
-.app-shell[data-color-scheme="dark"]
-  :is(.root-markdown-tabs button, .timeline-card-header, .markdown-table th) {
+.app-shell[data-color-scheme="dark"] :is(.root-markdown-tabs button, .timeline-card-header) {
   background: var(--color-surface-control);
   color: var(--color-text);
 }
@@ -7860,25 +7952,34 @@ body:not(.no-liquid-glass) .right-rail .commit-history-panel {
 }
 
 .app-shell[data-color-scheme="dark"] .markdown-body-lite :where(h3, h4, h5, h6) {
-  color: var(--color-heading);
+  color: var(--color-document-heading);
 }
 
 .app-shell[data-color-scheme="dark"] .markdown-link {
-  color: var(--color-accent-strong);
+  color: var(--color-document-link);
 }
 
 .app-shell[data-color-scheme="dark"] .markdown-reference {
-  background: var(--color-accent-muted);
-  color: var(--color-accent-strong);
+  background: var(--color-document-reference-background);
+  color: var(--color-document-link);
 }
 
-.app-shell[data-color-scheme="dark"] :is(.code-viewer pre, .code-markdown-preview) {
-  background: var(--color-code-background);
-  color: var(--color-code-text);
+.app-shell[data-color-scheme="dark"] .code-viewer pre {
+  background: var(--color-source-background);
+  color: var(--color-source-text);
 }
 
-.app-shell[data-color-scheme="dark"] :is(.code-source-line-number, .code-highlight-status) {
-  color: var(--color-text-muted);
+.app-shell[data-color-scheme="dark"] .code-markdown-preview {
+  background: var(--color-document-background);
+  color: var(--color-document-text);
+}
+
+.app-shell[data-color-scheme="dark"] .code-source-line-number {
+  color: var(--color-source-gutter);
+}
+
+.app-shell[data-color-scheme="dark"] .code-highlight-status {
+  color: var(--color-source-muted);
 }
 
 .app-shell[data-color-scheme="dark"] :is(.release-row:hover, .contributor-row:hover) {

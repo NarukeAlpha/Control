@@ -1,4 +1,4 @@
-import { ExternalLink, Pin, Plus, Search, X } from "lucide-react";
+import { Pin, Plus, Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { ChangeEvent, JSX } from "react";
 
@@ -35,7 +35,6 @@ export interface RepositoriesRouteProps {
   repositoryPinBusy: boolean;
   repositoryPinError: Error | null;
   viewerLogin: string | null;
-  onOpenExternal(url: string): void;
   onOpenRepository(nameWithOwner: string): void;
   onOpenLocalRepository(repository: AreaRepositorySummary): void;
   onOpenAddRepository(): void;
@@ -135,8 +134,7 @@ function GitHubRepositoryRow({
   pinned,
   repositoryPinDisabledReason,
   onOpenRepository,
-  onToggleRepositoryPin,
-  onOpenExternal
+  onToggleRepositoryPin
 }: {
   repository: RepositorySummary;
   viewerLogin: string | null;
@@ -144,7 +142,6 @@ function GitHubRepositoryRow({
   repositoryPinDisabledReason: string | null;
   onOpenRepository(nameWithOwner: string): void;
   onToggleRepositoryPin(nameWithOwner: string): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   const metadataParts = repositoryCollectionMetadataParts(repository);
 
@@ -154,10 +151,6 @@ function GitHubRepositoryRow({
 
   function togglePin(): void {
     onToggleRepositoryPin(repository.nameWithOwner);
-  }
-
-  function openRepositoryOnGitHub(): void {
-    onOpenExternal(`https://github.com/${repository.nameWithOwner}`);
   }
 
   return (
@@ -192,15 +185,6 @@ function GitHubRepositoryRow({
         >
           <Pin size={15} />
         </button>
-        <button
-          className="pin-row-button"
-          type="button"
-          aria-label={`Open ${repository.name} on GitHub`}
-          title={`Open ${repository.nameWithOwner} on GitHub`}
-          onClick={openRepositoryOnGitHub}
-        >
-          <ExternalLink size={15} />
-        </button>
       </span>
     </div>
   );
@@ -211,15 +195,13 @@ function LocalRepositoryRow({
   pinned,
   repositoryPinDisabledReason,
   onOpenLocalRepository,
-  onToggleAreaRepositoryPin,
-  onOpenExternal
+  onToggleAreaRepositoryPin
 }: {
   repository: AreaRepositorySummary;
   pinned: boolean;
   repositoryPinDisabledReason: string | null;
   onOpenLocalRepository(repository: AreaRepositorySummary): void;
   onToggleAreaRepositoryPin(repository: AreaRepositorySummary): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   const secondary =
     repository.connection?.nameWithOwner ?? repository.path ?? `${repository.kind.toUpperCase()} repository`;
@@ -233,12 +215,6 @@ function LocalRepositoryRow({
 
   function togglePin(): void {
     onToggleAreaRepositoryPin(repository);
-  }
-
-  function openConnectedRepositoryOnGitHub(): void {
-    if (connection) {
-      onOpenExternal(connection.url);
-    }
   }
 
   return (
@@ -272,17 +248,6 @@ function LocalRepositoryRow({
         >
           <Pin size={15} />
         </button>
-        {connection && (
-          <button
-            className="pin-row-button"
-            type="button"
-            aria-label={`Open ${repository.displayName} on GitHub`}
-            title={`Open ${connection.nameWithOwner} on GitHub`}
-            onClick={openConnectedRepositoryOnGitHub}
-          >
-            <ExternalLink size={15} />
-          </button>
-        )}
       </span>
     </div>
   );
@@ -437,7 +402,6 @@ export function RepositoriesRoute({
   repositoryPinBusy,
   repositoryPinError,
   viewerLogin,
-  onOpenExternal,
   onOpenRepository,
   onOpenLocalRepository,
   onOpenAddRepository,
@@ -575,7 +539,6 @@ export function RepositoriesRoute({
               repositoryPinDisabledReason={repositoryPinDisabledReason}
               onOpenRepository={onOpenRepository}
               onToggleRepositoryPin={onToggleRepositoryPin}
-              onOpenExternal={onOpenExternal}
             />
           ))}
         {!showingGitHubArea &&
@@ -589,7 +552,6 @@ export function RepositoriesRoute({
               repositoryPinDisabledReason={repositoryPinDisabledReason}
               onOpenLocalRepository={onOpenLocalRepository}
               onToggleAreaRepositoryPin={onToggleAreaRepositoryPin}
-              onOpenExternal={onOpenExternal}
             />
           ))}
         {showingGitHubArea &&

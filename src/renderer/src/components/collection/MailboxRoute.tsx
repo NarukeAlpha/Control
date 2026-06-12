@@ -1,14 +1,4 @@
-import {
-  BellOff,
-  CheckCircle2,
-  CircleDot,
-  ExternalLink,
-  GitPullRequest,
-  Inbox,
-  MessageSquare,
-  Search,
-  X
-} from "lucide-react";
+import { BellOff, CheckCircle2, CircleDot, GitPullRequest, Inbox, Search, X } from "lucide-react";
 import { useMemo, useState, type ChangeEvent } from "react";
 import type { JSX } from "react";
 
@@ -24,7 +14,6 @@ import {
   notificationInAppTarget,
   notificationMetadataParts,
   notificationReasonLabel,
-  notificationTargetUrl,
   type MailboxNotificationFilter
 } from "./notificationUi";
 import {
@@ -44,7 +33,6 @@ export interface MailboxRouteProps {
   accountWorkLimit: number;
   notificationFilter: MailboxNotificationFilter;
   notificationLimit: number;
-  onOpenExternal(url: string): void;
   onOpenIssue(issue: IssueSummary): void;
   onOpenPullRequest(pullRequest: PullRequestSummary): void;
   onOpenNotification(notification: NotificationSummary): void;
@@ -105,7 +93,6 @@ function MailboxNotificationRow({
   notification,
   markReadDisabledReason,
   unsubscribeDisabledReason,
-  onOpenExternal,
   onOpenNotification,
   onMarkNotificationRead,
   onUnsubscribeNotification
@@ -113,28 +100,15 @@ function MailboxNotificationRow({
   notification: NotificationSummary;
   markReadDisabledReason: string | null;
   unsubscribeDisabledReason: string | null;
-  onOpenExternal(url: string): void;
   onOpenNotification(notification: NotificationSummary): void;
   onMarkNotificationRead(threadId: string): void;
   onUnsubscribeNotification(notification: NotificationSummary): void;
 }): JSX.Element {
   const metadataParts = notificationMetadataParts(notification);
   const notificationTarget = notificationInAppTarget(notification);
-  const notificationExternalUrl = notificationTargetUrl(notification);
-  const latestCommentUrl = notification.subject.latestCommentHtmlUrl;
 
   function handleOpenNotification(): void {
     onOpenNotification(notification);
-  }
-
-  function handleOpenExternal(): void {
-    onOpenExternal(notificationExternalUrl);
-  }
-
-  function handleOpenLatestComment(): void {
-    if (latestCommentUrl) {
-      onOpenExternal(latestCommentUrl);
-    }
   }
 
   function handleMarkRead(): void {
@@ -150,9 +124,7 @@ function MailboxNotificationRow({
       <button
         className="notification-row-main"
         type="button"
-        title={
-          notificationTarget ? "Open notification target in Control" : "Open notification target on GitHub"
-        }
+        title={notificationTarget ? "Open notification target in Control" : "Notification target unavailable"}
         onClick={handleOpenNotification}
       >
         {notification.unread ? <CircleDot size={17} /> : <Inbox size={17} />}
@@ -180,26 +152,6 @@ function MailboxNotificationRow({
         <button
           className="pin-row-button"
           type="button"
-          aria-label="Open notification target on GitHub"
-          title="Open notification target on GitHub"
-          onClick={handleOpenExternal}
-        >
-          <ExternalLink size={15} />
-        </button>
-        {latestCommentUrl && (
-          <button
-            className="pin-row-button"
-            type="button"
-            aria-label={`Open latest comment for ${notification.subject.title} on GitHub`}
-            title="Open latest comment on GitHub"
-            onClick={handleOpenLatestComment}
-          >
-            <MessageSquare size={15} />
-          </button>
-        )}
-        <button
-          className="pin-row-button"
-          type="button"
           aria-label={`Mark ${notification.subject.title} as read`}
           disabled={Boolean(markReadDisabledReason)}
           title={markReadDisabledReason ?? "Mark notification as read"}
@@ -224,12 +176,10 @@ function MailboxNotificationRow({
 
 function MailboxWorkRow({
   row,
-  onOpenExternal,
   onOpenIssue,
   onOpenPullRequest
 }: {
   row: MailboxWorkItemRow;
-  onOpenExternal(url: string): void;
   onOpenIssue(issue: IssueSummary): void;
   onOpenPullRequest(pullRequest: PullRequestSummary): void;
 }): JSX.Element {
@@ -258,10 +208,6 @@ function MailboxWorkRow({
       return;
     }
     onOpenIssue(row);
-  }
-
-  function handleOpenExternal(): void {
-    onOpenExternal(row.htmlUrl);
   }
 
   return (
@@ -296,17 +242,6 @@ function MailboxWorkRow({
         {row.locked && <span className="state-chip attention">locked</span>}
         <span className="state-chip success">in-app</span>
       </span>
-      <span className="row-action-stack">
-        <button
-          className="pin-row-button"
-          type="button"
-          aria-label={`Open ${row.title} on GitHub`}
-          title={`Open ${row.kind === "pull" ? "pull request" : "issue"} on GitHub`}
-          onClick={handleOpenExternal}
-        >
-          <ExternalLink size={15} />
-        </button>
-      </span>
     </div>
   );
 }
@@ -317,8 +252,7 @@ function MailboxHeader({
   markVisibleNotificationsPending,
   notificationBulkMarkReadDisabledReason,
   onNotificationFilterChange,
-  onMarkVisibleNotificationsRead,
-  onOpenGitHubNotifications
+  onMarkVisibleNotificationsRead
 }: {
   title: string;
   notificationFilter: MailboxNotificationFilter;
@@ -326,7 +260,6 @@ function MailboxHeader({
   notificationBulkMarkReadDisabledReason: string | null;
   onNotificationFilterChange(filter: MailboxNotificationFilter): void;
   onMarkVisibleNotificationsRead(): void;
-  onOpenGitHubNotifications(): void;
 }): JSX.Element {
   return (
     <header>
@@ -349,9 +282,6 @@ function MailboxHeader({
           onClick={onMarkVisibleNotificationsRead}
         >
           <CheckCircle2 size={16} /> {markVisibleNotificationsPending ? "Marking…" : "Mark visible read"}
-        </button>
-        <button type="button" title="Open notifications on GitHub" onClick={onOpenGitHubNotifications}>
-          <ExternalLink size={16} /> Open notifications on GitHub
         </button>
       </div>
     </header>
@@ -395,7 +325,6 @@ export function MailboxRoute({
   accountWorkLimit,
   notificationFilter,
   notificationLimit,
-  onOpenExternal,
   onOpenIssue,
   onOpenPullRequest,
   onOpenNotification,
@@ -495,10 +424,6 @@ export function MailboxRoute({
     markVisibleNotificationsRead.mutate({ threadIds: visibleUnreadNotificationIds });
   }
 
-  function openGitHubNotifications(): void {
-    onOpenExternal("https://github.com/notifications");
-  }
-
   function markNotificationAsRead(threadId: string): void {
     markNotificationRead.mutate({ threadId });
   }
@@ -530,7 +455,6 @@ export function MailboxRoute({
         notificationBulkMarkReadDisabledReason={notificationBulkMarkReadDisabledReason}
         onNotificationFilterChange={onNotificationFilterChange}
         onMarkVisibleNotificationsRead={markVisibleNotificationsAsRead}
-        onOpenGitHubNotifications={openGitHubNotifications}
       />
       <div className="table-panel">
         <MailboxFilterRow
@@ -579,7 +503,6 @@ export function MailboxRoute({
               notification={notification}
               markReadDisabledReason={markReadDisabledReason}
               unsubscribeDisabledReason={unsubscribeDisabledReason}
-              onOpenExternal={onOpenExternal}
               onOpenNotification={onOpenNotification}
               onMarkNotificationRead={markNotificationAsRead}
               onUnsubscribeNotification={queueUnsubscribeFromNotification}
@@ -621,7 +544,6 @@ export function MailboxRoute({
           <MailboxWorkRow
             key={`${row.kind}-${row.id}`}
             row={row}
-            onOpenExternal={onOpenExternal}
             onOpenIssue={onOpenIssue}
             onOpenPullRequest={onOpenPullRequest}
           />

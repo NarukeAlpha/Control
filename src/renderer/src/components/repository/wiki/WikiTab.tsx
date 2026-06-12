@@ -1,4 +1,4 @@
-import { BookOpen, CheckCircle2, Copy, ExternalLink, Plus, X } from "lucide-react";
+import { BookOpen, CheckCircle2, Copy, Plus, X } from "lucide-react";
 import { useReducer, type ChangeEvent, type FormEvent, type JSX } from "react";
 
 import type {
@@ -10,12 +10,7 @@ import type {
   WikiPageSummary
 } from "@shared/github";
 import { MarkdownBody, markdownWikiUrlContext } from "../../MarkdownBody";
-import {
-  githubActionLabel,
-  readAvailabilityMessage,
-  readAvailabilityStatusLabel,
-  repositoryPath
-} from "../repositoryUi";
+import { githubActionLabel, readAvailabilityMessage, readAvailabilityStatusLabel } from "../repositoryUi";
 import { defaultWikiPageLimit, useWikiTabQueries } from "./WikiTab.queries";
 
 const maxWikiPageLimit = 100;
@@ -253,14 +248,6 @@ function WikiPagePreview({
   onOpenExternal(url: string): void;
   onStartWikiEdit(): void;
 }): JSX.Element {
-  const pageFallbackDisabledReason = selectedPage?.htmlUrl ? null : "Wiki page URL unavailable.";
-
-  function handleOpenSelectedPageFallback(): void {
-    if (selectedPage?.htmlUrl) {
-      onOpenExternal(selectedPage.htmlUrl);
-    }
-  }
-
   return (
     <article className="wiki-page-preview">
       <header>
@@ -281,14 +268,6 @@ function WikiPagePreview({
             onClick={onDeleteSelectedWikiPage}
           >
             <X size={15} /> Delete
-          </button>
-          <button
-            type="button"
-            disabled={Boolean(pageFallbackDisabledReason)}
-            title={pageFallbackDisabledReason ?? undefined}
-            onClick={handleOpenSelectedPageFallback}
-          >
-            <ExternalLink size={15} /> Open wiki page on GitHub
           </button>
         </div>
       </header>
@@ -474,48 +453,20 @@ function WikiEditorForm({
 }
 
 function WikiExternalActions({
-  repository,
   wikiActionDisabledReason,
   wikiCloneUrl,
-  onCopyWikiCloneUrl,
-  onOpenExternal
+  onCopyWikiCloneUrl
 }: {
-  repository: RepositoryDetail;
   wikiActionDisabledReason: string | null;
   wikiCloneUrl: string;
   onCopyWikiCloneUrl(): Promise<void>;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
-  function handleOpenWiki(): void {
-    onOpenExternal(repositoryPath(repository, "/wiki"));
-  }
-
-  function handleOpenNewWikiPage(): void {
-    onOpenExternal(repositoryPath(repository, "/wiki/_new"));
-  }
-
   function handleCopyWikiCloneUrl(): void {
     void onCopyWikiCloneUrl();
   }
 
   return (
     <div className="wiki-external-actions">
-      <button className="wiki-external-action" type="button" onClick={handleOpenWiki}>
-        <BookOpen size={20} />
-        <strong>Open wiki on GitHub</strong>
-        <small>Open the repository wiki on GitHub for {repository.nameWithOwner}.</small>
-      </button>
-      <button
-        className="wiki-external-action"
-        type="button"
-        disabled={Boolean(wikiActionDisabledReason)}
-        title={wikiActionDisabledReason ?? undefined}
-        onClick={handleOpenNewWikiPage}
-      >
-        <Plus size={20} />
-        <strong>New wiki page on GitHub</strong>
-        <small>Create or edit long-form repository documentation on GitHub.</small>
-      </button>
       <button
         className="wiki-external-action"
         type="button"
@@ -788,11 +739,9 @@ export function WikiTab({
             onWikiPageTitleChange={updateWikiPageTitle}
           />
           <WikiExternalActions
-            repository={repository}
             wikiActionDisabledReason={wikiActionDisabledReason}
             wikiCloneUrl={wikiCloneUrl}
             onCopyWikiCloneUrl={copyWikiCloneUrl}
-            onOpenExternal={onOpenExternal}
           />
           <div className="muted-row wiki-copy-status" aria-live="polite">
             {copyStatus}

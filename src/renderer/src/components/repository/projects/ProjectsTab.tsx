@@ -1,4 +1,4 @@
-import { ChevronDown, ExternalLink, Plus, Search, SquareKanban, X } from "lucide-react";
+import { ChevronDown, Plus, Search, SquareKanban, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type JSX } from "react";
 
 import type {
@@ -19,8 +19,7 @@ import {
   githubActionLabel,
   projectSectionAvailabilityMessage,
   readAvailabilityMessage,
-  repositoryMutationDisabledReason,
-  repositoryPath
+  repositoryMutationDisabledReason
 } from "@renderer/components/repository/repositoryUi";
 
 import { formatCompactNumber, formatRelativeDate } from "@renderer/utils/format";
@@ -262,14 +261,12 @@ function ProjectsToolbar({
   disabledReason,
   filter,
   onCreateProject,
-  onFilterChange,
-  onOpenProjectsFallback
+  onFilterChange
 }: {
   disabledReason: string | null;
   filter: string;
   onCreateProject(): void;
   onFilterChange(value: string): void;
-  onOpenProjectsFallback(): void;
 }): JSX.Element {
   function handleFilterChange(event: ChangeEvent<HTMLInputElement>): void {
     onFilterChange(event.target.value);
@@ -294,9 +291,6 @@ function ProjectsToolbar({
       >
         <Plus size={16} /> New project
       </button>
-      <button type="button" onClick={onOpenProjectsFallback}>
-        <ExternalLink size={16} /> Open on GitHub
-      </button>
     </div>
   );
 }
@@ -304,22 +298,14 @@ function ProjectsToolbar({
 function ProjectListRow({
   active,
   project,
-  onOpenExternal,
   onSelectProject
 }: {
   active: boolean;
   project: ProjectSummary;
-  onOpenExternal(url: string): void;
   onSelectProject(project: ProjectSummary): void;
 }): JSX.Element {
   function handleSelectProject(): void {
     onSelectProject(project);
-  }
-
-  function handleOpenFallback(): void {
-    if (project.htmlUrl) {
-      onOpenExternal(project.htmlUrl);
-    }
   }
 
   return (
@@ -351,16 +337,6 @@ function ProjectListRow({
           <span className="state-chip">{project.viewerCanUpdate ? "can update" : "read-only"}</span>
         )}
       </button>
-      <button
-        className="pin-row-button"
-        type="button"
-        aria-label={`Open ${project.title} on GitHub`}
-        disabled={!project.htmlUrl}
-        title={project.htmlUrl ? `Open ${project.title} on GitHub` : "Project URL unavailable."}
-        onClick={handleOpenFallback}
-      >
-        <ExternalLink size={15} />
-      </button>
     </div>
   );
 }
@@ -377,7 +353,6 @@ function ProjectList({
   projectsLimitHit,
   selectedProject,
   onExpandProjects,
-  onOpenExternal,
   onSelectProject
 }: {
   availabilityMessage: string | null;
@@ -391,7 +366,6 @@ function ProjectList({
   projectsLimitHit: boolean;
   selectedProject: ProjectSummary | null;
   onExpandProjects(): void;
-  onOpenExternal(url: string): void;
   onSelectProject(project: ProjectSummary): void;
 }): JSX.Element {
   return (
@@ -415,7 +389,6 @@ function ProjectList({
           active={selectedProject?.id === project.id}
           key={project.id}
           project={project}
-          onOpenExternal={onOpenExternal}
           onSelectProject={onSelectProject}
         />
       ))}
@@ -704,7 +677,6 @@ function ProjectItemRow({
   onCancelEditingField,
   onDeleteItem,
   onEditValueChange,
-  onOpenExternal,
   onSubmitField
 }: {
   deleteItemDisabledReason: string | null;
@@ -718,15 +690,8 @@ function ProjectItemRow({
   onCancelEditingField(): void;
   onDeleteItem(item: ProjectItemSummary): void;
   onEditValueChange(value: string): void;
-  onOpenExternal(url: string): void;
   onSubmitField(itemId: string, fieldValue: ProjectItemFieldValueSummary): void;
 }): JSX.Element {
-  function handleOpenItem(): void {
-    if (item.htmlUrl) {
-      onOpenExternal(item.htmlUrl);
-    }
-  }
-
   function handleDeleteItem(): void {
     onDeleteItem(item);
   }
@@ -777,14 +742,6 @@ function ProjectItemRow({
       )}
       <button
         type="button"
-        disabled={!item.htmlUrl}
-        title={item.htmlUrl ? "Open project item on GitHub" : "Project item URL unavailable."}
-        onClick={handleOpenItem}
-      >
-        <ExternalLink size={15} /> Open
-      </button>
-      <button
-        type="button"
         disabled={Boolean(deleteItemDisabledReason)}
         title={deleteItemDisabledReason ?? undefined}
         onClick={handleDeleteItem}
@@ -806,7 +763,6 @@ function ProjectItemsPanel({
   onCancelEditingField,
   onDeleteItem,
   onEditValueChange,
-  onOpenExternal,
   onSubmitField
 }: {
   deleteItemDisabledReason: string | null;
@@ -819,7 +775,6 @@ function ProjectItemsPanel({
   onCancelEditingField(): void;
   onDeleteItem(item: ProjectItemSummary): void;
   onEditValueChange(value: string): void;
-  onOpenExternal(url: string): void;
   onSubmitField(itemId: string, fieldValue: ProjectItemFieldValueSummary): void;
 }): JSX.Element {
   const itemsAvailabilityMessage = projectSectionAvailabilityMessage(project, "items", "Project items");
@@ -844,7 +799,6 @@ function ProjectItemsPanel({
                 onCancelEditingField={onCancelEditingField}
                 onDeleteItem={onDeleteItem}
                 onEditValueChange={onEditValueChange}
-                onOpenExternal={onOpenExternal}
                 onSubmitField={onSubmitField}
               />
             ))
@@ -862,23 +816,17 @@ function ProjectItemsPanel({
 }
 
 function ProjectDetailActions({
-  ownerExternalReason,
   project,
   projectDeleteDisabledReason,
   projectEditDisabledReason,
-  projectExternalReason,
   onBeginEditingProject,
-  onDeleteProject,
-  onOpenExternal
+  onDeleteProject
 }: {
-  ownerExternalReason: string | null;
   project: ProjectSummary;
   projectDeleteDisabledReason: string | null;
   projectEditDisabledReason: string | null;
-  projectExternalReason: string | null;
   onBeginEditingProject(project: ProjectSummary): void;
   onDeleteProject(project: ProjectSummary): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   function handleBeginEditingProject(): void {
     onBeginEditingProject(project);
@@ -886,18 +834,6 @@ function ProjectDetailActions({
 
   function handleDeleteProject(): void {
     onDeleteProject(project);
-  }
-
-  function handleOpenProjectFallback(): void {
-    if (project.htmlUrl) {
-      onOpenExternal(project.htmlUrl);
-    }
-  }
-
-  function handleOpenOwnerFallback(): void {
-    if (project.ownerHtmlUrl) {
-      onOpenExternal(project.ownerHtmlUrl);
-    }
   }
 
   return (
@@ -918,27 +854,6 @@ function ProjectDetailActions({
       >
         <X size={16} /> Delete project
       </button>
-      <button
-        type="button"
-        disabled={Boolean(projectExternalReason)}
-        title={projectExternalReason ?? undefined}
-        onClick={handleOpenProjectFallback}
-      >
-        <ExternalLink size={16} /> Open project on GitHub
-      </button>
-      <button
-        type="button"
-        disabled={Boolean(ownerExternalReason)}
-        title={ownerExternalReason ?? undefined}
-        onClick={handleOpenOwnerFallback}
-      >
-        <ExternalLink size={16} /> Open owner on GitHub
-      </button>
-      {(projectExternalReason || ownerExternalReason) && (
-        <small className="action-disabled-note">
-          {[projectExternalReason, ownerExternalReason].filter(Boolean).join(" ")}
-        </small>
-      )}
     </div>
   );
 }
@@ -1046,14 +961,12 @@ function ProjectDetail({
   mutationError,
   mutationPending,
   mutationSucceeded,
-  ownerExternalReason,
   project,
   projectActionPendingReason,
   projectAddItemDisabledReason,
   projectDeleteDisabledReason,
   projectDeleteItemDisabledReason,
   projectEditDisabledReason,
-  projectExternalReason,
   projectItemOptions,
   projectItemOptionsRequested,
   repository,
@@ -1078,14 +991,12 @@ function ProjectDetail({
   mutationError: Error | null;
   mutationPending: boolean;
   mutationSucceeded: boolean;
-  ownerExternalReason: string | null;
   project: ProjectSummary;
   projectActionPendingReason: string | null;
   projectAddItemDisabledReason: string | null;
   projectDeleteDisabledReason: string | null;
   projectDeleteItemDisabledReason: string | null;
   projectEditDisabledReason: string | null;
-  projectExternalReason: string | null;
   projectItemOptions: ProjectItemOption[];
   projectItemOptionsRequested: boolean;
   repository: RepositoryDetail;
@@ -1170,18 +1081,14 @@ function ProjectDetail({
         onCancelEditingField={onCancelEditingField}
         onDeleteItem={onDeleteItem}
         onEditValueChange={onEditValueChange}
-        onOpenExternal={onOpenExternal}
         onSubmitField={onSubmitField}
       />
       <ProjectDetailActions
-        ownerExternalReason={ownerExternalReason}
         project={project}
         projectDeleteDisabledReason={projectDeleteDisabledReason}
         projectEditDisabledReason={projectEditDisabledReason}
-        projectExternalReason={projectExternalReason}
         onBeginEditingProject={onBeginEditingProject}
         onDeleteProject={onDeleteProject}
-        onOpenExternal={onOpenExternal}
       />
       <AddProjectItemForm
         mutationAction={mutationAction}
@@ -1402,8 +1309,6 @@ function useProjectsTabModel({
   const selectedProject = requestedProjectId
     ? (filteredProjects.find((project) => project.id === requestedProjectId) ?? null)
     : (filteredProjects[0] ?? null);
-  const projectExternalReason = selectedProject?.htmlUrl ? null : "External project URL unavailable.";
-  const ownerExternalReason = selectedProject?.ownerHtmlUrl ? null : "Project owner URL unavailable.";
   const availabilityMessage = readAvailabilityMessage("Projects", availability);
   const disabledFeatureMessage =
     !availabilityMessage && repository.administration.features.projects === false
@@ -1489,10 +1394,6 @@ function useProjectsTabModel({
   ): void {
     setSubmittedProjectAction(action);
     onMutate(action, dangerous, payload);
-  }
-
-  function openProjectsFallback(): void {
-    onOpenExternal(repositoryPath(repository, "/projects"));
   }
 
   function requestProjectItemOptions(): void {
@@ -1585,14 +1486,11 @@ function useProjectsTabModel({
     mutationSucceeded,
     onExpandProjects,
     onOpenExternal,
-    openProjectsFallback,
-    ownerExternalReason,
     projectActionPendingReason,
     projectAddItemDisabledReason,
     projectDeleteDisabledReason,
     projectDeleteItemDisabledReason,
     projectEditDisabledReason,
-    projectExternalReason,
     projectFieldEditKey,
     projectFieldEditValue,
     projectFormControlDisabledReason,
@@ -1636,7 +1534,6 @@ export function ProjectsTab(props: ProjectsTabProps): JSX.Element {
         filter={model.filter}
         onCreateProject={model.beginCreatingProject}
         onFilterChange={model.setFilter}
-        onOpenProjectsFallback={model.openProjectsFallback}
       />
       <div className="github-split">
         <ProjectList
@@ -1651,7 +1548,6 @@ export function ProjectsTab(props: ProjectsTabProps): JSX.Element {
           projectsLimitHit={model.projectsLimitHit}
           selectedProject={model.selectedProject}
           onExpandProjects={model.onExpandProjects}
-          onOpenExternal={model.onOpenExternal}
           onSelectProject={model.selectProject}
         />
         <div className="thread-detail">
@@ -1682,14 +1578,12 @@ export function ProjectsTab(props: ProjectsTabProps): JSX.Element {
               mutationError={model.mutationError}
               mutationPending={model.mutationPending}
               mutationSucceeded={model.mutationSucceeded}
-              ownerExternalReason={model.ownerExternalReason}
               project={model.selectedProject}
               projectActionPendingReason={model.projectActionPendingReason}
               projectAddItemDisabledReason={model.projectAddItemDisabledReason}
               projectDeleteDisabledReason={model.projectDeleteDisabledReason}
               projectDeleteItemDisabledReason={model.projectDeleteItemDisabledReason}
               projectEditDisabledReason={model.projectEditDisabledReason}
-              projectExternalReason={model.projectExternalReason}
               projectItemOptions={model.projectItemOptions}
               projectItemOptionsRequested={model.projectItemOptionsRequested}
               repository={model.repository}

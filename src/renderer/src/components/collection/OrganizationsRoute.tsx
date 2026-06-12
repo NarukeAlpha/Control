@@ -1,4 +1,4 @@
-import { ExternalLink, Pin, RefreshCw, Search, SquareKanban, X } from "lucide-react";
+import { Pin, RefreshCw, Search, SquareKanban, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { ChangeEvent, JSX, SyntheticEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -83,20 +83,14 @@ function removeBrokenImage(event: SyntheticEvent<HTMLImageElement>): void {
 function OrganizationsRouteHeader({
   title,
   refreshInFlight,
-  onRefresh,
-  onOpenExternal
+  onRefresh
 }: {
   title: string;
   refreshInFlight: boolean;
   onRefresh(): Promise<void> | void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   function refreshOrganizations(): void {
     void onRefresh();
-  }
-
-  function openOrganizationsOnGitHub(): void {
-    onOpenExternal("https://github.com/organizations");
   }
 
   return (
@@ -110,9 +104,6 @@ function OrganizationsRouteHeader({
           onClick={refreshOrganizations}
         >
           <RefreshCw size={16} /> {refreshInFlight ? "Refreshing organizations" : "Refresh organizations"}
-        </button>
-        <button type="button" title="Open organizations on GitHub" onClick={openOrganizationsOnGitHub}>
-          <ExternalLink size={16} /> Open on GitHub
         </button>
       </div>
     </header>
@@ -180,13 +171,11 @@ function SectionTitleRow({
 function OrganizationRow({
   organization,
   selectedOrganizationLogin,
-  onSelectOrganization,
-  onOpenExternal
+  onSelectOrganization
 }: {
   organization: OrganizationSummary;
   selectedOrganizationLogin: string | null;
   onSelectOrganization(login: string): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   const membershipAvailabilityMessage = readAvailabilityMessage(
     "Organization membership",
@@ -195,10 +184,6 @@ function OrganizationRow({
 
   function selectOrganization(): void {
     onSelectOrganization(organization.login);
-  }
-
-  function openOrganization(): void {
-    onOpenExternal(organization.htmlUrl);
   }
 
   return (
@@ -226,15 +211,6 @@ function OrganizationRow({
           {organization.description && <small>{organization.description}</small>}
         </div>
       </button>
-      <button
-        className="pin-row-button"
-        type="button"
-        aria-label={`Open ${organization.login} on GitHub`}
-        title={`Open ${organization.login} on GitHub`}
-        onClick={openOrganization}
-      >
-        <ExternalLink size={15} />
-      </button>
     </div>
   );
 }
@@ -246,8 +222,7 @@ function OrganizationListSection({
   organizationsLimitHit,
   canExpandOrganizations,
   onSelectOrganization,
-  onExpandOrganizations,
-  onOpenExternal
+  onExpandOrganizations
 }: {
   organizations: OrganizationSummary[];
   selectedOrganizationLogin: string | null;
@@ -256,7 +231,6 @@ function OrganizationListSection({
   canExpandOrganizations: boolean;
   onSelectOrganization(login: string): void;
   onExpandOrganizations(): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   return (
     <>
@@ -266,7 +240,6 @@ function OrganizationListSection({
           organization={organization}
           selectedOrganizationLogin={selectedOrganizationLogin}
           onSelectOrganization={onSelectOrganization}
-          onOpenExternal={onOpenExternal}
         />
       ))}
       {canExpandOrganizations && (
@@ -287,17 +260,11 @@ function OrganizationListSection({
 
 function OrganizationProfileSummary({
   organization,
-  membershipAvailabilityMessage,
-  onOpenExternal
+  membershipAvailabilityMessage
 }: {
   organization: OrganizationSummary;
   membershipAvailabilityMessage: string | null;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
-  function openOrganization(): void {
-    onOpenExternal(organization.htmlUrl);
-  }
-
   return (
     <section className="organization-profile-summary" aria-label={`${organization.login} profile`}>
       {organization.avatarUrl ? (
@@ -326,15 +293,6 @@ function OrganizationProfileSummary({
           <span>{organization.viewerCanCreateTeams ? "can create teams" : "team creation unavailable"}</span>
         </div>
       </div>
-      <button
-        className="pin-row-button"
-        type="button"
-        aria-label={`Open ${organization.login} on GitHub`}
-        title={`Open ${organization.login} on GitHub`}
-        onClick={openOrganization}
-      >
-        <ExternalLink size={15} />
-      </button>
     </section>
   );
 }
@@ -350,18 +308,6 @@ function OrganizationProjectDetailPanel({
   const itemsAvailabilityMessage = projectSectionAvailabilityMessage(project, "items", "Project items");
   const fieldsAvailabilityMessage = projectSectionAvailabilityMessage(project, "fields", "Project fields");
 
-  function openProject(): void {
-    if (project.htmlUrl) {
-      onOpenExternal(project.htmlUrl);
-    }
-  }
-
-  function openOwner(): void {
-    if (project.ownerHtmlUrl) {
-      onOpenExternal(project.ownerHtmlUrl);
-    }
-  }
-
   return (
     <aside className="contributor-detail-panel organization-project-detail-panel">
       <div className="contributor-detail-header">
@@ -376,17 +322,6 @@ function OrganizationProjectDetailPanel({
             ])}
           </small>
         </div>
-        {project.htmlUrl && (
-          <button
-            className="icon-button"
-            type="button"
-            aria-label={`Open ${project.title} on GitHub`}
-            title={`Open ${project.title} on GitHub`}
-            onClick={openProject}
-          >
-            <ExternalLink size={15} />
-          </button>
-        )}
       </div>
       <div className="workflow-summary">
         <span className={`state-chip ${project.closed ? "" : "success"}`}>
@@ -443,18 +378,6 @@ function OrganizationProjectDetailPanel({
               <span className="action-disabled-note">No project fields returned.</span>
             )}
       </div>
-      <div className="thread-actions">
-        {project.htmlUrl && (
-          <button type="button" onClick={openProject}>
-            <ExternalLink size={16} /> Open project on GitHub
-          </button>
-        )}
-        {project.ownerHtmlUrl && (
-          <button type="button" onClick={openOwner}>
-            <ExternalLink size={16} /> Open owner on GitHub
-          </button>
-        )}
-      </div>
     </aside>
   );
 }
@@ -494,7 +417,6 @@ function OrganizationMemberDetailPanel({
   githubReady,
   member,
   profileData,
-  profileUrl,
   profileLoading,
   profileError,
   profileAvailabilityMessage,
@@ -512,7 +434,6 @@ function OrganizationMemberDetailPanel({
   githubReady: boolean;
   member: TeamMemberSummary | OrganizationMemberSummary;
   profileData: GitHubAccountProfile | null;
-  profileUrl: string | null;
   profileLoading: boolean;
   profileError: Error | null;
   profileAvailabilityMessage: string | null;
@@ -534,12 +455,6 @@ function OrganizationMemberDetailPanel({
     profileData?.bio || profileData?.company || profileData?.location || profileData?.websiteUrl
   );
 
-  function openProfile(): void {
-    if (profileUrl) {
-      onOpenExternal(profileUrl);
-    }
-  }
-
   function openWebsite(): void {
     if (profileData?.websiteUrl) {
       onOpenExternal(profileData.websiteUrl);
@@ -558,17 +473,6 @@ function OrganizationMemberDetailPanel({
           <strong>{profileName}</strong>
           <small>@{profileLogin}</small>
         </div>
-        {profileUrl && (
-          <button
-            className="icon-button"
-            type="button"
-            aria-label={`Open @${member.login} on GitHub`}
-            title={`Open @${member.login} on GitHub`}
-            onClick={openProfile}
-          >
-            <ExternalLink size={15} />
-          </button>
-        )}
       </div>
 
       {!githubReady && (
@@ -657,24 +561,16 @@ function OrganizationMemberDetailPanel({
 function OrganizationMemberRow({
   member,
   selectedMemberLogin,
-  onSelectOrganizationMember,
-  onOpenExternal
+  onSelectOrganizationMember
 }: {
   member: TeamMemberSummary | OrganizationMemberSummary;
   selectedMemberLogin: string | null;
   onSelectOrganizationMember(login: string): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   const selected = member.login === selectedMemberLogin;
 
   function selectMember(): void {
     onSelectOrganizationMember(member.login);
-  }
-
-  function openMember(): void {
-    if (member.htmlUrl) {
-      onOpenExternal(member.htmlUrl);
-    }
   }
 
   return (
@@ -696,16 +592,6 @@ function OrganizationMemberRow({
           <small>{member.siteAdmin ? "site admin" : "member"}</small>
         </div>
       </button>
-      <button
-        className="pin-row-button"
-        type="button"
-        aria-label={`Open ${member.login} on GitHub`}
-        disabled={!member.htmlUrl}
-        title={member.htmlUrl ? `Open ${member.login} on GitHub` : "Member profile URL unavailable."}
-        onClick={openMember}
-      >
-        <ExternalLink size={15} />
-      </button>
     </div>
   );
 }
@@ -721,8 +607,7 @@ function OrganizationMembersSection({
   limitHit,
   selectedMemberLogin,
   onExpand,
-  onSelectOrganizationMember,
-  onOpenExternal
+  onSelectOrganizationMember
 }: {
   selectedOrganizationLogin: string | null;
   members: OrganizationMemberSummary[];
@@ -735,7 +620,6 @@ function OrganizationMembersSection({
   selectedMemberLogin: string | null;
   onExpand(): void;
   onSelectOrganizationMember(login: string): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element | null {
   if (!selectedOrganizationLogin) {
     return null;
@@ -763,7 +647,6 @@ function OrganizationMembersSection({
           member={member}
           selectedMemberLogin={selectedMemberLogin}
           onSelectOrganizationMember={onSelectOrganizationMember}
-          onOpenExternal={onOpenExternal}
         />
       ))}
       {!loading && !error && !availabilityMessage && members.length === 0 && (
@@ -781,18 +664,14 @@ function OrganizationRepositoryRow({
   repository,
   pinned,
   repositoryPinDisabledReason,
-  externalLinkTitle,
   onOpenRepository,
-  onToggleRepositoryPin,
-  onOpenExternal
+  onToggleRepositoryPin
 }: {
   repository: OrganizationCollectionRepositorySummary;
   pinned: boolean;
   repositoryPinDisabledReason: string | null;
-  externalLinkTitle: string;
   onOpenRepository(nameWithOwner: string): void;
   onToggleRepositoryPin(nameWithOwner: string): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   const metadataParts = organizationRepositoryCollectionMetadataParts(repository);
   const chips = organizationRepositoryCollectionChips(repository, pinned);
@@ -803,10 +682,6 @@ function OrganizationRepositoryRow({
 
   function togglePin(): void {
     onToggleRepositoryPin(repository.nameWithOwner);
-  }
-
-  function openRepositoryOnGitHub(): void {
-    onOpenExternal(repository.htmlUrl);
   }
 
   return (
@@ -837,15 +712,6 @@ function OrganizationRepositoryRow({
         >
           <Pin size={15} />
         </button>
-        <button
-          className="pin-row-button"
-          type="button"
-          aria-label={`Open ${repository.name} on GitHub`}
-          title={externalLinkTitle}
-          onClick={openRepositoryOnGitHub}
-        >
-          <ExternalLink size={15} />
-        </button>
       </span>
     </div>
   );
@@ -865,8 +731,7 @@ function OrganizationRepositoriesSection({
   repositoryPinDisabledReason,
   onExpand,
   onOpenRepository,
-  onToggleRepositoryPin,
-  onOpenExternal
+  onToggleRepositoryPin
 }: {
   selectedOrganizationLogin: string | null;
   repositories: OrganizationRepositorySummary[];
@@ -882,7 +747,6 @@ function OrganizationRepositoriesSection({
   onExpand(): void;
   onOpenRepository(nameWithOwner: string): void;
   onToggleRepositoryPin(nameWithOwner: string): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element | null {
   if (!selectedOrganizationLogin) {
     return null;
@@ -912,10 +776,8 @@ function OrganizationRepositoriesSection({
           repository={repository}
           pinned={pinnedRepositoryNameSet.has(repository.nameWithOwner.toLowerCase())}
           repositoryPinDisabledReason={repositoryPinDisabledReason}
-          externalLinkTitle={`Open ${repository.nameWithOwner} on GitHub`}
           onOpenRepository={onOpenRepository}
           onToggleRepositoryPin={onToggleRepositoryPin}
-          onOpenExternal={onOpenExternal}
         />
       ))}
       {!loading && !error && !availabilityMessage && repositories.length === 0 && (
@@ -932,13 +794,11 @@ function OrganizationRepositoriesSection({
 function OrganizationProjectRow({
   project,
   selectedProjectId,
-  onSelectOrganizationProject,
-  onOpenExternal
+  onSelectOrganizationProject
 }: {
   project: ProjectSummary;
   selectedProjectId: string | null;
   onSelectOrganizationProject(project: ProjectSummary): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   const selected = project.id === selectedProjectId;
   const visibleFieldNames = project.fields
@@ -951,12 +811,6 @@ function OrganizationProjectRow({
 
   function selectProject(): void {
     onSelectOrganizationProject(project);
-  }
-
-  function openProjectOnGitHub(): void {
-    if (project.htmlUrl) {
-      onOpenExternal(project.htmlUrl);
-    }
   }
 
   return (
@@ -998,16 +852,6 @@ function OrganizationProjectRow({
         {itemsStatus && <span className="state-chip attention">items {itemsStatus}</span>}
         {fieldsStatus && <span className="state-chip attention">fields {fieldsStatus}</span>}
       </button>
-      <button
-        className="pin-row-button"
-        type="button"
-        aria-label={`Open ${project.title} on GitHub`}
-        disabled={!project.htmlUrl}
-        title={project.htmlUrl ? `Open ${project.title} on GitHub` : "Organization project URL unavailable."}
-        onClick={openProjectOnGitHub}
-      >
-        <ExternalLink size={15} />
-      </button>
     </div>
   );
 }
@@ -1023,8 +867,7 @@ function OrganizationProjectsSection({
   limitHit,
   selectedProjectId,
   onExpand,
-  onSelectOrganizationProject,
-  onOpenExternal
+  onSelectOrganizationProject
 }: {
   selectedOrganizationLogin: string | null;
   projects: ProjectSummary[];
@@ -1037,7 +880,6 @@ function OrganizationProjectsSection({
   selectedProjectId: string | null;
   onExpand(): void;
   onSelectOrganizationProject(project: ProjectSummary): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element | null {
   if (!selectedOrganizationLogin) {
     return null;
@@ -1065,7 +907,6 @@ function OrganizationProjectsSection({
           project={project}
           selectedProjectId={selectedProjectId}
           onSelectOrganizationProject={onSelectOrganizationProject}
-          onOpenExternal={onOpenExternal}
         />
       ))}
       {!loading && !error && !availabilityMessage && projects.length === 0 && (
@@ -1082,24 +923,16 @@ function OrganizationProjectsSection({
 function OrganizationTeamRow({
   team,
   selectedTeamSlug,
-  onSelectOrganizationTeam,
-  onOpenExternal
+  onSelectOrganizationTeam
 }: {
   team: TeamSummary;
   selectedTeamSlug: string | null;
   onSelectOrganizationTeam(slug: string): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   const selected = team.slug === selectedTeamSlug;
 
   function selectTeam(): void {
     onSelectOrganizationTeam(team.slug);
-  }
-
-  function openTeam(): void {
-    if (team.htmlUrl) {
-      onOpenExternal(team.htmlUrl);
-    }
   }
 
   return (
@@ -1115,16 +948,6 @@ function OrganizationTeamRow({
           {team.parent && <small>Parent team: {team.parent.name}</small>}
           {team.description && <small>{team.description}</small>}
         </div>
-      </button>
-      <button
-        className="pin-row-button"
-        type="button"
-        aria-label={`Open ${team.name} on GitHub`}
-        disabled={!team.htmlUrl}
-        title={team.htmlUrl ? `Open ${team.name} on GitHub` : "Team URL unavailable."}
-        onClick={openTeam}
-      >
-        <ExternalLink size={15} />
       </button>
     </div>
   );
@@ -1142,8 +965,7 @@ function OrganizationTeamsSection({
   limitHit,
   selectedTeamSlug,
   onExpand,
-  onSelectOrganizationTeam,
-  onOpenExternal
+  onSelectOrganizationTeam
 }: {
   organizations: OrganizationSummary[];
   selectedOrganizationLogin: string | null;
@@ -1157,7 +979,6 @@ function OrganizationTeamsSection({
   selectedTeamSlug: string | null;
   onExpand(): void;
   onSelectOrganizationTeam(slug: string): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element | null {
   if (organizations.length === 0) {
     return null;
@@ -1183,7 +1004,6 @@ function OrganizationTeamsSection({
           team={team}
           selectedTeamSlug={selectedTeamSlug}
           onSelectOrganizationTeam={onSelectOrganizationTeam}
-          onOpenExternal={onOpenExternal}
         />
       ))}
       {!loading && !error && !availabilityMessage && teams.length === 0 && (
@@ -1208,8 +1028,7 @@ function TeamMembersSection({
   limitHit,
   selectedMemberLogin,
   onExpand,
-  onSelectOrganizationMember,
-  onOpenExternal
+  onSelectOrganizationMember
 }: {
   selectedTeam: TeamSummary | null;
   members: TeamMemberSummary[];
@@ -1222,7 +1041,6 @@ function TeamMembersSection({
   selectedMemberLogin: string | null;
   onExpand(): void;
   onSelectOrganizationMember(login: string): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element | null {
   if (!selectedTeam) {
     return null;
@@ -1250,7 +1068,6 @@ function TeamMembersSection({
           member={member}
           selectedMemberLogin={selectedMemberLogin}
           onSelectOrganizationMember={onSelectOrganizationMember}
-          onOpenExternal={onOpenExternal}
         />
       ))}
       {!loading && !error && !availabilityMessage && members.length === 0 && (
@@ -1277,8 +1094,7 @@ function TeamRepositoriesSection({
   repositoryPinDisabledReason,
   onExpand,
   onOpenRepository,
-  onToggleRepositoryPin,
-  onOpenExternal
+  onToggleRepositoryPin
 }: {
   selectedTeam: TeamSummary | null;
   repositories: OrganizationTeamRepositorySummary[];
@@ -1293,7 +1109,6 @@ function TeamRepositoriesSection({
   onExpand(): void;
   onOpenRepository(nameWithOwner: string): void;
   onToggleRepositoryPin(nameWithOwner: string): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element | null {
   if (!selectedTeam) {
     return null;
@@ -1323,10 +1138,8 @@ function TeamRepositoriesSection({
           repository={repository}
           pinned={pinnedRepositoryNameSet.has(repository.nameWithOwner.toLowerCase())}
           repositoryPinDisabledReason={repositoryPinDisabledReason}
-          externalLinkTitle={`Open ${repository.name} on GitHub`}
           onOpenRepository={onOpenRepository}
           onToggleRepositoryPin={onToggleRepositoryPin}
-          onOpenExternal={onOpenExternal}
         />
       ))}
       {!loading && !error && !availabilityMessage && repositories.length === 0 && (
@@ -1510,8 +1323,6 @@ function useOrganizationsRouteModel({
     "Profile",
     selectedOrganizationMemberProfile.data?.availability ?? null
   );
-  const selectedOrganizationMemberProfileUrl =
-    selectedOrganizationMemberProfileData?.htmlUrl ?? selectedOrganizationMember?.htmlUrl ?? null;
   const organizationProjectsAvailabilityMessage = readAvailabilityMessage(
     "Organization projects",
     organizationProjectsAvailability
@@ -1650,7 +1461,6 @@ function useOrganizationsRouteModel({
     canExpandSelectedOrganizationMemberRepositories,
     selectedOrganizationMemberProfileData,
     selectedOrganizationMemberProfileAvailabilityMessage,
-    selectedOrganizationMemberProfileUrl,
     selectedOrganizationMemberProfileError,
     selectedOrganizationMemberRepositoriesError,
     selectedOrganizationMemberProfileLoading,
@@ -1757,7 +1567,6 @@ export function OrganizationsRoute({
     canExpandSelectedOrganizationMemberRepositories,
     selectedOrganizationMemberProfileData,
     selectedOrganizationMemberProfileAvailabilityMessage,
-    selectedOrganizationMemberProfileUrl,
     selectedOrganizationMemberProfileError,
     selectedOrganizationMemberRepositoriesError,
     selectedOrganizationMemberProfileLoading,
@@ -1795,7 +1604,6 @@ export function OrganizationsRoute({
         title={title}
         refreshInFlight={routeState.refreshInFlight}
         onRefresh={onRefresh}
-        onOpenExternal={onOpenExternal}
       />
       <div className="table-panel">
         <OrganizationFilterRow collectionFilter={collectionFilter} onFilterChange={setCollectionFilter} />
@@ -1810,13 +1618,11 @@ export function OrganizationsRoute({
           canExpandOrganizations={canExpandOrganizations}
           onSelectOrganization={onSelectOrganization}
           onExpandOrganizations={onExpandOrganizations}
-          onOpenExternal={onOpenExternal}
         />
         {selectedOrganization && (
           <OrganizationProfileSummary
             organization={selectedOrganization}
             membershipAvailabilityMessage={selectedOrganizationMembershipAvailabilityMessage}
-            onOpenExternal={onOpenExternal}
           />
         )}
         {selectedOrganizationProject && (
@@ -1830,7 +1636,6 @@ export function OrganizationsRoute({
             githubReady={githubReady}
             member={selectedOrganizationMember}
             profileData={selectedOrganizationMemberProfileData}
-            profileUrl={selectedOrganizationMemberProfileUrl}
             profileLoading={selectedOrganizationMemberProfileLoading}
             profileError={selectedOrganizationMemberProfileError}
             profileAvailabilityMessage={selectedOrganizationMemberProfileAvailabilityMessage}
@@ -1858,7 +1663,6 @@ export function OrganizationsRoute({
           selectedMemberLogin={selectedOrganizationMember?.login ?? null}
           onExpand={onExpandOrganizationMembers}
           onSelectOrganizationMember={onSelectOrganizationMember}
-          onOpenExternal={onOpenExternal}
         />
         <OrganizationRepositoriesSection
           selectedOrganizationLogin={selectedOrganizationLogin}
@@ -1875,7 +1679,6 @@ export function OrganizationsRoute({
           onExpand={onExpandOrganizationRepositories}
           onOpenRepository={onOpenRepository}
           onToggleRepositoryPin={onToggleRepositoryPin}
-          onOpenExternal={onOpenExternal}
         />
         <OrganizationProjectsSection
           selectedOrganizationLogin={selectedOrganizationLogin}
@@ -1889,7 +1692,6 @@ export function OrganizationsRoute({
           selectedProjectId={selectedOrganizationProject?.id ?? null}
           onExpand={onExpandOrganizationProjects}
           onSelectOrganizationProject={onSelectOrganizationProject}
-          onOpenExternal={onOpenExternal}
         />
         <OrganizationTeamsSection
           organizations={organizations}
@@ -1904,7 +1706,6 @@ export function OrganizationsRoute({
           selectedTeamSlug={selectedOrganizationTeam?.slug ?? null}
           onExpand={onExpandOrganizationTeams}
           onSelectOrganizationTeam={onSelectOrganizationTeam}
-          onOpenExternal={onOpenExternal}
         />
         <TeamMembersSection
           selectedTeam={selectedOrganizationTeam}
@@ -1918,7 +1719,6 @@ export function OrganizationsRoute({
           selectedMemberLogin={selectedOrganizationMember?.login ?? null}
           onExpand={onExpandOrganizationTeamMembers}
           onSelectOrganizationMember={onSelectOrganizationMember}
-          onOpenExternal={onOpenExternal}
         />
         <TeamRepositoriesSection
           selectedTeam={selectedOrganizationTeam}
@@ -1934,7 +1734,6 @@ export function OrganizationsRoute({
           onExpand={onExpandOrganizationTeamRepositories}
           onOpenRepository={onOpenRepository}
           onToggleRepositoryPin={onToggleRepositoryPin}
-          onOpenExternal={onOpenExternal}
         />
         <OrganizationsStatus
           organizations={organizations}

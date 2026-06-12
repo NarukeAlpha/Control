@@ -1,4 +1,4 @@
-import { ChevronDown, ExternalLink, Eye, GitFork, Lock, Pin, RefreshCw, Star } from "lucide-react";
+import { ChevronDown, Eye, GitFork, Lock, Pin, RefreshCw, Star } from "lucide-react";
 import type { JSX, ReactNode, SyntheticEvent } from "react";
 
 import type {
@@ -527,10 +527,27 @@ function repositoryPageClassName(routeModel: RepositoryRouteModel): string {
   if (routeModel.tab === "issues") {
     classNames.push("repo-page-issues");
   }
-  if (routeModel.focusedIssueNumber !== null || routeModel.focusedPullNumber !== null) {
+  if (routeModel.tab === "actions") {
+    classNames.push("repo-page-actions");
+  }
+  if (
+    routeModel.focusedIssueNumber !== null ||
+    routeModel.focusedPullNumber !== null ||
+    routeModel.focusedWorkflowRunId !== null
+  ) {
     classNames.push("repo-page-focused-detail");
   }
   return classNames.join(" ");
+}
+
+function repositoryPageShowsRightRail(routeModel: RepositoryRouteModel): boolean {
+  return (
+    routeModel.focusedIssueNumber === null &&
+    routeModel.focusedPullNumber === null &&
+    routeModel.focusedWorkflowRunId === null &&
+    routeModel.tab !== "issues" &&
+    routeModel.tab !== "actions"
+  );
 }
 
 function uniqueRepositoryActionDisabledNotes(notes: readonly (string | null)[]): string {
@@ -588,9 +605,7 @@ export function RepositoryPage(props: RepositoryPageProps): JSX.Element {
     return (
       <RepositoryPageLoadError
         message={props.error?.message ?? props.availabilityMessage ?? "Repository unavailable."}
-        routeRepositoryName={routeModel.routeRepositoryName}
         onRefresh={props.onRefresh}
-        onOpenExternal={props.onOpenExternal}
       />
     );
   }
@@ -607,10 +622,6 @@ export function RepositoryPage(props: RepositoryPageProps): JSX.Element {
     pinBusy: props.pinBusy,
     mutationPending: props.mutation.pending
   });
-  const showRightRail =
-    routeModel.tab !== "issues" &&
-    routeModel.focusedIssueNumber === null &&
-    routeModel.focusedPullNumber === null;
 
   return (
     <article className={repositoryPageClassName(routeModel)}>
@@ -620,7 +631,6 @@ export function RepositoryPage(props: RepositoryPageProps): JSX.Element {
         pinned={props.pinned}
         onTogglePin={props.onTogglePin}
         onMutate={props.mutation.onMutate}
-        onOpenExternal={props.onOpenExternal}
         onOpenRepository={props.onOpenRepository}
       />
       <RepositoryStatusBanners
@@ -682,7 +692,7 @@ export function RepositoryPage(props: RepositoryPageProps): JSX.Element {
         onSelectRef={props.onSelectRef}
         onSelectSettingsCollaborator={props.onSelectSettingsCollaborator}
       />
-      {showRightRail && props.rightRail}
+      {repositoryPageShowsRightRail(routeModel) && props.rightRail}
     </article>
   );
 }
@@ -693,23 +703,13 @@ function RepositoryPageLoadingState(): JSX.Element {
 
 function RepositoryPageLoadError({
   message,
-  routeRepositoryName,
-  onRefresh,
-  onOpenExternal
+  onRefresh
 }: {
   message: string;
-  routeRepositoryName: string | null;
   onRefresh(): Promise<void> | void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   function retryRepositoryLoad(): void {
     void onRefresh();
-  }
-
-  function openRepositoryOnGitHub(): void {
-    if (routeRepositoryName) {
-      onOpenExternal(`https://github.com/${routeRepositoryName}`);
-    }
   }
 
   return (
@@ -720,11 +720,6 @@ function RepositoryPageLoadError({
         <button type="button" onClick={retryRepositoryLoad}>
           <RefreshCw size={16} /> Retry
         </button>
-        {routeRepositoryName && (
-          <button type="button" onClick={openRepositoryOnGitHub}>
-            <ExternalLink size={16} /> Open on GitHub
-          </button>
-        )}
       </div>
     </div>
   );
@@ -736,7 +731,6 @@ function RepositoryHero({
   pinned,
   onTogglePin,
   onMutate,
-  onOpenExternal,
   onOpenRepository
 }: {
   repository: RepositoryDetail;
@@ -744,7 +738,6 @@ function RepositoryHero({
   pinned: boolean;
   onTogglePin(): void;
   onMutate(action: GitHubAction, dangerous: boolean, payload?: GitHubMutationFields): void;
-  onOpenExternal(url: string): void;
   onOpenRepository(nameWithOwner: string, tab?: RepositoryTab): void;
 }): JSX.Element {
   return (
@@ -758,15 +751,10 @@ function RepositoryHero({
           <span className="visibility-pill">{repository.visibility.toLowerCase()}</span>
         </div>
         {repository.isFork && (
-          <RepositoryForkBanner
-            metadata={pageModel.forkMetadata}
-            onOpenRepository={onOpenRepository}
-            onOpenExternal={onOpenExternal}
-          />
+          <RepositoryForkBanner metadata={pageModel.forkMetadata} onOpenRepository={onOpenRepository} />
         )}
       </div>
       <RepositoryHeroActions
-        repository={repository}
         counts={pageModel.counts}
         viewerState={pageModel.viewerState}
         starAction={pageModel.starAction}
@@ -778,7 +766,6 @@ function RepositoryHero({
         pinned={pinned}
         onTogglePin={onTogglePin}
         onMutate={onMutate}
-        onOpenExternal={onOpenExternal}
       />
       <RepositoryHeroActionDisabledNote
         notes={[
@@ -805,16 +792,13 @@ function RepositoryAvatar({ repository }: { repository: RepositoryDetail }): JSX
 
 function RepositoryForkBanner({
   metadata,
-  onOpenRepository,
-  onOpenExternal
+  onOpenRepository
 }: {
   metadata: RepositoryForkMetadata;
   onOpenRepository(nameWithOwner: string, tab?: RepositoryTab): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   const forkSourceLabel = metadata.parentLabel ?? metadata.sourceLabel;
   const forkSourceNameWithOwner = metadata.parentNameWithOwner ?? metadata.sourceNameWithOwner;
-  const forkSourceUrl = metadata.parentUrl ?? metadata.sourceUrl;
   const forkSourceForkCount = metadata.parentForkCount ?? metadata.sourceForkCount;
   const forkSourceViewerPermission = metadata.parentViewerPermission ?? metadata.sourceViewerPermission;
 
@@ -826,12 +810,10 @@ function RepositoryForkBanner({
         <RepositoryForkReference
           label={forkSourceLabel}
           nameWithOwner={forkSourceNameWithOwner}
-          url={forkSourceUrl}
           forkCount={forkSourceForkCount}
           viewerPermission={forkSourceViewerPermission}
           fallbackLabel="fork source loading"
           onOpenRepository={onOpenRepository}
-          onOpenExternal={onOpenExternal}
         />
         {hasDistinctForkSource(metadata) && (
           <>
@@ -840,12 +822,10 @@ function RepositoryForkBanner({
             <RepositoryForkReference
               label={metadata.sourceLabel}
               nameWithOwner={metadata.sourceNameWithOwner}
-              url={metadata.sourceUrl}
               forkCount={metadata.sourceForkCount}
               viewerPermission={metadata.sourceViewerPermission}
               fallbackLabel="source loading"
               onOpenRepository={onOpenRepository}
-              onOpenExternal={onOpenExternal}
             />
           </>
         )}
@@ -857,31 +837,21 @@ function RepositoryForkBanner({
 function RepositoryForkReference({
   label,
   nameWithOwner,
-  url,
   forkCount,
   viewerPermission,
   fallbackLabel,
-  onOpenRepository,
-  onOpenExternal
+  onOpenRepository
 }: {
   label: string | null;
   nameWithOwner: string | null;
-  url: string | null;
   forkCount: number | null;
   viewerPermission: string | null;
   fallbackLabel: string;
   onOpenRepository(nameWithOwner: string, tab?: RepositoryTab): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   function openForkInControl(): void {
     if (nameWithOwner) {
       onOpenRepository(nameWithOwner);
-    }
-  }
-
-  function openForkOnGitHub(): void {
-    if (url) {
-      onOpenExternal(url);
     }
   }
 
@@ -894,17 +864,6 @@ function RepositoryForkReference({
       ) : (
         <strong>{label ?? fallbackLabel}</strong>
       )}
-      {url && label && (
-        <button
-          className="pin-row-button"
-          type="button"
-          aria-label={`Open ${label} on GitHub`}
-          title={`Open ${label} on GitHub`}
-          onClick={openForkOnGitHub}
-        >
-          <ExternalLink size={13} />
-        </button>
-      )}
       {forkCount !== null && (
         <span className="fork-meta">
           {formatCompactNumber(forkCount)} forks
@@ -916,7 +875,6 @@ function RepositoryForkReference({
 }
 
 function RepositoryHeroActions({
-  repository,
   counts,
   viewerState,
   starAction,
@@ -927,10 +885,8 @@ function RepositoryHeroActions({
   pinDisabledReason,
   pinned,
   onTogglePin,
-  onMutate,
-  onOpenExternal
+  onMutate
 }: {
-  repository: RepositoryDetail;
   counts: RepositoryCounts;
   viewerState: RepositoryViewerState;
   starAction: GitHubAction;
@@ -942,7 +898,6 @@ function RepositoryHeroActions({
   pinned: boolean;
   onTogglePin(): void;
   onMutate(action: GitHubAction, dangerous: boolean, payload?: GitHubMutationFields): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   function toggleWatchMutation(): void {
     onMutate(watchAction, false);
@@ -954,10 +909,6 @@ function RepositoryHeroActions({
 
   function toggleStarMutation(): void {
     onMutate(starAction, false);
-  }
-
-  function openRepositoryOnGitHub(): void {
-    onOpenExternal(repository.htmlUrl);
   }
 
   return (
@@ -1000,9 +951,6 @@ function RepositoryHeroActions({
       >
         <Star size={17} /> {viewerState.isStarred ? "Starred" : "Star"}{" "}
         <span>{formatCompactNumber(counts.stars)}</span>
-      </button>
-      <button type="button" onClick={openRepositoryOnGitHub} title="Open on GitHub">
-        <ExternalLink size={16} /> GitHub
       </button>
     </div>
   );
@@ -1601,7 +1549,6 @@ function RepositoryAgentsTabSurface({
   repository,
   githubReady,
   limits,
-  onOpenExternal,
   onOpenFilteredSurface,
   onSelectIssue,
   onSelectPullRequest,
@@ -1614,7 +1561,6 @@ function RepositoryAgentsTabSurface({
       issueListLimit={limits.issueListLimit}
       pullRequestListLimit={limits.pullRequestListLimit}
       actionsLimit={limits.actionsLimit}
-      onOpenExternal={onOpenExternal}
       onOpenFilteredSurface={onOpenFilteredSurface}
       onSelectIssue={onSelectIssue}
       onSelectPullRequest={onSelectPullRequest}

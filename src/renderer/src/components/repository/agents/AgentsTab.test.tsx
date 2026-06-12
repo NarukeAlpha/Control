@@ -119,7 +119,6 @@ function renderAgents(overrides: Partial<AgentsTabProps> = {}): AgentsTabProps {
     issueListLimit: 100,
     pullRequestListLimit: 100,
     actionsLimit: 100,
-    onOpenExternal: vi.fn(),
     onOpenFilteredSurface: vi.fn(),
     onSelectIssue: vi.fn(),
     onSelectPullRequest: vi.fn(),
@@ -145,7 +144,7 @@ afterEach(() => {
 });
 
 describe("AgentsTab", () => {
-  it("routes agent issue controls through Control and GitHub URLs", async () => {
+  it("routes agent issue controls through Control", async () => {
     installControlApi();
     const props = renderAgents();
 
@@ -161,13 +160,10 @@ describe("AgentsTab", () => {
 
     fireEvent.click(issueSurface.getByRole("button", { name: "Open issue #42 in Control" }));
     fireEvent.click(issueSurface.getByRole("button", { name: "Open in Control" }));
-    fireEvent.click(issueSurface.getByRole("button", { name: "Open on GitHub" }));
 
     expect(props.onSelectIssue).toHaveBeenCalledWith(expect.objectContaining({ id: 42, number: 42 }));
     expect(props.onOpenFilteredSurface).toHaveBeenCalledWith("issues", "label:agent");
-    expect(props.onOpenExternal).toHaveBeenCalledWith(
-      "https://github.com/apple/swift/issues?q=is%3Aissue%20is%3Aopen%20label%3Aagent"
-    );
+    expect(issueSurface.queryByRole("button", { name: "Open on GitHub" })).not.toBeInTheDocument();
   });
 
   it("previews only attention workflow runs and open pull requests", async () => {

@@ -220,7 +220,6 @@ export function PullRequestInspection({
           onRequestReviews={() => onRequestSection("reviews")}
           onToggleReviews={() => toggleExpandedSection("reviews")}
           onOpenPullRequestReviewCommit={onOpenPullRequestReviewCommit}
-          onOpenExternal={onOpenExternal}
         />
       )}
       {visibleSectionSet.has("linked-issues") && (
@@ -232,7 +231,6 @@ export function PullRequestInspection({
           repositoryNameWithOwner={detail?.repositoryNameWithOwner ?? null}
           onRequestLinkedIssues={() => onRequestSection("linked-issues")}
           onOpenIssueReference={onOpenIssueReference}
-          onOpenExternal={onOpenExternal}
         />
       )}
       {visibleSectionSet.has("timeline") && (
@@ -283,7 +281,6 @@ export function PullRequestInspection({
           onRequestChecks={() => onRequestSection("checks")}
           onToggleChecks={() => toggleExpandedSection("checks")}
           onOpenWorkflowRun={onOpenWorkflowRun}
-          onOpenExternal={onOpenExternal}
         />
       )}
       {visibleSectionSet.has("commits") && (
@@ -299,7 +296,6 @@ export function PullRequestInspection({
           onRequestCommits={() => onRequestSection("commits")}
           onToggleCommits={() => toggleExpandedSection("commits")}
           onOpenPullRequestCommit={onOpenPullRequestCommit}
-          onOpenExternal={onOpenExternal}
         />
       )}
       {visibleSectionSet.has("files") && (

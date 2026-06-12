@@ -1,4 +1,4 @@
-import { ChevronDown, ExternalLink, MessageSquare, Plus, Search } from "lucide-react";
+import { ChevronDown, MessageSquare, Plus, Search } from "lucide-react";
 import { useState, type ChangeEvent, type FormEvent, type JSX } from "react";
 import { useQuery } from "@tanstack/react-query";
 
@@ -20,8 +20,7 @@ import { markdownRepositoryUrlContext } from "@renderer/components/MarkdownBody"
 import {
   githubActionLabel,
   readAvailabilityMessage,
-  repositoryMutationDisabledReason,
-  repositoryPath
+  repositoryMutationDisabledReason
 } from "@renderer/components/repository/repositoryUi";
 import { TimelineComment } from "@renderer/components/shared/TimelineComment";
 
@@ -155,14 +154,12 @@ function DiscussionsToolbar({
   disabledReason,
   filter,
   onCreateDiscussion,
-  onFilterChange,
-  onOpenFallback
+  onFilterChange
 }: {
   disabledReason: string | null;
   filter: string;
   onCreateDiscussion(): void;
   onFilterChange(value: string): void;
-  onOpenFallback(): void;
 }): JSX.Element {
   function handleFilterChange(event: ChangeEvent<HTMLInputElement>): void {
     onFilterChange(event.target.value);
@@ -187,9 +184,6 @@ function DiscussionsToolbar({
       >
         <Plus size={16} /> New discussion
       </button>
-      <button type="button" onClick={onOpenFallback}>
-        <ExternalLink size={16} /> Open on GitHub
-      </button>
     </div>
   );
 }
@@ -197,20 +191,14 @@ function DiscussionsToolbar({
 function DiscussionListRow({
   active,
   discussion,
-  onOpenExternal,
   onSelectDiscussion
 }: {
   active: boolean;
   discussion: DiscussionSummary;
-  onOpenExternal(url: string): void;
   onSelectDiscussion(discussion: DiscussionSummary): void;
 }): JSX.Element {
   function handleSelectDiscussion(): void {
     onSelectDiscussion(discussion);
-  }
-
-  function handleOpenFallback(): void {
-    onOpenExternal(discussion.htmlUrl);
   }
 
   return (
@@ -230,15 +218,6 @@ function DiscussionListRow({
         {discussion.closed && <span className="state-chip">closed</span>}
         {discussion.locked && <span className="state-chip">locked</span>}
       </button>
-      <button
-        className="pin-row-button"
-        type="button"
-        aria-label={`Open discussion ${discussion.number} on GitHub`}
-        title={`Open discussion #${discussion.number} on GitHub`}
-        onClick={handleOpenFallback}
-      >
-        <ExternalLink size={15} />
-      </button>
     </div>
   );
 }
@@ -255,7 +234,6 @@ function DiscussionList({
   loading,
   selectedDiscussion,
   onExpandDiscussions,
-  onOpenExternal,
   onSelectDiscussion
 }: {
   availabilityMessage: string | null;
@@ -269,7 +247,6 @@ function DiscussionList({
   loading: boolean;
   selectedDiscussion: DiscussionSummary | DiscussionDetail | null;
   onExpandDiscussions(): void;
-  onOpenExternal(url: string): void;
   onSelectDiscussion(discussion: DiscussionSummary): void;
 }): JSX.Element {
   return (
@@ -295,7 +272,6 @@ function DiscussionList({
           active={selectedDiscussion?.number === discussion.number}
           discussion={discussion}
           key={discussion.id}
-          onOpenExternal={onOpenExternal}
           onSelectDiscussion={onSelectDiscussion}
         />
       ))}
@@ -490,21 +466,15 @@ function DiscussionActions({
   disabledReason,
   discussion,
   onBeginEdit,
-  onCloseOrReopen,
-  onOpenExternal
+  onCloseOrReopen
 }: {
   disabledReason: string | null;
   discussion: DiscussionSummary | DiscussionDetail;
   onBeginEdit(): void;
   onCloseOrReopen(discussion: DiscussionSummary | DiscussionDetail): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   function handleCloseOrReopen(): void {
     onCloseOrReopen(discussion);
-  }
-
-  function handleOpenFallback(): void {
-    onOpenExternal(discussion.htmlUrl);
   }
 
   return (
@@ -524,9 +494,6 @@ function DiscussionActions({
         onClick={handleCloseOrReopen}
       >
         {discussion.closed ? "Reopen discussion" : "Close discussion"}
-      </button>
-      <button type="button" onClick={handleOpenFallback}>
-        <ExternalLink size={16} /> Open on GitHub
       </button>
       {disabledReason && <small className="action-disabled-note">{disabledReason}</small>}
     </div>
@@ -666,8 +633,7 @@ function DiscussionCommentThread({
         <small className="action-disabled-note">
           {repliesLimit >= expandedDiscussionRepliesLimit
             ? `Control is showing the first ${expandedDiscussionRepliesLimit} replies for this thread.`
-            : "Some replies are not shown."}{" "}
-          Open the full thread on GitHub.
+            : "Some replies are not shown."}
         </small>
       )}
     </div>
@@ -831,7 +797,6 @@ function DiscussionDetail({
         discussion={discussion}
         onBeginEdit={onBeginEdit}
         onCloseOrReopen={onCloseOrReopen}
-        onOpenExternal={onOpenExternal}
       />
       <AddDiscussionCommentForm
         body={commentBody}
@@ -1146,10 +1111,6 @@ function useDiscussionsTabModel({
     onMutate(action, dangerous, payload);
   }
 
-  function openDiscussionsFallback(): void {
-    onOpenExternal(repositoryPath(repository, "/discussions"));
-  }
-
   function beginDiscussionCreate(): void {
     state.beginCreate(selectedCategory);
   }
@@ -1252,7 +1213,6 @@ function useDiscussionsTabModel({
     mutationSucceeded,
     onExpandDiscussions,
     onOpenExternal,
-    openDiscussionsFallback,
     resetDiscussionForms: state.resetForms,
     selectDiscussion,
     selectedCategory,
@@ -1291,7 +1251,6 @@ export function DiscussionsTab(props: DiscussionsTabProps): JSX.Element {
         filter={model.state.filter}
         onCreateDiscussion={model.beginDiscussionCreate}
         onFilterChange={model.setFilter}
-        onOpenFallback={model.openDiscussionsFallback}
       />
       <div className="github-split">
         <DiscussionList
@@ -1306,7 +1265,6 @@ export function DiscussionsTab(props: DiscussionsTabProps): JSX.Element {
           loading={model.loading}
           selectedDiscussion={model.selectedDiscussion}
           onExpandDiscussions={model.onExpandDiscussions}
-          onOpenExternal={model.onOpenExternal}
           onSelectDiscussion={model.selectDiscussion}
         />
         <div className="thread-detail">

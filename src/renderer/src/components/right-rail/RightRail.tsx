@@ -1,15 +1,4 @@
-import {
-  BookOpen,
-  ExternalLink,
-  Eye,
-  GitBranch,
-  GitFork,
-  Lock,
-  Settings,
-  ShieldCheck,
-  Star,
-  Tag
-} from "lucide-react";
+import { BookOpen, Eye, GitBranch, GitFork, Lock, Settings, ShieldCheck, Star, Tag } from "lucide-react";
 import type { JSX } from "react";
 
 import type {
@@ -273,17 +262,6 @@ export function RightRail({
                     <small>{formatCompactNumber(contributor.contributions)} contributions</small>
                   </span>
                 </button>
-                {contributor.htmlUrl && (
-                  <button
-                    className="pin-row-button"
-                    type="button"
-                    aria-label={`Open ${contributor.login} on GitHub`}
-                    title={`Open ${contributor.login} on GitHub`}
-                    onClick={() => onOpenExternal(contributor.htmlUrl!)}
-                  >
-                    <ExternalLink size={15} />
-                  </button>
-                )}
               </div>
             ))}
           </div>

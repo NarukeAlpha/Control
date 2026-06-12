@@ -1,4 +1,4 @@
-import { ExternalLink, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import {
   Component,
   useMemo,
@@ -38,8 +38,7 @@ import {
   maxProfileRepositoryLimit,
   normalizedSearchParts,
   readAvailabilityMessage,
-  repositoryCollectionMetadataParts,
-  repositoryPath
+  repositoryCollectionMetadataParts
 } from "../repositoryUi";
 
 const emptyContributors: ContributorSummary[] = [];
@@ -113,24 +112,16 @@ function removeBrokenAvatar(event: SyntheticEvent<HTMLImageElement>): void {
 function ContributorsToolbar({
   canExpandContributors,
   filter,
-  repository,
   onExpandContributors,
-  onFilterChange,
-  onOpenExternal
+  onFilterChange
 }: {
   canExpandContributors: boolean;
   filter: string;
-  repository: RepositoryDetail;
   onExpandContributors(): void;
   onFilterChange(filterValue: string): void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   function handleFilterChange(event: ChangeEvent<HTMLInputElement>): void {
     onFilterChange(event.target.value);
-  }
-
-  function handleOpenInsights(): void {
-    onOpenExternal(repositoryPath(repository, "/graphs/contributors"));
   }
 
   return (
@@ -144,9 +135,6 @@ function ContributorsToolbar({
           placeholder="Filter contributors"
         />
       </label>
-      <button type="button" onClick={handleOpenInsights}>
-        <ExternalLink size={16} /> Insights
-      </button>
       {canExpandContributors && (
         <button type="button" onClick={onExpandContributors}>
           Load more contributors
@@ -196,22 +184,14 @@ function ContributorsStatusMessages({
 function ContributorCard({
   contributor,
   selected,
-  onOpenExternal,
   onSelectContributor
 }: {
   contributor: ContributorSummary;
   selected: boolean;
-  onOpenExternal(url: string): void;
   onSelectContributor(contributor: ContributorSummary): void;
 }): JSX.Element {
-  const contributorProfileUrl = contributor.htmlUrl ?? `https://github.com/${contributor.login}`;
-
   function handleSelectContributor(): void {
     onSelectContributor(contributor);
-  }
-
-  function handleOpenProfile(): void {
-    onOpenExternal(contributorProfileUrl);
   }
 
   return (
@@ -233,15 +213,6 @@ function ContributorCard({
           <small>{formatCompactNumber(contributor.contributions)} contributions</small>
         </span>
       </button>
-      <button
-        className="icon-button contributor-external"
-        type="button"
-        aria-label={`Open @${contributor.login} on GitHub`}
-        title={`Open @${contributor.login} on GitHub`}
-        onClick={handleOpenProfile}
-      >
-        <ExternalLink size={14} />
-      </button>
     </div>
   );
 }
@@ -249,12 +220,10 @@ function ContributorCard({
 function ContributorGrid({
   contributors,
   selectedContributorLogin,
-  onOpenExternal,
   onSelectContributor
 }: {
   contributors: ContributorSummary[];
   selectedContributorLogin: string | null;
-  onOpenExternal(url: string): void;
   onSelectContributor(contributor: ContributorSummary): void;
 }): JSX.Element {
   return (
@@ -264,7 +233,6 @@ function ContributorGrid({
           contributor={contributor}
           key={contributor.id}
           selected={contributor.login === selectedContributorLogin}
-          onOpenExternal={onOpenExternal}
           onSelectContributor={onSelectContributor}
         />
       ))}
@@ -275,23 +243,13 @@ function ContributorGrid({
 function ContributorDetailHeader({
   login,
   profile,
-  profileUrl,
-  selectedContributor,
-  onOpenExternal
+  selectedContributor
 }: {
   login: string;
   profile: GitHubAccountProfile | null;
-  profileUrl: string | null;
   selectedContributor: ContributorSummary | null;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   const avatarUrl = profile?.avatarUrl ?? selectedContributor?.avatarUrl ?? null;
-
-  function handleOpenProfile(): void {
-    if (profileUrl) {
-      onOpenExternal(profileUrl);
-    }
-  }
 
   return (
     <div className="contributor-detail-header">
@@ -304,17 +262,6 @@ function ContributorDetailHeader({
         <strong>{profile?.name ?? `@${login}`}</strong>
         <small>@{profile?.login ?? login}</small>
       </div>
-      {profileUrl && (
-        <button
-          className="icon-button"
-          type="button"
-          aria-label={`Open @${login} on GitHub`}
-          title={`Open @${login} on GitHub`}
-          onClick={handleOpenProfile}
-        >
-          <ExternalLink size={15} />
-        </button>
-      )}
     </div>
   );
 }
@@ -502,7 +449,6 @@ function ContributorDetailPanel({
   profileAvailabilityMessage,
   profileError,
   profileLoading,
-  profileUrl,
   repositories,
   repositoriesAvailabilityMessage,
   repositoriesCanExpand,
@@ -521,7 +467,6 @@ function ContributorDetailPanel({
   profileAvailabilityMessage: string | null;
   profileError: Error | null;
   profileLoading: boolean;
-  profileUrl: string | null;
   repositories: RepositorySummary[];
   repositoriesAvailabilityMessage: string | null;
   repositoriesCanExpand: boolean;
@@ -543,13 +488,7 @@ function ContributorDetailPanel({
 
   return (
     <aside className="contributor-detail-panel">
-      <ContributorDetailHeader
-        login={login}
-        profile={profile}
-        profileUrl={profileUrl}
-        selectedContributor={selectedContributor}
-        onOpenExternal={onOpenExternal}
-      />
+      <ContributorDetailHeader login={login} profile={profile} selectedContributor={selectedContributor} />
       <ContributorProfileStatus
         availabilityMessage={profileAvailabilityMessage}
         error={profileError}
@@ -586,7 +525,6 @@ function ContributorsLayout({
   profileAvailabilityMessage,
   profileError,
   profileLoading,
-  profileUrl,
   repositories,
   repositoriesAvailabilityMessage,
   repositoriesCanExpand,
@@ -607,7 +545,6 @@ function ContributorsLayout({
   profileAvailabilityMessage: string | null;
   profileError: Error | null;
   profileLoading: boolean;
-  profileUrl: string | null;
   repositories: RepositorySummary[];
   repositoriesAvailabilityMessage: string | null;
   repositoriesCanExpand: boolean;
@@ -626,7 +563,6 @@ function ContributorsLayout({
       <ContributorGrid
         contributors={contributors}
         selectedContributorLogin={selectedContributorLogin}
-        onOpenExternal={onOpenExternal}
         onSelectContributor={onSelectContributor}
       />
       <ContributorDetailPanel
@@ -637,7 +573,6 @@ function ContributorsLayout({
         profileAvailabilityMessage={profileAvailabilityMessage}
         profileError={profileError}
         profileLoading={profileLoading}
-        profileUrl={profileUrl}
         repositories={repositories}
         repositoriesAvailabilityMessage={repositoriesAvailabilityMessage}
         repositoriesCanExpand={repositoriesCanExpand}
@@ -760,10 +695,6 @@ function ContributorsTabContent({
     "Profile",
     selectedProfile.data?.availability ?? null
   );
-  const profileUrl =
-    profile?.htmlUrl ??
-    selectedContributor?.htmlUrl ??
-    (effectiveSelectedContributorLogin ? `https://github.com/${effectiveSelectedContributorLogin}` : null);
   const selectedContributionCount =
     selectedContributor?.contributions ?? selectedContributorFromFilter?.contributions ?? null;
   const contributorsLimitHit = contributors.length >= contributorLimit;
@@ -793,10 +724,8 @@ function ContributorsTabContent({
       <ContributorsToolbar
         canExpandContributors={canExpandContributors}
         filter={filter}
-        repository={repository}
         onExpandContributors={onExpandContributors}
         onFilterChange={setFilter}
-        onOpenExternal={onOpenExternal}
       />
       <ContributorsStatusMessages
         availabilityMessage={availabilityMessage}
@@ -816,7 +745,6 @@ function ContributorsTabContent({
           profileAvailabilityMessage={selectedProfileAvailabilityMessage}
           profileError={selectedProfile.error instanceof Error ? selectedProfile.error : null}
           profileLoading={selectedProfile.isFetching}
-          profileUrl={profileUrl}
           repositories={selectedRepositoryItems}
           repositoriesAvailabilityMessage={selectedRepositoriesAvailabilityMessage}
           repositoriesCanExpand={canExpandSelectedProfileRepositories}

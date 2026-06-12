@@ -205,7 +205,7 @@ export class OctokitWorkflowDomain {
   }
 
   async getWorkflowJobLogs(input: WorkflowJobLogsInput): Promise<WorkflowJobLogsResult> {
-    const maxCharacters = Math.min(Math.max(input.maxCharacters ?? 12_000, 1_000), 50_000);
+    const maxCharacters = Math.min(Math.max(input.maxCharacters ?? 12_000, 1_000), 250_000);
 
     try {
       const response = await this.client.restResponse<void>(

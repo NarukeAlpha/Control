@@ -88,7 +88,7 @@ describe("WikiTab", () => {
     });
   });
 
-  it("keeps wiki browser layout bounded and opens selected page links explicitly", async () => {
+  it("keeps wiki browser layout bounded without GitHub fallback buttons", async () => {
     installControlApi();
     const { container, onOpenExternal } = renderWikiTab();
 
@@ -96,11 +96,9 @@ describe("WikiTab", () => {
     expect(container.querySelector(".wiki-workspace")).not.toBeNull();
     expect(container.querySelector(".wiki-page-preview .markdown-body-lite")).not.toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Open wiki page on GitHub" }));
-    fireEvent.click(screen.getByRole("button", { name: /Open wiki on GitHub/i }));
-
-    expect(onOpenExternal).toHaveBeenCalledWith("https://github.com/apple/swift/wiki/Home");
-    expect(onOpenExternal).toHaveBeenCalledWith("https://github.com/apple/swift/wiki");
+    expect(screen.queryByRole("button", { name: "Open wiki page on GitHub" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Open wiki on GitHub/i })).not.toBeInTheDocument();
+    expect(onOpenExternal).not.toHaveBeenCalled();
   });
 
   it("renders disabled wiki state without loading pages", async () => {

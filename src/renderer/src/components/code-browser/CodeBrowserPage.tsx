@@ -26,11 +26,10 @@ import type {
 import { MarkdownBody, markdownRepositoryUrlContext, type MarkdownUrlContext } from "../MarkdownBody";
 import { CommitHistoryPanel } from "../repository/CommitHistoryPanel";
 import { repoFileContentRecentCommit, type CommitRecentCommit } from "../repository/commitRecent";
-import { readAvailabilityMessage, repositoryPath } from "../repository/repositoryUi";
+import { readAvailabilityMessage } from "../repository/repositoryUi";
 import { repositoryActivityDate } from "../repository/repositorySearch";
 import { CodeSourceView } from "./CodeSourceView";
 import {
-  encodeRepositoryPath,
   EntryIcon,
   entryBrowseTitle,
   entryLastChangeLabel,
@@ -91,21 +90,13 @@ type CodeBrowserEntryType = "file" | "dir";
 
 function CodeBrowserLoadError({
   message,
-  browserUrl,
-  onRefresh,
-  onOpenExternal
+  onRefresh
 }: {
   message: string | null | undefined;
-  browserUrl: string;
   onRefresh(): Promise<unknown> | void;
-  onOpenExternal(url: string): void;
 }): JSX.Element {
   function retry(): void {
     void onRefresh();
-  }
-
-  function openFallback(): void {
-    onOpenExternal(browserUrl);
   }
 
   return (
@@ -115,9 +106,6 @@ function CodeBrowserLoadError({
       <div className="table-action-row">
         <button type="button" onClick={retry}>
           <RefreshCw size={16} /> Retry
-        </button>
-        <button type="button" onClick={openFallback}>
-          <ExternalLink size={16} /> Open on GitHub
         </button>
       </div>
     </div>
@@ -807,7 +795,6 @@ function FileHistorySection({
   commitsLoading,
   commitsError,
   commitsAvailabilityMessage,
-  historyUrl,
   onExpandCommits,
   onOpenCommit,
   onOpenExternal
@@ -821,7 +808,6 @@ function FileHistorySection({
   commitsLoading: boolean;
   commitsError: Error | null;
   commitsAvailabilityMessage: string | null;
-  historyUrl: string | null;
   onExpandCommits(): void;
   onOpenCommit(
     commit: CommitRecentCommit,
@@ -844,7 +830,6 @@ function FileHistorySection({
         loading={commitsLoading}
         error={commitsError}
         availabilityMessage={commitsAvailabilityMessage}
-        externalUrl={historyUrl}
         currentLimit={commitsLimit}
         openCommitLabel="Open file"
         onExpandCommits={onExpandCommits}
@@ -890,19 +875,7 @@ export function CodeBrowserPage({
   const historyPanelRef = useRef<HTMLDivElement | null>(null);
 
   if (!repository && (error || availabilityMessage)) {
-    const routeLine = normalizeCodeLineNumber(route.line);
-    const browserUrl = `https://github.com/${route.nameWithOwner}/${
-      route.entryType === "dir" ? "tree" : "blob"
-    }/${encodeURIComponent(route.ref ?? "HEAD")}/${encodeRepositoryPath(route.path)}${routeLine ? `#L${routeLine}` : ""}`;
-
-    return (
-      <CodeBrowserLoadError
-        message={error?.message ?? availabilityMessage}
-        browserUrl={browserUrl}
-        onRefresh={onRefresh}
-        onOpenExternal={onOpenExternal}
-      />
-    );
+    return <CodeBrowserLoadError message={error?.message ?? availabilityMessage} onRefresh={onRefresh} />;
   }
 
   if (!repository) {
@@ -919,13 +892,6 @@ export function CodeBrowserPage({
   const fileStatusKey = `${route.nameWithOwner}:${route.ref ?? ""}:${route.path}:${highlightedLine ?? ""}`;
   const visibleCopyStatus = copyStatus?.key === fileStatusKey ? copyStatus.label : null;
   const filePath = fileContent?.path ?? route.path;
-  const historyUrl = filePath
-    ? repositoryPath(
-        repository,
-        `/commits/${encodeURIComponent(currentRef)}/${encodeRepositoryPath(filePath)}`
-      )
-    : null;
-
   const copyFileContent = async (): Promise<void> => {
     const hasFileContent = Boolean(fileContent) && !fileLoading;
     const canCopyRaw = hasFileContent && fileContent?.kind === "text" && fileContent.content !== null;
@@ -1008,7 +974,6 @@ export function CodeBrowserPage({
           commitsLoading={commitsLoading}
           commitsError={commitsError}
           commitsAvailabilityMessage={commitsAvailabilityMessage}
-          historyUrl={historyUrl}
           onExpandCommits={onExpandCommits}
           onOpenCommit={onOpenCommit}
           onOpenExternal={onOpenExternal}

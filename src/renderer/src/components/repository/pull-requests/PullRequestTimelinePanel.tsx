@@ -5,46 +5,7 @@ import type { PullRequestTimelineEventSummary } from "@shared/github";
 import { formatRelativeDate } from "@renderer/utils/format";
 
 import type { PullRequestLinkedIssue } from "./PullRequestsTab.types";
-
-function pullRequestTimelineEventLabel(event: PullRequestTimelineEventSummary): string {
-  if (event.sourceIssue) {
-    const repository =
-      event.sourceIssue.repositoryNameWithOwner && event.sourceIssue.repositoryNameWithOwner !== ""
-        ? `${event.sourceIssue.repositoryNameWithOwner} `
-        : "";
-    return `${event.event} ${repository}#${event.sourceIssue.number} ${event.sourceIssue.title ?? ""}`.trim();
-  }
-
-  if (event.renameFrom || event.renameTo) {
-    return `${event.event} ${event.renameFrom ?? "untitled"} to ${event.renameTo ?? "untitled"}`;
-  }
-
-  if (event.labelName) {
-    return `${event.event} label ${event.labelName}`;
-  }
-
-  if (event.assigneeLogin) {
-    return `${event.event} ${event.assigneeLogin}`;
-  }
-
-  if (event.requestedReviewerLogin) {
-    return `${event.event} review from ${event.requestedReviewerLogin}`;
-  }
-
-  if (event.requestedTeamName) {
-    return `${event.event} team review from ${event.requestedTeamName}`;
-  }
-
-  if (event.milestoneTitle) {
-    return `${event.event} milestone ${event.milestoneTitle}`;
-  }
-
-  if (event.commitSha) {
-    return `${event.event} ${event.commitSha.slice(0, 7)}`;
-  }
-
-  return event.event;
-}
+import { pullRequestTimelineEventLabel } from "./PullRequestsTab.utils";
 
 export function PullRequestTimelinePanel({
   timelineEvents,

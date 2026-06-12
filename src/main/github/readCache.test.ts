@@ -21,13 +21,14 @@ describe("GitHubReadCache", () => {
     );
   });
 
-  it("serves cache-only repository rows before generic result cache", async () => {
-    const repository = repositorySummary("NarukeAlpha/control");
+  it("serves cache-only directory snapshots before opened repository rows", async () => {
+    const openedRepository = repositorySummary("golang/go");
+    const directoryRepository = repositorySummary("NarukeAlpha/control");
     const store = createStore({
-      repositoryRows: { items: [repository], syncedAt: new Date().toISOString() },
+      repositoryRows: { items: [openedRepository], syncedAt: new Date().toISOString() },
       genericResult: {
         payload: {
-          items: [repositorySummary("NarukeAlpha/other")],
+          items: [directoryRepository],
           availability: { status: "available", message: null }
         },
         isExpired: false
@@ -37,28 +38,52 @@ describe("GitHubReadCache", () => {
 
     await expect(cache.listRepositoriesWithStatus({ cacheOnly: true }, dependencies(store))).resolves.toEqual(
       {
-        items: [repository],
+        items: [directoryRepository],
         availability: { status: "available", message: null }
       }
     );
   });
 
-  it("serves fresh repository rows without a live refresh", async () => {
-    const repository = repositorySummary("NarukeAlpha/control");
+  it("does not expose opened repository rows when no directory snapshot exists", async () => {
+    const openedRepository = repositorySummary("golang/go");
     const store = createStore({
-      repositoryRows: { items: [repository], syncedAt: new Date().toISOString() }
+      repositoryRows: { items: [openedRepository], syncedAt: new Date().toISOString() }
     });
-    const refreshLive = vi.fn();
+    const cache = new GitHubReadCache();
+
+    await expect(cache.listRepositoriesWithStatus({ cacheOnly: true }, dependencies(store))).resolves.toEqual(
+      {
+        items: [],
+        availability: {
+          status: "not_loaded",
+          message: "No cached GitHub data for repositories-with-status:50. Sign in with GitHub to refresh it."
+        }
+      }
+    );
+  });
+
+  it("refreshes live when only opened repository rows exist", async () => {
+    const openedRepository = repositorySummary("golang/go");
+    const directoryRepository = repositorySummary("NarukeAlpha/control");
+    const store = createStore({
+      repositoryRows: { items: [openedRepository], syncedAt: new Date().toISOString() }
+    });
+    const refreshLive = vi.fn(
+      async (): Promise<RepositoryListResult> => ({
+        items: [directoryRepository],
+        availability: { status: "available", message: null }
+      })
+    );
     const cache = new GitHubReadCache();
 
     await expect(cache.listRepositoriesWithStatus({}, dependencies(store, { refreshLive }))).resolves.toEqual(
       {
-        items: [repository],
+        items: [directoryRepository],
         availability: { status: "available", message: null }
       }
     );
 
-    expect(refreshLive).not.toHaveBeenCalled();
+    expect(refreshLive).toHaveBeenCalledTimes(1);
   });
 
   it("returns cache-only not_loaded when no durable cache exists", async () => {
@@ -174,10 +199,13 @@ describe("GitHubReadCache", () => {
     expect(refreshLive).toHaveBeenCalledTimes(1);
   });
 
-  it("falls back to stale rows when live refresh returns an error", async () => {
+  it("falls back to a stale directory snapshot when live refresh returns an error", async () => {
     const repository = repositorySummary("NarukeAlpha/stale");
     const store = createStore({
-      repositoryRows: { items: [repository], syncedAt: "2020-01-01T00:00:00.000Z" }
+      genericResult: {
+        payload: { items: [repository], availability: { status: "available", message: null } },
+        isExpired: true
+      }
     });
     const refreshLive = vi.fn(
       async (): Promise<RepositoryListResult> => ({
@@ -199,10 +227,13 @@ describe("GitHubReadCache", () => {
     });
   });
 
-  it("preserves stale metadata when a rate-limited live refresh falls back to rows", async () => {
+  it("preserves stale metadata when a rate-limited live refresh falls back to a directory snapshot", async () => {
     const repository = repositorySummary("NarukeAlpha/stale");
     const store = createStore({
-      repositoryRows: { items: [repository], syncedAt: "2020-01-01T00:00:00.000Z" }
+      genericResult: {
+        payload: { items: [repository], availability: { status: "available", message: null } },
+        isExpired: true
+      }
     });
     const refreshLive = vi.fn(
       async (): Promise<RepositoryListResult> => ({
@@ -224,10 +255,13 @@ describe("GitHubReadCache", () => {
     });
   });
 
-  it("preserves stale metadata when an offline refresh throws and cached rows exist", async () => {
+  it("preserves stale metadata when an offline refresh throws and a directory snapshot exists", async () => {
     const repository = repositorySummary("NarukeAlpha/stale");
     const store = createStore({
-      repositoryRows: { items: [repository], syncedAt: "2020-01-01T00:00:00.000Z" }
+      genericResult: {
+        payload: { items: [repository], availability: { status: "available", message: null } },
+        isExpired: true
+      }
     });
     const refreshLive = vi.fn(async () => {
       throw new Error("Network offline.");
@@ -381,11 +415,14 @@ describe("GitHubReadCache", () => {
     expect(refreshLive).toHaveBeenCalledTimes(2);
   });
 
-  it("returns stale rows immediately and refreshes in the background", async () => {
+  it("returns stale directory snapshots immediately and refreshes in the background", async () => {
     const staleRepository = repositorySummary("NarukeAlpha/stale");
     const freshRepository = repositorySummary("NarukeAlpha/fresh");
     const store = createStore({
-      repositoryRows: { items: [staleRepository], syncedAt: "2020-01-01T00:00:00.000Z" }
+      genericResult: {
+        payload: { items: [staleRepository], availability: { status: "available", message: null } },
+        isExpired: true
+      }
     });
     let resolveRefresh!: (value: RepositoryListResult) => void;
     const refreshLive = vi.fn(

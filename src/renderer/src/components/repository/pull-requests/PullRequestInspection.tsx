@@ -26,11 +26,22 @@ import {
 } from "./PullRequestsTab.queries";
 import type { PullRequestLinkedIssue } from "./PullRequestsTab.types";
 
+type PullRequestInspectionSection =
+  | "reviews"
+  | "linked-issues"
+  | "timeline"
+  | "review-threads"
+  | "checks"
+  | "commits"
+  | "files";
+
 export function PullRequestInspection({
   repository,
   detail,
   loading,
   requestedSections,
+  sections,
+  className,
   markdownUrlContext,
   onOpenExternal,
   onOpenIssueReference,
@@ -46,6 +57,8 @@ export function PullRequestInspection({
   detail: PullRequestDetail | null;
   loading: boolean;
   requestedSections: RequestedPullRequestDetailSections;
+  sections?: PullRequestInspectionSection[];
+  className?: string;
   markdownUrlContext?: MarkdownUrlContext;
   onOpenExternal(url: string): void;
   onOpenIssueReference(issue: PullRequestLinkedIssue): void;
@@ -184,104 +197,124 @@ export function PullRequestInspection({
   const changedFilesRef = detail?.headRefName || detail?.baseRefName || null;
   const changedFilesRepositoryNameWithOwner =
     detail?.headRepositoryNameWithOwner ?? detail?.repositoryNameWithOwner ?? repository.nameWithOwner;
+  const visibleSectionSet = new Set<PullRequestInspectionSection>(
+    sections ?? ["reviews", "linked-issues", "timeline", "review-threads", "checks", "commits", "files"]
+  );
 
   return (
-    <section className="pr-inspection" aria-label="Pull request inspection">
-      <PullRequestReviewsPanel
-        reviews={reviews}
-        visibleReviews={visibleReviews}
-        reviewStatus={detail?.latestReviewState ?? reviews.length}
-        reviewsRequested={reviewsRequested}
-        reviewsAvailabilityMessage={reviewsAvailabilityMessage}
-        loading={loading}
-        expanded={expandedSections.reviews}
-        reviewLimit={reviewLimit}
-        changedFilesRepositoryNameWithOwner={changedFilesRepositoryNameWithOwner}
-        onRequestReviews={() => onRequestSection("reviews")}
-        onToggleReviews={() => toggleExpandedSection("reviews")}
-        onOpenPullRequestReviewCommit={onOpenPullRequestReviewCommit}
-      />
-      <PullRequestLinkedIssuesPanel
-        linkedIssues={linkedIssues}
-        linkedIssuesRequested={linkedIssuesRequested}
-        linkedIssuesAvailabilityMessage={linkedIssuesAvailabilityMessage}
-        loading={loading}
-        repositoryNameWithOwner={detail?.repositoryNameWithOwner ?? null}
-        onRequestLinkedIssues={() => onRequestSection("linked-issues")}
-        onOpenIssueReference={onOpenIssueReference}
-      />
-      <PullRequestTimelinePanel
-        timelineEvents={timelineEvents}
-        visibleTimelineEvents={visibleTimelineEvents}
-        timelineRequested={timelineRequested}
-        timelineAvailabilityMessage={timelineAvailabilityMessage}
-        loading={loading}
-        expanded={expandedSections.timelineEvents}
-        timelineEventLimit={timelineEventLimit}
-        changedFilesRepositoryNameWithOwner={changedFilesRepositoryNameWithOwner}
-        onRequestTimeline={() => onRequestSection("timeline")}
-        onToggleTimeline={() => toggleExpandedSection("timelineEvents")}
-        onOpenIssueReference={onOpenIssueReference}
-        onOpenPullRequestTimelineEventCommit={onOpenPullRequestTimelineEventCommit}
-      />
-      <PullRequestReviewThreadsPanel
-        reviewThreads={reviewThreads}
-        visibleReviewThreads={visibleReviewThreads}
-        reviewThreadsRequested={reviewThreadsRequested}
-        reviewThreadsAvailabilityMessage={reviewThreadsAvailabilityMessage}
-        reviewThreadStatesAvailabilityMessage={reviewThreadStatesAvailabilityMessage}
-        loading={loading}
-        expanded={expandedSections.reviewThreads}
-        reviewThreadLimit={reviewThreadLimit}
-        changedFilesRef={changedFilesRef}
-        changedFilesRepositoryNameWithOwner={changedFilesRepositoryNameWithOwner}
-        markdownUrlContext={markdownUrlContext}
-        reviewCommentActions={reviewCommentActions}
-        onRequestReviewThreads={() => onRequestSection("review-threads")}
-        onToggleReviewThreads={() => toggleExpandedSection("reviewThreads")}
-        onOpenExternal={onOpenExternal}
-        onOpenCodePath={onOpenCodePath}
-      />
-      <PullRequestChecksPanel
-        checks={checks}
-        visibleChecks={visibleChecks}
-        checksRequested={checksRequested}
-        checksAvailabilityMessage={checksAvailabilityMessage}
-        loading={loading}
-        expanded={expandedSections.checks}
-        checkLimit={checkLimit}
-        onRequestChecks={() => onRequestSection("checks")}
-        onToggleChecks={() => toggleExpandedSection("checks")}
-        onOpenWorkflowRun={onOpenWorkflowRun}
-      />
-      <PullRequestCommitsPanel
-        commits={commits}
-        visibleCommits={visibleCommits}
-        commitsRequested={commitsRequested}
-        commitsAvailabilityMessage={commitsAvailabilityMessage}
-        loading={loading}
-        expanded={expandedSections.commits}
-        commitLimit={commitLimit}
-        changedFilesRepositoryNameWithOwner={changedFilesRepositoryNameWithOwner}
-        onRequestCommits={() => onRequestSection("commits")}
-        onToggleCommits={() => toggleExpandedSection("commits")}
-        onOpenPullRequestCommit={onOpenPullRequestCommit}
-      />
-      <PullRequestFilesPanel
-        files={files}
-        visibleFiles={visibleFiles}
-        filesRequested={filesRequested}
-        filesAvailabilityMessage={filesAvailabilityMessage}
-        loading={loading}
-        expanded={expandedSections.files}
-        fileLimit={fileLimit}
-        changedFilesRef={changedFilesRef}
-        changedFilesRepositoryNameWithOwner={changedFilesRepositoryNameWithOwner}
-        onRequestFiles={() => onRequestSection("files")}
-        onToggleFiles={() => toggleExpandedSection("files")}
-        onOpenExternal={onOpenExternal}
-        onOpenCodePath={onOpenCodePath}
-      />
+    <section
+      className={`pr-inspection${className ? ` ${className}` : ""}`}
+      aria-label="Pull request inspection"
+    >
+      {visibleSectionSet.has("reviews") && (
+        <PullRequestReviewsPanel
+          reviews={reviews}
+          visibleReviews={visibleReviews}
+          reviewStatus={detail?.latestReviewState ?? reviews.length}
+          reviewsRequested={reviewsRequested}
+          reviewsAvailabilityMessage={reviewsAvailabilityMessage}
+          loading={loading}
+          expanded={expandedSections.reviews}
+          reviewLimit={reviewLimit}
+          changedFilesRepositoryNameWithOwner={changedFilesRepositoryNameWithOwner}
+          onRequestReviews={() => onRequestSection("reviews")}
+          onToggleReviews={() => toggleExpandedSection("reviews")}
+          onOpenPullRequestReviewCommit={onOpenPullRequestReviewCommit}
+        />
+      )}
+      {visibleSectionSet.has("linked-issues") && (
+        <PullRequestLinkedIssuesPanel
+          linkedIssues={linkedIssues}
+          linkedIssuesRequested={linkedIssuesRequested}
+          linkedIssuesAvailabilityMessage={linkedIssuesAvailabilityMessage}
+          loading={loading}
+          repositoryNameWithOwner={detail?.repositoryNameWithOwner ?? null}
+          onRequestLinkedIssues={() => onRequestSection("linked-issues")}
+          onOpenIssueReference={onOpenIssueReference}
+        />
+      )}
+      {visibleSectionSet.has("timeline") && (
+        <PullRequestTimelinePanel
+          timelineEvents={timelineEvents}
+          visibleTimelineEvents={visibleTimelineEvents}
+          timelineRequested={timelineRequested}
+          timelineAvailabilityMessage={timelineAvailabilityMessage}
+          loading={loading}
+          expanded={expandedSections.timelineEvents}
+          timelineEventLimit={timelineEventLimit}
+          changedFilesRepositoryNameWithOwner={changedFilesRepositoryNameWithOwner}
+          onRequestTimeline={() => onRequestSection("timeline")}
+          onToggleTimeline={() => toggleExpandedSection("timelineEvents")}
+          onOpenIssueReference={onOpenIssueReference}
+          onOpenPullRequestTimelineEventCommit={onOpenPullRequestTimelineEventCommit}
+        />
+      )}
+      {visibleSectionSet.has("review-threads") && (
+        <PullRequestReviewThreadsPanel
+          reviewThreads={reviewThreads}
+          visibleReviewThreads={visibleReviewThreads}
+          reviewThreadsRequested={reviewThreadsRequested}
+          reviewThreadsAvailabilityMessage={reviewThreadsAvailabilityMessage}
+          reviewThreadStatesAvailabilityMessage={reviewThreadStatesAvailabilityMessage}
+          loading={loading}
+          expanded={expandedSections.reviewThreads}
+          reviewThreadLimit={reviewThreadLimit}
+          changedFilesRef={changedFilesRef}
+          changedFilesRepositoryNameWithOwner={changedFilesRepositoryNameWithOwner}
+          markdownUrlContext={markdownUrlContext}
+          reviewCommentActions={reviewCommentActions}
+          onRequestReviewThreads={() => onRequestSection("review-threads")}
+          onToggleReviewThreads={() => toggleExpandedSection("reviewThreads")}
+          onOpenExternal={onOpenExternal}
+          onOpenCodePath={onOpenCodePath}
+        />
+      )}
+      {visibleSectionSet.has("checks") && (
+        <PullRequestChecksPanel
+          checks={checks}
+          visibleChecks={visibleChecks}
+          checksRequested={checksRequested}
+          checksAvailabilityMessage={checksAvailabilityMessage}
+          loading={loading}
+          expanded={expandedSections.checks}
+          checkLimit={checkLimit}
+          onRequestChecks={() => onRequestSection("checks")}
+          onToggleChecks={() => toggleExpandedSection("checks")}
+          onOpenWorkflowRun={onOpenWorkflowRun}
+        />
+      )}
+      {visibleSectionSet.has("commits") && (
+        <PullRequestCommitsPanel
+          commits={commits}
+          visibleCommits={visibleCommits}
+          commitsRequested={commitsRequested}
+          commitsAvailabilityMessage={commitsAvailabilityMessage}
+          loading={loading}
+          expanded={expandedSections.commits}
+          commitLimit={commitLimit}
+          changedFilesRepositoryNameWithOwner={changedFilesRepositoryNameWithOwner}
+          onRequestCommits={() => onRequestSection("commits")}
+          onToggleCommits={() => toggleExpandedSection("commits")}
+          onOpenPullRequestCommit={onOpenPullRequestCommit}
+        />
+      )}
+      {visibleSectionSet.has("files") && (
+        <PullRequestFilesPanel
+          files={files}
+          visibleFiles={visibleFiles}
+          filesRequested={filesRequested}
+          filesAvailabilityMessage={filesAvailabilityMessage}
+          loading={loading}
+          expanded={expandedSections.files}
+          fileLimit={fileLimit}
+          changedFilesRef={changedFilesRef}
+          changedFilesRepositoryNameWithOwner={changedFilesRepositoryNameWithOwner}
+          onRequestFiles={() => onRequestSection("files")}
+          onToggleFiles={() => toggleExpandedSection("files")}
+          onOpenExternal={onOpenExternal}
+          onOpenCodePath={onOpenCodePath}
+        />
+      )}
     </section>
   );
 }

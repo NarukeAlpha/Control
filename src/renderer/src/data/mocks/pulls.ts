@@ -293,6 +293,38 @@ export function buildMockPullRequestDetail(pull: PullRequestSummary): PullReques
           htmlUrl: `${mockPrimaryRepository.htmlUrl}/issues/1200`,
           repositoryNameWithOwner: mockPrimaryRepository.nameWithOwner
         }
+      },
+      {
+        id: `${pull.id}-timeline-committed`,
+        event: "committed",
+        actorLogin: null,
+        actorAvatarUrl: null,
+        createdAt: null,
+        commitSha: null,
+        labelName: null,
+        assigneeLogin: null,
+        requestedReviewerLogin: null,
+        requestedTeamName: null,
+        milestoneTitle: null,
+        renameFrom: null,
+        renameTo: null,
+        sourceIssue: null
+      },
+      {
+        id: `${pull.id}-timeline-ready-for-review`,
+        event: "ready_for_review",
+        actorLogin: pull.authorLogin,
+        actorAvatarUrl: pull.authorAvatarUrl,
+        createdAt: pull.updatedAt,
+        commitSha: null,
+        labelName: null,
+        assigneeLogin: null,
+        requestedReviewerLogin: null,
+        requestedTeamName: null,
+        milestoneTitle: null,
+        renameFrom: null,
+        renameTo: null,
+        sourceIssue: null
       }
     ],
     timelineAvailability: { status: "available", message: null }

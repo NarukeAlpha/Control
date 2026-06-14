@@ -9,6 +9,7 @@
     "predev": "node scripts/ensure-electron-runtime.cjs --repair",
     "dev": "env -u ELECTRON_RUN_AS_NODE electron-vite dev",
     "dev:renderer": "vite --config vite.renderer.config.ts --host 127.0.0.1",
+    "dev:site": "vite --config vite.site.config.ts --host 127.0.0.1",
     "postinstall": "node scripts/ensure-electron-runtime.cjs --repair",
     "prebuild": "node scripts/ensure-electron-runtime.cjs --repair",
     "build": "bun run typecheck && electron-vite build",

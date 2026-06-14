@@ -9,3 +9,8 @@ script = ""
 name = "Run"
 icon = "run"
 command = "bun run dev"
+
+[[actions]]
+name = "website"
+icon = "tool"
+command = "bun run dev:site"

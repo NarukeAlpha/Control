@@ -3132,7 +3132,7 @@ describe("Control renderer routing", () => {
     await userEvent.click(screen.getByRole("button", { name: "All" }));
     await userEvent.click(await screen.findByRole("button", { name: /#516 by slightbug/i }));
     expect(await screen.findByText("Merge unavailable: Pull request is already merged.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Merge pull request" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Squash merge" })).toBeDisabled();
 
     await userEvent.click(screen.getByRole("button", { name: "Back to pull requests" }));
     await userEvent.click(

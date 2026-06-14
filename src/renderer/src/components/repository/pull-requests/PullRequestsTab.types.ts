@@ -3,3 +3,11 @@ import type { PullRequestLinkedIssueSummary, PullRequestTimelineEventSummary } f
 export type PullRequestLinkedIssue =
   | NonNullable<PullRequestTimelineEventSummary["sourceIssue"]>
   | PullRequestLinkedIssueSummary;
+
+export type PullRequestMergeMethod = "merge" | "squash" | "rebase";
+
+export interface PullRequestMergeMethodOption {
+  method: PullRequestMergeMethod;
+  label: string;
+  detail: string;
+}

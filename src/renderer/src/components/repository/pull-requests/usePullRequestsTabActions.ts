@@ -13,6 +13,7 @@ import type {
 
 import type { PullRequestCreateDraft } from "./PullRequestCreateForm";
 import type { PullRequestDetailSection, RequestedPullRequestDetailSections } from "./PullRequestsTab.queries";
+import type { PullRequestMergeMethod } from "./PullRequestsTab.types";
 import {
   appendCommaSeparatedValue,
   commaSeparatedValues,
@@ -41,6 +42,7 @@ export function usePullRequestsTabActions({
   pullActionPendingReason,
   livePullDisabledReason,
   pullAction,
+  selectedMergeMethod,
   reviewBody,
   commentBody,
   title,
@@ -91,6 +93,7 @@ export function usePullRequestsTabActions({
   pullActionPendingReason: string | null;
   livePullDisabledReason: string | null;
   pullAction: "closePullRequest" | "reopenPullRequest";
+  selectedMergeMethod: PullRequestMergeMethod;
   reviewBody: string;
   commentBody: string;
   title: string;
@@ -397,12 +400,12 @@ export function usePullRequestsTabActions({
     });
   }
 
-  function mergeSelectedPull(): void {
+  function mergeSelectedPull(method: PullRequestMergeMethod = selectedMergeMethod): void {
     if (!selectedPull) {
       return;
     }
 
-    onMutate("mergePullRequest", true, { pullNumber: selectedPull.number });
+    onMutate("mergePullRequest", true, { pullNumber: selectedPull.number, merge_method: method });
   }
 
   return {

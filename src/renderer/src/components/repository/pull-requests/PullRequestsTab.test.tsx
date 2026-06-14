@@ -2,19 +2,19 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { GitHubReadAvailability } from "@shared/github";
+import type { GitHubReadAvailability, PullRequestSummary, RepositoryDetail } from "@shared/github";
 import type { ControlApi } from "@shared/ipc";
 import { mockControlApi } from "../../../data/mock";
 import { mockPullRequests } from "../../../data/mocks/pulls";
 import { mockRepository } from "../../../data/mocks/repository";
-import { PullRequestsTab } from "./PullRequestsTab";
+import { PullRequestsTab, type PullRequestsTabProps } from "./PullRequestsTab";
 
 const available = { status: "available", message: null } satisfies GitHubReadAvailability;
 const focusedPull = mockPullRequests[0];
 
-function installControlApi() {
+function installControlApi(pulls: PullRequestSummary[] = [focusedPull]) {
   const listPullRequestsWithStatus = vi.fn<ControlApi["github"]["listPullRequestsWithStatus"]>(async () => ({
-    items: [focusedPull],
+    items: pulls,
     availability: available
   }));
   const getPullRequestOverviewWithStatus = vi.fn<ControlApi["github"]["getPullRequestOverviewWithStatus"]>(
@@ -44,6 +44,9 @@ function installControlApi() {
   const listPullRequestLinkedIssuesWithStatus = vi.fn<
     ControlApi["github"]["listPullRequestLinkedIssuesWithStatus"]
   >(mockControlApi.github.listPullRequestLinkedIssuesWithStatus);
+  const getBranchProtection = vi.fn<ControlApi["github"]["getBranchProtection"]>(
+    mockControlApi.github.getBranchProtection
+  );
   const api = {
     ...mockControlApi,
     github: {
@@ -57,7 +60,8 @@ function installControlApi() {
       listPullRequestChecksWithStatus,
       listPullRequestReviewThreadsWithStatus,
       listPullRequestTimelineWithStatus,
-      listPullRequestLinkedIssuesWithStatus
+      listPullRequestLinkedIssuesWithStatus,
+      getBranchProtection
     }
   } satisfies ControlApi;
   window.control = api;
@@ -72,11 +76,22 @@ function installControlApi() {
     listPullRequestChecksWithStatus,
     listPullRequestReviewThreadsWithStatus,
     listPullRequestTimelineWithStatus,
-    listPullRequestLinkedIssuesWithStatus
+    listPullRequestLinkedIssuesWithStatus,
+    getBranchProtection
   };
 }
 
-function renderPullRequestsTab(): void {
+function renderPullRequestsTab({
+  pull = focusedPull,
+  repository = mockRepository,
+  initialCreating = false,
+  onMutate = vi.fn<PullRequestsTabProps["onMutate"]>()
+}: {
+  pull?: PullRequestSummary;
+  repository?: RepositoryDetail;
+  initialCreating?: boolean;
+  onMutate?: PullRequestsTabProps["onMutate"];
+} = {}): { onMutate: PullRequestsTabProps["onMutate"] } {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
@@ -88,15 +103,15 @@ function renderPullRequestsTab(): void {
   render(
     <QueryClientProvider client={queryClient}>
       <PullRequestsTab
-        repository={mockRepository}
+        repository={repository}
         githubReady={true}
         selectedRef={null}
         refListLimit={20}
         pullRequestListLimit={20}
         pullState="open"
-        focusedPullNumber={focusedPull.number}
+        focusedPullNumber={pull.number}
         initialFilter=""
-        initialCreating={false}
+        initialCreating={initialCreating}
         mutationAction={null}
         mutationPending={false}
         mutationSucceeded={false}
@@ -112,10 +127,11 @@ function renderPullRequestsTab(): void {
         onOpenWorkflowRun={vi.fn()}
         onOpenCodePath={vi.fn()}
         onExpandPullRequests={vi.fn()}
-        onMutate={vi.fn()}
+        onMutate={onMutate}
       />
     </QueryClientProvider>
   );
+  return { onMutate };
 }
 
 afterEach(() => {
@@ -157,5 +173,50 @@ describe("PullRequestsTab", () => {
     expect(api.listPullRequestReviewThreadsWithStatus).toHaveBeenCalledTimes(1);
     expect(api.listPullRequestTimelineWithStatus).toHaveBeenCalledTimes(1);
     expect(api.listPullRequestLinkedIssuesWithStatus).not.toHaveBeenCalled();
+  });
+
+  it("uses the prefetched allowed merge method when merge commits are blocked", async () => {
+    const mergeablePull = mockPullRequests[2];
+    const api = installControlApi([mergeablePull]);
+    const { onMutate } = renderPullRequestsTab({ pull: mergeablePull });
+
+    await screen.findByRole("heading", { name: mergeablePull.title });
+    await waitFor(() => expect(api.getPullRequestOverviewWithStatus).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(api.getBranchProtection).toHaveBeenCalledTimes(1));
+
+    expect(screen.queryByRole("button", { name: "Create merge commit" })).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Squash merge" }));
+
+    expect(onMutate).toHaveBeenCalledWith("mergePullRequest", true, {
+      pullNumber: mergeablePull.number,
+      merge_method: "squash"
+    });
+  });
+
+  it("blocks pull request creation when administration metadata marks the repository archived", async () => {
+    installControlApi();
+    const archivedRepository = {
+      ...mockRepository,
+      permissions: {
+        ...mockRepository.permissions,
+        isArchived: false
+      },
+      administration: {
+        ...mockRepository.administration,
+        isArchived: true
+      }
+    };
+    const { onMutate } = renderPullRequestsTab({
+      repository: archivedRepository,
+      initialCreating: true
+    });
+
+    expect(
+      await screen.findByText("Pull request creation unavailable: Repository is archived.")
+    ).toBeInTheDocument();
+    const createButton = screen.getByRole("button", { name: /Create pull request/i });
+    expect(createButton).toBeDisabled();
+    fireEvent.click(createButton);
+    expect(onMutate).not.toHaveBeenCalled();
   });
 });

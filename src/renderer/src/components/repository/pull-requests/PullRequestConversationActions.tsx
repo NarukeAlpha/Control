@@ -3,6 +3,7 @@ import type { FormEvent, JSX } from "react";
 import type { GitHubAction } from "@shared/github";
 
 import { githubActionLabel } from "@renderer/components/repository/repositoryUi";
+import type { PullRequestMergeMethod, PullRequestMergeMethodOption } from "./PullRequestsTab.types";
 
 interface PullRequestCommentComposerProps {
   commentBody: string;
@@ -157,14 +158,18 @@ export function PullRequestMergeActions({
   pullActionLabel,
   pullActionDisabledReason,
   selectedMergeDisabledReason,
+  mergeMethodOptions,
+  selectedMergeMethod,
   onRunPullAction,
   onMerge
 }: {
   pullActionLabel: string;
   pullActionDisabledReason: string | null;
   selectedMergeDisabledReason: string | null;
+  mergeMethodOptions: PullRequestMergeMethodOption[];
+  selectedMergeMethod: PullRequestMergeMethod;
   onRunPullAction(): void;
-  onMerge(): void;
+  onMerge(method: PullRequestMergeMethod): void;
 }): JSX.Element {
   const mergeUnavailable = Boolean(selectedMergeDisabledReason);
 
@@ -193,15 +198,18 @@ export function PullRequestMergeActions({
         >
           {pullActionLabel}
         </button>
-        <button
-          className="dark-action"
-          type="button"
-          disabled={mergeUnavailable}
-          title={selectedMergeDisabledReason ?? undefined}
-          onClick={onMerge}
-        >
-          Merge pull request
-        </button>
+        {mergeMethodOptions.map((option) => (
+          <button
+            key={option.method}
+            className={option.method === selectedMergeMethod ? "dark-action" : undefined}
+            type="button"
+            disabled={mergeUnavailable}
+            title={selectedMergeDisabledReason ?? option.detail}
+            onClick={() => onMerge(option.method)}
+          >
+            {option.label}
+          </button>
+        ))}
       </div>
     </section>
   );
@@ -222,6 +230,8 @@ export function PullRequestConversationActions({
   reviewCommentDisabledReason,
   pullActionDisabledReason,
   selectedMergeDisabledReason,
+  mergeMethodOptions,
+  selectedMergeMethod,
   onCommentBodyChange,
   onReviewBodyChange,
   onSubmitComment,
@@ -243,12 +253,14 @@ export function PullRequestConversationActions({
   reviewCommentDisabledReason: string | null;
   pullActionDisabledReason: string | null;
   selectedMergeDisabledReason: string | null;
+  mergeMethodOptions: PullRequestMergeMethodOption[];
+  selectedMergeMethod: PullRequestMergeMethod;
   onCommentBodyChange(value: string): void;
   onReviewBodyChange(value: string): void;
   onSubmitComment(): void;
   onSubmitReview(action: GitHubAction, dangerous: boolean): void;
   onRunPullAction(): void;
-  onMerge(): void;
+  onMerge(method: PullRequestMergeMethod): void;
 }): JSX.Element {
   return (
     <>
@@ -278,6 +290,8 @@ export function PullRequestConversationActions({
         pullActionLabel={pullActionLabel}
         pullActionDisabledReason={pullActionDisabledReason}
         selectedMergeDisabledReason={selectedMergeDisabledReason}
+        mergeMethodOptions={mergeMethodOptions}
+        selectedMergeMethod={selectedMergeMethod}
         onRunPullAction={onRunPullAction}
         onMerge={onMerge}
       />

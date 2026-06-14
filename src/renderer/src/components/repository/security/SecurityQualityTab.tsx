@@ -40,6 +40,8 @@ import {
   githubActionLabel,
   readAvailabilityMessage,
   readAvailabilityStatusLabel,
+  repositoryIsArchived,
+  repositoryIsDisabled,
   repositoryPath
 } from "@renderer/components/repository/repositoryUi";
 import { formatCompactNumber, formatRelativeDate } from "@renderer/utils/format";
@@ -774,8 +776,8 @@ function readSecurityQualityDerivedState({
   const securityMutationRelevant = isSecurityMutationAction(mutationAction);
   const securityMutationDisabledReason =
     (!githubReady ? "Sign in with GitHub to change security settings." : null) ??
-    (repository.permissions.isArchived ? "Repository is archived." : null) ??
-    (repository.permissions.isDisabled ? "Repository is disabled." : null);
+    (repositoryIsArchived(repository) ? "Repository is archived." : null) ??
+    (repositoryIsDisabled(repository) ? "Repository is disabled." : null);
 
   return {
     availabilityMessage,

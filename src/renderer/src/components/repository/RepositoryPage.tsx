@@ -50,7 +50,7 @@ import { RepositorySettingsTab } from "./settings/RepositorySettingsTab";
 import { WikiTab } from "./wiki/WikiTab";
 import type { RepositoryTabDescriptor } from "./repositoryTabs";
 import { isRepositoryTabPreferenceKey, type RepositoryTabVisibilityResult } from "./repositoryTabVisibility";
-import { getRepositoryCounts, githubActionLabel } from "./repositoryUi";
+import { getRepositoryCounts, githubActionLabel, repositoryIsArchived } from "./repositoryUi";
 
 type PullRequestLinkedIssue =
   | NonNullable<PullRequestTimelineEventSummary["sourceIssue"]>
@@ -150,7 +150,7 @@ function repositoryHeroMutationDisabledReason(
     return "Repository is disabled.";
   }
   if (action === "fork") {
-    if (repository.permissions.isArchived) {
+    if (repositoryIsArchived(repository)) {
       return "Repository is archived.";
     }
     if (repository.administration.allowForking === false) {

@@ -179,11 +179,19 @@ export function projectSectionAvailabilityMessage(
   return readAvailabilityMessage(feature, project.sectionAvailability?.[section] ?? null);
 }
 
+export function repositoryIsDisabled(repository: RepositoryDetail): boolean {
+  return repository.permissions.isDisabled || repository.administration.isDisabled;
+}
+
+export function repositoryIsArchived(repository: RepositoryDetail): boolean {
+  return repository.permissions.isArchived || repository.administration.isArchived;
+}
+
 export function repositoryMutationDisabledReason(repository: RepositoryDetail): string | null {
-  if (repository.permissions.isDisabled) {
+  if (repositoryIsDisabled(repository)) {
     return "Repository is disabled.";
   }
-  if (repository.permissions.isArchived) {
+  if (repositoryIsArchived(repository)) {
     return "Repository is archived.";
   }
   return null;

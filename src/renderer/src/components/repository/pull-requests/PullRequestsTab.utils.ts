@@ -1,4 +1,5 @@
 import type {
+  BranchProtectionSummary,
   PullRequestReviewThreadCommentSummary,
   PullRequestSummary,
   PullRequestTimelineEventSummary,
@@ -7,6 +8,65 @@ import type {
 } from "@shared/github";
 
 import { repositoryMutationDisabledReason } from "@renderer/components/repository/repositoryUi";
+import type { PullRequestMergeMethod, PullRequestMergeMethodOption } from "./PullRequestsTab.types";
+
+const mergeMethodOptionMetadata: Record<
+  PullRequestMergeMethod,
+  Omit<PullRequestMergeMethodOption, "method">
+> = {
+  merge: {
+    label: "Create merge commit",
+    detail: "Preserve the pull request commits with a merge commit on the base branch."
+  },
+  squash: {
+    label: "Squash merge",
+    detail: "Combine the pull request commits into one commit on the base branch."
+  },
+  rebase: {
+    label: "Rebase merge",
+    detail: "Replay the pull request commits onto the base branch without a merge commit."
+  }
+};
+
+function mergeMethodOption(method: PullRequestMergeMethod): PullRequestMergeMethodOption {
+  return { method, ...mergeMethodOptionMetadata[method] };
+}
+
+export function pullRequestMergeMethodOptions(
+  repository: RepositoryDetail,
+  baseProtection: BranchProtectionSummary | null
+): PullRequestMergeMethodOption[] {
+  const { allowMergeCommit, allowSquashMerge, allowRebaseMerge } = repository.administration.mergeSettings;
+  const options: PullRequestMergeMethodOption[] = [];
+
+  if (allowMergeCommit !== false && baseProtection?.requiredLinearHistory !== true) {
+    options.push(mergeMethodOption("merge"));
+  }
+  if (allowSquashMerge !== false) {
+    options.push(mergeMethodOption("squash"));
+  }
+  if (allowRebaseMerge !== false) {
+    options.push(mergeMethodOption("rebase"));
+  }
+
+  return options;
+}
+
+export function pullRequestMergeMethodDisabledReason(
+  repository: RepositoryDetail,
+  baseProtection: BranchProtectionSummary | null
+): string | null {
+  if (pullRequestMergeMethodOptions(repository, baseProtection).length > 0) {
+    return null;
+  }
+  if (
+    repository.administration.mergeSettings.allowMergeCommit !== false &&
+    baseProtection?.requiredLinearHistory === true
+  ) {
+    return "The base branch requires linear history and no linear merge methods are enabled.";
+  }
+  return "No pull request merge methods are enabled for this repository.";
+}
 
 export function conversationCommentDisabledReason(
   repository: RepositoryDetail,

@@ -58,7 +58,11 @@ import {
   type PullRequestDetailSection,
   type RequestedPullRequestDetailSections
 } from "./PullRequestsTab.queries";
-import type { PullRequestLinkedIssue } from "./PullRequestsTab.types";
+import type {
+  PullRequestLinkedIssue,
+  PullRequestMergeMethod,
+  PullRequestMergeMethodOption
+} from "./PullRequestsTab.types";
 
 export interface PullRequestsTabContentProps {
   repository: RepositoryDetail;
@@ -143,6 +147,8 @@ export interface PullRequestsTabContentProps {
   reviewCommentDisabledReason: string | null;
   pullActionDisabledReason: string | null;
   selectedMergeDisabledReason: string | null;
+  mergeMethodOptions: PullRequestMergeMethodOption[];
+  selectedMergeMethod: PullRequestMergeMethod;
   reviewCommentActions: {
     getDisabledReason(comment: PullRequestReviewThreadCommentSummary): string | null;
     onEdit(comment: PullRequestReviewThreadCommentSummary, body: string): void;
@@ -208,7 +214,7 @@ export interface PullRequestsTabContentProps {
   onSubmitComment(): void;
   onSubmitReview(action: GitHubAction, dangerous: boolean): void;
   onRunPullAction(): void;
-  onMerge(): void;
+  onMerge(method: PullRequestMergeMethod): void;
   focusedPullNumber: number | null;
 }
 
@@ -430,6 +436,8 @@ function PullRequestDetailPane({
           detail={props.detail}
           selectedReviewDecision={props.selectedReviewDecision}
           selectedMergeDisabledReason={props.selectedMergeDisabledReason}
+          mergeMethodOptions={props.mergeMethodOptions}
+          selectedMergeMethod={props.selectedMergeMethod}
           onOpenPullRequestList={props.onOpenPullRequestList}
           onMerge={props.onMerge}
         />
@@ -546,6 +554,8 @@ function PullRequestDetailRouteToolbar({
   detail,
   selectedReviewDecision,
   selectedMergeDisabledReason,
+  mergeMethodOptions,
+  selectedMergeMethod,
   onOpenPullRequestList,
   onMerge
 }: {
@@ -553,8 +563,10 @@ function PullRequestDetailRouteToolbar({
   detail: PullRequestDetail | null;
   selectedReviewDecision: string | null;
   selectedMergeDisabledReason: string | null;
+  mergeMethodOptions: PullRequestMergeMethodOption[];
+  selectedMergeMethod: PullRequestMergeMethod;
   onOpenPullRequestList(): void;
-  onMerge(): void;
+  onMerge(method: PullRequestMergeMethod): void;
 }): JSX.Element {
   return (
     <div className="detail-toolbar">
@@ -566,6 +578,8 @@ function PullRequestDetailRouteToolbar({
         detail={detail}
         selectedReviewDecision={selectedReviewDecision}
         selectedMergeDisabledReason={selectedMergeDisabledReason}
+        mergeMethodOptions={mergeMethodOptions}
+        selectedMergeMethod={selectedMergeMethod}
         onMerge={onMerge}
       />
     </div>
@@ -577,13 +591,17 @@ function PullRequestMergeStatusMenu({
   detail,
   selectedReviewDecision,
   selectedMergeDisabledReason,
+  mergeMethodOptions,
+  selectedMergeMethod,
   onMerge
 }: {
   selectedPull: PullRequestSummary;
   detail: PullRequestDetail | null;
   selectedReviewDecision: string | null;
   selectedMergeDisabledReason: string | null;
-  onMerge(): void;
+  mergeMethodOptions: PullRequestMergeMethodOption[];
+  selectedMergeMethod: PullRequestMergeMethod;
+  onMerge(method: PullRequestMergeMethod): void;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
   const status = pullRequestMergeStatus({
@@ -599,9 +617,9 @@ function PullRequestMergeStatusMenu({
     }
   }
 
-  function handleMerge(): void {
+  function handleMerge(method: PullRequestMergeMethod): void {
     setOpen(false);
-    onMerge();
+    onMerge(method);
   }
 
   return (
@@ -620,11 +638,20 @@ function PullRequestMergeStatusMenu({
       </button>
       {open && (
         <div className="pr-merge-status-popover" role="menu" aria-label="Merge options">
-          <strong>Merge pull request</strong>
+          <strong>Merge options</strong>
           <p>{status.detail}</p>
-          <button type="button" className="dark-action" role="menuitem" onClick={handleMerge}>
-            Merge pull request
-          </button>
+          {mergeMethodOptions.map((option) => (
+            <button
+              key={option.method}
+              type="button"
+              className={option.method === selectedMergeMethod ? "dark-action" : undefined}
+              role="menuitem"
+              title={option.detail}
+              onClick={() => handleMerge(option.method)}
+            >
+              {option.label}
+            </button>
+          ))}
         </div>
       )}
     </div>
@@ -962,6 +989,8 @@ function PullRequestSelectedDetail(props: PullRequestSelectedDetailProps): JSX.E
               pullActionLabel={props.pullActionLabel}
               pullActionDisabledReason={props.pullActionDisabledReason}
               selectedMergeDisabledReason={timelineMergeDisabledReason}
+              mergeMethodOptions={props.mergeMethodOptions}
+              selectedMergeMethod={props.selectedMergeMethod}
               onRunPullAction={props.onRunPullAction}
               onMerge={props.onMerge}
             />

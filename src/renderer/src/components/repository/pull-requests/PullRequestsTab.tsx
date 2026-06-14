@@ -38,6 +38,8 @@ import {
   commaSeparatedValues,
   conversationCommentDisabledReason,
   mergeDisabledReason,
+  pullRequestMergeMethodDisabledReason,
+  pullRequestMergeMethodOptions,
   pullStateMutationDisabledReason,
   reviewDisabledReason
 } from "./PullRequestsTab.utils";
@@ -272,6 +274,9 @@ function usePullRequestsTabModel({
           mergedAt: detail.mergedAt
         }
       : selectedPull;
+  const selectedBaseProtection = selectedBaseBranchProtection.data?.protection ?? null;
+  const selectedBaseProtectionLoading =
+    selectedBaseBranchProtection.isLoading && !selectedBaseBranchProtection.data;
   const pullAction = selectedPull?.state === "closed" ? "reopenPullRequest" : "closePullRequest";
   const pullActionLabel = selectedPull?.state === "closed" ? "Reopen pull request" : "Close pull request";
   const pullMutationAction =
@@ -309,8 +314,15 @@ function usePullRequestsTabModel({
   const selectedMergeDisabledReason = selectedPullForActions
     ? (pullActionPendingReason ??
       livePullDisabledReason ??
-      mergeDisabledReason(repository, selectedPullForActions))
+      mergeDisabledReason(repository, selectedPullForActions) ??
+      (selectedBaseProtectionLoading
+        ? "Base branch protection is still loading."
+        : pullRequestMergeMethodDisabledReason(repository, selectedBaseProtection)))
     : null;
+  const mergeMethodOptions = selectedBaseProtectionLoading
+    ? []
+    : pullRequestMergeMethodOptions(repository, selectedBaseProtection);
+  const selectedMergeMethod = mergeMethodOptions[0]?.method ?? "merge";
   const selectedReviewDisabledReason = selectedPull
     ? (pullActionPendingReason ?? livePullDisabledReason ?? reviewDisabledReason(repository, selectedPull))
     : null;
@@ -411,7 +423,6 @@ function usePullRequestsTabModel({
       `${selectedPull?.headRefName ?? "Head"} ${selectedHeadBranch.protected ? "protected" : "unprotected"}`
     );
   }
-  const selectedBaseProtection = selectedBaseBranchProtection.data?.protection ?? null;
   const selectedBaseProtectionAvailabilityMessage = readAvailabilityMessage(
     "Base branch protection",
     selectedBaseBranchProtection.data?.availability ?? null
@@ -487,6 +498,7 @@ function usePullRequestsTabModel({
     pullActionPendingReason,
     livePullDisabledReason,
     pullAction,
+    selectedMergeMethod,
     reviewBody,
     commentBody,
     title,
@@ -565,8 +577,7 @@ function usePullRequestsTabModel({
     selectedBaseProtectionBranchLabel,
     selectedBaseProtectionStatusLabel,
     selectedBaseProtectionStatusUnavailable,
-    selectedBaseProtectionLoading:
-      selectedBaseBranchProtection.isLoading && !selectedBaseBranchProtection.data,
+    selectedBaseProtectionLoading,
     selectedBaseProtectionError:
       selectedBaseBranchProtection.error instanceof Error ? selectedBaseBranchProtection.error : null,
     selectedBaseProtectionAvailabilityMessage,
@@ -610,6 +621,8 @@ function usePullRequestsTabModel({
     reviewCommentDisabledReason,
     pullActionDisabledReason,
     selectedMergeDisabledReason,
+    mergeMethodOptions,
+    selectedMergeMethod,
     reviewCommentActions: pullActions.reviewCommentActions,
     commentActions: pullActions.commentActions,
     onFilterChange: setFilter,

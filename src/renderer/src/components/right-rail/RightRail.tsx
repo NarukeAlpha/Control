@@ -13,7 +13,9 @@ import {
   getRepositoryCounts,
   languageTotalLabel,
   normalizeLanguageStats,
-  readAvailabilityMessage
+  readAvailabilityMessage,
+  repositoryIsArchived,
+  repositoryIsDisabled
 } from "../repository/repositoryUi";
 
 export function RightRail({
@@ -108,12 +110,12 @@ export function RightRail({
               <GitBranch size={15} /> {repository.defaultBranch}
             </li>
           )}
-          {repository?.permissions.isArchived && (
+          {repository && repositoryIsArchived(repository) && (
             <li>
               <Settings size={15} /> Archived
             </li>
           )}
-          {repository?.permissions.isDisabled && (
+          {repository && repositoryIsDisabled(repository) && (
             <li>
               <Settings size={15} /> Disabled
             </li>

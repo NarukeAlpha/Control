@@ -1,0 +1,771 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Control Gateway Architecture</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f6f7f8;
+        --panel: #ffffff;
+        --panel-soft: #f0f3f6;
+        --text: #18202a;
+        --muted: #5f6d7c;
+        --line: #b9c4cf;
+        --strong-line: #6f7f90;
+        --blue: #2563eb;
+        --green: #16815d;
+        --amber: #a15c00;
+        --red: #c23b35;
+        --violet: #7157d9;
+        --cyan: #087a88;
+        --code: #eef2f6;
+        --shadow: 0 16px 44px rgb(20 32 46 / 0.11);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #101418;
+          --panel: #171c22;
+          --panel-soft: #202730;
+          --text: #eef3f7;
+          --muted: #a3afbc;
+          --line: #3d4956;
+          --strong-line: #6f7f90;
+          --code: #242c35;
+          --shadow: 0 16px 44px rgb(0 0 0 / 0.28);
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font:
+          15px/1.5 Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+      }
+
+      main {
+        width: min(1180px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 32px 0 48px;
+      }
+
+      header {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 18px;
+        align-items: end;
+        margin-bottom: 22px;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: clamp(30px, 5vw, 56px);
+        line-height: 1.02;
+        letter-spacing: 0;
+      }
+
+      h2 {
+        font-size: 22px;
+        letter-spacing: 0;
+      }
+
+      h3 {
+        font-size: 16px;
+        letter-spacing: 0;
+      }
+
+      .lede {
+        max-width: 760px;
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 17px;
+      }
+
+      .meta {
+        min-width: 220px;
+        padding: 12px 14px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+      }
+
+      .meta strong,
+      .meta span {
+        display: block;
+      }
+
+      .meta strong {
+        margin-bottom: 2px;
+        font-size: 12px;
+        color: var(--muted);
+        text-transform: uppercase;
+      }
+
+      .meta span {
+        font-weight: 650;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .panel {
+        margin-top: 16px;
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+      }
+
+      .panel.full {
+        grid-column: 1 / -1;
+      }
+
+      .panel-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: baseline;
+        margin-bottom: 14px;
+      }
+
+      .panel-header p {
+        max-width: 640px;
+        color: var(--muted);
+      }
+
+      .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 14px;
+        margin-top: 14px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .legend span {
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+      }
+
+      .swatch {
+        width: 10px;
+        height: 10px;
+        border-radius: 2px;
+        background: currentColor;
+      }
+
+      svg {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+
+      .node rect,
+      .lane,
+      .slot {
+        fill: var(--panel-soft);
+        stroke: var(--line);
+        stroke-width: 1.4;
+      }
+
+      .node text,
+      .label {
+        fill: var(--text);
+        font-size: 14px;
+        font-weight: 650;
+      }
+
+      .sub,
+      .small {
+        fill: var(--muted);
+        font-size: 12px;
+        font-weight: 500;
+      }
+
+      .tiny {
+        fill: var(--muted);
+        font-size: 11px;
+        font-weight: 500;
+      }
+
+      .arrow,
+      .line {
+        fill: none;
+        stroke: var(--strong-line);
+        stroke-width: 1.8;
+      }
+
+      .dash {
+        stroke-dasharray: 6 6;
+      }
+
+      .blue rect,
+      .blue.slot {
+        stroke: var(--blue);
+      }
+
+      .green rect,
+      .green.slot {
+        stroke: var(--green);
+      }
+
+      .amber rect,
+      .amber.slot {
+        stroke: var(--amber);
+      }
+
+      .red rect,
+      .red.slot {
+        stroke: var(--red);
+      }
+
+      .violet rect,
+      .violet.slot {
+        stroke: var(--violet);
+      }
+
+      .cyan rect,
+      .cyan.slot {
+        stroke: var(--cyan);
+      }
+
+      .blue-text {
+        fill: var(--blue);
+      }
+
+      .green-text {
+        fill: var(--green);
+      }
+
+      .amber-text {
+        fill: var(--amber);
+      }
+
+      .red-text {
+        fill: var(--red);
+      }
+
+      .violet-text {
+        fill: var(--violet);
+      }
+
+      .cyan-text {
+        fill: var(--cyan);
+      }
+
+      .notes {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 14px;
+      }
+
+      .note {
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel-soft);
+      }
+
+      .note p {
+        margin-top: 6px;
+        color: var(--muted);
+      }
+
+      code {
+        border-radius: 5px;
+        background: var(--code);
+        padding: 2px 5px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+        font-size: 0.92em;
+      }
+
+      @media (max-width: 900px) {
+        header,
+        .grid,
+        .notes {
+          grid-template-columns: 1fr;
+        }
+
+        .panel-header {
+          display: block;
+        }
+
+        .panel-header p {
+          margin-top: 6px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <h1>Control Gateway Architecture</h1>
+          <p class="lede">
+            Current architecture of <code>control-gateway</code>, the Rust runtime that lets Control operate
+            against local folders and repositories on SSH boxes while keeping privileged process, credential,
+            and protocol details in the main process.
+          </p>
+        </div>
+        <div class="meta" aria-label="Working name">
+          <strong>Working name</strong>
+          <span>Control Relay</span>
+          <strong style="margin-top: 10px">Current binary</strong>
+          <span>control-gateway</span>
+          <strong style="margin-top: 10px">Module directory</strong>
+          <span>crates/C-Gateway</span>
+        </div>
+      </header>
+
+      <section class="panel full" aria-labelledby="map-title">
+        <div class="panel-header">
+          <div>
+            <h2 id="map-title">Process Map</h2>
+            <p>Renderer requests go through typed IPC. Main owns gateway lifecycle and credentials.</p>
+          </div>
+        </div>
+
+        <svg viewBox="0 0 1120 500" role="img" aria-labelledby="process-map-desc">
+          <title id="process-map-desc">
+            Process map for renderer, main, Rust gateway, and local or SSH roots
+          </title>
+          <defs>
+            <marker
+              id="arrow"
+              viewBox="0 0 10 10"
+              refX="9"
+              refY="5"
+              markerWidth="8"
+              markerHeight="8"
+              orient="auto-start-reverse"
+            >
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--strong-line)"></path>
+            </marker>
+          </defs>
+
+          <rect class="lane" x="20" y="46" width="250" height="392" rx="8"></rect>
+          <rect class="lane" x="305" y="46" width="300" height="392" rx="8"></rect>
+          <rect class="lane" x="640" y="46" width="210" height="392" rx="8"></rect>
+          <rect class="lane" x="885" y="46" width="215" height="392" rx="8"></rect>
+
+          <text class="label" x="38" y="76">Renderer sandbox</text>
+          <text class="label" x="323" y="76">Electron main process</text>
+          <text class="label" x="658" y="76">Rust runtime</text>
+          <text class="label" x="903" y="76">Host filesystem</text>
+
+          <g class="node blue">
+            <rect x="52" y="118" width="186" height="72" rx="8"></rect>
+            <text x="72" y="150">React UI</text>
+            <text class="sub" x="72" y="170">Areas, repos, actions</text>
+          </g>
+          <g class="node blue">
+            <rect x="52" y="250" width="186" height="72" rx="8"></rect>
+            <text x="72" y="282">Preload bridge</text>
+            <text class="sub" x="72" y="302">window.control.areas</text>
+          </g>
+
+          <g class="node green">
+            <rect x="336" y="104" width="238" height="70" rx="8"></rect>
+            <text x="356" y="135">AreaManager</text>
+            <text class="sub" x="356" y="155">Area workflows and read models</text>
+          </g>
+          <g class="node green">
+            <rect x="336" y="205" width="238" height="78" rx="8"></rect>
+            <text x="356" y="236">GatewayManager</text>
+            <text class="sub" x="356" y="256">spawn, SSH, tunnels, manifest</text>
+          </g>
+          <g class="node green">
+            <rect x="336" y="314" width="238" height="78" rx="8"></rect>
+            <text x="356" y="345">GatewayClient</text>
+            <text class="sub" x="356" y="365">GraphQL adapter and auth header</text>
+          </g>
+
+          <g class="node violet">
+            <rect x="666" y="116" width="158" height="74" rx="8"></rect>
+            <text x="686" y="147">Public HTTP</text>
+            <text class="sub" x="686" y="167">/graphql, /events</text>
+          </g>
+          <g class="node violet">
+            <rect x="666" y="250" width="158" height="74" rx="8"></rect>
+            <text x="686" y="281">Admin HTTP</text>
+            <text class="sub" x="686" y="301">/stop</text>
+          </g>
+
+          <g class="node amber">
+            <rect x="918" y="104" width="150" height="74" rx="8"></rect>
+            <text x="938" y="135">Local root</text>
+            <text class="sub" x="938" y="155">Git and JJ repos</text>
+          </g>
+          <g class="node amber">
+            <rect x="918" y="222" width="150" height="74" rx="8"></rect>
+            <text x="938" y="253">SSH box</text>
+            <text class="sub" x="938" y="273">remote runtime</text>
+          </g>
+          <g class="node red">
+            <rect x="918" y="340" width="150" height="60" rx="8"></rect>
+            <text x="938" y="372">git / jj</text>
+            <text class="sub" x="938" y="390">child commands</text>
+          </g>
+
+          <path class="arrow" marker-end="url(#arrow)" d="M 145 190 L 145 250"></path>
+          <path class="arrow" marker-end="url(#arrow)" d="M 238 286 C 272 286 288 139 336 139"></path>
+          <path class="arrow" marker-end="url(#arrow)" d="M 455 174 L 455 205"></path>
+          <path class="arrow" marker-end="url(#arrow)" d="M 455 283 L 455 314"></path>
+          <path class="arrow" marker-end="url(#arrow)" d="M 574 353 C 620 353 620 153 666 153"></path>
+          <path class="arrow dash" marker-end="url(#arrow)" d="M 574 244 C 615 244 625 287 666 287"></path>
+          <path class="arrow" marker-end="url(#arrow)" d="M 824 153 C 870 153 872 141 918 141"></path>
+          <path class="arrow" marker-end="url(#arrow)" d="M 824 153 C 870 153 872 259 918 259"></path>
+          <path class="arrow" marker-end="url(#arrow)" d="M 993 296 L 993 340"></path>
+
+          <text class="tiny" x="246" y="240">typed IPC only</text>
+          <text class="tiny" x="592" y="332">Bearer API token</text>
+          <text class="tiny" x="593" y="261">admin token</text>
+          <text class="tiny" x="865" y="203">local or tunneled loopback</text>
+        </svg>
+
+        <div class="legend" aria-label="Process map legend">
+          <span style="color: var(--blue)"><i class="swatch"></i> Renderer</span>
+          <span style="color: var(--green)"><i class="swatch"></i> Main process</span>
+          <span style="color: var(--violet)"><i class="swatch"></i> Gateway runtime</span>
+          <span style="color: var(--amber)"><i class="swatch"></i> Host root</span>
+          <span style="color: var(--red)"><i class="swatch"></i> Native commands</span>
+        </div>
+      </section>
+
+      <div class="grid">
+        <section class="panel" aria-labelledby="runtime-title">
+          <div class="panel-header">
+            <div>
+              <h2 id="runtime-title">Rust Runtime Modules</h2>
+              <p>The public interface is GraphQL today, backed by repository and operation modules.</p>
+            </div>
+          </div>
+
+          <svg viewBox="0 0 540 460" role="img" aria-labelledby="runtime-desc">
+            <title id="runtime-desc">Rust gateway module graph</title>
+            <defs>
+              <marker
+                id="arrow-small"
+                viewBox="0 0 10 10"
+                refX="9"
+                refY="5"
+                markerWidth="7"
+                markerHeight="7"
+                orient="auto-start-reverse"
+              >
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--strong-line)"></path>
+              </marker>
+            </defs>
+
+            <g class="node cyan">
+              <rect x="170" y="20" width="200" height="62" rx="8"></rect>
+              <text x="194" y="53">cli.rs</text>
+              <text class="sub" x="194" y="71">root, ports, tokens</text>
+            </g>
+            <g class="node violet">
+              <rect x="170" y="120" width="200" height="70" rx="8"></rect>
+              <text x="194" y="151">server.rs</text>
+              <text class="sub" x="194" y="171">Axum routers and auth</text>
+            </g>
+            <g class="node green">
+              <rect x="42" y="236" width="190" height="72" rx="8"></rect>
+              <text x="64" y="268">api.rs</text>
+              <text class="sub" x="64" y="288">GraphQL schema</text>
+            </g>
+            <g class="node amber">
+              <rect x="305" y="236" width="190" height="72" rx="8"></rect>
+              <text x="327" y="268">events.rs</text>
+              <text class="sub" x="327" y="288">SSE broadcast bus</text>
+            </g>
+            <g class="node green">
+              <rect x="42" y="354" width="190" height="72" rx="8"></rect>
+              <text x="64" y="386">repository.rs</text>
+              <text class="sub" x="64" y="406">discover, contents, files</text>
+            </g>
+            <g class="node red">
+              <rect x="305" y="354" width="190" height="72" rx="8"></rect>
+              <text x="327" y="386">operations.rs</text>
+              <text class="sub" x="327" y="406">preview and run git/jj</text>
+            </g>
+
+            <path class="arrow" marker-end="url(#arrow-small)" d="M 270 82 L 270 120"></path>
+            <path class="arrow" marker-end="url(#arrow-small)" d="M 220 190 L 156 236"></path>
+            <path class="arrow" marker-end="url(#arrow-small)" d="M 320 190 L 382 236"></path>
+            <path class="arrow" marker-end="url(#arrow-small)" d="M 137 308 L 137 354"></path>
+            <path class="arrow" marker-end="url(#arrow-small)" d="M 202 308 C 238 332 270 332 305 354"></path>
+            <path class="arrow dash" marker-end="url(#arrow-small)" d="M 400 354 L 400 308"></path>
+          </svg>
+        </section>
+
+        <section class="panel" aria-labelledby="storage-title">
+          <div class="panel-header">
+            <div>
+              <h2 id="storage-title">State And Secrets</h2>
+              <p>SQLite stores reconstructable metadata. Keychain stores gateway tokens.</p>
+            </div>
+          </div>
+
+          <svg viewBox="0 0 540 460" role="img" aria-labelledby="storage-desc">
+            <title id="storage-desc">Gateway state and secret storage graph</title>
+            <defs>
+              <marker
+                id="arrow-store"
+                viewBox="0 0 10 10"
+                refX="9"
+                refY="5"
+                markerWidth="7"
+                markerHeight="7"
+                orient="auto-start-reverse"
+              >
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--strong-line)"></path>
+              </marker>
+            </defs>
+
+            <g class="node green">
+              <rect x="172" y="26" width="196" height="70" rx="8"></rect>
+              <text x="194" y="58">GatewayManager</text>
+              <text class="sub" x="194" y="78">main-process owner</text>
+            </g>
+            <g class="node blue">
+              <rect x="34" y="150" width="190" height="80" rx="8"></rect>
+              <text x="56" y="182">SQLite</text>
+              <text class="sub" x="56" y="202">area_gateways</text>
+              <text class="tiny" x="56" y="218">URLs, status, pid, version</text>
+            </g>
+            <g class="node red">
+              <rect x="316" y="150" width="190" height="80" rx="8"></rect>
+              <text x="338" y="182">Keychain</text>
+              <text class="sub" x="338" y="202">Gateway credentials</text>
+              <text class="tiny" x="338" y="218">API and admin tokens</text>
+            </g>
+            <g class="node amber">
+              <rect x="34" y="292" width="190" height="82" rx="8"></rect>
+              <text x="56" y="324">userData</text>
+              <text class="sub" x="56" y="344">manifest and temp token files</text>
+              <text class="tiny" x="56" y="360">token files are removed</text>
+            </g>
+            <g class="node violet">
+              <rect x="316" y="292" width="190" height="82" rx="8"></rect>
+              <text x="338" y="324">Renderer summary</text>
+              <text class="sub" x="338" y="344">AreaGatewaySummary</text>
+              <text class="tiny" x="338" y="360">no raw tokens</text>
+            </g>
+
+            <path class="arrow" marker-end="url(#arrow-store)" d="M 224 96 L 150 150"></path>
+            <path class="arrow" marker-end="url(#arrow-store)" d="M 316 96 L 390 150"></path>
+            <path class="arrow" marker-end="url(#arrow-store)" d="M 224 230 C 244 258 192 264 150 292"></path>
+            <path class="arrow" marker-end="url(#arrow-store)" d="M 224 190 L 316 190"></path>
+            <path class="arrow dash" marker-end="url(#arrow-store)" d="M 224 332 L 316 332"></path>
+            <text class="tiny" x="240" y="181">lookup by area id</text>
+            <text class="tiny" x="240" y="324">safe subset only</text>
+          </svg>
+        </section>
+      </div>
+
+      <section class="panel full" aria-labelledby="startup-title">
+        <div class="panel-header">
+          <div>
+            <h2 id="startup-title">Startup Graph</h2>
+            <p>
+              Local and SSH gateway startup share the same contract: credentials, runtime start, manifest,
+              verify, persist.
+            </p>
+          </div>
+        </div>
+
+        <svg viewBox="0 0 1120 360" role="img" aria-labelledby="startup-desc">
+          <title id="startup-desc">Gateway startup flow for local and SSH Areas</title>
+          <defs>
+            <marker
+              id="arrow-start"
+              viewBox="0 0 10 10"
+              refX="9"
+              refY="5"
+              markerWidth="7"
+              markerHeight="7"
+              orient="auto-start-reverse"
+            >
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--strong-line)"></path>
+            </marker>
+          </defs>
+
+          <rect class="slot blue" x="34" y="42" width="154" height="70" rx="8"></rect>
+          <text class="label" x="58" y="74">ensureAreaGateway</text>
+          <text class="sub" x="58" y="94">dedupe per Area</text>
+
+          <rect class="slot red" x="234" y="42" width="154" height="70" rx="8"></rect>
+          <text class="label" x="258" y="74">credentials</text>
+          <text class="sub" x="258" y="94">keychain tokens</text>
+
+          <rect class="slot green" x="434" y="42" width="154" height="70" rx="8"></rect>
+          <text class="label" x="458" y="74">token handoff</text>
+          <text class="sub" x="458" y="94">0600 token files</text>
+
+          <rect class="slot amber" x="634" y="42" width="154" height="70" rx="8"></rect>
+          <text class="label" x="658" y="74">start runtime</text>
+          <text class="sub" x="658" y="94">spawn or SSH</text>
+
+          <rect class="slot violet" x="834" y="42" width="154" height="70" rx="8"></rect>
+          <text class="label" x="858" y="74">manifest</text>
+          <text class="sub" x="858" y="94">URLs, pid, tokenRequired</text>
+
+          <rect class="slot cyan" x="834" y="202" width="154" height="70" rx="8"></rect>
+          <text class="label" x="858" y="234">verify API</text>
+          <text class="sub" x="858" y="254">authenticated GraphQL</text>
+
+          <rect class="slot blue" x="634" y="202" width="154" height="70" rx="8"></rect>
+          <text class="label" x="658" y="234">persist ready</text>
+          <text class="sub" x="658" y="254">gateway record</text>
+
+          <rect class="slot red" x="434" y="202" width="154" height="70" rx="8"></rect>
+          <text class="label" x="458" y="234">cleanup</text>
+          <text class="sub" x="458" y="254">temp files or failed process</text>
+
+          <path class="arrow" marker-end="url(#arrow-start)" d="M 188 77 L 234 77"></path>
+          <path class="arrow" marker-end="url(#arrow-start)" d="M 388 77 L 434 77"></path>
+          <path class="arrow" marker-end="url(#arrow-start)" d="M 588 77 L 634 77"></path>
+          <path class="arrow" marker-end="url(#arrow-start)" d="M 788 77 L 834 77"></path>
+          <path class="arrow" marker-end="url(#arrow-start)" d="M 911 112 L 911 202"></path>
+          <path class="arrow" marker-end="url(#arrow-start)" d="M 834 237 L 788 237"></path>
+          <path class="arrow" marker-end="url(#arrow-start)" d="M 634 237 L 588 237"></path>
+
+          <path
+            class="arrow dash"
+            marker-end="url(#arrow-start)"
+            d="M 711 112 C 711 156 546 156 511 202"
+          ></path>
+          <path
+            class="arrow dash"
+            marker-end="url(#arrow-start)"
+            d="M 911 272 C 890 320 540 320 511 272"
+          ></path>
+
+          <text class="small" x="64" y="154">
+            Local path: resolve packaged or dev binary, spawn with loopback ports.
+          </text>
+          <text class="small" x="64" y="178">
+            SSH path: copy binary when available, write remote token files, start remote runtime, open local
+            tunnels.
+          </text>
+          <text class="small" x="64" y="318">
+            Failure path keeps old read models where possible, records typed gateway failure, and cleans
+            provisional processes.
+          </text>
+        </svg>
+      </section>
+
+      <section class="panel full" aria-labelledby="future-title">
+        <div class="panel-header">
+          <div>
+            <h2 id="future-title">Gateway To Relay Expansion</h2>
+            <p>
+              The current runtime is repository-first. The next architecture should expose host capability
+              modules without adding a generic shell bridge.
+            </p>
+          </div>
+        </div>
+
+        <svg viewBox="0 0 1120 390" role="img" aria-labelledby="future-desc">
+          <title id="future-desc">Potential future capability modules for Control Relay</title>
+          <defs>
+            <marker
+              id="arrow-future"
+              viewBox="0 0 10 10"
+              refX="9"
+              refY="5"
+              markerWidth="7"
+              markerHeight="7"
+              orient="auto-start-reverse"
+            >
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--strong-line)"></path>
+            </marker>
+          </defs>
+
+          <rect class="slot violet" x="405" y="36" width="310" height="78" rx="8"></rect>
+          <text class="label" x="438" y="70">Control Relay protocol</text>
+          <text class="sub" x="438" y="92">typed capabilities, auth, events, lifecycle</text>
+
+          <rect class="slot green" x="70" y="178" width="180" height="92" rx="8"></rect>
+          <text class="label" x="94" y="212">Repository</text>
+          <text class="sub" x="94" y="234">Git, JJ, status, refs</text>
+          <text class="tiny" x="94" y="252">current gateway core</text>
+
+          <rect class="slot cyan" x="286" y="178" width="180" height="92" rx="8"></rect>
+          <text class="label" x="310" y="212">Filesystem</text>
+          <text class="sub" x="310" y="234">tree, content, search</text>
+          <text class="tiny" x="310" y="252">root-scoped reads</text>
+
+          <rect class="slot amber" x="502" y="178" width="180" height="92" rx="8"></rect>
+          <text class="label" x="526" y="212">Tasks</text>
+          <text class="sub" x="526" y="234">preview, run, cancel</text>
+          <text class="tiny" x="526" y="252">not arbitrary shell</text>
+
+          <rect class="slot blue" x="718" y="178" width="180" height="92" rx="8"></rect>
+          <text class="label" x="742" y="212">Events</text>
+          <text class="sub" x="742" y="234">SSE streams</text>
+          <text class="tiny" x="742" y="252">invalidation and progress</text>
+
+          <rect class="slot red" x="934" y="178" width="136" height="92" rx="8"></rect>
+          <text class="label" x="958" y="212">Health</text>
+          <text class="sub" x="958" y="234">version, checks</text>
+          <text class="tiny" x="958" y="252">capability report</text>
+
+          <path class="arrow" marker-end="url(#arrow-future)" d="M 490 114 L 190 178"></path>
+          <path class="arrow" marker-end="url(#arrow-future)" d="M 530 114 L 396 178"></path>
+          <path class="arrow" marker-end="url(#arrow-future)" d="M 560 114 L 592 178"></path>
+          <path class="arrow" marker-end="url(#arrow-future)" d="M 600 114 L 782 178"></path>
+          <path class="arrow" marker-end="url(#arrow-future)" d="M 636 114 L 988 178"></path>
+
+          <rect class="lane" x="70" y="316" width="1000" height="44" rx="8"></rect>
+          <text class="label" x="94" y="344">
+            Main-process invariant: renderer never gets gateway credentials, raw SSH commands, raw manifests,
+            or a generic command channel.
+          </text>
+        </svg>
+
+        <div class="notes">
+          <article class="note">
+            <h3>Current fit</h3>
+            <p>GraphQL works well for repository reads and simple mutations.</p>
+          </article>
+          <article class="note">
+            <h3>Next pressure</h3>
+            <p>
+              Long-running host work needs task identity, cancellation, progress, and typed failure results.
+            </p>
+          </article>
+          <article class="note">
+            <h3>Design guardrail</h3>
+            <p>Broaden capabilities through typed modules, not through a catch-all shell route.</p>
+          </article>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

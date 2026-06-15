@@ -568,8 +568,8 @@ export async function resolveGatewayBinaryArtifact(
   const candidates = [
     resolve(context.cwd, "target", "debug", binaryName(context.platform)),
     resolve(context.cwd, "target", "release", binaryName(context.platform)),
-    resolve(context.cwd, "crates", "control-gateway", "target", "debug", binaryName(context.platform)),
-    resolve(context.cwd, "crates", "control-gateway", "target", "release", binaryName(context.platform))
+    resolve(context.cwd, "crates", "C-Gateway", "target", "debug", binaryName(context.platform)),
+    resolve(context.cwd, "crates", "C-Gateway", "target", "release", binaryName(context.platform))
   ];
 
   for (const candidate of candidates) {

@@ -14,7 +14,7 @@ This pass narrows the implementation plan around the code that exists today:
   polling, status probing, and stop requests.
 - `src/main/areas/gatewayClient.ts` owns the HTTP GraphQL client used by
   `AreaManager`.
-- `crates/control-gateway` is the Rust runtime. Its CLI accepts `--root`,
+- `crates/C-Gateway` is the Rust runtime. Its CLI accepts `--root`,
   `--host`, `--port`, `--admin-port`, `--token`, and `--manifest` today, but
   `--token` must be replaced before the credential-storage work is complete so
   gateway secrets do not appear in process listings.
@@ -111,10 +111,10 @@ Responsibilities:
 
 Files:
 
-- `crates/control-gateway/src/cli.rs`
-- `crates/control-gateway/src/server.rs`
-- `crates/control-gateway/src/api.rs`
-- `crates/control-gateway/src/operations.rs`
+- `crates/C-Gateway/src/cli.rs`
+- `crates/C-Gateway/src/server.rs`
+- `crates/C-Gateway/src/api.rs`
+- `crates/C-Gateway/src/operations.rs`
 
 Responsibilities:
 
@@ -134,7 +134,7 @@ Responsibilities:
   a deprecated development compatibility path until all TypeScript start paths
   have moved off command-line token values.
 
-Current gap: `/stop` is unauthenticated in `crates/control-gateway/src/server.rs`
+Current gap: `/stop` is unauthenticated in `crates/C-Gateway/src/server.rs`
 even though `GatewayManager.stopGateway` sends `adminToken` when present. The
 implementation must either add admin-token enforcement to the runtime or stop
 storing/sending `adminToken`. Prefer enforcing the admin token because local SSH
@@ -396,8 +396,8 @@ Current resolution in `GatewayManager.resolveGatewayBinary` is development-only:
 1. `CONTROL_GATEWAY_BINARY`
 2. `target/debug/control-gateway`
 3. `target/release/control-gateway`
-4. `crates/control-gateway/target/debug/control-gateway`
-5. `crates/control-gateway/target/release/control-gateway`
+4. `crates/C-Gateway/target/debug/control-gateway`
+5. `crates/C-Gateway/target/release/control-gateway`
 
 The implementation should replace this with a resolver that preserves
 `CONTROL_GATEWAY_BINARY` for development and tests, then supports packaged app
@@ -663,9 +663,9 @@ the SQLite database adapter and the async credential module. It runs after
 
 ### 7. Authenticate Admin Stop In Rust
 
-- Extend `crates/control-gateway/src/cli.rs` with
+- Extend `crates/C-Gateway/src/cli.rs` with
   `--token-file`/`--admin-token-file` or equivalent non-argv secret inputs.
-- Update `crates/control-gateway/src/server.rs` so `/stop` requires the admin
+- Update `crates/C-Gateway/src/server.rs` so `/stop` requires the admin
   credential when configured.
 - Keep `/graphql` and `/events` authorized by the API credential.
 - Update manifest output to report only whether auth is required, never the
@@ -686,7 +686,7 @@ the SQLite database adapter and the async credential module. It runs after
 
 ### 9. Package Runtime Artifact
 
-- Add a build step that compiles `crates/control-gateway` for the host platform.
+- Add a build step that compiles `crates/C-Gateway` for the host platform.
 - Add electron-builder files/resource config so packaged apps include the
   runtime.
 - Add SHA-256 manifest generation and verification.
@@ -789,7 +789,7 @@ Targeted tests to add or update:
 - `src/main/areas/registerAreaIpc.test.ts`
 - `src/main/storage.test.ts`
 - `src/preload/index.test.ts`
-- Rust tests in `crates/control-gateway/src/server.rs`
+- Rust tests in `crates/C-Gateway/src/server.rs`
 
 Do not add Playwright E2E coverage for this pass unless a later task explicitly
 asks for end-to-end gateway workflow coverage.

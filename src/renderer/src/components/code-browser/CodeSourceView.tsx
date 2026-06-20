@@ -2,7 +2,7 @@ import { FileText } from "lucide-react";
 import { useEffect, useMemo, useState, type CSSProperties, type JSX, type ReactNode } from "react";
 
 import { languageForCodePath, type CodeLanguage } from "./codeLanguage";
-import { highlightSource, type CodeViewerColorScheme, type HighlightedSourceLine } from "./codeHighlighter";
+import { highlightSource, type HighlightedSourceLine } from "./codeHighlighter";
 import { highlightDecision, shouldRenderSourceLines } from "./codeViewerPolicy";
 
 interface CodeSourceViewProps {
@@ -20,10 +20,9 @@ export function CodeSourceView({
   language: explicitLanguage
 }: CodeSourceViewProps): JSX.Element {
   const language = explicitLanguage ?? languageForCodePath(path);
-  const colorScheme = useCodeViewerColorScheme();
   const decision = useMemo(() => highlightDecision({ path, content, language }), [content, language, path]);
   const decisionMessage = decision.kind === "eligible" ? null : decision.message;
-  const highlightKey = `${path}:${language ?? "plain"}:${colorScheme}:${content}`;
+  const highlightKey = `${path}:${language ?? "plain"}:${content}`;
   const [highlightResult, setHighlightResult] = useState<{
     key: string;
     lines: HighlightedSourceLine[] | null;
@@ -47,7 +46,7 @@ export function CodeSourceView({
       };
     }
 
-    highlightSource({ colorScheme, content, language })
+    highlightSource({ content, language })
       .then((lines) => {
         if (!active) {
           return;
@@ -68,7 +67,7 @@ export function CodeSourceView({
     return () => {
       active = false;
     };
-  }, [colorScheme, content, decision.kind, highlightKey, language]);
+  }, [content, decision.kind, highlightKey, language]);
 
   if (!shouldRenderSourceLines(content)) {
     return (
@@ -127,41 +126,6 @@ export function CodeSourceView({
       </pre>
     </div>
   );
-}
-
-function useCodeViewerColorScheme(): CodeViewerColorScheme {
-  const [colorScheme, setColorScheme] = useState<CodeViewerColorScheme>(() => readCodeViewerColorScheme());
-
-  useEffect(() => {
-    if (typeof document === "undefined" || typeof MutationObserver === "undefined") {
-      return undefined;
-    }
-
-    const appShell = document.querySelector<HTMLElement>(".app-shell");
-    if (!appShell) {
-      return undefined;
-    }
-
-    const syncColorScheme = () => {
-      setColorScheme(readCodeViewerColorScheme());
-    };
-    const observer = new MutationObserver(syncColorScheme);
-    observer.observe(appShell, { attributes: true, attributeFilter: ["data-color-scheme"] });
-    syncColorScheme();
-
-    return () => observer.disconnect();
-  }, []);
-
-  return colorScheme;
-}
-
-function readCodeViewerColorScheme(): CodeViewerColorScheme {
-  if (typeof document === "undefined") {
-    return "light";
-  }
-
-  const appShell = document.querySelector<HTMLElement>(".app-shell");
-  return appShell?.dataset.colorScheme === "dark" ? "dark" : "light";
 }
 
 function splitSourceLines(content: string): Array<{

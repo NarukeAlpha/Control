@@ -44,10 +44,6 @@ function createStore(): LocalStore {
               light: {
                 ...settings.theme.custom.light,
                 ...settingsPatch.theme.custom.light
-              },
-              dark: {
-                ...settings.theme.custom.dark,
-                ...settingsPatch.theme.custom.dark
               }
             }
           : settings.theme.custom
@@ -181,14 +177,14 @@ describe("registerControlIpc", () => {
     });
 
     const result = await handlers.get(ipcChannels.updateSettings)?.(null, {
-      theme: { mode: "dark" }
+      theme: { accent: "purple" }
     });
 
     expect(result).toMatchObject({
       theme: {
-        mode: "dark",
+        mode: "light",
         preset: "control-light",
-        accent: "blue"
+        accent: "purple"
       }
     });
     expect(onSettingsUpdated).toHaveBeenCalledWith(result);

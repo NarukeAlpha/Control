@@ -393,10 +393,6 @@ function mergeMockSettings(
                 light: {
                   ...currentSettings.theme.custom.light,
                   ...settingsPatch.theme.custom.light
-                },
-                dark: {
-                  ...currentSettings.theme.custom.dark,
-                  ...settingsPatch.theme.custom.dark
                 }
               }
             : currentSettings.theme.custom

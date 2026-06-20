@@ -1,4 +1,6 @@
-import type { JSX, ReactNode } from "react";
+import type { JSX, ReactNode, SyntheticEvent } from "react";
+
+import { RepositoryHero, StateChip, type StateTone } from "../ui";
 
 export type RepositoryDataSource = "github" | "local" | "local-connected-github";
 
@@ -10,11 +12,28 @@ export interface RepositoryChromeChip {
 export interface RepositoryChromeModel {
   source: RepositoryDataSource;
   iconLabel: string;
-  title: string;
+  avatarUrl?: string | null;
+  title: ReactNode;
   subtitle?: string | null;
   description?: string | null;
   path?: string | null;
   statusChips: RepositoryChromeChip[];
+}
+
+function repositoryChromeChipTone(tone: RepositoryChromeChip["tone"]): StateTone {
+  if (tone === "success") {
+    return "success";
+  }
+
+  if (tone === "attention") {
+    return "warning";
+  }
+
+  return "neutral";
+}
+
+function removeBrokenRepositoryChromeAvatar(event: SyntheticEvent<HTMLImageElement>): void {
+  event.currentTarget.remove();
 }
 
 export function RepositoryChrome({
@@ -26,28 +45,37 @@ export function RepositoryChrome({
   actions?: ReactNode;
   children?: ReactNode;
 }): JSX.Element {
+  const chips =
+    model.statusChips.length > 0 ? (
+      <>
+        {model.statusChips.map((chip) => (
+          <StateChip key={chip.label} tone={repositoryChromeChipTone(chip.tone)}>
+            {chip.label}
+          </StateChip>
+        ))}
+      </>
+    ) : null;
+  const actionGroup = actions ? <div className="repo-action-row">{actions}</div> : null;
+
   return (
-    <header className={`repo-hero repository-chrome repository-chrome-${model.source}`}>
-      <div className="repo-icon">
-        <span>{model.iconLabel}</span>
-      </div>
-      <div className="repo-title-block">
-        <div className="repo-title-line">
-          <h1>{model.title}</h1>
-          <span className="row-chip-stack repository-chrome-chips">
-            {model.statusChips.map((chip) => (
-              <span className={`state-chip ${chip.tone ?? ""}`} key={chip.label}>
-                {chip.label}
-              </span>
-            ))}
-          </span>
+    <RepositoryHero
+      className={`repo-hero repository-chrome repository-chrome-${model.source}`}
+      leading={
+        <div className="repo-icon">
+          <span>{model.iconLabel}</span>
+          {model.avatarUrl && (
+            <img src={model.avatarUrl} alt="" onError={removeBrokenRepositoryChromeAvatar} />
+          )}
         </div>
-        {model.subtitle && <p>{model.subtitle}</p>}
-        {model.path && <p className="muted-row">{model.path}</p>}
-        {model.description && <p>{model.description}</p>}
-        {children}
-      </div>
-      {actions && <div className="repo-action-row">{actions}</div>}
-    </header>
+      }
+      title={model.title}
+      subtitle={model.subtitle}
+      chips={chips}
+      actions={actionGroup}
+    >
+      {model.path && <p className="muted-row">{model.path}</p>}
+      {model.description && <p>{model.description}</p>}
+      {children}
+    </RepositoryHero>
   );
 }

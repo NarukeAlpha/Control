@@ -1,5 +1,5 @@
-import { ChevronDown, Eye, GitFork, Lock, Pin, RefreshCw, Star } from "lucide-react";
-import type { JSX, ReactNode, SyntheticEvent } from "react";
+import { ChevronDown, Eye, GitFork, Lock, MoreHorizontal, Pin, RefreshCw, Star } from "lucide-react";
+import { useState, type JSX, type ReactNode } from "react";
 
 import type {
   ContributorSummary,
@@ -48,6 +48,7 @@ import { ReleasesTab } from "./releases/ReleasesTab";
 import { SecurityQualityTab } from "./security/SecurityQualityTab";
 import { RepositorySettingsTab } from "./settings/RepositorySettingsTab";
 import { WikiTab } from "./wiki/WikiTab";
+import { RepositoryChrome, type RepositoryChromeModel } from "./RepositoryChrome";
 import type { RepositoryTabDescriptor } from "./repositoryTabs";
 import { isRepositoryTabPreferenceKey, type RepositoryTabVisibilityResult } from "./repositoryTabVisibility";
 import { getRepositoryCounts, githubActionLabel, repositoryIsArchived } from "./repositoryUi";
@@ -576,6 +577,36 @@ function repositoryTabButtonClassName(active: boolean, routeOnly: boolean | unde
   return classNames.join(" ");
 }
 
+const pinnedRepositoryTabKeys = new Set<RepositoryTab>([
+  "code",
+  "issues",
+  "pulls",
+  "actions",
+  "releases",
+  "settings"
+]);
+
+function splitRepositoryNavigationTabs(
+  navigationTabs: RepositoryTabDescriptor[],
+  activeTab: RepositoryTab
+): {
+  visibleTabs: RepositoryTabDescriptor[];
+  overflowTabs: RepositoryTabDescriptor[];
+} {
+  const visibleTabs: RepositoryTabDescriptor[] = [];
+  const overflowTabs: RepositoryTabDescriptor[] = [];
+
+  for (const tab of navigationTabs) {
+    if (pinnedRepositoryTabKeys.has(tab.key) || tab.key === activeTab) {
+      visibleTabs.push(tab);
+    } else {
+      overflowTabs.push(tab);
+    }
+  }
+
+  return { visibleTabs, overflowTabs };
+}
+
 function repositorySettingsTabKey(repository: RepositoryDetail): string {
   return `settings-${repository.id}-${repository.description ?? ""}-${repository.homepageUrl ?? ""}-${JSON.stringify(
     repository.administration.features
@@ -588,10 +619,6 @@ function hasDistinctForkSource(metadata: RepositoryForkMetadata): boolean {
   return Boolean(
     metadata.parentLabel && metadata.sourceLabel && metadata.sourceLabel !== metadata.parentLabel
   );
-}
-
-function removeBrokenRepositoryAvatar(event: SyntheticEvent<HTMLImageElement>): void {
-  event.currentTarget.remove();
 }
 
 export function RepositoryPage(props: RepositoryPageProps): JSX.Element {
@@ -740,53 +767,51 @@ function RepositoryHero({
   onMutate(action: GitHubAction, dangerous: boolean, payload?: GitHubMutationFields): void;
   onOpenRepository(nameWithOwner: string, tab?: RepositoryTab): void;
 }): JSX.Element {
-  return (
-    <section className="repo-hero">
-      <RepositoryAvatar repository={repository} />
-      <div className="repo-title-block">
-        <div className="repo-title-line">
-          <h1>
-            {repository.owner} <span>/</span> {repository.name}
-          </h1>
-          <span className="visibility-pill">{repository.visibility.toLowerCase()}</span>
-        </div>
-        {repository.isFork && (
-          <RepositoryForkBanner metadata={pageModel.forkMetadata} onOpenRepository={onOpenRepository} />
-        )}
-      </div>
-      <RepositoryHeroActions
-        counts={pageModel.counts}
-        viewerState={pageModel.viewerState}
-        starAction={pageModel.starAction}
-        watchAction={pageModel.watchAction}
-        watchDisabledReason={pageModel.watchDisabledReason}
-        forkDisabledReason={pageModel.forkDisabledReason}
-        starDisabledReason={pageModel.starDisabledReason}
-        pinDisabledReason={pageModel.pinDisabledReason}
-        pinned={pinned}
-        onTogglePin={onTogglePin}
-        onMutate={onMutate}
-      />
-      <RepositoryHeroActionDisabledNote
-        notes={[
-          pageModel.pinDisabledReason,
-          pageModel.watchDisabledReason,
-          pageModel.forkDisabledReason,
-          pageModel.starDisabledReason
-        ]}
-      />
-    </section>
-  );
-}
+  const chromeModel: RepositoryChromeModel = {
+    source: "github",
+    iconLabel: repository.owner.slice(0, 1).toUpperCase(),
+    avatarUrl: repository.avatarUrl,
+    title: (
+      <>
+        {repository.owner} <span>/</span> {repository.name}
+      </>
+    ),
+    statusChips: [{ label: repository.visibility.toLowerCase() }]
+  };
 
-function RepositoryAvatar({ repository }: { repository: RepositoryDetail }): JSX.Element {
   return (
-    <div className="repo-icon">
-      <span>{repository.owner.slice(0, 1).toUpperCase()}</span>
-      {repository.avatarUrl && (
-        <img src={repository.avatarUrl} alt="" onError={removeBrokenRepositoryAvatar} />
+    <RepositoryChrome
+      model={chromeModel}
+      actions={
+        <>
+          <RepositoryHeroActions
+            counts={pageModel.counts}
+            viewerState={pageModel.viewerState}
+            starAction={pageModel.starAction}
+            watchAction={pageModel.watchAction}
+            watchDisabledReason={pageModel.watchDisabledReason}
+            forkDisabledReason={pageModel.forkDisabledReason}
+            starDisabledReason={pageModel.starDisabledReason}
+            pinDisabledReason={pageModel.pinDisabledReason}
+            pinned={pinned}
+            onTogglePin={onTogglePin}
+            onMutate={onMutate}
+          />
+          <RepositoryHeroActionDisabledNote
+            notes={[
+              pageModel.pinDisabledReason,
+              pageModel.watchDisabledReason,
+              pageModel.forkDisabledReason,
+              pageModel.starDisabledReason
+            ]}
+          />
+        </>
+      }
+    >
+      {repository.isFork && (
+        <RepositoryForkBanner metadata={pageModel.forkMetadata} onOpenRepository={onOpenRepository} />
       )}
-    </div>
+    </RepositoryChrome>
   );
 }
 
@@ -912,7 +937,7 @@ function RepositoryHeroActions({
   }
 
   return (
-    <div className="repo-action-row">
+    <>
       <button
         className={pinned ? "selected-action" : ""}
         type="button"
@@ -952,7 +977,7 @@ function RepositoryHeroActions({
         <Star size={17} /> {viewerState.isStarred ? "Starred" : "Star"}{" "}
         <span>{formatCompactNumber(counts.stars)}</span>
       </button>
-    </div>
+    </>
   );
 }
 
@@ -1025,9 +1050,21 @@ function RepositoryTabsNav({
   tabCounts: Partial<Record<RepositoryTab, number>>;
   onSelectTab(tab: RepositoryTab): void;
 }): JSX.Element {
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const { visibleTabs, overflowTabs } = splitRepositoryNavigationTabs(navigationTabs, activeTab);
+
+  function toggleMoreMenu(): void {
+    setMoreMenuOpen((open) => !open);
+  }
+
+  function selectOverflowTab(tab: RepositoryTab): void {
+    setMoreMenuOpen(false);
+    onSelectTab(tab);
+  }
+
   return (
-    <nav className="repo-tabs">
-      {navigationTabs.map((item) => (
+    <nav className="repo-tabs" aria-label="Repository sections">
+      {visibleTabs.map((item) => (
         <RepositoryTabButton
           active={activeTab === item.key}
           item={item}
@@ -1036,6 +1073,35 @@ function RepositoryTabsNav({
           onSelectTab={onSelectTab}
         />
       ))}
+      {overflowTabs.length > 0 && (
+        <div className="repo-tabs-more">
+          <button
+            className="repo-tabs-more-button"
+            type="button"
+            aria-expanded={moreMenuOpen}
+            aria-haspopup="menu"
+            aria-label="More repository tabs"
+            onClick={toggleMoreMenu}
+          >
+            <MoreHorizontal size={16} />
+            More
+            <ChevronDown size={14} />
+          </button>
+          {moreMenuOpen && (
+            <div className="repo-tabs-more-menu" role="menu" aria-label="More repository tabs">
+              {overflowTabs.map((item) => (
+                <RepositoryTabButton
+                  active={activeTab === item.key}
+                  item={item}
+                  count={tabCounts[item.key]}
+                  key={item.key}
+                  onSelectTab={selectOverflowTab}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </nav>
   );
 }

@@ -1,0 +1,1051 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Control Liquid Glass Modernization Plan</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #080d15;
+        --panel: rgba(20, 29, 44, 0.72);
+        --panel-strong: rgba(32, 43, 64, 0.82);
+        --line: rgba(226, 236, 255, 0.16);
+        --line-strong: rgba(226, 236, 255, 0.28);
+        --text: #edf4ff;
+        --muted: #a8b4c7;
+        --subtle: #6f7b8f;
+        --blue: #65a7ff;
+        --cyan: #7ee7ff;
+        --pink: #ff73b7;
+        --green: #74e89a;
+        --amber: #ffd36a;
+        --danger: #ff7070;
+        --radius: 20px;
+        --radius-sm: 12px;
+        --shadow: 0 28px 90px rgba(0, 0, 0, 0.48);
+        font-family:
+          Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "SF Pro Text",
+          Arial,
+          sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background:
+          radial-gradient(circle at 18% 4%, rgba(101, 167, 255, 0.35), transparent 30rem),
+          radial-gradient(circle at 82% 0%, rgba(255, 115, 183, 0.32), transparent 28rem),
+          radial-gradient(circle at 70% 90%, rgba(116, 232, 154, 0.16), transparent 24rem),
+          linear-gradient(145deg, #080d15 0%, #0b1220 42%, #09111d 100%);
+        color: var(--text);
+      }
+
+      body {
+        padding: 28px;
+      }
+
+      a {
+        color: #9bccff;
+      }
+
+      .page {
+        max-width: 1440px;
+        margin: 0 auto;
+      }
+
+      .hero {
+        position: relative;
+        overflow: hidden;
+        border: 1px solid var(--line-strong);
+        border-radius: 30px;
+        background:
+          linear-gradient(135deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.04)), rgba(10, 16, 26, 0.7);
+        box-shadow: var(--shadow);
+        padding: 32px;
+      }
+
+      .hero::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background:
+          linear-gradient(120deg, rgba(255, 255, 255, 0.22), transparent 22%),
+          radial-gradient(circle at 74% 16%, rgba(255, 115, 183, 0.24), transparent 18rem);
+        opacity: 0.8;
+      }
+
+      .hero > * {
+        position: relative;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        gap: 8px;
+        align-items: center;
+        height: 34px;
+        padding: 0 13px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2,
+      h3 {
+        margin: 0;
+        letter-spacing: 0;
+      }
+
+      h1 {
+        max-width: 980px;
+        margin-top: 18px;
+        font-size: clamp(40px, 6vw, 78px);
+        line-height: 0.95;
+      }
+
+      h2 {
+        font-size: 28px;
+        line-height: 1.1;
+      }
+
+      h3 {
+        font-size: 18px;
+      }
+
+      p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      .hero p {
+        max-width: 880px;
+        margin-top: 20px;
+        font-size: 18px;
+      }
+
+      .hero-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+        gap: 22px;
+        margin-top: 30px;
+      }
+
+      .hero-card,
+      .section,
+      .note,
+      .phase,
+      .image-card {
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: var(--panel);
+      }
+
+      .hero-card,
+      .note {
+        padding: 18px;
+      }
+
+      .hero-card strong,
+      .note strong {
+        color: var(--text);
+      }
+
+      .section {
+        margin-top: 26px;
+        padding: 24px;
+      }
+
+      .section-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 20px;
+        align-items: start;
+        margin-bottom: 18px;
+      }
+
+      .section-header p {
+        max-width: 720px;
+      }
+
+      .pill-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        min-height: 32px;
+        padding: 6px 12px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .pill.blue {
+        color: #dcecff;
+        border-color: rgba(101, 167, 255, 0.58);
+        background: rgba(72, 137, 255, 0.18);
+        box-shadow: 0 0 34px rgba(101, 167, 255, 0.18);
+      }
+
+      .pill.pink {
+        color: #ffe4f1;
+        border-color: rgba(255, 115, 183, 0.5);
+        background: rgba(255, 115, 183, 0.14);
+      }
+
+      .pill.green {
+        color: #dffff0;
+        border-color: rgba(116, 232, 154, 0.5);
+        background: rgba(116, 232, 154, 0.12);
+      }
+
+      .image-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px;
+      }
+
+      .image-grid.three {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .image-card {
+        overflow: hidden;
+      }
+
+      .image-card img {
+        display: block;
+        width: 100%;
+        height: auto;
+        background: #101827;
+      }
+
+      .image-card figcaption {
+        padding: 14px 16px 16px;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      .image-card figcaption strong {
+        display: block;
+        margin-bottom: 4px;
+        color: var(--text);
+        font-size: 15px;
+      }
+
+      .compare {
+        display: grid;
+        grid-template-columns: 0.85fr 1.15fr;
+        gap: 18px;
+      }
+
+      .compare-list,
+      .decision-list,
+      .acceptance-list {
+        display: grid;
+        gap: 12px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .compare-list li,
+      .decision-list li,
+      .acceptance-list li {
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        background: rgba(255, 255, 255, 0.045);
+        padding: 14px;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+
+      .compare-list strong,
+      .decision-list strong,
+      .acceptance-list strong {
+        color: var(--text);
+      }
+
+      .phase-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .phase {
+        padding: 18px;
+      }
+
+      .phase .number {
+        display: inline-grid;
+        place-items: center;
+        width: 34px;
+        height: 34px;
+        margin-bottom: 12px;
+        border: 1px solid rgba(101, 167, 255, 0.52);
+        border-radius: 999px;
+        background: rgba(101, 167, 255, 0.18);
+        color: #dcecff;
+        font-weight: 800;
+      }
+
+      .phase ul {
+        margin: 14px 0 0;
+        padding-left: 20px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+
+      .matrix {
+        width: 100%;
+        border-collapse: collapse;
+        overflow: hidden;
+        border-radius: var(--radius-sm);
+        font-size: 14px;
+      }
+
+      .matrix th,
+      .matrix td {
+        border: 1px solid var(--line);
+        padding: 12px;
+        vertical-align: top;
+        text-align: left;
+      }
+
+      .matrix th {
+        background: rgba(255, 255, 255, 0.08);
+        color: var(--text);
+      }
+
+      .matrix td {
+        color: var(--muted);
+      }
+
+      code {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.07);
+        color: #dbeafe;
+        padding: 2px 6px;
+        font-family: "SFMono-Regular", "SF Mono", Consolas, monospace;
+        font-size: 0.92em;
+      }
+
+      .swatch-row {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .swatch {
+        min-height: 82px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        justify-content: end;
+        color: white;
+        font-size: 12px;
+        font-weight: 800;
+        text-shadow: 0 1px 8px rgba(0, 0, 0, 0.45);
+      }
+
+      .source-list {
+        margin: 0;
+        padding-left: 20px;
+        color: var(--muted);
+        line-height: 1.65;
+      }
+
+      @media (max-width: 980px) {
+        body {
+          padding: 16px;
+        }
+
+        .hero-grid,
+        .compare,
+        .image-grid,
+        .image-grid.three,
+        .phase-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .section-header {
+          display: grid;
+        }
+
+        .swatch-row {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <span class="eyebrow">Control design plan - June 15, 2026</span>
+        <h1>Modernize Control around Liquid Glass without losing operational density.</h1>
+        <p>
+          The target is not a decorative skin. Control should feel closer to the newest Music-style macOS
+          glass controls: translucent search and choice surfaces, richer background depth, stronger focus
+          states, and queue-oriented workflows. Dense repository data stays flat, fast, and readable.
+        </p>
+
+        <div class="hero-grid">
+          <div class="hero-card">
+            <h3>North star</h3>
+            <p>
+              Use Liquid Glass as a control material, not a page material. Search, buttons, menus, chips, and
+              selected tab affordances can bubble; file trees, README/code content, right rails, queues, and
+              logs should sit in flatter panes with subtle dividers.
+            </p>
+          </div>
+          <div class="hero-card">
+            <h3>Decision bias</h3>
+            <p>
+              Favor native macOS material and tokenized primitives over route-local glass effects. The plan
+              preserves performance by avoiding backdrop blur on every repeated row or large content pane.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-header">
+          <div>
+            <h2>Reference Cues</h2>
+            <p>
+              The attached Music screenshot is useful because it shows the control language, not because
+              Control should become a media app.
+            </p>
+          </div>
+          <div class="pill-row">
+            <span class="pill blue">Focused search lens</span>
+            <span class="pill pink">Bubble controls only</span>
+            <span class="pill green">Flat integrated panes</span>
+          </div>
+        </div>
+
+        <div class="compare">
+          <figure class="image-card">
+            <img
+              src="assets/reference-macos-music-liquid-glass.png"
+              alt="Reference screenshot from the macOS Music app showing Liquid Glass search, tabs, sidebar, and queue controls."
+            />
+            <figcaption>
+              <strong>Reference: macOS Music Liquid Glass controls</strong>
+              Search and top choices float over content with bright rim highlights. The bottom queue/playback
+              bar is useful as a material cue, but not as a Control layout pattern. Control should keep queues
+              in the right rail or top chrome.
+            </figcaption>
+          </figure>
+
+          <ul class="compare-list">
+            <li>
+              <strong>Keep:</strong> Control's persistent sidebar, dense repository routes, right rail, and
+              stable row heights are the right structure for a developer tool.
+            </li>
+            <li>
+              <strong>Change:</strong> Current screenshots read as a dark blue slab. Music uses depth,
+              transparency, rim light, and content color to prevent one-note surfaces.
+            </li>
+            <li>
+              <strong>Translate:</strong> Music's playback queue becomes Control's review queue rail,
+              repository action group, or command queue. It should not become a glossy bottom control strip or
+              a stack of large glass cards.
+            </li>
+            <li>
+              <strong>Avoid:</strong> Full-window blur, decorative glass on repeated rows, giant cards, footer
+              bars, boxed page sections, and translucent code/markdown content that harms contrast.
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-header">
+          <div>
+            <h2>Current Control Captures</h2>
+            <p>
+              Captured from the renderer dev server in forced dark mode. These are not native Electron
+              material captures, so native focused/unfocused window behavior still needs a macOS app run.
+            </p>
+          </div>
+          <span class="pill">Renderer screenshots at 1512 x 982</span>
+        </div>
+
+        <div class="image-grid">
+          <figure class="image-card">
+            <img src="assets/current-home-dark.png" alt="Current Control home dashboard in dark mode." />
+            <figcaption>
+              <strong>Home</strong>
+              Good density and hierarchy, but the profile header, activity panel, pinned repos, and sidebar
+              all share similar blue slab treatment. Needs more material separation and less route-local
+              carding.
+            </figcaption>
+          </figure>
+          <figure class="image-card">
+            <img
+              src="assets/current-repository-code-dark.png"
+              alt="Current Control repository code route in dark mode."
+            />
+            <figcaption>
+              <strong>Repository code</strong>
+              The route has the right bones. Tabs, topbar, and action buttons can become glass controls while
+              the file list, README, and right rail remain flatter integrated panes.
+            </figcaption>
+          </figure>
+          <figure class="image-card">
+            <img
+              src="assets/current-repository-issues-dark.png"
+              alt="Current Control repository issues route in dark mode."
+            />
+            <figcaption>
+              <strong>Issues</strong>
+              Rows are readable and efficient. The filter bar, selected tabs, and issue detail/queue treatment
+              should carry the Music-style glass language.
+            </figcaption>
+          </figure>
+          <figure class="image-card">
+            <img src="assets/current-mailbox-dark.png" alt="Current Control mailbox route in dark mode." />
+            <figcaption>
+              <strong>Mailbox</strong>
+              This route is closest to a queue already. It should become the proving ground for glass
+              segmented choices, quick actions, and unified review queue behavior.
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-header">
+          <div>
+            <h2>Attempt 3: Current Recommendation</h2>
+            <p>
+              This is the preferred refinement: keep the calm repository shape from V2 B, reduce card usage
+              across the app, and reserve liquid-glass bubbles for floating controls.
+            </p>
+          </div>
+          <span class="pill blue">Current north star</span>
+        </div>
+
+        <figure class="image-card">
+          <img
+            src="assets/concept-v3-bubbles-controls-flat-panes.png"
+            alt="Control concept with flatter content panes and liquid-glass bubbles only on floating controls."
+          />
+          <figcaption>
+            <strong>V3: bubble controls, flat panes</strong>
+            The large workspace reads as one integrated app surface. Search, header actions, tabs, filters,
+            chips, dropdowns, and icon buttons keep the liquid-glass treatment; file tree, README, review
+            queue, checks, and repository metadata use flatter panes, low borders, and row dividers.
+          </figcaption>
+        </figure>
+      </section>
+
+      <section class="section">
+        <div class="section-header">
+          <div>
+            <h2>Attempt 2: Reference Direction</h2>
+            <p>
+              This pass keeps the second concept's code/review workspace, removes the bottom bar, and moves
+              workflow actions into repository chrome and the right rail. V2 B is the reference this pass
+              builds from.
+            </p>
+          </div>
+          <span class="pill">Superseded by Attempt 3</span>
+        </div>
+
+        <div class="image-grid three">
+          <figure class="image-card">
+            <img
+              src="assets/concept-v2-code-review-no-bottom-bar.png"
+              alt="Revised Control code and review workflow concept without a bottom bar."
+            />
+            <figcaption>
+              <strong>V2 A: code/review workspace</strong>
+              Closest to the desired direction. Keep the full-height workspace, top action group, focused
+              search capsule, code/README center, and right review queue. No footer bar.
+            </figcaption>
+          </figure>
+          <figure class="image-card">
+            <img
+              src="assets/concept-v2-calm-repository-no-bottom-bar.png"
+              alt="Calmer revised Control repository concept without a bottom bar."
+            />
+            <figcaption>
+              <strong>V2 B: calmer repository chrome</strong>
+              The strongest V2 direction and the one Attempt 3 builds from. Keep its mood and layout, but
+              reduce the card framing in large panes.
+            </figcaption>
+          </figure>
+          <figure class="image-card">
+            <img
+              src="assets/concept-v2-current-app-no-bottom-bar.png"
+              alt="Revised Control concept closer to the current app structure without a bottom bar."
+            />
+            <figcaption>
+              <strong>V2 C: closest to current Control</strong>
+              Best bridge from today's app. It preserves the existing app structure while upgrading search,
+              tabs, right rail, and action placement.
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-header">
+          <div>
+            <h2>First Pass Concepts</h2>
+            <p>
+              These are now reference-only. The old bottom bar idea is rejected; keep only the useful parts:
+              glass search, luminous tabs, right-rail structure, and dense flat data surfaces.
+            </p>
+          </div>
+          <span class="pill">Superseded by Attempt 2</span>
+        </div>
+
+        <div class="image-grid three">
+          <figure class="image-card">
+            <img
+              src="assets/concept-issue-review-shell.png"
+              alt="Generated concept showing a Liquid Glass issue review shell for Control."
+            />
+            <figcaption>
+              <strong>Concept A: issue review shell</strong>
+              Best for repository Issues and Mailbox. Adopt the luminous search capsule, selected tabs, right
+              detail rail, and visible Working set. Keep the actual issue list flatter than shown if
+              performance or contrast suffers.
+            </figcaption>
+          </figure>
+          <figure class="image-card">
+            <img
+              src="assets/concept-code-review-workflow.png"
+              alt="Generated concept showing a Liquid Glass code and review workflow for Control."
+            />
+            <figcaption>
+              <strong>Concept B: code and review workflow</strong>
+              Still the strongest first-pass direction for the main repository page, but the bottom workflow
+              bar is rejected. Attempt 2 keeps this split layout and moves actions into top/right chrome.
+            </figcaption>
+          </figure>
+          <figure class="image-card">
+            <img
+              src="assets/concept-command-palette.png"
+              alt="Generated concept showing a Liquid Glass command palette and search overlay for Control."
+            />
+            <figcaption>
+              <strong>Concept C: command palette</strong>
+              Best near-term win. It maps directly to the Music search field and choice chips while staying
+              isolated from route complexity.
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-header">
+          <div>
+            <h2>Design Decisions</h2>
+            <p>The modernization should be implemented as a visual system, then rolled route by route.</p>
+          </div>
+        </div>
+
+        <ul class="decision-list">
+          <li>
+            <strong>Glass placement:</strong> search capsules, icon buttons, toolbar buttons, dropdowns,
+            segmented choices, selected tabs, small chips, command palette, popovers, and compact action
+            groups.
+          </li>
+          <li>
+            <strong>Flat placement:</strong> sidebar columns, file trees, code, markdown, right rails, review
+            queues, checks, tables, logs, repeated rows, virtualized lists, and benchmark surfaces.
+          </li>
+          <li>
+            <strong>Card reduction:</strong> avoid boxed page sections and nested cards. Prefer continuous
+            panes, hairline separators, selected-row fills, and colored status rails.
+          </li>
+          <li>
+            <strong>Queue model:</strong> introduce shared review queue and repository action primitives for
+            the right rail and header chrome. Do not add one-off bottom bars in repository, mailbox, or local
+            repo flows.
+          </li>
+          <li>
+            <strong>Controls:</strong> standardize search capsules, segmented controls, icon buttons, status
+            chips, and command rows using existing shared primitives in
+            <code>src/renderer/src/components/ui</code>.
+          </li>
+          <li>
+            <strong>Color:</strong> move away from single-hue blue by mixing neutral glass, graphite, white
+            highlights, green status, amber attention, and sparse pink/blue focus glow.
+          </li>
+          <li>
+            <strong>Accessibility:</strong> expose glass strength controls through existing settings. Reduced
+            and solid modes must stay visually distinct and readable.
+          </li>
+        </ul>
+      </section>
+
+      <section class="section">
+        <div class="section-header">
+          <div>
+            <h2>Implementation Plan</h2>
+            <p>The order below minimizes visual churn and keeps the app shippable after each phase.</p>
+          </div>
+        </div>
+
+        <div class="phase-grid">
+          <article class="phase">
+            <span class="number">1</span>
+            <h3>Baseline and native material matrix</h3>
+            <ul>
+              <li>Capture native Electron screenshots for focused and unfocused states.</li>
+              <li>Repeat for light solid, dark solid, dark reduced, and dark glass shell.</li>
+              <li>Verify neutral, blue, and yellow wallpaper/backdrop behavior.</li>
+              <li>Keep <code>src/main/theme/liquidGlassOptions.ts</code> as the native option boundary.</li>
+            </ul>
+          </article>
+
+          <article class="phase">
+            <span class="number">2</span>
+            <h3>Material tokens and primitives</h3>
+            <ul>
+              <li>
+                Add semantic tokens for glass controls, flat panes, dividers, selected rim, focus glow, row,
+                and content.
+              </li>
+              <li>Extend shared primitives rather than styling each route locally.</li>
+              <li>Ensure repeated rows and large panes never get backdrop blur.</li>
+              <li>Audit dark mode first with <code>rg</code> color and radius checks from the WIP plan.</li>
+            </ul>
+          </article>
+
+          <article class="phase">
+            <span class="number">3</span>
+            <h3>Shell, sidebar, and top search</h3>
+            <ul>
+              <li>Give top search the focused glass-lens treatment from the reference.</li>
+              <li>
+                Keep sidebar as an integrated pane; use restrained selected-row fills rather than card cells.
+              </li>
+              <li>Normalize icon button sizes and titlebar hit regions.</li>
+              <li>Keep the renderer root transparent on macOS so native glass remains visible.</li>
+            </ul>
+          </article>
+
+          <article class="phase">
+            <span class="number">4</span>
+            <h3>Command palette as first flagship surface</h3>
+            <ul>
+              <li>Implement the Concept C search overlay with segmented scope choices.</li>
+              <li>
+                Use grouped command rows and a preview rail for repository, issue, PR, file, and action
+                results.
+              </li>
+              <li>Keep keyboard navigation, focus rings, and result virtualization intact.</li>
+              <li>Use this as the proving ground before touching every route.</li>
+            </ul>
+          </article>
+
+          <article class="phase">
+            <span class="number">5</span>
+            <h3>Repository chrome and working set</h3>
+            <ul>
+              <li>Modernize repository tabs, branch/ref picker, filter bars, and right rail controls.</li>
+              <li>
+                Move Sync, Review, Run checks, and Open in IDE into repository header actions and right-rail
+                queue actions.
+              </li>
+              <li>Flatten file tree, README, review queue, checks, and issue rows into integrated panes.</li>
+              <li>Apply first to Code and Issues, then Pull Requests and Actions.</li>
+            </ul>
+          </article>
+
+          <article class="phase">
+            <span class="number">6</span>
+            <h3>Mailbox and queue unification</h3>
+            <ul>
+              <li>Rework Mailbox as the account-level review queue.</li>
+              <li>
+                Share filters, segmented chips, notification row actions, and queue actions with repository
+                routes.
+              </li>
+              <li>Keep unread, in-app, muted, stale, and attention states tokenized.</li>
+              <li>Use Mailbox to validate high-volume row performance.</li>
+            </ul>
+          </article>
+
+          <article class="phase">
+            <span class="number">7</span>
+            <h3>Settings and accessibility controls</h3>
+            <ul>
+              <li>
+                Add glass strength or opacity choices under Appearance if native APIs and CSS fallback support
+                it.
+              </li>
+              <li>Keep solid, reduced, and glass shell modes predictably distinct.</li>
+              <li>Verify high contrast, reduce transparency, and reduced motion scenarios.</li>
+              <li>
+                Document platform limitations when Electron/native APIs cannot match system Music behavior.
+              </li>
+            </ul>
+          </article>
+
+          <article class="phase">
+            <span class="number">8</span>
+            <h3>Validation and review</h3>
+            <ul>
+              <li>
+                Run <code>bun run format</code>, <code>bun run lint</code>, and
+                <code>bun run typecheck</code>.
+              </li>
+              <li>Run <code>bun run test</code> for changed shared logic.</li>
+              <li>
+                Use renderer screenshots for route regression and native app screenshots for glass behavior.
+              </li>
+              <li>
+                Use <code>react-doctor . --offline</code> and <code>react-scan</code> only when render cost is
+                suspect.
+              </li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-header">
+          <div>
+            <h2>Token Starter Set</h2>
+            <p>
+              These names are intentionally semantic so they can back native and CSS fallback implementations.
+            </p>
+          </div>
+        </div>
+
+        <div class="swatch-row" aria-label="Proposed color family">
+          <div class="swatch" style="background: #080d15">app base</div>
+          <div class="swatch" style="background: #141d2c">app shell</div>
+          <div class="swatch" style="background: #263449">flat pane</div>
+          <div class="swatch" style="background: #65a7ff">focus blue</div>
+          <div class="swatch" style="background: #ff73b7">focus pink</div>
+          <div class="swatch" style="background: #74e89a">success</div>
+          <div class="swatch" style="background: #ffd36a">attention</div>
+        </div>
+
+        <table class="matrix" style="margin-top: 18px">
+          <thead>
+            <tr>
+              <th>Token</th>
+              <th>Use</th>
+              <th>Rule</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>--color-glass-control</code></td>
+              <td>Search, segmented controls, icon buttons, toolbar pills.</td>
+              <td>Low-alpha glass with visible border and hover state.</td>
+            </tr>
+            <tr>
+              <td><code>--color-pane-canvas</code></td>
+              <td>Sidebar, file tree, README, right rail, checks, and metadata areas.</td>
+              <td>Flat, low-alpha pane treatment with hairline separators instead of glass cards.</td>
+            </tr>
+            <tr>
+              <td><code>--color-content-row</code></td>
+              <td>File, issue, mailbox, notification, and PR rows.</td>
+              <td>No backdrop blur; high contrast; stable row height.</td>
+            </tr>
+            <tr>
+              <td><code>--color-selected-rim</code></td>
+              <td>Selected nav, selected tab, selected search scope.</td>
+              <td>Use outline/glow before using solid fill.</td>
+            </tr>
+            <tr>
+              <td><code>--shadow-glass-float</code></td>
+              <td>Command palette, popovers, menus, and transient overlays.</td>
+              <td>Deep enough to separate glass from dense data behind it.</td>
+            </tr>
+            <tr>
+              <td><code>--radius-liquid-control</code></td>
+              <td>Pills, search capsules, queue actions.</td>
+              <td>999px for capsules, fixed dimensions for icon buttons.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="section">
+        <div class="section-header">
+          <div>
+            <h2>Acceptance Criteria</h2>
+            <p>The redesign is done when it is more native, not just more translucent.</p>
+          </div>
+        </div>
+
+        <ul class="acceptance-list">
+          <li>
+            <strong>Visual:</strong> top search, segmented choices, command palette, and repository action
+            groups visibly share one Liquid Glass control system.
+          </li>
+          <li>
+            <strong>Material restraint:</strong> glossy bubble glass appears only on floating controls and
+            transient UI. Large app regions use flat panes, not cards.
+          </li>
+          <li>
+            <strong>Operational:</strong> repository rows, files, code, markdown, logs, and tables remain more
+            legible than the current screenshots.
+          </li>
+          <li>
+            <strong>Performance:</strong> high-volume lists do not add per-row blur, expensive filters, or
+            layout shifts.
+          </li>
+          <li>
+            <strong>Modes:</strong> solid, reduced, and glass shell modes have distinct screenshots in light
+            and dark.
+          </li>
+          <li>
+            <strong>Native:</strong> focused/unfocused macOS windows do not drift toward cyan, yellow, or
+            wallpaper casts.
+          </li>
+          <li>
+            <strong>Validation:</strong> formatter, linter, typechecker, and relevant tests pass before
+            merging code changes.
+          </li>
+        </ul>
+      </section>
+
+      <section class="section">
+        <div class="section-header">
+          <div>
+            <h2>Image Generation Metadata</h2>
+            <p>
+              The concept images were generated with the built-in Codex image generation tool. The source
+              files remain under Codex generated images and are copied here for stable project references.
+            </p>
+          </div>
+        </div>
+
+        <table class="matrix">
+          <thead>
+            <tr>
+              <th>Image</th>
+              <th>Prompt summary</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>concept-v3-bubbles-controls-flat-panes.png</code></td>
+              <td>
+                Current recommended direction based on the preferred V2 image: reduce card usage, flatten
+                large panes, and keep liquid-glass bubbles only on search, buttons, tabs, chips, dropdowns,
+                and other floating controls.
+              </td>
+            </tr>
+            <tr>
+              <td><code>concept-v2-code-review-no-bottom-bar.png</code></td>
+              <td>
+                Revised code/review workspace based on the strongest first-pass concept; removes the bottom
+                bar and places Review, Sync, Run checks, and Open in IDE in the repository header and right
+                rail.
+              </td>
+            </tr>
+            <tr>
+              <td><code>concept-v2-calm-repository-no-bottom-bar.png</code></td>
+              <td>
+                Calmer no-bottom-bar repository variant with the same structure and reduced glow, useful as
+                the practical implementation reference.
+              </td>
+            </tr>
+            <tr>
+              <td><code>concept-v2-current-app-no-bottom-bar.png</code></td>
+              <td>
+                Revised no-bottom-bar variant closest to today's Control structure, with the right rail and
+                repository header carrying workflow actions.
+              </td>
+            </tr>
+            <tr>
+              <td><code>concept-issue-review-shell.png</code></td>
+              <td>
+                Original Control issue-review shell; Music-inspired search, choices, translucent queue
+                controls; no Apple/GitHub logos; dense developer-tool layout; neutral graphite glass with
+                blue, green, amber, and pink accents.
+              </td>
+            </tr>
+            <tr>
+              <td><code>concept-code-review-workflow.png</code></td>
+              <td>
+                First-pass repository code and review workflow; useful split layout, but superseded because it
+                uses a bottom workflow bar.
+              </td>
+            </tr>
+            <tr>
+              <td><code>concept-command-palette.png</code></td>
+              <td>
+                Original global command/search palette; large glass search lens; segmented scope choices;
+                grouped results with preview pane; blurred repository screen behind it.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="section">
+        <div class="section-header">
+          <div>
+            <h2>Sources</h2>
+            <p>Used for grounding the plan and avoiding speculation about the current implementation.</p>
+          </div>
+        </div>
+
+        <ul class="source-list">
+          <li>
+            Apple Developer:
+            <a href="https://developer.apple.com/documentation/technologyoverviews/liquid-glass"
+              >Liquid Glass technology overview</a
+            >
+          </li>
+          <li>
+            Apple Developer:
+            <a href="https://developer.apple.com/design/Human-Interface-Guidelines/materials"
+              >Human Interface Guidelines - Materials</a
+            >
+          </li>
+          <li>
+            Apple Developer:
+            <a href="https://developer.apple.com/videos/play/wwdc2025/219/">Meet Liquid Glass</a>
+          </li>
+          <li><code>docs/design/design-system.md</code></li>
+          <li><code>docs/design/liquid-glass-ui-fixes.md</code></li>
+          <li><code>docs/wip/control-ux-implementation/01-theme-liquid-glass-foundation.md</code></li>
+        </ul>
+      </section>
+    </main>
+  </body>
+</html>

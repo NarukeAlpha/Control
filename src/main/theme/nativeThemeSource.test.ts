@@ -12,11 +12,11 @@ const baseSettings: ControlSettings = {
 };
 
 describe("applyNativeThemeSource", () => {
-  it.each(["system", "light", "dark"] as const)("applies %s theme mode to Electron", (mode) => {
+  it("applies the light theme mode to Electron", () => {
     const nativeTheme = { themeSource: "light" as const };
 
-    applyNativeThemeSource({ ...baseSettings, theme: { ...baseSettings.theme, mode } }, nativeTheme);
+    applyNativeThemeSource(baseSettings, nativeTheme);
 
-    expect(nativeTheme.themeSource).toBe(mode);
+    expect(nativeTheme.themeSource).toBe("light");
   });
 });

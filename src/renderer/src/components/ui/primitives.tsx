@@ -3,10 +3,14 @@ import type { ButtonHTMLAttributes, FormHTMLAttributes, HTMLAttributes, JSX, Rea
 
 export type SurfaceVariant =
   | "shell"
+  | "pane"
   | "panel"
   | "row"
+  | "content"
   | "elevated"
+  | "overlay"
   | "solid"
+  | "status"
   | "danger"
   | "warning"
   | "success";
@@ -91,6 +95,7 @@ export function FilterBar({ label, actions, children, className, ...props }: Fil
 export interface StateSegmentedControlOption<TValue extends string> {
   value: TValue;
   label: ReactNode;
+  title?: string | null;
   disabled?: boolean;
   disabledReason?: string | null;
 }
@@ -129,7 +134,7 @@ export function StateSegmentedControl<TValue extends string>({
             type="button"
             aria-pressed={option.value === value}
             disabled={disabled}
-            title={option.disabledReason ?? undefined}
+            title={option.disabledReason ?? option.title ?? undefined}
             onClick={() => onChange(option.value)}
           >
             {option.label}
@@ -389,6 +394,7 @@ export function LimitHitNotice({
 
 export interface RepositoryHeroProps extends Omit<HTMLAttributes<HTMLElement>, "title"> {
   model?: RepositoryChromeModel;
+  leading?: ReactNode;
   eyebrow?: ReactNode;
   title?: ReactNode;
   subtitle?: ReactNode;
@@ -398,11 +404,13 @@ export interface RepositoryHeroProps extends Omit<HTMLAttributes<HTMLElement>, "
 
 export function RepositoryHero({
   model,
+  leading,
   eyebrow,
   title,
   subtitle,
   chips,
   actions,
+  children,
   className,
   ...props
 }: RepositoryHeroProps): JSX.Element {
@@ -431,11 +439,17 @@ export function RepositoryHero({
 
   return (
     <header {...props} className={classNames("ui-repository-hero", className)}>
+      {leading && <div className="ui-repository-hero-leading">{leading}</div>}
       <div className="ui-repository-hero-main">
         {eyebrow && <span className="ui-repository-hero-eyebrow">{eyebrow}</span>}
-        {renderedTitle && <h1>{renderedTitle}</h1>}
+        {(renderedTitle || renderedChips) && (
+          <div className="ui-repository-hero-title-row">
+            {renderedTitle && <h1>{renderedTitle}</h1>}
+            {renderedChips && <div className="ui-repository-hero-chips">{renderedChips}</div>}
+          </div>
+        )}
         {renderedSubtitle && <p>{renderedSubtitle}</p>}
-        {renderedChips && <div className="ui-repository-hero-chips">{renderedChips}</div>}
+        {children}
       </div>
       {renderedActions && <div className="ui-repository-hero-actions">{renderedActions}</div>}
     </header>

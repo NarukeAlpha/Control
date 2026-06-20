@@ -6,9 +6,9 @@ import { App } from "./App";
 import { AuthProvider } from "./components/auth/AuthProvider";
 import "./styles.css";
 
-// On non-macOS platforms (where the native liquid-glass view is not attached),
-// fall back to a CSS-painted glass background so the UI still reads as glass.
-if (!/Mac/i.test(navigator.platform)) {
+// The native liquid-glass backing only exists inside the Electron app. Renderer-only previews,
+// even on macOS, need the CSS fallback so layout screenshots do not flatten into a dark slab.
+if (!/Electron/i.test(navigator.userAgent)) {
   document.body.classList.add("no-liquid-glass");
 }
 

@@ -1,154 +1,73 @@
-import { act, renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { DEFAULT_CONTROL_THEME_SETTINGS, type ControlThemeSettings } from "@shared/github";
-import { resolveControlTheme, resolveControlThemeStyleVars, useResolvedControlTheme } from "./themeSettings";
+import { DEFAULT_CONTROL_THEME_SETTINGS } from "@shared/github";
+import { resolveControlTheme, resolveControlThemeStyleVars } from "./themeSettings";
 
 describe("themeSettings", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-    vi.unstubAllGlobals();
-  });
-
-  it.each([
-    ["light", false, "light", "light", "control-light"],
-    ["dark", false, "dark", "dark", "control-high-contrast-dark"],
-    ["system", false, "light", "light", "control-light"],
-    ["system", true, "dark", "dark", "control-high-contrast-dark"]
-  ] as const)(
-    "resolves %s mode with systemPrefersDark=%s",
-    (mode, systemPrefersDark, resolvedMode, colorScheme, preset) => {
-      expect(
-        resolveControlTheme(
-          {
-            mode,
-            preset: "control-high-contrast-dark",
-            accent: "purple",
-            custom: DEFAULT_CONTROL_THEME_SETTINGS.custom
-          },
-          systemPrefersDark
-        )
-      ).toEqual({
-        requestedMode: mode,
-        resolvedMode,
-        colorScheme,
-        preset,
-        accent: "purple"
-      });
-    }
-  );
-
-  it("maps light presets away from dark mode", () => {
+  it("resolves the only app theme as light", () => {
     expect(
-      resolveControlTheme(
-        {
-          mode: "dark",
-          preset: "control-light",
-          accent: "blue",
-          custom: DEFAULT_CONTROL_THEME_SETTINGS.custom
-        },
-        false
-      ).preset
-    ).toBe("control-dark");
+      resolveControlTheme({
+        mode: "light",
+        preset: "control-light",
+        accent: "purple",
+        custom: DEFAULT_CONTROL_THEME_SETTINGS.custom
+      })
+    ).toEqual({
+      requestedMode: "light",
+      resolvedMode: "light",
+      colorScheme: "light",
+      preset: "control-light",
+      accent: "purple"
+    });
   });
 
   it("falls back to default theme settings when settings are missing", () => {
-    expect(resolveControlTheme(undefined, true)).toEqual({
+    expect(resolveControlTheme(undefined)).toEqual({
       requestedMode: DEFAULT_CONTROL_THEME_SETTINGS.mode,
-      resolvedMode: "dark",
-      colorScheme: "dark",
-      preset: "control-dark",
+      resolvedMode: "light",
+      colorScheme: "light",
+      preset: "control-light",
       accent: DEFAULT_CONTROL_THEME_SETTINGS.accent
-    });
-  });
-
-  it("updates system mode when the OS color-scheme preference changes", () => {
-    let listener: ((event: Pick<MediaQueryList, "matches">) => void) | null = null;
-    let matches = false;
-    vi.stubGlobal(
-      "matchMedia",
-      vi.fn(
-        () =>
-          ({
-            get matches() {
-              return matches;
-            },
-            addEventListener: (
-              _event: "change",
-              nextListener: (event: Pick<MediaQueryList, "matches">) => void
-            ) => {
-              listener = nextListener;
-            },
-            removeEventListener: vi.fn()
-          }) as unknown as MediaQueryList
-      )
-    );
-    const settings: ControlThemeSettings = {
-      mode: "system",
-      preset: "control-dark",
-      accent: "blue",
-      custom: DEFAULT_CONTROL_THEME_SETTINGS.custom
-    };
-
-    const { result } = renderHook(() => useResolvedControlTheme(settings));
-
-    expect(result.current.colorScheme).toBe("light");
-
-    act(() => {
-      matches = true;
-      listener?.({ matches });
-    });
-
-    expect(result.current).toEqual({
-      requestedMode: "system",
-      resolvedMode: "dark",
-      colorScheme: "dark",
-      preset: "control-dark",
-      accent: "blue"
     });
   });
 
   it("maps custom palette and font settings to shell CSS variables", () => {
     expect(
-      resolveControlThemeStyleVars(
-        {
-          mode: "dark",
-          preset: "control-dark",
-          accent: "purple",
-          custom: {
-            light: DEFAULT_CONTROL_THEME_SETTINGS.custom.light,
-            dark: {
-              accent: "#FF5C5C",
-              background: "#111827",
-              foreground: "#E4E4E7",
-              texture: "#263449"
-            },
-            uiFont: "satoshi",
-            codeFont: "jetbrains-mono"
-          }
-        },
-        "dark"
-      )
+      resolveControlThemeStyleVars({
+        mode: "light",
+        preset: "control-light",
+        accent: "purple",
+        custom: {
+          light: {
+            accent: "#FF5C5C",
+            background: "#F8FAFC",
+            foreground: "#172033",
+            texture: "#EAF2FC"
+          },
+          uiFont: "satoshi",
+          codeFont: "jetbrains-mono"
+        }
+      })
     ).toMatchObject({
       "--color-accent": "#FF5C5C",
-      "--color-surface-solid": "#111827",
-      "--color-surface-glass": "color-mix(in srgb, #263449 58%, transparent)",
-      "--color-surface-primary": "color-mix(in srgb, #263449 58%, transparent)",
-      "--color-surface-secondary": "color-mix(in srgb, #263449 66%, #111827)",
-      "--color-surface-hover": "color-mix(in srgb, #263449 78%, #111827)",
-      "--color-surface-row": "color-mix(in srgb, #263449 66%, #111827)",
-      "--color-surface-selected": "color-mix(in srgb, #FF5C5C 22%, #263449)",
-      "--color-text": "#E4E4E7",
-      "--color-texture": "#263449",
-      "--color-document-background": "#0d1117",
-      "--color-document-text": "#e6edf3",
-      "--color-document-link": "#58a6ff",
-      "--color-source-background": "#0d1117",
-      "--color-source-text": "#e6edf3",
-      "--color-code-background": "#0d1117",
-      "--color-code-text": "#e6edf3",
-      "--color-data-strong": "#26A641",
-      "--color-data-peak": "#39D353",
+      "--color-surface-solid": "#F8FAFC",
+      "--color-surface-glass": "color-mix(in srgb, #EAF2FC 46%, transparent)",
+      "--color-surface-primary": "color-mix(in srgb, #EAF2FC 46%, transparent)",
+      "--color-surface-secondary": "color-mix(in srgb, #EAF2FC 60%, #F8FAFC)",
+      "--color-surface-hover": "color-mix(in srgb, #EAF2FC 74%, #F8FAFC)",
+      "--color-surface-row": "color-mix(in srgb, #EAF2FC 60%, #F8FAFC)",
+      "--color-surface-selected": "color-mix(in srgb, #FF5C5C 16%, #EAF2FC)",
+      "--color-text": "#172033",
+      "--color-texture": "#EAF2FC",
+      "--color-document-background": "#ffffff",
+      "--color-document-text": "#1f2328",
+      "--color-document-link": "#0969da",
+      "--color-source-background": "#ffffff",
+      "--color-source-text": "#1f2328",
+      "--color-code-background": "#ffffff",
+      "--color-code-text": "#1f2328",
+      "--color-data-strong": "#30A14E",
+      "--color-data-peak": "#216E39",
       "--color-data-line": "#2DA44E",
       "--font-ui-family": expect.stringContaining("Satoshi"),
       "--font-code-family": expect.stringContaining("JetBrains Mono")

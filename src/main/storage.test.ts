@@ -312,12 +312,6 @@ describe("LocalStore repository pins", () => {
               foreground: "#030303",
               texture: "not-a-color"
             },
-            dark: {
-              accent: "60a5fa",
-              background: "#111827",
-              foreground: "#e4e4e7",
-              texture: "#263449"
-            },
             uiFont: "satoshi",
             codeFont: "unknown"
           }
@@ -342,7 +336,7 @@ describe("LocalStore repository pins", () => {
       credentialProvider: "github-oauth",
       glassMode: "glass-shell",
       theme: {
-        mode: "dark",
+        mode: "light",
         preset: "control-light",
         accent: "purple",
         custom: {
@@ -351,12 +345,6 @@ describe("LocalStore repository pins", () => {
             background: defaultSettings.theme.custom.light.background,
             foreground: "#030303",
             texture: defaultSettings.theme.custom.light.texture
-          },
-          dark: {
-            accent: defaultSettings.theme.custom.dark.accent,
-            background: "#111827",
-            foreground: "#E4E4E7",
-            texture: "#263449"
           },
           uiFont: "satoshi",
           codeFont: defaultSettings.theme.custom.codeFont
@@ -379,16 +367,14 @@ describe("LocalStore repository pins", () => {
     tempDirs.push(tempDir);
     const stores: LocalStore[] = [new MemoryLocalStore(), await createLocalStore(tempDir)];
     const theme: ControlSettings["theme"] = {
-      mode: "dark",
-      preset: "control-high-contrast-dark",
+      mode: "light",
+      preset: "control-light",
       accent: "green",
       custom: {
         ...defaultSettings.theme.custom,
-        dark: {
-          accent: "#FF5C5C",
-          background: "#111827",
-          foreground: "#E4E4E7",
-          texture: "#263449"
+        light: {
+          ...defaultSettings.theme.custom.light,
+          accent: "#22C55E"
         },
         codeFont: "jetbrains-mono"
       }

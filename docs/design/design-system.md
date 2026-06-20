@@ -1,12 +1,14 @@
 # Control Design System
 
-Control targets a glass shell inspired by the provided GitHub concept and Apple Music.app on macOS.
+Control targets a native macOS shell with Liquid Glass controls, inspired by the provided GitHub concept and
+Apple Music.app on macOS.
 
 ## Visual Direction
 
-- The window, sidebar, top toolbar, right rail, settings panel, and popovers use glass.
-- Dense content stays flatter: file rows, issue rows, PR rows, checks, README, and tables use high-contrast translucent white surfaces.
-- Cards are reserved for panels, repeated tiles, and modal surfaces.
+- Use Liquid Glass as a control material, not as a page material.
+- Search, command surfaces, buttons, selected tabs, segmented filters, menus, popovers, and compact action groups use the bubble glass treatment.
+- Durable regions stay flatter: sidebar lists, repository panes, file trees, README/code panes, issue rows, PR rows, checks, tables, right rails, and settings forms use integrated panes with hairline separators.
+- Cards are reserved for repeated tiles, modals, and content that genuinely needs a frame.
 - The UI should feel native, quiet, and operational, not like a marketing page.
 
 ## Glass Rules
@@ -14,8 +16,8 @@ Control targets a glass shell inspired by the provided GitHub concept and Apple 
 - On macOS, use `electron-liquid-glass` as the native window material. The renderer root, body, and app shell must stay transparent so the native glass remains visible.
 - Use a neutral native tint. Avoid colored native tints because active and inactive macOS window states can shift the surface toward cyan, yellow, or wallpaper-derived casts.
 - Keep native glass options centralized in `src/main/theme/liquidGlassOptions.ts` and covered by tests before changing tint, opacity, scrim, or subdued values.
-- Use CSS `backdrop-filter` only on renderer panels that sit above the native shell, and keep those panels low-alpha and neutral.
-- Avoid backdrop blur on every table row.
+- Use CSS `backdrop-filter` only on transient renderer surfaces that sit above dense content, such as command palettes, menus, popovers, and dialogs.
+- Avoid backdrop blur on durable panes, every table row, or repeated list rows.
 - Keep borders subtle and white-tinted to preserve the Music.app style.
 - Provide a settings toggle for reduced or solid glass.
 - Non-macOS fallback glass belongs behind a platform-scoped class only. It should not affect the macOS renderer path.

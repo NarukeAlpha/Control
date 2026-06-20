@@ -12,24 +12,16 @@ export const CONTROL_GLASS_MODE_LABELS: Record<GlassMode, string> = {
   solid: "Solid"
 };
 
-export const CONTROL_THEME_MODES = ["light", "dark", "system"] as const;
+export const CONTROL_THEME_MODES = ["light"] as const;
 
 export type ControlThemeMode = (typeof CONTROL_THEME_MODES)[number];
 
-export const CONTROL_THEME_PRESETS = [
-  "control-light",
-  "control-dark",
-  "control-dim",
-  "control-high-contrast-dark"
-] as const;
+export const CONTROL_THEME_PRESETS = ["control-light"] as const;
 
 export type ControlThemePreset = (typeof CONTROL_THEME_PRESETS)[number];
 
 export const CONTROL_THEME_PRESET_LABELS: Record<ControlThemePreset, string> = {
-  "control-light": "Control Light",
-  "control-dark": "Control Dark",
-  "control-dim": "Dim",
-  "control-high-contrast-dark": "High Contrast Dark"
+  "control-light": "Theme"
 };
 
 export const CONTROL_ACCENT_COLORS = ["blue", "green", "purple", "gray"] as const;
@@ -74,7 +66,6 @@ export interface ControlThemePaletteSettings {
 
 export interface ControlThemeCustomSettings {
   light: ControlThemePaletteSettings;
-  dark: ControlThemePaletteSettings;
   uiFont: ControlUiFont;
   codeFont: ControlCodeFont;
 }
@@ -87,7 +78,7 @@ export interface ControlThemeSettings {
 }
 
 export const DEFAULT_CONTROL_THEME_SETTINGS: ControlThemeSettings = {
-  mode: "system",
+  mode: "light",
   preset: "control-light",
   accent: "blue",
   custom: {
@@ -96,12 +87,6 @@ export const DEFAULT_CONTROL_THEME_SETTINGS: ControlThemeSettings = {
       background: "#EAF2FC",
       foreground: "#0F172A",
       texture: "#F7FBFF"
-    },
-    dark: {
-      accent: "#60A5FA",
-      background: "#101827",
-      foreground: "#E5EDF7",
-      texture: "#263449"
     },
     uiFont: "inter",
     codeFont: "sf-mono"

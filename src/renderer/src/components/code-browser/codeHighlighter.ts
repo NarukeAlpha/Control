@@ -3,8 +3,6 @@ import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 
 import type { CodeLanguage } from "./codeLanguage";
 
-export type CodeViewerColorScheme = "light" | "dark";
-
 interface HighlightedSourceToken {
   content: string;
   offset: number;
@@ -18,12 +16,8 @@ export interface HighlightedSourceLine {
   tokens: HighlightedSourceToken[];
 }
 
-const codeViewerThemes = {
-  light: "github-light-default",
-  dark: "github-dark-default"
-} as const;
-
-type CodeViewerTheme = (typeof codeViewerThemes)[keyof typeof codeViewerThemes];
+const codeViewerTheme = "github-light-default";
+type CodeViewerTheme = typeof codeViewerTheme;
 type CodeViewerHighlighter = HighlighterGeneric<CodeLanguage, CodeViewerTheme>;
 
 const createCodeHighlighter = createBundledHighlighter<CodeLanguage, CodeViewerTheme>({
@@ -44,8 +38,7 @@ const createCodeHighlighter = createBundledHighlighter<CodeLanguage, CodeViewerT
     yaml: () => import("shiki/langs/yaml.mjs")
   },
   themes: {
-    [codeViewerThemes.light]: () => import("shiki/themes/github-light-default.mjs"),
-    [codeViewerThemes.dark]: () => import("shiki/themes/github-dark-default.mjs")
+    [codeViewerTheme]: () => import("shiki/themes/github-light-default.mjs")
   },
   engine: () => createJavaScriptRegexEngine()
 });
@@ -55,7 +48,7 @@ let highlighterPromise: Promise<CodeViewerHighlighter> | null = null;
 async function getCodeHighlighter(): Promise<CodeViewerHighlighter> {
   if (!highlighterPromise) {
     highlighterPromise = createCodeHighlighter({
-      themes: [codeViewerThemes.light, codeViewerThemes.dark],
+      themes: [codeViewerTheme],
       langs: []
     });
   }
@@ -66,13 +59,12 @@ async function getCodeHighlighter(): Promise<CodeViewerHighlighter> {
 export async function highlightSource(input: {
   content: string;
   language: CodeLanguage;
-  colorScheme?: CodeViewerColorScheme;
 }): Promise<HighlightedSourceLine[]> {
   const highlighter = await getCodeHighlighter();
   await highlighter.loadLanguage(input.language);
   const lines = highlighter.codeToTokensBase(input.content, {
     lang: input.language,
-    theme: codeViewerThemes[input.colorScheme ?? "dark"]
+    theme: codeViewerTheme
   });
   const sourceLines = input.content.split("\n");
 

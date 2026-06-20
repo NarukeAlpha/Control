@@ -8,6 +8,7 @@ import { useMailboxNotifications } from "../../hooks/useMailboxNotifications";
 import { formatRelativeDate } from "../../utils/format";
 import type { ConfirmAction } from "../dialogs/confirmation";
 import { readAvailabilityMessage } from "../repository/repositoryUi";
+import { FilterBar, StateSegmentedControl } from "../ui";
 import { collectionRowClassName, matchesCollectionFilter } from "./collectionUi";
 import {
   maxMailboxListLimit,
@@ -62,31 +63,6 @@ function collectUnreadNotificationIds(notifications: NotificationSummary[]): str
   }
 
   return unreadIds;
-}
-
-function NotificationFilterButton({
-  filter,
-  selectedFilter,
-  onNotificationFilterChange
-}: {
-  filter: (typeof notificationFilters)[number];
-  selectedFilter: MailboxNotificationFilter;
-  onNotificationFilterChange(filter: MailboxNotificationFilter): void;
-}): JSX.Element {
-  function handleSelectFilter(): void {
-    onNotificationFilterChange(filter.value);
-  }
-
-  return (
-    <button
-      className={filter.value === selectedFilter ? "selected-action" : ""}
-      type="button"
-      aria-pressed={filter.value === selectedFilter}
-      onClick={handleSelectFilter}
-    >
-      {filter.label}
-    </button>
-  );
 }
 
 function MailboxNotificationRow({
@@ -265,16 +241,13 @@ function MailboxHeader({
     <header>
       <h2>{title}</h2>
       <div className="collection-actions">
-        <div className="notification-filter" role="group" aria-label="Notification filter">
-          {notificationFilters.map((filter) => (
-            <NotificationFilterButton
-              key={filter.value}
-              filter={filter}
-              selectedFilter={notificationFilter}
-              onNotificationFilterChange={onNotificationFilterChange}
-            />
-          ))}
-        </div>
+        <StateSegmentedControl
+          className="notification-filter"
+          label="Notification filter"
+          options={notificationFilters}
+          value={notificationFilter}
+          onChange={onNotificationFilterChange}
+        />
         <button
           type="button"
           disabled={Boolean(notificationBulkMarkReadDisabledReason)}
@@ -298,7 +271,16 @@ function MailboxFilterRow({
   onClearCollectionFilter(): void;
 }): JSX.Element {
   return (
-    <div className="table-action-row surface-filter-row">
+    <FilterBar
+      className="surface-filter-row mailbox-filter-row"
+      actions={
+        collectionFilter.trim() ? (
+          <button type="button" onClick={onClearCollectionFilter}>
+            <X size={16} /> Clear
+          </button>
+        ) : null
+      }
+    >
       <label className="surface-filter">
         <Search size={16} />
         <input
@@ -308,12 +290,7 @@ function MailboxFilterRow({
           onChange={onCollectionFilterChange}
         />
       </label>
-      {collectionFilter.trim() && (
-        <button type="button" onClick={onClearCollectionFilter}>
-          <X size={16} /> Clear
-        </button>
-      )}
-    </div>
+    </FilterBar>
   );
 }
 

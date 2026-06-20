@@ -1,13 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { ComponentProps, CSSProperties, JSX } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import type {
-  AppState,
-  ControlSettings,
-  RepositoryTabPreferenceKey,
-  RepositoryTabPreferenceMap
-} from "@shared/github";
+import type { RepositoryTabPreferenceKey, RepositoryTabPreferenceMap } from "@shared/github";
 
 import { MarkdownUrlHandlerContext } from "./components/MarkdownBody";
 import { LocalAreaHome } from "./components/areas/LocalAreaHome";
@@ -69,44 +64,6 @@ function routeTitle(route: AppRoute): string {
   }
 }
 
-function mergeSettingsPreview(
-  settings: ControlSettings | undefined,
-  preview: Partial<ControlSettings> | null
-): ControlSettings | undefined {
-  if (!settings || !preview) {
-    return settings;
-  }
-
-  const previewTheme = preview.theme;
-  return {
-    ...settings,
-    ...preview,
-    theme: previewTheme
-      ? {
-          ...settings.theme,
-          ...previewTheme,
-          custom: previewTheme.custom
-            ? {
-                ...settings.theme.custom,
-                ...previewTheme.custom,
-                light: {
-                  ...settings.theme.custom.light,
-                  ...previewTheme.custom.light
-                },
-                dark: {
-                  ...settings.theme.custom.dark,
-                  ...previewTheme.custom.dark
-                }
-              }
-            : settings.theme.custom
-        }
-      : settings.theme,
-    repositoryTabPreferences: preview.repositoryTabPreferences ?? settings.repositoryTabPreferences,
-    repositoryTabPreferencesByRepository:
-      preview.repositoryTabPreferencesByRepository ?? settings.repositoryTabPreferencesByRepository
-  };
-}
-
 function useContentScrollReset(route: AppRoute) {
   const contentScrollRef = useRef<HTMLElement | null>(null);
   const contentScrollKey = JSON.stringify(route);
@@ -139,7 +96,6 @@ function useAppShellState() {
   const commandPalette = useCommandPaletteController();
   const dialogs = useShellDialogState();
   const [repositoryRefs, setRepositoryRefs] = useStoredRepositoryRefs();
-  const [settingsPreview, setSettingsPreview] = useState<Partial<ControlSettings> | null>(null);
 
   const appState = useQuery({
     queryKey: ["app-state"],
@@ -497,14 +453,11 @@ function useAppShellState() {
     onSelectOrganizationProject: selectOrganizationProjectInApp
   });
 
-  const effectiveSettings = useMemo(
-    () => mergeSettingsPreview(appState.data?.settings, settingsPreview),
-    [appState.data?.settings, settingsPreview]
-  );
+  const effectiveSettings = appState.data?.settings;
   const resolvedTheme = useResolvedControlTheme(effectiveSettings?.theme);
   const themeStyleVars = useMemo(
-    () => resolveControlThemeStyleVars(effectiveSettings?.theme, resolvedTheme.resolvedMode),
-    [effectiveSettings?.theme, resolvedTheme.resolvedMode]
+    () => resolveControlThemeStyleVars(effectiveSettings?.theme),
+    [effectiveSettings?.theme]
   );
   const shellClass = [
     "app-shell",
@@ -523,15 +476,7 @@ function useAppShellState() {
   }
 
   function closeSettingsPanel(): void {
-    setSettingsPreview(null);
     setSettingsOpen(false);
-  }
-
-  async function saveSettings(settings: Partial<AppState["settings"]>): Promise<void> {
-    setSettingsPreview(settings);
-    await api.updateSettings(settings);
-    await queryClient.invalidateQueries({ queryKey: ["app-state"] });
-    setSettingsPreview(null);
   }
 
   return {
@@ -639,13 +584,11 @@ function useAppShellState() {
     resolvedTheme,
     themeStyleVars,
     shellClass,
-    setSettingsPreview,
     showRepositoryTab,
     saveRepositoryTabPreferences,
     openExternal,
     openSettingsPanel,
-    closeSettingsPanel,
-    saveSettings
+    closeSettingsPanel
   };
 }
 
@@ -672,12 +615,25 @@ function AppShell({
   useEffect(() => {
     const background = state.themeStyleVars["--color-app-background"];
     const color = state.themeStyleVars["--color-text"];
+    const noLiquidGlass = document.body.classList.contains("no-liquid-glass");
 
-    document.documentElement.style.background = background;
-    document.body.style.background = background;
+    Object.entries(state.themeStyleVars).forEach(([name, value]) => {
+      document.documentElement.style.setProperty(name, value);
+    });
+
+    if (noLiquidGlass) {
+      document.documentElement.style.removeProperty("background");
+      document.body.style.removeProperty("background");
+    } else {
+      document.documentElement.style.background = background;
+      document.body.style.background = background;
+    }
     document.body.style.color = color;
 
     return () => {
+      Object.keys(state.themeStyleVars).forEach((name) => {
+        document.documentElement.style.removeProperty(name);
+      });
       document.documentElement.style.removeProperty("background");
       document.body.style.removeProperty("background");
       document.body.style.removeProperty("color");
@@ -1097,7 +1053,6 @@ function AppShellDialogHost({ state }: { state: AppShellState }): JSX.Element {
       appState={state.appState.data}
       authController={state.providerAuth.github}
       settingsOpen={state.settingsOpen}
-      systemColorScheme={state.resolvedTheme.resolvedMode}
       route={state.route}
       repository={state.repositoryDetail}
       repositoryTree={state.repositoryTreeItem}
@@ -1123,8 +1078,6 @@ function AppShellDialogHost({ state }: { state: AppShellState }): JSX.Element {
       onDeleteArea={state.deleteArea}
       onCloseSettings={state.closeSettingsPanel}
       onOpenExternal={state.openExternal}
-      onSaveSettings={state.saveSettings}
-      onPreviewSettings={state.setSettingsPreview}
       onSelectRepositoryRef={state.selectRepositoryRefInApp}
       repositoryRefKindForName={state.repositoryRefKindForName}
       onExpandRefs={state.expandActiveRepositoryRefs}

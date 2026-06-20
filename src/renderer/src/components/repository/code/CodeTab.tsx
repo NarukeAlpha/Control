@@ -703,26 +703,28 @@ export function CodeTab({
       {refsError && <div className="error-state">Branch and tag list unavailable: {refsError.message}</div>}
       {refsAvailabilityMessage && <div className="error-state">{refsAvailabilityMessage}</div>}
 
-      <RepositoryFileTable
-        repository={repository}
-        repositoryUpdatedAt={repositoryUpdatedAt}
-        contentItems={contentItems}
-        contentsError={contentsError}
-        contentsLoading={contentsLoading}
-        contentsAvailabilityMessage={contentsAvailabilityMessage}
-        onOpenCodeBrowser={onOpenCodeBrowser}
-      />
+      <div className="code-workspace-split">
+        <RepositoryFileTable
+          repository={repository}
+          repositoryUpdatedAt={repositoryUpdatedAt}
+          contentItems={contentItems}
+          contentsError={contentsError}
+          contentsLoading={contentsLoading}
+          contentsAvailabilityMessage={contentsAvailabilityMessage}
+          onOpenCodeBrowser={onOpenCodeBrowser}
+        />
 
-      <ReadmePanel
-        repository={repository}
-        currentRef={currentRef}
-        readmeMarkdown={readmeMarkdown}
-        readmeError={readmeError}
-        readmeLoading={readmeLoading}
-        readmeAvailabilityMessage={readmeAvailabilityMessage}
-        readmeEmptyMessage={readmeEmptyMessage}
-        onOpenExternal={onOpenExternal}
-      />
+        <ReadmePanel
+          repository={repository}
+          currentRef={currentRef}
+          readmeMarkdown={readmeMarkdown}
+          readmeError={readmeError}
+          readmeLoading={readmeLoading}
+          readmeAvailabilityMessage={readmeAvailabilityMessage}
+          readmeEmptyMessage={readmeEmptyMessage}
+          onOpenExternal={onOpenExternal}
+        />
+      </div>
 
       {rootMarkdownItems.length > 0 && (
         <RootMarkdownPanel

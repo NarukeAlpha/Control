@@ -1803,6 +1803,43 @@ describe("Control renderer routing", () => {
     expect(openExternal).toHaveBeenCalledWith("https://github.com/apple/swift");
   });
 
+  it("keeps optional repository tabs reachable from the More menu", async () => {
+    useUiStore.setState({
+      ...defaultUiState,
+      route: { kind: "repository", nameWithOwner: "apple/swift", tab: "code" }
+    });
+    renderControl({
+      ...makeApi(),
+      getAppState: async () =>
+        appStateWithRepositoryTabPreferences({
+          agents: "show",
+          contributors: "show",
+          discussions: "show",
+          projects: "show",
+          releases: "show",
+          securityQuality: "show",
+          wiki: "show"
+        })
+    });
+
+    expect(await screen.findByRole("heading", { name: /apple \/ swift/i })).toBeInTheDocument();
+    const tabs = document.querySelector(".repo-tabs") as HTMLElement;
+    expect(tabs).not.toBeNull();
+    expect(within(tabs).getByRole("button", { name: /^Code$/ })).toBeInTheDocument();
+    expect(within(tabs).queryByRole("button", { name: /^Security and Quality$/ })).not.toBeInTheDocument();
+
+    await userEvent.click(within(tabs).getByRole("button", { name: "More repository tabs" }));
+    await userEvent.click(within(tabs).getByRole("button", { name: /^Security and Quality$/ }));
+
+    await waitFor(() =>
+      expect(useUiStore.getState().route).toEqual({
+        kind: "repository",
+        nameWithOwner: "apple/swift",
+        tab: "securityQuality"
+      })
+    );
+  });
+
   it("adds a repository through the in-app GitHub search picker", async () => {
     const remoteRepository = {
       ...mockRepositories[0],
@@ -2122,8 +2159,8 @@ describe("Control renderer routing", () => {
         settings: {
           ...mockAppState.settings,
           theme: {
-            mode: "dark",
-            preset: "control-high-contrast-dark",
+            mode: "light",
+            preset: "control-light",
             accent: "purple",
             custom: mockAppState.settings.theme.custom
           }
@@ -2135,41 +2172,50 @@ describe("Control renderer routing", () => {
     await waitFor(() => {
       expect(document.querySelector(".app-shell")).toMatchObject({
         dataset: {
-          themeMode: "dark",
-          colorScheme: "dark",
-          themePreset: "control-high-contrast-dark",
+          themeMode: "light",
+          colorScheme: "light",
+          themePreset: "control-light",
           accent: "purple"
         }
       });
     });
   });
 
-  it("previews appearance edits on the shell before saving settings", async () => {
+  it("applies saved glass mode classes to the app shell", async () => {
+    useUiStore.setState(defaultUiState);
+    renderControl({
+      ...makeApi(),
+      getAppState: async () => ({
+        ...mockAppState,
+        settings: {
+          ...mockAppState.settings,
+          glassMode: "reduced"
+        }
+      })
+    });
+
+    expect(await screen.findByRole("heading", { name: "Latest activity" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(document.querySelector(".app-shell")).toHaveClass("reduced-glass");
+      expect(document.querySelector(".app-shell")).not.toHaveClass("solid-shell");
+    });
+  });
+
+  it("does not expose appearance settings in the settings dialog", async () => {
     useUiStore.setState(defaultUiState);
     renderControl(makeApi());
 
     await userEvent.click(await screen.findByTitle("Account settings"));
-    await userEvent.click(screen.getByRole("button", { name: "Appearance" }));
-    await userEvent.click(
-      within(screen.getByRole("group", { name: "Theme mode" })).getByRole("button", { name: "Dark" })
-    );
-    fireEvent.change(screen.getByLabelText("Dark theme background color", { exact: true }), {
-      target: { value: "#111827" }
-    });
 
-    await waitFor(() => {
-      const shell = document.querySelector(".app-shell");
-      expect(shell).toMatchObject({
-        dataset: {
-          themeMode: "dark",
-          colorScheme: "dark"
-        }
-      });
-      expect((shell as HTMLElement | null)?.style.getPropertyValue("--color-surface-solid")).toBe("#111827");
-    });
+    expect(screen.getByRole("heading", { name: "Account" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Data" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Appearance" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Appearance" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Theme background color", { exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
   });
 
-  it("keeps saved light appearance settings after app-state refresh", async () => {
+  it("keeps saved light theme settings after app-state refresh", async () => {
     vi.stubGlobal(
       "matchMedia",
       vi.fn(
@@ -2184,14 +2230,7 @@ describe("Control renderer routing", () => {
     useUiStore.setState(defaultUiState);
     renderControl(makeApi());
 
-    await userEvent.click(await screen.findByTitle("Account settings"));
-    await userEvent.click(screen.getByRole("button", { name: "Appearance" }));
-    await userEvent.click(
-      within(screen.getByRole("group", { name: "Theme mode" })).getByRole("button", { name: "Light" })
-    );
-    await userEvent.click(screen.getByRole("button", { name: "Save" }));
-
-    expect(await screen.findByText("Settings saved.")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Latest activity" })).toBeInTheDocument();
     await waitFor(() => {
       const shell = document.querySelector(".app-shell");
       expect(shell).toMatchObject({

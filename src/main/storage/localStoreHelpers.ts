@@ -119,8 +119,7 @@ function mergeThemePatch(
       ? {
           ...currentTheme.custom,
           ...rawCustom,
-          light: mergePalettePatch(currentTheme.custom.light, rawCustom.light),
-          dark: mergePalettePatch(currentTheme.custom.dark, rawCustom.dark)
+          light: mergePalettePatch(currentTheme.custom.light, rawCustom.light)
         }
       : currentTheme.custom
   };
@@ -148,7 +147,6 @@ function normalizeThemeCustomSettings(custom: unknown): ControlSettings["theme"]
   const rawCustom = custom as Partial<Record<keyof ControlSettings["theme"]["custom"], unknown>>;
   return {
     light: normalizePaletteSettings(rawCustom.light, DEFAULT_CONTROL_THEME_SETTINGS.custom.light),
-    dark: normalizePaletteSettings(rawCustom.dark, DEFAULT_CONTROL_THEME_SETTINGS.custom.dark),
     uiFont: normalizeLiteral<ControlUiFont>(
       rawCustom.uiFont,
       CONTROL_UI_FONTS,
@@ -188,7 +186,6 @@ function cloneDefaultThemeSettings(): ControlSettings["theme"] {
     ...DEFAULT_CONTROL_THEME_SETTINGS,
     custom: {
       light: { ...DEFAULT_CONTROL_THEME_SETTINGS.custom.light },
-      dark: { ...DEFAULT_CONTROL_THEME_SETTINGS.custom.dark },
       uiFont: DEFAULT_CONTROL_THEME_SETTINGS.custom.uiFont,
       codeFont: DEFAULT_CONTROL_THEME_SETTINGS.custom.codeFont
     }
